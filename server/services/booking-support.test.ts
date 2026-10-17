@@ -75,6 +75,21 @@ beforeEach(() => {
   state.queue.mockImplementation(async (_tx, bookingId, kind, title, message, actorId, metadata) => { state.events.push({ id: state.events.length + 1, bookingId, kind, title, message, actorId, metadata, createdAt: new Date(), completedAt: null }); });
 });
 describe('support state × action matrix', () => {
+  describe.each(['revision', 'per_day'])('dated support refusal via %s', discriminator => {
+    it.each([
+      ['goodwill_refund', 'local_cooks', {}], ['cancel_kitchen_caused', 'manager', {}],
+      ['refund_captured_request', 'manager', {}], ['finish_kitchen_refund', 'manager', {}],
+      ['request_cancellation_for_chef', 'chef', {}],
+      ['accept_cancellation_for_manager', 'manager', { quoteHash: 'a'.repeat(64) }],
+      ['retry_refund', 'local_cooks', { transactionId: 8, refundOperationId: 'original-refund' }],
+      ['mark_refunded', 'local_cooks', { transactionId: 8, refundOperationId: 'original-refund' }],
+    ])('refuses %s before reserving or dispatching a support operation', async (type, actingFor, details) => {
+      if (discriminator === 'revision') state.booking.scheduleRevision = 1;
+      else state.payments[0].payoutPartition = 'per_day';
+      await expect(executeBookingSupportAction(1, 7, input(type as string, { actingFor, details }))).rejects.toThrow('Dated booking cancellations and refunds');
+      expect(state.actions).toEqual([]); expect(state.provider).not.toHaveBeenCalled(); expect(state.goodwill).not.toHaveBeenCalled();
+    });
+  });
   it.each([
     ['pending', 'authorized', 'confirm_for_manager', true], ['pending', 'paid', 'confirm_for_manager', false],
     ['confirmed', 'paid', 'confirm_for_manager', false], ['cancelled', 'paid', 'confirm_for_manager', false],

@@ -7,6 +7,7 @@ import { resolveLocale, tLocale } from '../i18n';
 import { notificationService } from './notification.service';
 import { operationalEmailAllowed } from './admin-email-preferences';
 import { assertWorkerTime, isWorkerBudgetError, workerAfter, workerPageEnd, workerRecord } from './worker-context';
+import { logger } from '../logger';
 
 type Incident = typeof kitchenCheckoutIncidents.$inferSelect;
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -181,7 +182,11 @@ export async function archiveExpiredDatedCheckout(session: Stripe.Checkout.Sessi
 }
 
 export async function recoverKitchenCheckouts(limit = 3) {
-  await recoverUnboundDatedCheckouts();
+  try { await recoverUnboundDatedCheckouts(); }
+  catch (error) {
+    if (isWorkerBudgetError(error)) throw error;
+    logger.error('[CheckoutRecovery] Dated discovery failed; continuing legacy recovery', error);
+  }
   const key = 'checkoutRecovery', pageSize = Math.min(limit, 3);
   const rows = await db.select().from(kitchenCheckoutIncidents).where(and(
     or(notInArray(kitchenCheckoutIncidents.outcome, ['booking_created', 'closed']),
@@ -190,6 +195,7 @@ export async function recoverKitchenCheckouts(limit = 3) {
         AND ${kitchenBookings.status} = 'pending' AND ${kitchenBookings.paymentStatus} = 'authorized'
         AND ${kitchenBookings.paymentDecision} IS NULL)`)),
     or(eq(kitchenCheckoutIncidents.moneyStatus, 'unverified'), eq(kitchenCheckoutIncidents.moneyStatus, 'refund_pending')),
+    sql`${kitchenCheckoutIncidents.sessionId} NOT LIKE 'unbound:%'`,
     workerAfter(key, kitchenCheckoutIncidents.id))).orderBy(asc(kitchenCheckoutIncidents.id)).limit(pageSize);
   await workerPageEnd(key, rows.length, pageSize);
   let recovered = 0, errors = 0;
@@ -210,33 +216,47 @@ export async function recoverKitchenCheckouts(limit = 3) {
 export async function recoverUnboundDatedCheckouts(provider?: Stripe) {
   const heads = await db.select().from(kitchenCheckoutHolds).where(sql`${kitchenCheckoutHolds.id} = ${kitchenCheckoutHolds.groupId}
     AND ${kitchenCheckoutHolds.stripeSessionId} IS NULL AND ${kitchenCheckoutHolds.expiresAt} <= now()
-    AND ${kitchenCheckoutHolds.quoteSnapshot}->'manifest'->>'contract' = 'kitchen-days-v1'`).orderBy(asc(kitchenCheckoutHolds.expiresAt)).limit(3);
+    AND ${kitchenCheckoutHolds.quoteSnapshot}->'manifest'->>'contract' = 'kitchen-days-v1'
+    AND NOT EXISTS (SELECT 1 FROM ${kitchenCheckoutIncidents} WHERE ${kitchenCheckoutIncidents.sessionId} = 'unbound:' || ${kitchenCheckoutHolds.id}::text)`).orderBy(asc(kitchenCheckoutHolds.expiresAt)).limit(3);
   for (const head of heads) {
     assertWorkerTime(2500);
-    const stripe = provider ?? checkoutRecoveryStripe();
-    const { verifyDatedQuote, datedCheckoutMetadata } = await import('./dated-booking-quote');
-    const quote = verifyDatedQuote(head.quoteSnapshot), m = quote.manifest;
-    // Search the entire creation window. An incomplete provider page cannot prove that no session was created.
-    const sessions = await stripe.checkout.sessions.list({ created: { gte: Math.floor(Date.parse(m.createdAt) / 1000) - 60,
-      lte: m.checkoutExpiresAt }, limit: 100 });
-    const matching = sessions.data.filter(session => session.metadata?.hold_id === head.id);
-    if (sessions.has_more || matching.length > 1) continue;
-    const session = matching[0];
-    if (session) {
-      if (Object.entries(datedCheckoutMetadata(quote)).some(([key, value]) => session.metadata?.[key] !== value))
-        throw Error('Recovered checkout differs from its immutable manifest');
-      await (await import('./kitchen-checkout-holds')).bindKitchenCheckout(head.id, session.id);
-      if (session.status === 'complete') await reconcileKitchenCheckout(session.id, stripe);
-      else if (session.status === 'expired') {
-        await updateCheckoutIncident(session.id, { outcome: 'closed', lastCheckedAt: new Date() });
+    try {
+      const stripe = provider ?? checkoutRecoveryStripe();
+      const { verifyDatedQuote, datedCheckoutMetadata } = await import('./dated-booking-quote');
+      const quote = verifyDatedQuote(head.quoteSnapshot), m = quote.manifest;
+      // Search the entire creation window. An incomplete provider page cannot prove that no session was created.
+      const sessions = await stripe.checkout.sessions.list({ created: { gte: Math.floor(Date.parse(m.createdAt) / 1000) - 60,
+        lte: m.checkoutExpiresAt }, limit: 100 });
+      const matching = sessions.data.filter(session => session.metadata?.hold_id === head.id);
+      if (sessions.has_more || matching.length > 1) throw Error('Dated checkout discovery is incomplete or ambiguous; manual provider review required');
+      const session = matching[0];
+      if (session) {
+        if (Object.entries(datedCheckoutMetadata(quote)).some(([key, value]) => session.metadata?.[key] !== value))
+          throw Error('Recovered checkout differs from its immutable manifest');
+        await (await import('./kitchen-checkout-holds')).bindKitchenCheckout(head.id, session.id);
+        if (session.status === 'complete') await reconcileKitchenCheckout(session.id, stripe);
+        else if (session.status === 'expired') {
+          await updateCheckoutIncident(session.id, { outcome: 'closed', lastCheckedAt: new Date() });
+          await (await import('./kitchen-checkout-holds')).releaseKitchenCheckout(head.id);
+        }
+      } else {
+        // Checkout's creation expiry has passed and the complete provider listing has no matching session.
+        const archiveId = `unbound:${head.id}`;
+        await registerKitchenCheckout(archiveId, m.chefId, m.kitchenId, m.days[0].date, quote);
+        await updateCheckoutIncident(archiveId, { outcome: 'closed', lastCheckedAt: new Date(), error: 'No provider session found in the complete creation window' });
         await (await import('./kitchen-checkout-holds')).releaseKitchenCheckout(head.id);
       }
-    } else {
-      // Checkout's creation expiry has passed and the complete provider listing has no matching session.
-      const archiveId = `unbound:${head.id}`;
-      await registerKitchenCheckout(archiveId, m.chefId, m.kitchenId, m.days[0].date, quote);
-      await updateCheckoutIncident(archiveId, { outcome: 'closed', lastCheckedAt: new Date(), error: 'No provider session found in the complete creation window' });
-      await (await import('./kitchen-checkout-holds')).releaseKitchenCheckout(head.id);
+    } catch (error) {
+      if (isWorkerBudgetError(error)) throw error;
+      logger.error('[CheckoutRecovery] Dated checkout needs support', { headId: head.id, error });
+      try {
+        // Keep the raw evidence even if its quote is invalid. This durable incident also stops automatic retries.
+        const archiveId = `unbound:${head.id}`;
+        await registerKitchenCheckout(archiveId, head.chefId, head.kitchenId, head.operatingDate, head.quoteSnapshot);
+        await updateCheckoutIncident(archiveId, { outcome: 'needs_support', error: (error as Error).message, lastCheckedAt: new Date() });
+      } catch (archiveError) {
+        logger.error('[CheckoutRecovery] Could not archive dated checkout', { headId: head.id, error: archiveError });
+      }
     }
   }
 }

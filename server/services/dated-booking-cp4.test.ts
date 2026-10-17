@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { eq } from 'drizzle-orm';
 import * as s from '@shared/schema';
 import { createTestDatabase } from './kitchen-booking-changes.pglite';
-import { DATED_DISCLOSURE_VERSION } from '@shared/cancellation-policy';
+import { allocateCents, DATED_DISCLOSURE_VERSION } from '@shared/cancellation-policy';
 import { responseDeadlineForBooking } from '@shared/booking-response-deadline';
 
 const h = vi.hoisted(() => ({ db: null as any, client: null as any, provider: null as any, sessions: [] as any[], intent: null as any,
@@ -43,6 +43,7 @@ import { fulfillQuotedKitchenBooking } from './booking-checkout-fulfillment';
 import { decideAuthorizedBooking } from './booking-payment-decision';
 import { verifiedDatedCaptureEvidence, syncDatedPayment } from './dated-booking-allocations';
 import { recoverUnboundDatedCheckouts, reconcileKitchenCheckout, registerKitchenCheckout, archiveExpiredDatedCheckout } from './kitchen-checkout-incidents';
+import { assertLegacyBookingRefund } from './dated-booking-refund-guard';
 let checkoutDatedBooking: typeof import('./dated-booking-checkout').checkoutDatedBooking;
 
 beforeAll(async () => {
@@ -53,7 +54,7 @@ beforeAll(async () => {
   const cp1 = readFileSync('migrations/0099_multiday_and_kitchen_controls.sql', 'utf8');
   const allocations = cp1.slice(cp1.indexOf('CREATE TABLE IF NOT EXISTS kitchen_booking_day_allocations'), cp1.indexOf('CREATE TABLE IF NOT EXISTS kitchen_booking_day_payouts'));
   const db = await createTestDatabase([s.users, s.locations, s.kitchens, s.equipmentListings, s.kitchenBookings, s.kitchenBookingVisits,
-    s.equipmentBookings, s.paymentTransactions, s.kitchenCheckoutHolds, s.kitchenCheckoutIncidents, s.kitchenCancellationPolicies,
+    s.equipmentBookings, s.storageBookings, s.paymentTransactions, s.kitchenCheckoutHolds, s.kitchenCheckoutIncidents, s.kitchenCancellationPolicies,
     s.platformSettings, s.bookingLifecycleEvents, s.emailLogs], [body, allocations,
       'CREATE UNIQUE INDEX cp4_payment_intent ON payment_transactions(payment_intent_id)',
       'CREATE UNIQUE INDEX cp4_incident ON kitchen_checkout_incidents(session_id)',
@@ -74,15 +75,15 @@ beforeAll(async () => {
 }, 60_000);
 afterAll(async () => { await h.client?.close(); vi.unstubAllEnvs(); });
 beforeEach(async () => {
-  await h.client.exec('TRUNCATE kitchen_booking_day_allocations, equipment_bookings, kitchen_booking_visits, kitchen_bookings, payment_transactions, kitchen_checkout_holds, kitchen_checkout_incidents, kitchen_cancellation_policies, platform_settings, kitchens, locations, users, equipment_listings, booking_lifecycle_events, email_logs RESTART IDENTITY CASCADE');
+  await h.client.exec('TRUNCATE kitchen_booking_day_allocations, equipment_bookings, storage_bookings, kitchen_booking_visits, kitchen_bookings, payment_transactions, kitchen_checkout_holds, kitchen_checkout_incidents, kitchen_cancellation_policies, platform_settings, kitchens, locations, users, equipment_listings, booking_lifecycle_events, email_logs RESTART IDENTITY CASCADE');
   h.closed.clear(); h.canBook = true; h.loseCreate = false; h.loseCapture = false; h.sessions = []; h.intent = null; h.capturedKeys.clear();
   h.create.mockReset(); h.capture.mockReset(); h.cancel.mockReset(); h.event.mockReset(); h.lazyExpire.mockReset();
   h.policy = { timezone: 'UTC', bookingBufferMinutes: 0, maxBookingDays: 14, allowMultiDayBookings: true, multidayCreationEnabled: true,
     defaultDailyBookingLimit: null, minimumBookingWindowHours: 1, weeklyChefHoursLimit: null };
   await h.db.insert(s.users).values([{ id: 2, username: 'manager@test.invalid', password: 'test', role: 'manager', stripeConnectAccountId: 'acct_cp4' },
     { id: 3, username: 'chef@test.invalid', password: 'test', role: 'chef' }]);
-  await h.db.insert(s.locations).values({ id: 9, managerId: 2, name: 'Test', address: 'Test', timezone: 'UTC', taxRatePercent: '15' });
-  await h.db.insert(s.kitchens).values({ id: 4, locationId: 9, name: 'Test kitchen', hourlyRate: '1001', dailyRate: '7003', listingStatus: 'active' });
+  await h.db.insert(s.locations).values({ id: 9, managerId: 2, name: 'Test', address: 'Test', timezone: 'UTC', taxRatePercent: null });
+  await h.db.insert(s.kitchens).values({ id: 4, locationId: 9, name: 'Test kitchen', hourlyRate: '1001', dailyRate: '7003', taxRatePercent: '15', listingStatus: 'active' });
   await h.db.insert(s.kitchenCancellationPolicies).values({ id: 8, kitchenId: 4, version: 1, status: 'published', noticeHours: 24, lateChargePercent: 50,
     tiers: [{ minHoursBeforeStart: 24, refundPercent: 100 }, { minHoursBeforeStart: 0, refundPercent: 50 }], publishedBy: 2 });
   await h.db.insert(s.platformSettings).values({ key: 'platform_commission_rate', value: '0.07' });
@@ -129,6 +130,21 @@ function balance(fee = 317) {
 }
 
 describe('CP4 dated quote and authorization', () => {
+  it('charges the kitchen 15% tax when the location rate is NULL', async () => {
+    await h.db.update(s.kitchens).set({ taxRatePercent: '15' });
+    await h.db.update(s.locations).set({ taxRatePercent: null });
+    await checkout();
+    expect((await quote()).manifest).toMatchObject({ taxRatePercent: 15, subtotalCents: 9207, taxCents: 1381 });
+  });
+  it('splits service fees by manager gross like cancellation sourceComponents: 11349/12421 -> 795/869', async () => {
+    await checkout(); const m = (await quote()).manifest;
+    const components = [11349, 12421].map((subtotalCents, sessionIndex) => ({ visitId: sessionIndex + 1, sessionIndex,
+      componentKey: 'kitchen', kind: 'kitchen' as const, bookingId: 1, subtotalCents }));
+    const allocations = allocateDatedCapture(components, { ...m, subtotalCents: 23770, taxCents: 3566, serviceFeeCents: 1664, totalCents: 29000 }, 317);
+    const shares = allocations.map(row => row.serviceFeeCents);
+    expect(shares).toEqual([795, 869]);
+    expect(shares).toEqual(allocateCents(1664, allocations.map(row => row.managerGrossCents)));
+  });
   it('prices mixed hourly/daily days and equipment once per day, including free items; aggregate fees are computed once', async () => {
     await checkout(); const q = await quote(), m = q.manifest;
     expect(m.days.map((day: any) => [day.kitchenCents, day.equipment.map((item: any) => item.cents)])).toEqual([[2002, [101, 0]], [7003, [101]]]);
@@ -260,6 +276,24 @@ describe('CP4 atomic fulfillment and manifest recovery', () => {
     const provider = { ...h.provider, checkout: { sessions: { list: async () => ({ data: [], has_more: true }) } } };
     await recoverUnboundDatedCheckouts(provider as any); expect(await rows(s.kitchenCheckoutHolds)).toHaveLength(2);
   });
+  it.each(['incomplete page', 'ambiguous matches', 'provider error', 'invalid quote', 'wrong metadata'])('archives %s once for support and stops automatic discovery', async failure => {
+    h.loseCreate = true; await expect(checkout()).rejects.toThrow();
+    await h.db.update(s.kitchenCheckoutHolds).set({ expiresAt: new Date(0) });
+    const q = await quote();
+    if (failure === 'invalid quote') await h.db.update(s.kitchenCheckoutHolds).set({ quoteSnapshot: { ...q, hash: 'bad' } }).where(eq(s.kitchenCheckoutHolds.id, q.manifest.headId));
+    const list = vi.fn(async () => {
+      if (failure === 'provider error') throw Error('provider unavailable');
+      if (failure === 'wrong metadata') return { data: [{ ...h.sessions[0], metadata: { ...h.sessions[0].metadata, quote_hash: 'bad' } }], has_more: false };
+      return { data: failure === 'ambiguous matches' ? [h.sessions[0], h.sessions[0]] : [], has_more: failure === 'incomplete page' };
+    });
+    const provider = { ...h.provider, checkout: { sessions: { list } } };
+    await recoverUnboundDatedCheckouts(provider as any);
+    const [incident] = await rows(s.kitchenCheckoutIncidents);
+    expect(incident).toMatchObject({ sessionId: `unbound:${q.manifest.headId}`, outcome: 'needs_support', quoteSnapshot: expect.any(Object) });
+    const attempts = list.mock.calls.length;
+    await recoverUnboundDatedCheckouts(provider as any);
+    expect(list).toHaveBeenCalledTimes(attempts); expect(await rows(s.kitchenCheckoutIncidents)).toHaveLength(1);
+  });
   it('rechecks all dates when acceptance of the replaced request wins before fulfillment', async () => {
     const [old] = await h.db.insert(s.kitchenBookings).values({ chefId: 3, kitchenId: 4, bookingDate: new Date('2099-10-05T12:00Z'),
       startTime: '10:00', endTime: '12:00', operatingWindowStartTime: '08:00', selectedSlots: hours(10, 12), status: 'pending', paymentStatus: 'authorized', paymentIntentId: 'pi_old' }).returning();
@@ -285,6 +319,33 @@ describe('CP4 atomic fulfillment and manifest recovery', () => {
 });
 
 describe('CP4 all-or-nothing capture and actual day allocations', () => {
+  it('no-ops delayed charge.updated evidence after every dated day was declined', async () => {
+    const id = await fulfill(); await decideAuthorizedBooking(id, 'cancelled');
+    await expect(syncDatedPayment(h.intent.id)).resolves.toBeUndefined();
+    expect(await rows(s.kitchenBookingDayAllocations)).toHaveLength(0);
+    expect((await rows(s.kitchenBookings))[0]).toMatchObject({ status: 'cancelled', paymentStatus: 'failed' });
+  });
+  it.each(['revision', 'per_day'])('direct refund guard resolves parent, source and separately charged equipment for %s', async kind => {
+    const id = await fulfill(); await decideAuthorizedBooking(id, 'confirmed');
+    if (kind === 'revision') await h.db.update(s.paymentTransactions).set({ payoutPartition: null });
+    else await h.db.update(s.kitchenBookings).set({ scheduleRevision: 0 });
+    const [item] = await rows(s.equipmentBookings);
+    const [addon] = await h.db.insert(s.paymentTransactions).values({ bookingId: item.id, bookingType: 'equipment', paymentIntentId: 'pi_separate',
+      chefId: 3, managerId: 2, amount: '101', baseAmount: '101', serviceFee: '0', managerRevenue: '101', netAmount: '101', currency: 'CAD', status: 'succeeded' }).returning();
+    for (const target of [{ bookingId: id }, { paymentIntentId: h.intent.id }, { paymentTransactionId: addon.id }, { paymentIntentId: 'pi_separate' }])
+      await expect(assertLegacyBookingRefund(target, h.db)).rejects.toThrow('Dated booking cancellations and refunds');
+    await h.db.update(s.kitchenBookings).set({ scheduleRevision: 0 }); await h.db.update(s.paymentTransactions).set({ payoutPartition: null });
+    await expect(assertLegacyBookingRefund({ paymentTransactionId: addon.id }, h.db)).resolves.toBeUndefined();
+  });
+  it.each(['requires_capture', 'requires_payment_method', 'canceled'])('no-ops dated charge.updated evidence before capture (%s), even without a source', async status => {
+    await authorized(); h.intent.status = status;
+    await expect(syncDatedPayment(h.intent.id)).resolves.toBeUndefined();
+    expect(await rows(s.kitchenBookingDayAllocations)).toHaveLength(0);
+  });
+  it('still retries a succeeded dated payment whose source is missing', async () => {
+    await authorized(); h.intent.status = 'succeeded'; h.intent.amount_received = h.intent.amount;
+    await expect(syncDatedPayment(h.intent.id)).rejects.toThrow('source');
+  });
   it('writes verified actual fees in the same transaction as finalizing a full capture', async () => {
     const id = await fulfill(); balance(317); await decideAuthorizedBooking(id, 'confirmed');
     const allocations = await rows(s.kitchenBookingDayAllocations);

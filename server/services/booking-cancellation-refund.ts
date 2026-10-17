@@ -15,6 +15,7 @@ import { logger } from '../logger';
 import { allocateCents, legacyCancellationSnapshot, quoteCancellation, type CancellationPolicySnapshot } from '@shared/cancellation-policy';
 import { getUserDisplayName } from '../utils/user-display';
 import { policySessionStart } from './cancellation-policy-settings';
+import { assertLegacyCancellation } from './dated-booking-refund-guard';
 
 /** Staff use the same instant frozen-policy command as the chef. */
 export async function requestChefCancellation(bookingId: number, chefId: number, actorId: number, publicMessage?: string, operationKey = `support-chef-cancel-${bookingId}`) {
@@ -321,6 +322,7 @@ async function context(tx: Tx, bookingId: number, actorId: number, role: 'manage
     : await tx.select().from(paymentTransactions).where(sourceWhere).orderBy(asc(paymentTransactions.id));
   const parent = lock ? (await tx.select().from(kitchenBookings).where(eq(kitchenBookings.id, bookingId)).for('update'))[0] : row.booking;
   if (!parent) throw new Error('Booking no longer exists');
+  assertLegacyCancellation(parent, sources);
   if (lock) {
     const [owner] = await tx.select({ managerId: locations.managerId }).from(kitchens).innerJoin(locations, eq(locations.id, kitchens.locationId))
       .where(eq(kitchens.id, parent.kitchenId)).for('share');

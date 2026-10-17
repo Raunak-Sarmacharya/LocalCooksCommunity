@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-const state = vi.hoisted(() => ({ rows: {} as Record<string, any[]>, patches: [] as any[], notify: vi.fn(), createRefund: vi.fn(), retrieve: vi.fn(), cancel: vi.fn(), refunds: vi.fn(), sessions: vi.fn(), fulfill: vi.fn(), page: vi.fn(), record: vi.fn() }));
+const state = vi.hoisted(() => ({ failDatedRead: false, rows: {} as Record<string, any[]>, patches: [] as any[], notify: vi.fn(), createRefund: vi.fn(), retrieve: vi.fn(), cancel: vi.fn(), refunds: vi.fn(), sessions: vi.fn(), fulfill: vi.fn(), page: vi.fn(), record: vi.fn() }));
 vi.mock('./notification.service', () => ({ notificationService: { create: state.notify } }));
 vi.mock('./booking-money-guard', () => ({ assertBookingMoneyWritable: vi.fn() }));
 vi.mock('./booking-checkout-fulfillment', () => ({ fulfillQuotedKitchenBooking: state.fulfill }));
@@ -9,6 +9,7 @@ vi.mock('../db', () => {
   const name = (table: any) => table[Symbol.for('drizzle:Name')];
   const database: any = {
     select: () => ({ from: (table: any) => {
+      if (name(table) === 'kitchen_checkout_holds' && state.failDatedRead) throw Error('Dated discovery query unavailable');
       const q: any = { where: () => q, for: () => q, limit: () => q, orderBy: () => q, then: (resolve: any) => resolve(state.rows[name(table)] || []) }; return q;
     } }),
     insert: (table: any) => ({ values: (data: any) => {
@@ -37,6 +38,7 @@ const fixture = () => ({ id: 1, sessionId: session.id, chefId: 3, kitchenId: 4, 
 const row = () => state.rows.kitchen_checkout_incidents[0];
 beforeEach(() => {
   vi.resetAllMocks(); process.env.STRIPE_SECRET_KEY = 'sk_test_mock_only';
+  state.failDatedRead = false;
   state.rows = { kitchen_checkout_incidents: [fixture()], kitchen_bookings: [], users: [{ id: 3, role: 'chef', username: 'chef@example.test' }, { id: 8, role: 'admin', username: 'admin@example.test' }], email_logs: [] };
   state.patches = [];
   state.retrieve.mockResolvedValue(intent); state.sessions.mockResolvedValue(session); state.refunds.mockResolvedValue({ data: [], has_more: false });
@@ -90,6 +92,20 @@ describe('checkout conflict recovery', () => {
   });
 });
 describe('session-only results and recurring backstop', () => {
+  it('a failing dated discovery query cannot stop legacy recovery', async () => {
+    state.failDatedRead = true; Object.assign(row(), { inventoryConflict: false, outcome: 'awaiting_checkout' });
+    expect(await recoverKitchenCheckouts()).toEqual({ recovered: 1, errors: 0 });
+    expect(state.fulfill).toHaveBeenCalledWith(session, intent, expect.anything());
+  });
+  it('a poisoned dated row cannot stop an unbound legacy checkout from recovering', async () => {
+    Object.assign(row(), { inventoryConflict: false, outcome: 'awaiting_checkout' });
+    state.rows.kitchen_checkout_holds = [{ id: 'poisoned-head', groupId: 'poisoned-head', chefId: 3, kitchenId: 4,
+      operatingDate: '2099-01-01', expiresAt: new Date(0), stripeSessionId: null,
+      quoteSnapshot: { manifest: { contract: 'kitchen-days-v1' }, hash: 'broken' } }];
+    await recoverKitchenCheckouts();
+    expect(state.fulfill).toHaveBeenCalledWith(session, intent, expect.anything());
+    expect(state.rows.kitchen_checkout_incidents.some(row => row.sessionId === 'unbound:poisoned-head' && row.outcome === 'needs_support')).toBe(true);
+  });
   it('does not reveal any reference or touch Stripe to a different chef', async () => {
     expect(await readKitchenCheckoutResult(session.id, 99)).toBeNull(); expect(state.sessions).not.toHaveBeenCalled();
   });

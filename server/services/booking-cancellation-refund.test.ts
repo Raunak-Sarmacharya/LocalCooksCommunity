@@ -83,6 +83,54 @@ describe('quoted parent cancellation reservation and provider recovery', () => {
     });
   });
   const reviewed = async () => await readCancellationRefund(10, 2, 'manager') as any;
+  it('refuses the Mon/Wed/Fri booking 12 hours before Monday rather than giving later days full refunds', async () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date('2026-11-09T00:30:00Z'));
+    Object.assign(state.parent, { status: 'confirmed', scheduleRevision: 1, bookingDate: new Date('2026-11-09T12:00:00Z'),
+      cancellationPolicySnapshot: { policyId: 1, version: 1, noticeHours: 24, lateChargePercent: 50, deadlineBasis: 'booking_first_day',
+        timezone: 'America/St_Johns', tiers: [{ minHoursBeforeStart: 24, refundPercent: 100 }, { minHoursBeforeStart: 0, refundPercent: 50 }],
+        sessions: ['09', '11', '13'].map(day => ({ startAt: `2026-11-${day}T12:30:00Z` })) } });
+    await expect(cancelChefBooking(10, 3, 'dated-first-deadline')).rejects.toThrow('Dated booking cancellations and refunds');
+    expect(state.calls).toEqual([]); expect(state.parent.status).toBe('confirmed');
+  });
+  it('sourceComponents splits the 1664 service fee by 13052/14284 manager gross', async () => {
+    state.parent.status = 'confirmed';
+    Object.assign(state.sources[0], { amount: '29000', baseAmount: '27336', serviceFee: '1664', managerRevenue: '26952' });
+    state.sources[0].metadata.capturedComponentAllocations = [13052, 14284].map(managerGrossCents => ({ kind: 'kitchen', bookingId: 10, managerGrossCents, sessionIndex: 0 }));
+    // Different component ids, as on two visits, with the frozen first session kept equal to the parent.
+    state.parent.cancellationPolicySnapshot = { policyId: 1, version: 1, noticeHours: 24, lateChargePercent: 50,
+      tiers: [{ minHoursBeforeStart: 24, refundPercent: 100 }, { minHoursBeforeStart: 0, refundPercent: 50 }], timezone: 'America/St_Johns',
+      sessions: [{ startAt: '2026-11-10T12:30:00Z' }, { startAt: '2026-11-12T12:30:00Z' }] };
+    state.sources[0].metadata.capturedComponentAllocations[1].sessionIndex = 1;
+    const quote = await readChefCancellationQuote(10, 3) as any;
+    expect(quote.sources[0].perComponent.map((row: any) => row.platformCents)).toEqual([795, 869]);
+  });
+  describe.each(['schedule revision', 'per-day source'])('dated refusal via %s', discriminator => {
+    const paths = [
+      ['chef cancellation quote', () => readChefCancellationQuote(10, 3)],
+      ['chef cancellation', () => cancelChefBooking(10, 3, 'dated-cancellation')],
+      ['support chef cancellation', () => requestChefCancellation(10, 3, 1)],
+      ['chef add-on quote', () => readChefAddonQuote(10, 3, { kind: 'equipment', id: 20 })],
+      ['chef add-on removal', () => removeChefAddon(10, 3, { kind: 'equipment', id: 20 }, { operationKey: 'dated-removal', expectedRefundCents: 0 } as any)],
+      ['manager refund quote', () => readCancellationRefund(10, 2, 'manager')],
+      ['chef refund status', () => readCancellationRefund(10, 3, 'chef')],
+      ['manager refund acceptance', () => acceptCancellationRefund(10, 2, 'a'.repeat(64))],
+      ['manager item refund acceptance', () => acceptCancellationRefund(10, 2, 'a'.repeat(64), { kind: 'equipment', id: 20 })],
+      ['refund retry', () => retryCancellationRefund(10, 2)],
+      ['support receipt-only refund', () => retryCancellationRefund(10, 2, { receiptOnly: true, selector: { transactionId: 99, refundOperationId: 'original' } })],
+      ['kitchen-caused cancellation', () => cancelKitchenCausedBooking(10, 2, 2, 'dated-kitchen-cancel')],
+      ['support funded kitchen refund', () => cancelKitchenCausedBooking(10, 2, 1, 'dated-kitchen-cancel', undefined, { fundedByLocalCooks: true })],
+      ['kitchen-caused add-on refund', () => refundKitchenCausedAddons(10, 2, 1, 'dated-addon-refund', [{ kind: 'equipment', id: 20 }])],
+      ['support goodwill refund', () => refundSupportGoodwill(10, 2, 1, 100, 'dated-goodwill')],
+    ] as const;
+    it.each(paths)('refuses %s before money or inventory changes', async (_name, run) => {
+      state.parent.status = 'confirmed';
+      if (discriminator === 'schedule revision') state.parent.scheduleRevision = 1;
+      else state.sources[0].payoutPartition = 'per_day';
+      await expect(run()).rejects.toThrow('Dated booking cancellations and refunds');
+      expect(state.parent.status).toBe('confirmed'); expect(state.calls).toEqual([]);
+      expect(state.goodwill).not.toHaveBeenCalled(); expect(state.notices).not.toHaveBeenCalled();
+    });
+  });
   it('quotes and self-serves the full refundable pool with no manager approval; replays once', async () => {
     state.parent.status = 'confirmed';
     const quote = await readChefCancellationQuote(10, 3) as any;

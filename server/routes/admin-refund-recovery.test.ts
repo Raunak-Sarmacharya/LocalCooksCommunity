@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-const state = vi.hoisted(() => ({ transaction: {} as any, refund: vi.fn(), update: vi.fn(), recovery: vi.fn(), history: vi.fn() }));
+const state = vi.hoisted(() => ({ dated: false, transaction: {} as any, refund: vi.fn(), update: vi.fn(), recovery: vi.fn(), history: vi.fn() }));
 vi.mock('../db', () => {
-  const db: any = { execute: vi.fn(), transaction: async (work: any) => work(db),
+  const db: any = { execute: async () => ({ rows: state.dated ? [{ id: 10 }] : [] }), transaction: async (work: any) => work(db),
     update: () => ({ set: () => ({ where: async () => {} }) }) };
   return { db, getDbError: vi.fn() };
 });
@@ -22,6 +22,7 @@ async function approve() {
 }
 beforeEach(() => {
   vi.clearAllMocks();
+  state.dated = false;
   state.transaction = { id: 99, booking_id: 10, booking_type: 'kitchen', payment_intent_id: 'pi_fixture',
     status: 'partially_refunded', amount: '12200', refund_amount: '11116', manager_revenue: '11116', stripe_processing_fee: '384', service_fee: '700',
     metadata: { fullRefundRequest: { status: 'pending', requestedAt: '2026-11-01T11:00:00Z' },
@@ -29,6 +30,13 @@ beforeEach(() => {
   state.refund.mockResolvedValue({ refundId: 're_admin', refundAmount: 700, refundStatus: 'succeeded', transferReversalId: null });
 });
 describe('admin fee return after cancellation', () => {
+  it('refuses dated admin refund approval before provider I/O', async () => {
+    state.dated = true;
+    const res = await approve();
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(res.json).toHaveBeenCalledWith({ error: expect.stringContaining('Dated booking cancellations and refunds') });
+    expect(state.refund).not.toHaveBeenCalled(); expect(state.update).not.toHaveBeenCalled();
+  });
   it('preserves the exact fee/manager allocation on the provider receipt for lost-commit recovery', async () => {
     await approve();
     expect(state.refund).toHaveBeenCalledWith('pi_fixture', 700, 'requested_by_customer', expect.objectContaining({

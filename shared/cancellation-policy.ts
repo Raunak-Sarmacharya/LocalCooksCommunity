@@ -11,7 +11,7 @@ export const CANCELLATION_DISCLOSURE_VERSION = 'food-corridor-v3';
 export const CHECKBOX_DISCLOSURE_VERSION = 'food-corridor-v2';
 export const DATED_DISCLOSURE_VERSION = 'food-corridor-booking-first-day-v1';
 /** Checkouts opened before a disclosure bump still fulfil under the version the chef actually accepted. */
-export const ACCEPTED_DISCLOSURE_VERSIONS: readonly string[] = ['food-corridor-v1', CHECKBOX_DISCLOSURE_VERSION, CANCELLATION_DISCLOSURE_VERSION, DATED_DISCLOSURE_VERSION];
+export const ACCEPTED_DISCLOSURE_VERSIONS: readonly string[] = ['food-corridor-v1', CHECKBOX_DISCLOSURE_VERSION, CANCELLATION_DISCLOSURE_VERSION];
 export const NOTICE_OPTIONS = [24, 48, 72] as const;
 export const CHARGE_OPTIONS = [50, 100] as const;
 export function cancellationTiers(notice: number, charge: number): CancellationTier[] {

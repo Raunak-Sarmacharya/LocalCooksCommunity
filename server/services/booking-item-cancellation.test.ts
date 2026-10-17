@@ -31,6 +31,13 @@ describe('modular cancellation preserves the shared authorization and parent dea
       equipmentItems: [{ equipmentBookingId: 2 }] }];
     state.rows.equipment_bookings = [{ id: 2, chefId: 3,
       kitchenBookingId: 1, status: 'pending', paymentStatus: 'authorized', paymentIntentId: 'pi_shared' }];
+    state.rows.payment_transactions = [];
+  });
+  it.each(['revision', 'per_day'])('refuses legacy equipment withdrawal for dated %s', async kind => {
+    if (kind === 'revision') state.rows.kitchen_bookings[0].scheduleRevision = 1;
+    else state.rows.payment_transactions = [{ payoutPartition: 'per_day' }];
+    await expect(cancelBookingItem('equipment', 2, 3)).rejects.toThrow('Dated booking cancellations and refunds');
+    expect(state.rows.equipment_bookings[0].status).toBe('pending'); expect(state.event).not.toHaveBeenCalled();
   });
   it.each(['equipment'] as const)('withdraws an unpaid %s item without cancelling the parent hold', async kind => {
     await cancelBookingItem(kind, 2, 3, 'Change of plan');

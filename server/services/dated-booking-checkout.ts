@@ -40,13 +40,13 @@ export async function checkoutDatedBooking(chefId: number, input: {
     eq(equipmentListings.kitchenId, input.kitchenId), eq(equipmentListings.isActive, true), isNull(equipmentListings.archivedAt))) : [];
   const days = priceBookingDays(check.days, { hourlyRate: Number(row.kitchen.hourlyRate ?? 0), dailyRate: Number(row.kitchen.dailyRate ?? 0) }, listings);
   const subtotalCents = days.reduce((sum, day) => sum + day.kitchenCents + day.equipment.reduce((s, item) => s + item.cents, 0), 0);
-  const taxRatePercent = Number(row.location.taxRatePercent ?? 0), taxCents = Math.round(subtotalCents * taxRatePercent / 100);
+  const taxRatePercent = Number(row.kitchen.taxRatePercent ?? 0), taxCents = Math.round(subtotalCents * taxRatePercent / 100);
   const fees = await calculateCheckoutFeesAsync(subtotalCents, { taxAmountCents: taxCents });
   if (input.cancellationDisclosureVersion !== DATED_DISCLOSURE_VERSION)
     throw new DatedCheckoutRefused(400, { error: 'Review and accept the whole-booking cancellation deadline before payment' });
   const first = days[0];
   const policy = await checkoutCancellationSnapshot(input.kitchenId, first.date, first.startTime, first.windowStartTime, check.timezone,
-    input.cancellationPolicyAccepted, input.cancellationPolicyVersion, input.cancellationDisclosureVersion);
+    input.cancellationPolicyAccepted, input.cancellationPolicyVersion, input.cancellationDisclosureVersion, 'booking_first_day');
   policy.deadlineBasis = 'booking_first_day';
   policy.sessions = days.map(day => ({ startAt: policySessionStart(day.date, day.startTime, day.windowStartTime, check.timezone) }));
   const headId = randomUUID();

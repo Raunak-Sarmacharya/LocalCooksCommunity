@@ -89,6 +89,8 @@ export async function writeDatedCaptureAllocations(tx: Tx, sourceId: number, evi
 
 /** Capture webhooks synchronize evidence only. CP5 owns all daily transfer release. */
 export async function syncDatedPayment(intentId: string) {
+  const intent = await (await import('./stripe-service')).getBookingPaymentIntent(intentId);
+  if (intent.status !== 'succeeded' && intent.amount_received === 0) return;
   const [source] = await db.select().from(paymentTransactions).where(eq(paymentTransactions.paymentIntentId, intentId)).limit(1);
   if (!source || source.payoutPartition !== 'per_day') throw Error('Dated capture source is not yet available');
   const evidence = await (await import('./stripe-service')).getDatedCaptureEvidence(intentId);

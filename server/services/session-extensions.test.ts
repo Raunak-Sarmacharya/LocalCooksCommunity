@@ -127,6 +127,32 @@ const ask = (minutes = 60, amount = 3000, now = IN_FINAL_HOUR) =>
   createSessionExtension(stripe, 10, chef, { kind: 'request', minutes, requestKey: key(), expectedEndAt: END, expectedAmountCents: amount }, now);
 
 describe('chef asks for more time (approval mode, the default)', () => {
+  it('refuses recovery of a pending dated extension capture', async () => {
+    const { extension } = await ask(); state.context.booking.scheduleRevision = 1;
+    extensions()[0].operation = { action: 'capture', state: 'pending', key: 'old-dated-capture', decidedAt: IN_FINAL_HOUR.toISOString() };
+    await expect(reconcileSessionExtension(stripe, extension.id, IN_FINAL_HOUR)).rejects.toThrow('Extra time for dated bookings');
+    expect(stripe.paymentIntents.capture).not.toHaveBeenCalled();
+  });
+  it.each(['approval', 'checkout'])('refuses dated %s of an existing extension', async action => {
+    const { extension } = await ask();
+    state.context.booking.scheduleRevision = 1; stripe.checkout = { sessions: { create: vi.fn() } };
+    const run = action === 'approval' ? () => decideSessionExtension(stripe, 10, extension.id, manager, { action: 'approve' }, IN_FINAL_HOUR)
+      : () => checkoutSessionExtension(stripe, 10, extension.id, chef, 3000, 'https://test.invalid', IN_FINAL_HOUR);
+    await expect(run()).rejects.toThrow('Extra time for dated bookings');
+    expect(stripe.paymentIntents.capture).not.toHaveBeenCalled(); expect(stripe.checkout.sessions.create).not.toHaveBeenCalled();
+  });
+  it('hides dated extension and early-start prices with a clear reason', async () => {
+    setup({ scheduleRevision: 1, hourlyRate: '7003' });
+    expect(await readSessionExtensions(10, manager, 22, IN_FINAL_HOUR)).toMatchObject({ options: [], earlyOptions: [], extraTime: null,
+      canRequest: false, unavailableReason: expect.stringContaining('Extra time for dated bookings') });
+  });
+  it.each(['request', 'offer', 'early_start', 'extra_time'] as const)('refuses dated %s even when a visit is selected', async kind => {
+    setup({ scheduleRevision: 1, hourlyRate: '7003' });
+    await expect(createSessionExtension(stripe, 10, kind === 'request' ? chef : manager,
+      { kind, minutes: 60, requestKey: key(), expectedEndAt: END, expectedAmountCents: 3000, visitId: 22 }, IN_FINAL_HOUR))
+      .rejects.toThrow('Extra time for dated bookings');
+    expect(stripe.paymentIntents.create).not.toHaveBeenCalled(); expect(extensions()).toEqual([]);
+  });
   it('places an on-session card hold after committing the decision, holds the time, and alerts the kitchen', async () => {
     const result = await ask();
     expect(result.extension).toMatchObject({ kind: 'request', status: 'requested', authorized: true, minutes: 60, amountCents: 3000, endAt: '2026-10-14T19:30:00.000Z' });

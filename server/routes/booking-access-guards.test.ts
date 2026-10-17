@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-const mocks = vi.hoisted(() => ({ kitchen: vi.fn(), location: vi.fn(), bookings: vi.fn(), booking: vi.fn(), permission: vi.fn(), visits: vi.fn(), retrieve: vi.fn(), intent: vi.fn(), session: vi.fn(), write: vi.fn(), auth: vi.fn((_req, _res, next) => next()), chef: vi.fn((_req, _res, next) => next()), manager: vi.fn((_req, _res, next) => next()) }));
+const mocks = vi.hoisted(() => ({ dated: false, kitchen: vi.fn(), location: vi.fn(), bookings: vi.fn(), booking: vi.fn(), permission: vi.fn(), visits: vi.fn(), retrieve: vi.fn(), intent: vi.fn(), session: vi.fn(), write: vi.fn(), auth: vi.fn((_req, _res, next) => next()), chef: vi.fn((_req, _res, next) => next()), manager: vi.fn((_req, _res, next) => next()) }));
 vi.mock('../services/stripe-service', () => ({ getPaymentIntent: mocks.intent, getBookingCheckoutSession: mocks.session }));
 vi.mock('../db', () => {
-  const db: any = { transaction: async (run: any) => run(db), update: () => ({ set: (values: any) => {
+  const db: any = { execute: async () => ({ rows: mocks.dated ? [{ id: 10 }] : [] }), transaction: async (run: any) => run(db), update: () => ({ set: (values: any) => {
     mocks.write(values); return { where: () => ({ returning: async () => [] }) };
   } }) }; return { db, pool: null };
 });
@@ -21,7 +21,18 @@ import webhookRouter from './webhooks';
 const route = (router: any, path: string) => router.stack.find((entry: any) => entry.route?.path === path).route.stack;
 const response = () => ({ status: vi.fn().mockReturnThis(), json: vi.fn() });
 describe('booking access boundaries (mocked role gates and services)', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => { vi.clearAllMocks(); mocks.dated = false; });
+  it.each(['whole booking', 'equipment', 'storage'])('refuses legacy dated manager cancellation of %s before inventory writes', async kind => {
+    mocks.dated = true;
+    mocks.booking.mockResolvedValue({ id: 10, chefId: 3, kitchenId: 1, status: 'confirmed', paymentStatus: 'paid', updatedAt: new Date('2026-01-01') });
+    mocks.kitchen.mockResolvedValue({ locationId: 8 }); mocks.location.mockResolvedValue({ managerId: 7 });
+    mocks.bookings.mockResolvedValue([{ id: 11, chefId: 3 }]);
+    const res = response();
+    await route(managerRouter, '/bookings/:id/status').at(-1).handle({ neonUser: { id: 7 }, params: { id: '10' },
+      body: kind === 'whole booking' ? { status: 'cancelled' } : { status: 'confirmed', [`${kind}Actions`]: [{ [`${kind}BookingId`]: 11, action: 'cancelled' }] } }, res);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.stringContaining('Dated booking cancellations and refunds') }));
+    expect(mocks.write).not.toHaveBeenCalled();
+  });
   it('does not load another manager’s kitchen bookings', async () => {
     mocks.kitchen.mockResolvedValue({ locationId: 8 }); mocks.location.mockResolvedValue({ managerId: 99 });
     const stack = route(managerRouter, '/kitchens/:kitchenId/bookings');

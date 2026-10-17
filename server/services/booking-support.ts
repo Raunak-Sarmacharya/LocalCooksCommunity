@@ -13,6 +13,7 @@ import { chefVisitCodes, ensureChallengesForBooking, issueNewCode, setMode, reso
 import { queueBookingLifecycleEvent, requeueBookingNotice } from './booking-lifecycle-delivery';
 import { decideAuthorizedBooking, reconcileBookingDecision } from './booking-payment-decision';
 import { acceptCancellationRefund, readCancellationRefund, requestChefCancellation, refundSupportGoodwill, cancelKitchenCausedBooking, retryCancellationRefund } from './booking-cancellation-refund';
+import { assertLegacyCancellation } from './dated-booking-refund-guard';
 import { getBookingPaymentIntent, getCancellationPaymentFacts, getBookingCheckoutSession, getPaymentIntentRefunds } from './stripe-service';
 import { bookingCaptureTerms } from '@shared/booking-capture-terms';
 import { assistKitchenVisit } from './visit-assistance';
@@ -477,6 +478,10 @@ export async function executeBookingSupportAction(id: number, actorId: number, r
   if (!parsed.success) throw new BookingSupportError('Choose an action and include its source, reason, a note of at least 10 characters, and an operation key.', 400);
   const input = parsed.data;
   validateDetails(input);
+  if ([...MONEY_ATTEMPT_TYPES, ...AUTOMATIC_REFUND_ACTIONS, 'request_cancellation_for_chef', 'accept_cancellation_for_manager'].includes(input.type)) {
+    const ctx = await loadContext(id);
+    assertLegacyCancellation(ctx.booking, ctx.payments);
+  }
   const fingerprint = createHash('sha256').update(JSON.stringify({ id, actorId, input })).digest('hex');
   const refundEvidence = input.type === 'mark_refunded' ? await readAutomaticRefundEvidence((await loadContext(id)).payments) : undefined;
   const reserved = await db.transaction(async tx => {
