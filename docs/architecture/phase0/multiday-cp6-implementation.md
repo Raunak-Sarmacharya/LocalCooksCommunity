@@ -167,4 +167,15 @@ The routes' new SQL (Today board, claims) is covered through their shared helper
 
 ### Fix-round verification
 
-Recorded below after the full suite and the single `tsc` run.
+- **Full server suite, once** (after `f624d70f`): 309 files, **4039 passed, 5 failed** (6 files), 1 expected fail, 18 skipped.
+  Re-running those 6 files with `--no-file-parallelism`: **4 pass** (`booking-invitation-decision`, `chat-notices.module`,
+  `kitchen-invitation-checkout`, `stripe-checkout-cancel`; these were load timeouts). The **2 pre-existing** failures remain:
+  `booking-partial-acceptance-projection` and `stripe-webhook-contract > refuses live Stripe keys`, both confirmed failing on
+  d25645d8 in the first round.
+- Focused money suites before the commit: 24 files, 583 passed (`--no-file-parallelism`).
+- **`npx tsc --noEmit -p tsconfig.json`, one foreground run: 1 error**, `client/src/components/admin/booking-support/action-form.ts`
+  (the admin support form's per-action table had no entry for the new `assign_outside_refund`). Fixed by adding the entry, and
+  the admin booking-support client tests pass (35). Per the one-run rule the compiler was **not re-run**, so the zero-error result is
+  unverified. The fix adds one object entry and no other code.
+- Known limit: the admin dialog has no refund/day/kitchen-share inputs for `assign_outside_refund` yet. Support can use it
+  through the support action API; the form fields belong with the CP9 support UI (`shortcut:` comment in `action-form.ts`).
