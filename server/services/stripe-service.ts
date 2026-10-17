@@ -644,6 +644,8 @@ export async function createRefund(
     reverseTransfer?: boolean;
     refundApplicationFee?: boolean;
     metadata?: Record<string, string>;
+    /** The caller recorded who funds this refund without debiting any day of a multi-day booking (Local Cooks goodwill). */
+    allocatedRefund?: boolean;
   }
 ): Promise<{ id: string; amount: number; status: string; charge: string }> {
   if (!options?.sourceConnection) {
@@ -657,7 +659,7 @@ export async function createRefund(
     });
   }
   await assertBookingMoneyWritable({ paymentIntentId, operationKey: options.idempotencyKey }, options.sourceConnection);
-  await assertLegacyBookingRefund({ paymentIntentId }, options.sourceConnection);
+  if (!options.allocatedRefund) await assertLegacyBookingRefund({ paymentIntentId }, options.sourceConnection);
   if (!stripe) {
     throw new Error('Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.');
   }
@@ -895,6 +897,8 @@ export async function reverseTransferAndRefund(
     reversalOperationKey?: string;
     /** The caller already committed and locked this immutable cancellation reservation. Provider I/O uses no DB transaction. */
     reservedOperation?: boolean;
+    /** A per-day (multi-day) source: reverse exactly these day transfers, never a discovered or prorated source transfer. */
+    installmentReversals?: Array<{ transferId: string; amountCents: number }>;
   }
 ): Promise<{ refundId: string; refundAmount: number; refundStatus: string; chargeId: string; transferReversalId: string | null }> {
   if (options?.providerOnly && options.sourceConnection) throw new Error('Provider-only refunds cannot use a transaction');
@@ -913,7 +917,8 @@ export async function reverseTransferAndRefund(
     });
   }
   await assertBookingMoneyWritable({ paymentIntentId, operationKey: options.supportOperationKey || options.idempotencyKey }, options.sourceConnection);
-  await assertLegacyBookingRefund({ paymentIntentId }, options.sourceConnection);
+  if (!options.installmentReversals) await assertLegacyBookingRefund({ paymentIntentId }, options.sourceConnection);
+  else if (!options.idempotencyKey) throw new Error('Day reversals need the reservation operation key');
   const stripe = decisionStripe();
   if (!stripe) {
     throw new Error('Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.');
@@ -967,7 +972,9 @@ export async function reverseTransferAndRefund(
           throw new Error(`Refund ${attempts[0].id} is not verified as complete (${attempts[0].status || 'unknown'}). Verify this original operation before retrying.`);
       }
       if (receipt) {
-        await recordRefundPayoutEvidence(stripe, options.sourceConnection, paymentIntentId, receipt.id, options.reversalOperationKey || options.idempotencyKey, undefined, undefined, options.providerOnly);
+        for (const item of options.installmentReversals || [])
+          await recordRefundPayoutEvidence(stripe, options.sourceConnection, paymentIntentId, receipt.id, options.idempotencyKey, item.transferId, undefined, options.providerOnly);
+        if (!options.installmentReversals) await recordRefundPayoutEvidence(stripe, options.sourceConnection, paymentIntentId, receipt.id, options.reversalOperationKey || options.idempotencyKey, undefined, undefined, options.providerOnly);
         return { refundId: receipt.id, refundAmount: receipt.amount, refundStatus: receipt.status || 'unknown', chargeId, transferReversalId: null };
       }
     }
@@ -1018,8 +1025,11 @@ export async function reverseTransferAndRefund(
     }
 
     // Fallback to charge.transfer for legacy destination charges
-    let transferId = transferIdFromDb || (typeof charge.transfer === 'string' ? charge.transfer : charge.transfer?.id);
-    if (!transferId) {
+    let transferId = options.installmentReversals ? undefined : transferIdFromDb || (typeof charge.transfer === 'string' ? charge.transfer : charge.transfer?.id);
+    for (const item of options.installmentReversals || [])
+      await reverseTransferShare(stripe, item.transferId, item.amountCents, options.idempotencyKey, `${options.idempotencyKey}:${item.transferId}`,
+        options.transferMetadata || options.metadata);
+    if (!transferId && !options.installmentReversals) {
       const recoveredTransfers: Stripe.Transfer[] = [];
       for await (const transfer of stripe.transfers.list({ transfer_group: paymentIntent.transfer_group || `pi_${paymentIntentId}`, limit: 100 })) {
         if (transfer.metadata?.payment_intent_id === paymentIntentId && transfer.amount > transfer.amount_reversed) recoveredTransfers.push(transfer);
@@ -1027,7 +1037,7 @@ export async function reverseTransferAndRefund(
       if (recoveredTransfers.length > 1) throw new Error('Multiple unreversed manager transfers require financial review.');
       transferId = recoveredTransfers[0]?.id;
     }
-    if (!transferId && options.reverseTransferAmount !== undefined) {
+    if (!transferId && !options.installmentReversals && options.reverseTransferAmount !== undefined) {
       const balance = typeof charge.balance_transaction === 'string' ? await stripe.balanceTransactions.retrieve(charge.balance_transaction) : charge.balance_transaction;
       if (!balance || !Number.isSafeInteger(balance.fee)) throw new Error('Actual processing cost is not available. Unpaid manager entitlement and refund funding require verification.');
       const available = Math.max(0, chargeAmountForProration - sourceServiceFee - balance.fee - priorManagerDebits);
@@ -1039,33 +1049,10 @@ export async function reverseTransferAndRefund(
     // absorbs the fee from its own balance. Fall back to charge-proration only
     // when no explicit manager debit was provided.
     if (transferId && options?.reverseTransferAmount !== undefined && options.reverseTransferAmount > 0) {
-      const transfer = await stripe.transfers.retrieve(transferId);
-      const reversalAmount = Math.max(0, options.reverseTransferAmount);
       const operationId = options.reversalOperationKey || options.idempotencyKey;
-      let recoveredReversal: Stripe.TransferReversal | undefined;
-      if (operationId) {
-        for await (const reversal of stripe.transfers.listReversals(transferId, { limit: 100 })) {
-          if (reversal.metadata?.refund_operation_id !== operationId) continue;
-          if (recoveredReversal || reversal.amount !== reversalAmount) throw new Error('Conflicting reversal receipts require financial review.');
-          recoveredReversal = reversal;
-        }
-      }
-      if (!recoveredReversal && reversalAmount > transfer.amount - transfer.amount_reversed)
-        throw new Error('The required manager reversal exceeds the verified unreversed transfer. Separate funding approval is required.');
-      if (reversalAmount > 0) {
-        let reversal = recoveredReversal;
-        if (!reversal) try {
-          reversal = await stripe.transfers.createReversal(transferId, {
-            amount: reversalAmount,
-            metadata: { ...(options?.transferMetadata || options?.metadata), ...(operationId ? { refund_operation_id: operationId } : {}) },
-          }, options?.reversalIdempotencyKey || options?.idempotencyKey
-            ? { idempotencyKey: options.reversalIdempotencyKey || `${operationId}-reversal` } : undefined);
-        } catch (error) {
-          if ((error as { code?: string }).code === 'balance_insufficient') throw new Error('The kitchen transfer reversal has insufficient balance.');
-          throw error;
-        }
-        transferReversalId = reversal.id;
-      }
+      transferReversalId = await reverseTransferShare(stripe, transferId, Math.max(0, options.reverseTransferAmount), operationId,
+        options?.reversalIdempotencyKey || options?.idempotencyKey ? options.reversalIdempotencyKey || `${operationId}-reversal` : undefined,
+        options?.transferMetadata || options?.metadata);
     } else if (transferId && transferredAmount > 0 && options?.reverseTransferAmount === undefined) {
       const { reverseTransferForRefund } = await import('./stripe-transfer-service');
       const reversal = await reverseTransferForRefund(
@@ -1128,6 +1115,8 @@ export async function reverseTransferAndRefund(
 
     if (transferReversalId && transferId)
       await recordRefundPayoutEvidence(stripe, options.sourceConnection, paymentIntentId, refund.id, options.reversalOperationKey || options.idempotencyKey, transferId, transferReversalId, options.providerOnly);
+    for (const item of options.installmentReversals || [])
+      await recordRefundPayoutEvidence(stripe, options.sourceConnection, paymentIntentId, refund.id, options.idempotencyKey, item.transferId, undefined, options.providerOnly);
 
     return {
       refundId: refund.id,
@@ -1138,7 +1127,35 @@ export async function reverseTransferAndRefund(
     };
   } catch (error: any) {
     logger.error('Error reversing transfer and refunding:', error);
-    throw new Error(`Failed to reverse transfer and refund: ${error.message}`);
+    // A day reversal shortfall names its transfer so the caller can record that day's kitchen debt.
+    throw Object.assign(new Error(`Failed to reverse transfer and refund: ${error.message}`), error?.transferId ? { transferId: error.transferId } : {});
+  }
+}
+
+/** Reverse an explicit kitchen share from one transfer; a retry recovers the original reversal by its operation id. */
+async function reverseTransferShare(stripe: Stripe, transferId: string, reversalAmount: number, operationId: string | undefined,
+  idempotencyKey: string | undefined, metadata: Record<string, string> | undefined) {
+  const transfer = await stripe.transfers.retrieve(transferId);
+  let recoveredReversal: Stripe.TransferReversal | undefined;
+  if (operationId) {
+    for await (const reversal of stripe.transfers.listReversals(transferId, { limit: 100 })) {
+      if (reversal.metadata?.refund_operation_id !== operationId) continue;
+      if (recoveredReversal || reversal.amount !== reversalAmount) throw new Error('Conflicting reversal receipts require financial review.');
+      recoveredReversal = reversal;
+    }
+  }
+  if (!recoveredReversal && reversalAmount > transfer.amount - transfer.amount_reversed)
+    throw Object.assign(new Error('The required manager reversal exceeds the verified unreversed transfer. Separate funding approval is required.'), { transferId });
+  if (recoveredReversal) return recoveredReversal.id;
+  if (reversalAmount <= 0) return null;
+  try {
+    return (await stripe.transfers.createReversal(transferId, {
+      amount: reversalAmount,
+      metadata: { ...metadata, ...(operationId ? { refund_operation_id: operationId } : {}) },
+    }, idempotencyKey ? { idempotencyKey } : undefined)).id;
+  } catch (error) {
+    if ((error as { code?: string }).code === 'balance_insufficient') throw Object.assign(new Error('The kitchen transfer reversal has insufficient balance.'), { transferId });
+    throw error;
   }
 }
 

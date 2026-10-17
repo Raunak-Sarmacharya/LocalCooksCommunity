@@ -942,6 +942,35 @@ router.post('/bookings/:id/cancel', requireFirebaseAuthWithUser, requireManager,
     res.json(cancelled);
   } catch (error) { res.status(409).json({ error: error instanceof Error ? error.message : 'Kitchen cancellation needs review' }); }
 });
+// Multi-day bookings: the kitchen cancels some days. Each is refunded in full including its card fee (Local Cooks absorbs the fee,
+// the kitchen's payout for that day goes to $0), and the chef may then drop the remaining days without the late charge.
+const kitchenDayIds = (value: unknown) => {
+  const ids = (Array.isArray(value) ? value : value === undefined || value === '' ? [] : String(value).split(',')).map(Number);
+  return ids.length <= 14 && ids.every(id => Number.isSafeInteger(id) && id > 0) ? ids : null;
+};
+router.get('/bookings/:id/day-cancellation-quote', requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+  const visitIds = kitchenDayIds(req.query?.days);
+  if (!visitIds) return res.status(400).json({ error: 'Choose the days to price.' });
+  try {
+    const { readDatedCancellationQuote } = await import('../services/dated-booking-cancellation');
+    res.json(await readDatedCancellationQuote(Number(req.params.id), { role: 'manager', id: req.neonUser!.id }, visitIds.length ? { visitIds } : {}));
+  } catch (error) { res.status((error as { status?: number }).status || 409).json({ error: error instanceof Error ? error.message : 'Day quote needs review' }); }
+});
+router.post('/bookings/:id/days/cancel', requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+  const id = Number(req.params.id), visitIds = kitchenDayIds(req.body?.visitIds);
+  if (!visitIds?.length) return res.status(400).json({ error: 'Choose the days the kitchen can’t host.' });
+  if (typeof req.body?.reason !== 'string' || !req.body.reason.trim() || req.body.reason.length > 2000) return res.status(400).json({ error: 'Please explain why the kitchen needs to cancel' });
+  if (!/^[a-zA-Z0-9:_-]{8,160}$/.test(req.body.operationKey || '')) return res.status(400).json({ error: 'A cancellation operation key is required' });
+  try {
+    const [booking] = await db.select({ scheduleRevision: kitchenBookings.scheduleRevision }).from(kitchenBookings).where(eq(kitchenBookings.id, id)).limit(1);
+    if (!(booking?.scheduleRevision > 0)) return res.status(409).json({ error: 'This booking has one day. Cancel the booking instead.' });
+    const { cancelKitchenCausedBooking } = await import('../services/booking-cancellation-refund');
+    const result = await cancelKitchenCausedBooking(id, req.neonUser!.id, req.neonUser!.id, req.body.operationKey, req.body.reason, { visitIds });
+    await (await import('../services/booking-lifecycle-delivery')).deliverBookingLifecycleEvents(10, 20_000, id).catch(error => logger.warn('Day cancellation notice pending retry', error));
+    await import('../services/booking-documents').then(d => d.issueBookingDocumentsSafely(id, 'kitchen_cancelled')).catch(() => undefined);
+    res.json(result);
+  } catch (error) { res.status((error as { status?: number }).status || 409).json({ error: error instanceof Error ? error.message : 'Kitchen cancellation needs review' }); }
+});
 // Kitchen-caused add-on cancellation: the chef is refunded in full (card fee absorbed by Local Cooks); the kitchen's payout drops by the item's kitchen share only.
 router.post('/bookings/:id/addon-refund', requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   try {

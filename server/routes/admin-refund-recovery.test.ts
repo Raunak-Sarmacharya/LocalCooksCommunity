@@ -34,7 +34,7 @@ describe('admin fee return after cancellation', () => {
     state.dated = true;
     const res = await approve();
     expect(res.status).toHaveBeenCalledWith(409);
-    expect(res.json).toHaveBeenCalledWith({ error: expect.stringContaining('Dated booking cancellations and refunds') });
+    expect(res.json).toHaveBeenCalledWith({ error: expect.stringContaining('made per day') });
     expect(state.refund).not.toHaveBeenCalled(); expect(state.update).not.toHaveBeenCalled();
   });
   it('preserves the exact fee/manager allocation on the provider receipt for lost-commit recovery', async () => {

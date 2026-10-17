@@ -11,6 +11,9 @@ vi.mock('./booking-linked-cancellation', () => ({ cancelledStorageStatus: 'cance
   for (const item of state.equipment) if (item.status !== 'completed') item.status = 'cancelled';
 } }));
 vi.mock('../utils/user-display', () => ({ getUserDisplayName: async () => 'Alex' }));
+const days = vi.hoisted(() => ({ cancel: vi.fn(), quote: vi.fn() }));
+vi.mock('./dated-booking-cancellation', async original => ({ ...(await original<typeof import('./dated-booking-cancellation')>()),
+  cancelDatedDays: days.cancel, readDatedCancellationQuote: days.quote }));
 vi.mock('./booking-documents', () => ({ issueBookingDocumentsSafely: vi.fn() }));
 vi.mock('./stripe-service', () => ({ getCancellationReversalEvidence: async () => [], createRefund: state.goodwill, verifyCancellationRefundFunding: async () => ({ transferId: null, available: null }), getCancellationPaymentFacts: async (intent: string) => {
   if (state.feePending) throw Error('Actual card processing fee is not yet verified');
@@ -83,13 +86,11 @@ describe('quoted parent cancellation reservation and provider recovery', () => {
     });
   });
   const reviewed = async () => await readCancellationRefund(10, 2, 'manager') as any;
-  it('refuses the Mon/Wed/Fri booking 12 hours before Monday rather than giving later days full refunds', async () => {
-    vi.useFakeTimers(); vi.setSystemTime(new Date('2026-11-09T00:30:00Z'));
-    Object.assign(state.parent, { status: 'confirmed', scheduleRevision: 1, bookingDate: new Date('2026-11-09T12:00:00Z'),
-      cancellationPolicySnapshot: { policyId: 1, version: 1, noticeHours: 24, lateChargePercent: 50, deadlineBasis: 'booking_first_day',
-        timezone: 'America/St_Johns', tiers: [{ minHoursBeforeStart: 24, refundPercent: 100 }, { minHoursBeforeStart: 0, refundPercent: 50 }],
-        sessions: ['09', '11', '13'].map(day => ({ startAt: `2026-11-${day}T12:30:00Z` })) } });
-    await expect(cancelChefBooking(10, 3, 'dated-first-deadline')).rejects.toThrow('Dated booking cancellations and refunds');
+  it('sends a Mon/Wed/Fri cancellation to the day engine instead of the single-session engine', async () => {
+    Object.assign(state.parent, { status: 'confirmed', scheduleRevision: 1 });
+    days.cancel.mockResolvedValue({ success: true, action: 'cancelled' });
+    await cancelChefBooking(10, 3, 'dated-first-deadline', 'Plans changed', 3, 21313);
+    expect(days.cancel).toHaveBeenCalledWith(10, { role: 'chef', id: 3 }, { target: { visitIds: undefined }, operationKey: 'dated-first-deadline', reason: 'Plans changed', expectedRefundCents: 21313 });
     expect(state.calls).toEqual([]); expect(state.parent.status).toBe('confirmed');
   });
   it('sourceComponents splits the 1664 service fee by 13052/14284 manager gross', async () => {
@@ -104,31 +105,46 @@ describe('quoted parent cancellation reservation and provider recovery', () => {
     const quote = await readChefCancellationQuote(10, 3) as any;
     expect(quote.sources[0].perComponent.map((row: any) => row.platformCents)).toEqual([795, 869]);
   });
-  describe.each(['schedule revision', 'per-day source'])('dated refusal via %s', discriminator => {
+  describe('CP6: every dated cancellation command goes to the day engine', () => {
+    const result = { success: true, state: 'refunded', refundCents: 21313, refundId: 're_day', managerPaysCents: 20053, localCooksPaysCents: 1260, processingCostAbsorbedCents: 0 };
+    const chef = { role: 'chef', id: 3 }, kitchen = { role: 'manager', id: 2 };
     const paths = [
-      ['chef cancellation quote', () => readChefCancellationQuote(10, 3)],
-      ['chef cancellation', () => cancelChefBooking(10, 3, 'dated-cancellation')],
-      ['support chef cancellation', () => requestChefCancellation(10, 3, 1)],
-      ['chef add-on quote', () => readChefAddonQuote(10, 3, { kind: 'equipment', id: 20 })],
-      ['chef add-on removal', () => removeChefAddon(10, 3, { kind: 'equipment', id: 20 }, { operationKey: 'dated-removal', expectedRefundCents: 0 } as any)],
-      ['manager refund quote', () => readCancellationRefund(10, 2, 'manager')],
-      ['chef refund status', () => readCancellationRefund(10, 3, 'chef')],
-      ['manager refund acceptance', () => acceptCancellationRefund(10, 2, 'a'.repeat(64))],
-      ['manager item refund acceptance', () => acceptCancellationRefund(10, 2, 'a'.repeat(64), { kind: 'equipment', id: 20 })],
-      ['refund retry', () => retryCancellationRefund(10, 2)],
-      ['support receipt-only refund', () => retryCancellationRefund(10, 2, { receiptOnly: true, selector: { transactionId: 99, refundOperationId: 'original' } })],
-      ['kitchen-caused cancellation', () => cancelKitchenCausedBooking(10, 2, 2, 'dated-kitchen-cancel')],
-      ['support funded kitchen refund', () => cancelKitchenCausedBooking(10, 2, 1, 'dated-kitchen-cancel', undefined, { fundedByLocalCooks: true })],
-      ['kitchen-caused add-on refund', () => refundKitchenCausedAddons(10, 2, 1, 'dated-addon-refund', [{ kind: 'equipment', id: 20 }])],
-      ['support goodwill refund', () => refundSupportGoodwill(10, 2, 1, 100, 'dated-goodwill')],
+      ['chef cancellation quote', () => readChefCancellationQuote(10, 3, { visitIds: [11] }), days.quote, [10, chef, { visitIds: [11] }]],
+      ['chef cancellation', () => cancelChefBooking(10, 3, 'dated-cancellation', undefined, 3, undefined, [11]), days.cancel, [10, chef, { target: { visitIds: [11] }, operationKey: 'dated-cancellation', reason: undefined, expectedRefundCents: undefined }]],
+      ['support chef cancellation', () => requestChefCancellation(10, 3, 1, 'Chef called', 'support-dated', [11]), days.cancel, [10, chef, { target: { visitIds: [11] }, operationKey: 'support-dated', reason: 'Chef called', expectedRefundCents: undefined, supportActorId: 1 }]],
+      ['chef add-on quote', () => readChefAddonQuote(10, 3, { kind: 'equipment', id: 20 }), days.quote, [10, chef, { equipmentIds: [20] }]],
+      ['chef add-on removal', () => removeChefAddon(10, 3, { kind: 'equipment', id: 20 }, { operationKey: 'dated-removal', expectedRefundCents: 0 } as any), days.cancel, [10, chef, { target: { equipmentIds: [20] }, operationKey: 'dated-removal', expectedRefundCents: 0, reason: undefined }]],
+      ['kitchen-caused cancellation', () => cancelKitchenCausedBooking(10, 2, 2, 'dated-kitchen-cancel', 'Oven repair', { visitIds: [12] }), days.cancel, [10, kitchen, { target: { visitIds: [12] }, operationKey: 'dated-kitchen-cancel', reason: 'Oven repair' }]],
+      ['kitchen-caused add-on refund', () => refundKitchenCausedAddons(10, 2, 1, 'dated-addon-refund', [{ kind: 'equipment', id: 20 }]), days.cancel, [10, kitchen, { target: { equipmentIds: [20] }, operationKey: 'dated-addon-refund', supportActorId: 1 }]],
     ] as const;
-    it.each(paths)('refuses %s before money or inventory changes', async (_name, run) => {
-      state.parent.status = 'confirmed';
-      if (discriminator === 'schedule revision') state.parent.scheduleRevision = 1;
-      else state.sources[0].payoutPartition = 'per_day';
-      await expect(run()).rejects.toThrow('Dated booking cancellations and refunds');
-      expect(state.parent.status).toBe('confirmed'); expect(state.calls).toEqual([]);
-      expect(state.goodwill).not.toHaveBeenCalled(); expect(state.notices).not.toHaveBeenCalled();
+    it.each(paths)('%s', async (_name, run, engine, args) => {
+      Object.assign(state.parent, { status: 'confirmed', scheduleRevision: 1 });
+      days.quote.mockResolvedValue({ quoteReady: true, lines: [{ paidCents: 2300 }], refundPercent: 100 }); days.cancel.mockResolvedValue(result);
+      await run();
+      expect(engine).toHaveBeenCalledWith(...args);
+      expect(state.calls).toEqual([]); expect(state.goodwill).not.toHaveBeenCalled();
+    });
+    it('refuses Local Cooks-funded kitchen refunds (unpaid days are debited from their pending payout)', async () => {
+      Object.assign(state.parent, { status: 'confirmed', scheduleRevision: 1 });
+      await expect(cancelKitchenCausedBooking(10, 2, 1, 'dated-kitchen-cancel', undefined, { fundedByLocalCooks: true })).rejects.toThrow('applied automatically');
+      expect(days.cancel).not.toHaveBeenCalled();
+    });
+    it('refuses the single-session request/accept flow for a dated booking', async () => {
+      Object.assign(state.parent, { scheduleRevision: 1 });
+      await expect(readCancellationRefund(10, 2, 'manager')).rejects.toThrow('per day');
+      await expect(acceptCancellationRefund(10, 2, 'a'.repeat(64))).rejects.toThrow();
+      expect(state.calls).toEqual([]);
+    });
+    it('refuses a per-day charge on a booking without a dated schedule', async () => {
+      state.parent.status = 'confirmed'; state.sources[0].payoutPartition = 'per_day';
+      await expect(readChefCancellationQuote(10, 3)).rejects.toThrow('needs Local Cooks review');
+      expect(state.calls).toEqual([]);
+    });
+    it('sends Local Cooks goodwill on a dated booking without debiting any day', async () => {
+      Object.assign(state.parent, { status: 'confirmed', scheduleRevision: 1 }); state.sources[0].payoutPartition = 'per_day';
+      await refundSupportGoodwill(10, 2, 1, 100, 'dated-goodwill');
+      expect(state.goodwill).toHaveBeenCalledWith('pi_original', 100, 'requested_by_customer', expect.objectContaining({ allocatedRefund: true,
+        metadata: expect.objectContaining({ manager_debited: '0', platform_goodwill_cents: '100' }) }));
     });
   });
   it('quotes and self-serves the full refundable pool with no manager approval; replays once', async () => {

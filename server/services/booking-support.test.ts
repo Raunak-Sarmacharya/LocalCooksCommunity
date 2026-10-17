@@ -76,19 +76,34 @@ beforeEach(() => {
   state.queue.mockImplementation(async (_tx, bookingId, kind, title, message, actorId, metadata) => { state.events.push({ id: state.events.length + 1, bookingId, kind, title, message, actorId, metadata, createdAt: new Date(), completedAt: null }); });
 });
 describe('support state × action matrix', () => {
-  describe.each(['revision', 'per_day'])('dated support refusal via %s', discriminator => {
-    it.each([
-      ['goodwill_refund', 'local_cooks', {}], ['cancel_kitchen_caused', 'manager', {}],
-      ['refund_captured_request', 'manager', {}], ['finish_kitchen_refund', 'manager', {}],
-      ['request_cancellation_for_chef', 'chef', {}],
-      ['accept_cancellation_for_manager', 'manager', { quoteHash: 'a'.repeat(64) }],
-      ['retry_refund', 'local_cooks', { transactionId: 8, refundOperationId: 'original-refund' }],
-      ['mark_refunded', 'local_cooks', { transactionId: 8, refundOperationId: 'original-refund' }],
-    ])('refuses %s before reserving or dispatching a support operation', async (type, actingFor, details) => {
-      if (discriminator === 'revision') state.booking.scheduleRevision = 1;
-      else state.payments[0].payoutPartition = 'per_day';
-      await expect(executeBookingSupportAction(1, 7, input(type as string, { actingFor, details }))).rejects.toThrow('Dated booking cancellations and refunds');
-      expect(state.actions).toEqual([]); expect(state.provider).not.toHaveBeenCalled(); expect(state.goodwill).not.toHaveBeenCalled();
+  describe('CP6 day-scoped support cancellations', () => {
+    beforeEach(() => { state.visits = [11, 12].map((id, index) => ({ id, bookingId: 1, blockIndex: index, visitDate: `2027-01-0${2 + index * 2}`, scheduleRevision: 1,
+      scheduleState: 'active', startTime: '09:00', endTime: '11:00', operatingWindowStartTime: '08:00', checkinStatus: 'not_checked_in' })); });
+    it('cancels the chosen days for the chef', async () => {
+      state.booking.scheduleRevision = 1;
+      await executeBookingSupportAction(1, 7, input('request_cancellation_for_chef', { actingFor: 'chef', details: { visitIds: [11], publicMessage: 'The chef asked by phone.' } }));
+      expect(state.provider).toHaveBeenCalledWith(1, 4, 7, 'The chef asked by phone.', 'test-operation-1', [11]);
+    }, 20_000); // first dynamic import of the day engine and documents
+    it('cancels the chosen days for the kitchen with its reason', async () => {
+      state.booking.scheduleRevision = 1;
+      await executeBookingSupportAction(1, 7, input('cancel_kitchen_caused', { actingFor: 'manager', details: { visitIds: [12], publicMessage: 'Walk-in cooler failed.' } }));
+      expect(state.provider).toHaveBeenCalledWith(1, 5, 7, 'test-operation-1', 'Walk-in cooler failed.', { visitIds: [12] });
+    });
+    it('keeps the single-day kitchen cancellation call unchanged', async () => {
+      await executeBookingSupportAction(1, 7, input('cancel_kitchen_caused', { actingFor: 'manager' }));
+      expect(state.provider).toHaveBeenCalledWith(1, 5, 7, 'test-operation-1', undefined, {});
+    });
+    const perDay = (dayPayouts: any[]) => availableSupportActions({ ...context(), booking: { ...state.booking, scheduleRevision: 1 },
+      payments: [{ ...state.payments[0], transferId: null, payoutPartition: 'per_day', payoutTiming: 'after_closeout' }], dayPayouts } as any).map(action => action.type);
+    it('offers a per-day payout release only for a failed day or a chef-reported problem', () => {
+      expect(perDay([{ id: 1, transferId: null, noEntitlement: false, holdReason: 'visit_not_closed', evidence: {} }])).not.toContain('release_payout');
+      expect(perDay([{ id: 1, transferId: null, noEntitlement: false, holdReason: null, evidence: { lastError: 'Stripe unavailable' } }])).toContain('release_payout');
+      expect(perDay([{ id: 1, transferId: null, noEntitlement: false, holdReason: 'reported_issue', evidence: {} }])).toContain('release_payout');
+      expect(perDay([{ id: 1, transferId: 'tr_1', noEntitlement: false, holdReason: null, evidence: { lastError: 'old' } }])).not.toContain('release_payout');
+    });
+    it('keeps an open non-chargeback flag holding a per-day release', () => {
+      state.flags = [{ id: 1, kind: 'manual_hold' }];
+      expect(perDay([{ id: 1, transferId: null, noEntitlement: false, holdReason: 'reported_issue', evidence: {} }])).not.toContain('release_payout');
     });
   });
   it.each([

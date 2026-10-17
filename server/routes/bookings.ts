@@ -101,11 +101,41 @@ router.get(['/bookings/:id/cancellation-quote', '/chef/bookings/:id/cancellation
             if (!match) return res.status(400).json({ error: 'Choose an add-on to price.' });
             return res.json(await service.readChefAddonQuote(Number(req.params.id), req.neonUser!.id, { kind: 'equipment', id: Number(match[1]) }));
         }
-        res.json(await service.readChefCancellationQuote(Number(req.params.id), req.neonUser!.id));
+        // Multi-day bookings: `?days=<visitId>,<visitId>` prices dropping just those days (default: every remaining day).
+        const days = dayIds(req.query?.days);
+        if (days === null) return res.status(400).json({ error: 'Choose the days to price.' });
+        res.json(await service.readChefCancellationQuote(Number(req.params.id), req.neonUser!.id, days.length ? { visitIds: days } : {}));
     }
     catch (error) {
         if (error instanceof BookingItemCancellationError) return res.status(error.status).json({ error: error.message });
         res.status(409).json({ error: error instanceof Error ? error.message : 'Cancellation quote needs review' });
+    }
+});
+/** `undefined` -> no days; null -> invalid. At most 14 (the days-per-booking cap). */
+function dayIds(value: unknown): number[] | null {
+    if (value === undefined || value === '') return [];
+    const ids = String(value).split(',').map(Number);
+    return ids.length <= 14 && ids.every(id => Number.isSafeInteger(id) && id > 0) ? ids : null;
+}
+// The chef drops some days of a multi-day booking (single-day bookings use /cancel). The quote's exact refund must match.
+router.post('/chef/bookings/:id/days/cancel', requireFirebaseAuthWithUser, requireChef, async (req, res) => {
+    const id = Number(req.params.id), visitIds = Array.isArray(req.body?.visitIds) ? dayIds(req.body.visitIds.join(',')) : null;
+    const reason = req.body?.reason, expected = req.body?.expectedRefundCents;
+    if (!Number.isSafeInteger(id) || !visitIds?.length || typeof req.body?.operationKey !== 'string' || (expected !== undefined && !Number.isSafeInteger(expected))
+        || (reason !== undefined && (typeof reason !== 'string' || reason.length > 2000))) return res.status(400).json({ error: 'Choose the days to cancel.' });
+    try {
+        const [booking] = await db.select({ scheduleRevision: kitchenBookings.scheduleRevision }).from(kitchenBookings)
+            .where(and(eq(kitchenBookings.id, id), eq(kitchenBookings.chefId, req.neonUser!.id))).limit(1);
+        if (!booking) return res.status(404).json({ error: 'Booking not found' });
+        if (!(booking.scheduleRevision > 0)) return res.status(409).json({ error: 'This booking has one day. Cancel the booking instead.' });
+        const { cancelChefBooking } = await import('../services/booking-cancellation-refund');
+        const result = await cancelChefBooking(id, req.neonUser!.id, req.body.operationKey, reason, req.neonUser!.id, expected, visitIds);
+        await (await import('../services/booking-lifecycle-delivery')).deliverBookingLifecycleEvents(10, 20_000, id).catch(error => logger.warn('Day cancellation notice pending retry', error));
+        await import('../services/booking-documents').then(d => d.issueBookingDocumentsSafely(id, 'chef_cancelled')).catch(() => undefined);
+        res.json(result);
+    } catch (error) {
+        if (error instanceof BookingItemCancellationError) return res.status(error.status).json({ error: error.message });
+        res.status(409).json({ error: error instanceof Error ? error.message : 'The days could not be cancelled' });
     }
 });
 router.post('/bookings/:id/cancel', requireFirebaseAuthWithUser, requireChef, async (req, res) => {

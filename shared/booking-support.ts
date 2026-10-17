@@ -14,6 +14,8 @@ export const supportActionInput = z.object({
   amountCents: z.number().int().positive().optional(), confirmException: z.boolean().optional(),
   details: z.object({
     installmentId: z.number().int().positive().optional(),
+    /** Multi-day bookings: the days a cancellation is for (none = every remaining day). */
+    visitIds: z.array(z.number().int().positive()).min(1).max(14).optional(),
     refundOperationId: z.string().min(8).max(500).regex(/^[a-zA-Z0-9:_-]+$/).optional(), transactionId: z.number().int().positive().optional(),
     storageActions: z.array(item).optional(), equipmentActions: z.array(item).optional(),
     visitId: z.number().int().positive().optional(), targetKey: z.string().max(100).optional(), all: z.boolean().optional(),
