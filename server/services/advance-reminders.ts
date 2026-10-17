@@ -484,7 +484,7 @@ export function renderTourReminder(r: Reminder, url = `${getAppBaseUrl(r.role ==
       ...(r.kitchenName ? [{ label: 'Kitchen', value: r.kitchenName }] : []),
       ...(r.locationName ? [{ label: 'Location', value: r.locationName }] : []),
       { label: 'Date', value: formatTourDate(new Date(r.start)) },
-      { label: 'Time', value: formatTourSlotRange(r.start, (Date.parse(r.end) - Date.parse(r.start)) / 60000) },
+      { label: 'Time', value: formatTourSlotRange(r.start, (Date.parse(r.end) - Date.parse(r.start)) / 60000, true) },
       { label: isManager ? 'Visiting chef' : 'Kitchen manager', value: (isManager ? r.visitorName : r.managerName) || 'See tour details' },
       { label: 'Reference', value: `TOUR-${r.reservationId}` }] },
       { title: isManager ? 'Coordinate the visit' : 'Arrival and departure', facts: [

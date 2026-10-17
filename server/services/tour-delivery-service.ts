@@ -154,7 +154,7 @@ export function tourEventMessages(payload: Payload, calendarSequence = 0): Messa
       message: `The kitchen manager updated the ${instructions} for your tour. Review the latest instructions below.`,
       facts: [], sections: [{ title: 'Your visit', facts: [
         { label: 'Kitchen', value: kitchenName }, { label: 'Location', value: locationName },
-        { label: 'Date', value: formatTourDate(date) }, { label: 'Time', value: formatTourSlotRange(date, after.durationMinutes) },
+        { label: 'Date', value: formatTourDate(date) }, { label: 'Time', value: formatTourSlotRange(date, after.durationMinutes, true) },
         { label: 'Reference', value: `TOUR-${id}` },
       ] }, { title: 'Updated instructions', facts: [
         ...(changes.arrival ? [{ label: 'Arrival instructions', value: payload.arrivalNotes?.trim() || 'Removed by the kitchen manager.' }] : []),
@@ -183,7 +183,7 @@ export function tourEventMessages(payload: Payload, calendarSequence = 0): Messa
         actionUrl: actionUrl || (target === 'chef' ? `/dashboard?view=viewings&viewing=${id}` : `/manager/dashboard?view=viewings&viewing=${id}`), actionLabel: visitKey ? tEmail(person.locale, 'tourVisitView') : 'View tour' } });
   const email = (key: string, person: Recipient, content: Email) => messages.push(person.email
     ? { key, email: content } : { key, recovery: 'Tour recipient contact unavailable' });
-  const reference = `TOUR-${id}`, when = (value: Date) => `${formatTourDate(value)}, ${formatTourSlotRange(value, after.durationMinutes)}`;
+  const reference = `TOUR-${id}`, when = (value: Date) => `${formatTourDate(value)}, ${formatTourSlotRange(value, after.durationMinutes, true)}`;
   const chefCanEditRequest = ['pending_local_cooks', 'pending'].includes(after.status) && canChefRequestReschedule(after);
   const corrected = kind === 'status' && (before.status !== after.status || before.disruptionReason !== after.disruptionReason || before.noShowReason !== after.noShowReason || before.sharedManagerNotes !== after.sharedManagerNotes || before.cancellationReason !== after.cancellationReason)
     && (['completed', 'no_show', 'cancelled'].includes(before.status) || !!before.disruptionReason);

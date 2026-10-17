@@ -1,4 +1,4 @@
-import { DEFAULT_TIMEZONE } from './timezone-utils';
+import { DEFAULT_TIMEZONE, friendlyTimezoneName } from './timezone-utils';
 
 /** Tour product time is Newfoundland time, independent of host/location timezone. */
 export function formatTourDate(date: Date): string {
@@ -18,8 +18,9 @@ export function tourDateKey(date: Date): string {
   }).format(date);
 }
 
-/** Compact local-time range; an overnight end names its actual date. */
-export function formatTourSlotRange(scheduledAt: string | Date, durationMinutes: number): string {
+/** Compact local-time range; an overnight end names its actual date. Emails and documents name the zone, like booking emails. */
+export function formatTourSlotRange(scheduledAt: string | Date, durationMinutes: number, withZone = false): string {
   const start = new Date(scheduledAt), end = new Date(start.getTime() + durationMinutes * 60_000);
-  return `${formatTourClock(start)} – ${tourDateKey(start) !== tourDateKey(end) ? formatTourDate(end) + ', ' : ''}${formatTourClock(end)}`;
+  const range = `${formatTourClock(start)} – ${tourDateKey(start) !== tourDateKey(end) ? formatTourDate(end) + ', ' : ''}${formatTourClock(end)}`;
+  return withZone ? `${range} ${friendlyTimezoneName(DEFAULT_TIMEZONE)}` : range;
 }

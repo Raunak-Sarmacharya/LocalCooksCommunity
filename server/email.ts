@@ -4342,7 +4342,7 @@ function tourRequestFacts(data: TourRequestEmailDetails) {
   return [{ label: 'Kitchen', value: data.kitchenName },
     ...(data.locationName ? [{ label: 'Location', value: data.locationName }] : []),
     ...(data.address ? [{ label: 'Address', value: data.address, url: 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(data.address) }] : []),
-    { label: 'Requested time', value: formatTourDate(new Date(data.tourDate)) + ', ' + formatTourSlotRange(data.tourDate, data.durationMinutes) },
+    { label: 'Requested time', value: formatTourDate(new Date(data.tourDate)) + ', ' + formatTourSlotRange(data.tourDate, data.durationMinutes, true) },
     { label: 'Reference', value: 'TOUR-' + data.tourId }];
 }
 
@@ -4366,7 +4366,7 @@ export const generateTourRequestedLocalCooksEmail = (data: TourRequestEmailDetai
     actionUrl: getSubdomainUrl('admin') + '/admin?section=tour-requests&viewing=' + data.tourId });
 
 export const generateTourManagerChangeEmail = (data: { tourId: number; durationMinutes: number; managerEmail: string; managerName?: string; chefName: string; kitchenName: string; locationName?: string; address?: string; kind: 'cancelled' | 'reschedule_requested'; scheduledAt: Date; requestedAt?: Date; timezone: string }): EmailContent => {
-  const when = (date: Date) => `${formatTourDate(date)}, ${formatTourSlotRange(date, data.durationMinutes)}`;
+  const when = (date: Date) => `${formatTourDate(date)}, ${formatTourSlotRange(date, data.durationMinutes, true)}`;
   const cancelled = data.kind === 'cancelled';
   return renderTransactionalEmail({ to: data.managerEmail, recipientName: data.managerName || 'Manager',
     tour: { tourId: data.tourId, tourDate: data.scheduledAt, durationMinutes: data.durationMinutes },
@@ -4427,7 +4427,7 @@ export const generateTourConfirmedEmail = (data: { tourId: number; durationMinut
     throw new Error('Invalid tour calendar details');
   }
   const dateStr = formatTourDate(startDateTimeObj);
-  const startTime = formatTourSlotRange(startDateTimeObj, data.durationMinutes);
+  const startTime = formatTourSlotRange(startDateTimeObj, data.durationMinutes, true);
   const title = `Kitchen Tour at ${data.kitchenName}`;
   const actionUrl = `${getSubdomainUrl(data.isManager ? 'kitchen' : 'chef')}${data.isManager ? '/manager/dashboard' : '/dashboard'}?view=viewings&viewing=${data.tourId}`;
   const canReschedule = data.canReschedule !== false && (data.isManager ? canManagerProposeReschedule : canChefRequestReschedule)({ status: 'confirmed', scheduledAt: data.tourDate });
@@ -4452,7 +4452,7 @@ export const generateTourConfirmedEmail = (data: { tourId: number; durationMinut
         : `You’re set to tour ${data.kitchenName} with ${data.otherPartyName}. Here’s everything you need for your visit.`,
       facts: [], sections: [{ title: data.isManager ? 'Tour details' : 'Your visit', facts: [{ label: 'Kitchen', value: data.kitchenName }, { label: data.isManager ? 'Visiting chef' : 'Kitchen manager', value: data.otherPartyName },
         { label: 'Date', value: dateStr }, { label: 'Time', value: startTime },
-        ...(data.previousTourDate ? [{ label: 'Previous time', value: `${formatTourDate(data.previousTourDate)}, ${formatTourSlotRange(data.previousTourDate, data.durationMinutes)}` }] : []),
+        ...(data.previousTourDate ? [{ label: 'Previous time', value: `${formatTourDate(data.previousTourDate)}, ${formatTourSlotRange(data.previousTourDate, data.durationMinutes, true)}` }] : []),
         { label: 'Reference', value: `TOUR-${data.tourId}` }], links: [{ label: 'Add to Google Calendar', url: googleCalendarUrl }] },
         { title: data.isManager ? `Preparing for ${data.otherPartyName}’s visit` : 'Arrival and departure', facts: [
         { label: 'Address', value: data.locationAddress, url: data.locationAddress ? 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(data.locationAddress) : undefined },
@@ -4495,7 +4495,7 @@ export function renderTransactionalEmail(data: {
   actions?: { label: string; url: string }[];
   sections?: { title: string; facts: { label: string; value: string; url?: string }[]; links?: { label: string; url: string }[] }[];
 }): EmailContent {
-  const tourSubjectSuffix = data.tour ? `${formatTourDate(new Date(data.tour.tourDate))}, ${formatTourSlotRange(data.tour.tourDate, data.tour.durationMinutes)} · TOUR-${data.tour.tourId}` : undefined;
+  const tourSubjectSuffix = data.tour ? `${formatTourDate(new Date(data.tour.tourDate))}, ${formatTourSlotRange(data.tour.tourDate, data.tour.durationMinutes, true)} · TOUR-${data.tour.tourId}` : undefined;
   const subjectTitle = tourSubjectSuffix && data.subject.endsWith(` · ${tourSubjectSuffix}`)
     ? data.subject.slice(0, -(` · ${tourSubjectSuffix}`).length) : data.subject.replace(/\s*· TOUR-\d+$/, '');
   const heading = data.heading || subjectTitle;

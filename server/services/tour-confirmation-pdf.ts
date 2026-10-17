@@ -74,7 +74,7 @@ export function buildTourConfirmationPdf(tour: TourConfirmationDetails): Promise
     label("Date", 73, cardY + 24);
     doc.font("Helvetica-Bold").fontSize(15).fillColor(ink).text(formatDate(tour.scheduledAt), 73, cardY + 41, { width: 460 });
     label("Time", 73, cardY + 77);
-    doc.font("Helvetica-Bold").fontSize(10).fillColor(ink).text(formatTourSlotRange(tour.scheduledAt, tour.durationMinutes), 73, cardY + 94, { width: 320 });
+    doc.font("Helvetica-Bold").fontSize(10).fillColor(ink).text(formatTourSlotRange(tour.scheduledAt, tour.durationMinutes, true), 73, cardY + 94, { width: 320 });
     doc.font("Body").fontSize(9).fillColor(muted).text(`${tour.durationMinutes} minute visit`, 400, cardY + 97, { width: 135, align: "right" });
     doc.moveTo(73, cardY + 123).lineTo(539, cardY + 123).strokeColor(line).stroke();
     doc.font("Helvetica-Bold").fontSize(12).fillColor(ink).text(tour.kitchenName || tour.locationName, 73, cardY + 137, { width: 465 });
