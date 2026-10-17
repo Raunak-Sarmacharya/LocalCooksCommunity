@@ -3,7 +3,8 @@ import { formatTime } from '@/lib/formatters';
 import { Card } from '@/components/ui/card';
 
 export type BookingDayVisit = { id: number; visitDate?: string | null; startTime: string; endTime: string;
-  scheduleRevision?: number | null; scheduleState?: string | null; pricingMode?: string | null; checkinStatus?: string | null };
+  scheduleRevision?: number | null; scheduleState?: string | null; pricingMode?: string | null; checkinStatus?: string | null;
+  operatingWindowStartTime?: string | null; closeout?: { scheduledStartAt?: string; scheduledEndAt?: string } };
 
 export function currentBookingDays(visits: BookingDayVisit[], revision: number) {
   return visits.filter(visit => visit.visitDate && visit.scheduleRevision === revision && visit.scheduleState !== 'superseded')
@@ -20,12 +21,15 @@ export function BookingDayList({ bookingId, visits, timezone, status }: { bookin
     <ul className="divide-y">{visits.map(visit => {
       const date = visit.visitDate!.slice(0, 10);
       const cancelled = status === 'cancelled' || visit.scheduleState === 'cancelled';
-      const state = cancelled ? 'mdDayCancelled' : visit.checkinStatus === 'checked_out' || date < today ? 'mdDayDone' : date === today ? 'mdDayToday' : 'mdDayUpcoming';
+      const inProgress = !!visit.closeout?.scheduledStartAt && !!visit.closeout?.scheduledEndAt
+        && Date.now() >= Date.parse(visit.closeout.scheduledStartAt) && Date.now() < Date.parse(visit.closeout.scheduledEndAt);
+      const isToday = date === today || inProgress;
+      const state = cancelled ? 'mdDayCancelled' : visit.checkinStatus === 'checked_out' || date < today && !inProgress ? 'mdDayDone' : isToday ? 'mdDayToday' : 'mdDayUpcoming';
       return <li key={visit.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
         <div><p className="text-sm font-semibold">{new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium', timeZone: 'UTC' }).format(new Date(`${date}T12:00:00Z`))}</p>
           <p className="text-sm text-muted-foreground">{visit.pricingMode === 'daily' ? t('sheetDailyRate') : `${formatTime(visit.startTime, i18n.language)} – ${formatTime(visit.endTime, i18n.language)}`}</p>
           <span className="text-sm">{t(state)}</span></div>
-        {!cancelled && date === today && status === 'confirmed' && visit.checkinStatus !== 'checked_out' &&
+        {!cancelled && isToday && status === 'confirmed' && visit.checkinStatus !== 'checked_out' &&
           <a className="inline-flex min-h-11 items-center text-sm font-medium underline underline-offset-4" href={`/booking/${bookingId}/visit?visitId=${visit.id}`}>{t('mdOpenVisit')}</a>}
       </li>;
     })}</ul>

@@ -4,7 +4,7 @@ import { validateKitchenSlotSelection } from '@shared/consecutive-booking-slots'
 export type DayHours = { pricingMode: 'hourly' | 'daily'; times: string[] };
 export type DatedSlot = { time: string; available: number; capacity: number; isFullyBooked: boolean };
 export type DateStatus = { hourly: boolean; fullDay: boolean; reason: string | null; fullDayReason: string | null };
-export type DayResources = { slots: DatedSlot[]; fullDay: boolean; equipmentIds: number[] };
+export type DayResources = { slots: DatedSlot[]; fullDay: boolean; equipmentIds: number[]; windowStartTime?: string };
 export type DatedDay = { date: string; pricingMode: 'hourly' | 'daily'; slots: { startTime: string; endTime: string }[]; equipmentIds: number[] };
 
 export function localDateKey(date: Date) {
@@ -25,7 +25,7 @@ export function buildDatedDays(dates: string[], template: DayHours, overrides: R
     const hours = overrides[date] ?? template;
     const available = resources[date];
     const times = hours.pricingMode === 'daily' ? available?.slots.map(slot => slot.time) ?? []
-      : sortTimesInOperatingWindow(hours.times, available?.slots[0]?.time ?? hours.times[0]);
+      : sortTimesInOperatingWindow(hours.times, available?.windowStartTime ?? available?.slots[0]?.time ?? hours.times[0]);
     return { date, pricingMode: hours.pricingMode, slots: times.map(startTime => ({ startTime, endTime: addHour(startTime) })),
       equipmentIds: equipmentIds.filter(id => available?.equipmentIds.includes(id) && !excluded[date]?.includes(id)) };
   });

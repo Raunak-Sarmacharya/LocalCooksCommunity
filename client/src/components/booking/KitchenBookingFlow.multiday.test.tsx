@@ -49,7 +49,7 @@ async function open() {
   await waitFor(() => expect(day(7)).not.toHaveAttribute('aria-disabled', 'true'));
 }
 function day(number: number) {
-  return screen.getAllByRole('button').find(button => button.textContent === String(number) && button.getAttribute('aria-label')?.includes('October'))!;
+  return Array.from(document.querySelectorAll('button')).find(button => button.textContent === String(number) && button.getAttribute('aria-label')?.includes('October'))!;
 }
 const hour = (n: number) => screen.getByRole('button', { name: new RegExp(`${n}:00.*${n + 1}:00`) });
 async function chooseDays(...numbers: number[]) {

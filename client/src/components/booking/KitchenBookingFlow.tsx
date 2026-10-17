@@ -393,7 +393,7 @@ export default function KitchenBookingFlow({
   // State
   const [selectedKitchen, setSelectedKitchen] = useState<any | null>(null);
   const [bookableThrough, setBookableThrough] = useState<string | null>(null);
-  const [dayRules, setDayRules] = useState<{ allowMultiDayBookings?: boolean; multidayCreationEnabled?: boolean; maxBookingDays?: number }>({});
+  const [dayRules, setDayRules] = useState<{ allowMultiDayBookings?: boolean; multidayCreationEnabled?: boolean; maxBookingDays?: number; minimumBookingWindowHours?: number }>({});
   const multipleAllowed = dayRules.allowMultiDayBookings === true && dayRules.multidayCreationEnabled === true;
   useEffect(() => {
     setBookableThrough(null);
@@ -519,10 +519,27 @@ export default function KitchenBookingFlow({
   const [confirmDatePopoverOpen, setConfirmDatePopoverOpen] = useState(false);
   const pendingLeaveRef = useRef<(() => void) | null>(null);
   const restoredDaysFor = useRef<number | null>(null);
+  const restoredReplacement = useRef<number | null>(null);
+  useEffect(() => {
+    const days = replacedRequest?.days;
+    if (!multipleAllowed || !isFlowReady || !days?.length || !replacesBookingId || restoredReplacement.current === replacesBookingId) return;
+    restoredReplacement.current = replacesBookingId;
+    const sorted = [...days].sort((a, b) => a.date.localeCompare(b.date));
+    const equipment = Array.from(new Set(sorted.flatMap(day => day.equipmentIds)));
+    setSelectedDates(sorted.map(day => day.date));
+    setSelectedDate(new Date(`${sorted[0].date}T12:00:00`));
+    setTemplateRateMode(sorted[0].pricingMode);
+    setTemplateSlots(sorted[0].slots.map(slot => slot.startTime));
+    setDayHours(Object.fromEntries(sorted.map(day => [day.date, { pricingMode: day.pricingMode, times: day.slots.map(slot => slot.startTime) }])));
+    setSelectedEquipmentIds(equipment);
+    setDayEquipmentExcluded(Object.fromEntries(sorted.map(day => [day.date, equipment.filter(id => !day.equipmentIds.includes(id))])));
+    setHideDateStep(false);
+    setCurrentStep('calendar');
+  }, [multipleAllowed, isFlowReady, replacedRequest, replacesBookingId]);
   useEffect(() => {
     if (!multipleAllowed || !isFlowReady || !selectedKitchen || restoredDaysFor.current === selectedKitchen.id) return;
     restoredDaysFor.current = selectedKitchen.id;
-    if (initialDateIso) return;
+    if (initialDateIso || replacesBookingId) return;
     const draft = readDatedDraft(selectedKitchen.id);
     if (!draft) return;
     setSelectedDates([...draft.dates].sort());
@@ -538,13 +555,14 @@ export default function KitchenBookingFlow({
     setCurrentStep('calendar');
   }, [multipleAllowed, selectedKitchen?.id, isFlowReady, initialDateIso]);
   useEffect(() => {
-    if (!isMultiDay || !selectedKitchen) return;
+    if (!selectedKitchen || !multipleAllowed || !isFlowReady || restoredDaysFor.current !== selectedKitchen.id) return;
     try {
+      if (!isMultiDay) { sessionStorage.removeItem(`kitchen_booking_days_${selectedKitchen.id}`); return; }
       sessionStorage.setItem(`kitchen_booking_days_${selectedKitchen.id}`, JSON.stringify({ version: 1, dates: selectedDates,
         template: { pricingMode: templateRateMode, times: templateSlots }, hours: dayHours, equipmentIds: selectedEquipmentIds,
         excluded: dayEquipmentExcluded, notes }));
     } catch { /* A full/unavailable session store must not block booking. */ }
-  }, [isMultiDay, selectedKitchen?.id, selectedDates, templateSlots, templateRateMode, dayHours, selectedEquipmentIds, dayEquipmentExcluded, notes]);
+  }, [isMultiDay, multipleAllowed, isFlowReady, selectedKitchen?.id, selectedDates, templateSlots, templateRateMode, dayHours, selectedEquipmentIds, dayEquipmentExcluded, notes]);
 
   const datedDays = buildDatedDays(selectedDates, { pricingMode: templateRateMode, times: templateSlots }, dayHours,
     Array.from(new Set([...equipmentListings.included.map(item => item.id), ...selectedEquipmentIds])), dayEquipmentExcluded, dayResources);
@@ -571,18 +589,18 @@ export default function KitchenBookingFlow({
         apiGet(`/chef/kitchens/${kitchenId}/equipment-listings?date=${date}`),
       ]);
       const zone = kitchenPricing?.timezone || DEFAULT_TIMEZONE;
-      const notice = selectedKitchen.location?.minimumBookingWindowHours ?? 0;
+      const notice = dayRules.minimumBookingWindowHours ?? selectedKitchen.location?.minimumBookingWindowHours ?? 0;
       const filtered = slots.filter((slot: any) => {
         const instant = matchingLocalInstants(calendarDateForOperatingTime(date, slot.time, slots[0]?.time || slot.time), slot.time, zone)[0];
         return instant !== undefined && instant > Date.now() + notice * 3_600_000;
       });
-      return [date, { slots: filtered, fullDay: slots.length > 0 && filtered.length === slots.length && slots.every((slot: any) => !slot.isFullyBooked),
+      return [date, { windowStartTime: slots[0]?.time, slots: filtered, fullDay: slots.length > 0 && filtered.length === slots.length && slots.every((slot: any) => !slot.isFullyBooked),
         equipmentIds: [...(equipment.included ?? []), ...(equipment.rental ?? [])].filter((item: any) => !item.archivedAt).map((item: any) => item.id) }] as const;
     })).then(entries => { if (!stale) setDayResources(Object.fromEntries(entries)); })
       .catch(() => { if (!stale) { setDayResources({}); setLoadError(t('mdLoadDays')); } })
       .finally(() => { if (!stale) setDaysLoading(false); });
     return () => { stale = true; };
-  }, [isMultiDay, selectedDates.join(','), selectedKitchen?.id, kitchenPricing?.timezone, replacesQuery]);
+  }, [isMultiDay, selectedDates.join(','), selectedKitchen?.id, kitchenPricing?.timezone, dayRules.minimumBookingWindowHours, replacesQuery]);
 
   // Equipment pricing
   const equipmentPricing = useMemo(() => {
@@ -605,9 +623,10 @@ export default function KitchenBookingFlow({
   const pendingEquipmentSubtotal = useMemo(
     () => pendingEquipmentIds.reduce((sum, id) => {
       const equipment = equipmentListings.rental.find((item: any) => item.id === id);
-      return sum + (equipment?.sessionRate || 0);
+      const days = isMultiDay ? selectedDates.filter(date => dayResources[date]?.equipmentIds.includes(id) && !dayEquipmentExcluded[date]?.includes(id)).length : 1;
+      return sum + (equipment?.sessionRate || 0) * days;
     }, 0),
-    [pendingEquipmentIds, equipmentListings.rental]
+    [pendingEquipmentIds, equipmentListings.rental, isMultiDay, selectedDates, dayResources, dayEquipmentExcluded]
   );
 
   // Combined pricing
@@ -1223,7 +1242,7 @@ export default function KitchenBookingFlow({
 
   const orderedSelectedSlots = isMultiDay ? datedDays[0]?.slots.map(slot => slot.startTime) ?? []
     : bookingRateMode === 'daily' ? selectedSlots : sortSelectedSlots(selectedSlots);
-  const firstWindowStart = isMultiDay ? dayResources[selectedDates[0]]?.slots[0]?.time : allSlots[0]?.time;
+  const firstWindowStart = isMultiDay ? dayResources[selectedDates[0]]?.windowStartTime : allSlots[0]?.time;
   const checkoutResponseDeadline = (() => {
     if (!selectedDate || !orderedSelectedSlots.length) return null;
     try {
@@ -2608,14 +2627,15 @@ export default function KitchenBookingFlow({
           </div>
           <div className="space-y-3 border-t bg-white px-5 py-3">
             <BookingPriceSummary
-              kitchenSubtotal={estimatedPrice?.basePrice || 0}
+              kitchenSubtotal={isMultiDay ? datedKitchenSubtotal : estimatedPrice?.basePrice || 0}
               equipmentSubtotal={pendingEquipmentSubtotal}
               taxRatePercent={selectedKitchen?.taxRatePercent || 0}
               serviceFeeRate={kitchenPricing?.platformCommissionRate ?? 0}
               currency={kitchenPricing?.currency || "CAD"}
               equipmentItems={pendingEquipmentIds.flatMap(id => {
                 const item = equipmentListings.rental.find((equipment: any) => equipment.id === id);
-                return item ? [{ name: equipmentName(item), priceCents: item.sessionRate || 0 }] : [];
+                const days = isMultiDay ? selectedDates.filter(date => dayResources[date]?.equipmentIds.includes(id) && !dayEquipmentExcluded[date]?.includes(id)).length : 1;
+                return item ? [{ name: equipmentName(item), priceCents: (item.sessionRate || 0) * days }] : [];
               })}
               taxLabel={selectedKitchen?.taxLabel}
               focusAddon="equipment"

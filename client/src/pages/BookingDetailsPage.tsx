@@ -54,7 +54,7 @@ import { arrivalRecorded, bookedMinutes, bookingHeaderPhase, canCancelOrChange, 
 import { bookingCancelCause } from '@/lib/booking-cancel-cause';
 import { bookingReference } from '@/lib/booking-reference';
 import { bookingStartDateKey, calendarDateKey } from '@/lib/calendar-date';
-import { bookingIcs, downloadBookingIcs } from "@/lib/booking-ics";
+import { bookingIcs, bookingDaysIcs, downloadBookingIcs } from "@/lib/booking-ics";
 import { buildChefBookingReceiptBreakdown, buildKitchenPayoutStatementBreakdown } from "@shared/booking-pricing-breakdown";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
@@ -1406,6 +1406,17 @@ export default function BookingDetailsPage() {
   const goToHelp = () => document.getElementById('booking-support')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
   const addToCalendar = () => {
     if (!booking || !visitBounds) return;
+    if (datedBooking) {
+      const ics = bookingDaysIcs(bookingDays.map(visit => {
+        const day = visit.visitDate!.slice(0, 10);
+        return { uid: `booking-${booking.id}-visit-${visit.id}`, revision: booking.scheduleRevision!, title: t('bdhCalendarTitle', { kitchen: kitchenName }),
+          start: createBookingDateTime(calendarDateForBookingTime(day, visit.startTime, visit.operatingWindowStartTime), visit.startTime, tz!),
+          end: createBookingDateTime(calendarDateForBookingTime(day, visit.endTime, visit.operatingWindowStartTime, visit.startTime), visit.endTime, tz!),
+          cancelled: visit.scheduleState === 'cancelled', location: booking.location?.address, description: booking.referenceCode };
+      }));
+      downloadBookingIcs(`LocalCooks-${booking.referenceCode || booking.id}.ics`, ics);
+      return;
+    }
     const ics = bookingIcs({ uid: `booking-${booking.id}`, title: t('bdhCalendarTitle', { kitchen: kitchenName }), start: visitBounds.startAt, end: visitBounds.endAt,
       location: [booking.location?.name, booking.location?.address].filter(Boolean).join(', '), description: booking.referenceCode || undefined });
     downloadBookingIcs(`LocalCooks-${booking.referenceCode || booking.id}.ics`, ics);

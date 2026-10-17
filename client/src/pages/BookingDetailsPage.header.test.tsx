@@ -731,3 +731,20 @@ describe('claim-aware booking page', () => {
     expect(link).toHaveClass('!text-muted-foreground');
   });
 });
+
+it('shows a dated chef booking as a span, day count and chronological day list while keeping the whole payment', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(START + 2 * 86_400_000);
+  h.manager = false;
+  h.booking = { ...base(), scheduleRevision: 1, status: 'confirmed', paymentStatus: 'paid',
+    paymentTransaction: { amount: 30000, serviceFee: 2000, managerRevenue: 28000, status: 'succeeded' }, totalPrice: 28000,
+    cancellationPolicySnapshot: { noticeHours: 24, lateChargePercent: 50, timezone: 'America/St_Johns', sessions: [{ startAt: '2030-01-15T13:30:00Z' }], deadlineBasis: 'booking_first_day' },
+    visits: [15, 17, 19].map((day, i) => ({ id: i + 10, blockIndex: i, visitDate: `2030-01-${day}`, scheduleRevision: 1, scheduleState: 'active',
+      startTime: '10:00', endTime: '12:00', checkinStatus: i === 0 ? 'checked_out' : 'not_checked_in', updatedAt: '2030-01-10T12:00:00Z' })) };
+  render(<BookingDetailsPage />);
+  expect(await screen.findByTestId('booking-day-list')).toHaveTextContent('Jan 15, 2030');
+  expect(screen.getByTestId('booking-header')).toHaveTextContent('3 days');
+  expect(screen.getByTestId('booking-header')).toHaveTextContent(/Jan 15.*Jan 19/);
+  expect(screen.getByRole('link', { name: 'Open your visit' })).toHaveAttribute('href', '/booking/5/visit?visitId=11');
+  expect(screen.getByTestId('payment-card')).toHaveTextContent('$300.00');
+  expect(screen.getByTestId('cancellation-card')).toHaveTextContent(/Jan 14.*50%.*every day/);
+});

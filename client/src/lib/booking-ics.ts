@@ -26,3 +26,12 @@ export function downloadBookingIcs(fileName: string, ics: string) {
   document.body.appendChild(link); link.click(); link.remove();
   URL.revokeObjectURL(url);
 }
+
+/** Separate events preserve gaps between operating days; stable visit IDs survive schedule changes. */
+export function bookingDaysIcs(days: Array<{ uid: string; title: string; start: Date; end: Date; location?: string | null; description?: string | null;
+  cancelled?: boolean; revision: number }>) {
+  const events = days.map(day => 'BEGIN:VEVENT\r\n' + bookingIcs(day).split('BEGIN:VEVENT\r\n')[1].split('END:VEVENT')[0]
+    + `SEQUENCE:${day.revision}\r\nSTATUS:${day.cancelled ? 'CANCELLED' : 'CONFIRMED'}\r\nEND:VEVENT\r\n`);
+  return ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Local Cooks//Booking//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
+    ...events, 'END:VCALENDAR', ''].join('\r\n').replace(/\r\n\r\n/g, '\r\n');
+}
