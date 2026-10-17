@@ -2545,8 +2545,9 @@ async function handleOverstayPenaltyPaymentCompleted(
       penaltyAmountCents,
     });
 
-    // Send in-app notifications and email to chef + manager notification
-    try {
+    // Send in-app notifications and email to chef + manager notification.
+    // A storage holdover was already announced by reconcileObligationPayment ('holdover_paid' storage notice).
+    if (!overstayRecord.idempotencyKey.startsWith('holdover:')) try {
       const { notificationService } = await import("../services/notification.service");
       const { sendEmail, generatePenaltyChargedEmail } = await import("../email");
 

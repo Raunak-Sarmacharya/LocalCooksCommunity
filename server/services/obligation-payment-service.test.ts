@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const state = vi.hoisted(() => ({ record: { route: null, intentId: null, sessionId: null, attempt: 0 } as any,
   writes: [] as any[], events: [] as string[] }));
 vi.mock('./outcome-delivery', () => ({ queueClaimOutcome: vi.fn(), queueOverstayOutcome: vi.fn(), attemptOutcomeDelivery: vi.fn() }));
+vi.mock('./storage-rental-notices', () => ({ queueStorageRentalNotice: vi.fn() }));
 vi.mock('../db', () => { const db: any = {
   select: () => { const chain: any = { from: () => chain, where: () => chain, limit: () => chain, for: () => chain, then: (resolve: any) => resolve([state.record]) }; return chain; },
   update: () => ({ set: (values: any) => ({ where: () => {
@@ -13,6 +14,8 @@ vi.mock('../db', () => { const db: any = {
   insert: () => ({ values: (value: any) => ({ returning: async () => [{ id: 1, ...value }], then: (resolve: any) => resolve(undefined) }) }),
 }; db.transaction = (run: any) => run(db); return { db }; });
 import { chargeObligation, checkoutObligation, reconcileObligationPayment } from './obligation-payment-service';
+import { queueOverstayOutcome } from './outcome-delivery';
+import { queueStorageRentalNotice } from './storage-rental-notices';
 function stripeMock(status = 'requires_confirmation') {
   return { paymentIntents: {
     create: vi.fn(async () => { state.events.push('create'); return { id: 'pi_1', status, amount: 1000, currency: 'cad' }; }),
@@ -88,7 +91,7 @@ describe.each(['damage_claim', 'overstay_penalty'] as const)('%s verified settle
   function setup() {
     state.record = { status: 'charge_pending', stripePaymentIntentId: 'pi_1', paymentRoute: 'off_session',
       ...(kind === 'damage_claim' ? { claimedAmountCents: 1000, finalAmountCents: 1000, bookingType: 'kitchen', kitchenBookingId: 10, chefId: 8, managerId: 5 }
-        : { finalPenaltyCents: 1000, storageBookingId: 10 }) };
+        : { finalPenaltyCents: 1000, storageBookingId: 10, idempotencyKey: 'overstay:10:1', daysOverdue: 4 }) };
     return { id: 'pi_1', status: 'succeeded', currency: 'cad', amount_received: 1000, latest_charge: 'ch_1',
       metadata: { type: kind, damage_claim_id: '1', overstay_record_id: '1', chef_id: '8', manager_id: '5' } } as any;
   }
@@ -113,5 +116,26 @@ describe.each(['damage_claim', 'overstay_penalty'] as const)('%s verified settle
     intent.metadata.obligation_checkout_attempt = '1';
     await expect(reconcileObligationPayment(intent)).rejects.toThrow(/checkout attempt/);
     expect(state.writes).toEqual([]);
+  });
+});
+
+describe('storage holdover settlement', () => {
+  it('announces one holdover_paid storage notice with the amount paid incl. tax, never the legacy overstay outcome', async () => {
+    vi.mocked(queueOverstayOutcome).mockClear(); vi.mocked(queueStorageRentalNotice).mockClear();
+    state.record = { status: 'penalty_approved', stripePaymentIntentId: null, paymentRoute: 'checkout', checkoutAttempt: 0,
+      finalPenaltyCents: 450, storageBookingId: 43, idempotencyKey: 'holdover:43:2026-10-09:3', daysOverdue: 9 };
+    await reconcileObligationPayment({ id: 'pi_1', status: 'succeeded', currency: 'cad', amount_received: 518, latest_charge: 'ch_1',
+      metadata: { type: 'overstay_penalty', overstay_record_id: '3', penalty_tax_cents: '68', obligation_checkout_attempt: '0', holdover_days: '1' } } as any);
+    expect(queueOverstayOutcome).not.toHaveBeenCalled();
+    expect(queueStorageRentalNotice).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(queueStorageRentalNotice).mock.calls[0].slice(1)).toEqual([43, 'holdover_paid', { eventKey: 'record:3', amountCents: 518, days: 1 }]);
+  });
+  it('keeps the legacy outcome for a non-holdover penalty', async () => {
+    vi.mocked(queueOverstayOutcome).mockClear(); vi.mocked(queueStorageRentalNotice).mockClear();
+    state.record = { status: 'charge_pending', stripePaymentIntentId: 'pi_1', paymentRoute: 'off_session', finalPenaltyCents: 1000, storageBookingId: 10, idempotencyKey: 'overstay:10:1' };
+    await reconcileObligationPayment({ id: 'pi_1', status: 'succeeded', currency: 'cad', amount_received: 1000, latest_charge: 'ch_1',
+      metadata: { type: 'overstay_penalty', overstay_record_id: '1' } } as any);
+    expect(queueOverstayOutcome).toHaveBeenCalledTimes(1);
+    expect(queueStorageRentalNotice).not.toHaveBeenCalled();
   });
 });
