@@ -102,9 +102,9 @@ rollout-setting change was performed. The local fixture server was stopped and i
 - `npx tsc --noEmit -p tsconfig.json` — invoked once in the foreground after application commit `76c887e2`.
   It finished with **7 errors**, all in new `KitchenBookingFlow` i18n typing: widened reason-map keys and a fallback key
   used without its default text, plus their inferred-return-type errors. Commit `5dbab048` retains literal translation
-  keys and uses an existing localized fallback key. The full compiler has **not** been rerun: the task explicitly permits
-  one invocation. A verified zero-error result remains outstanding; approval for one verification rerun was requested.
-  The picker regression suite is rerun after this correction; its result is recorded in the final handoff.
+  keys and uses an existing localized fallback key. The picker regression suite passed **9/9** after that correction.
+  The owner explicitly approved **one verification rerun** after the original one-run limit was reached. That foreground
+  `npx tsc --noEmit -p tsconfig.json` completed with **exit 0 and zero errors**. No application code changed after that pass.
 
 ## Files
 
