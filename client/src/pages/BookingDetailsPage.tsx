@@ -361,12 +361,14 @@ export default function BookingDetailsPage() {
         const response = await fetch(endpoint, {
           credentials: "include",
           headers,
+          // Same as reloadBookingDetails: never reuse a cached waiting payload after the chef answered.
+          cache: "no-store",
         });
 
         if (!response.ok) {
           // A manager who opened a chef link (e.g. a shared URL) belongs on the manager page for this booking.
           if (!isManagerView && (response.status === 403 || response.status === 404)) {
-            const asManager = await fetch(`/api/manager/bookings/${bookingId}/details`, { credentials: "include", headers }).catch(() => null);
+            const asManager = await fetch(`/api/manager/bookings/${bookingId}/details`, { credentials: "include", headers, cache: "no-store" }).catch(() => null);
             if (asManager?.ok) {
               if (!cancelled) navigate(`/manager/booking/${bookingId}`, { replace: true });
               return;
@@ -1617,12 +1619,7 @@ export default function BookingDetailsPage() {
         {/* "Can't get in" / safety reports surface here while the visit is on; the support list below keeps the thread. */}
         {proposal && <PartialAcceptanceCard bookingId={booking.id} proposal={proposal} manager={isManagerView} kitchenName={kitchenName} chefName={chefName}
           timezone={booking.location?.timezone || undefined} withdrawing={isUpdatingStatus}
-          onChanged={async () => {
-            await reloadBookingDetails();
-            await queryClient.invalidateQueries({ queryKey: ['booking-history'] });
-            await queryClient.invalidateQueries({ queryKey: ['managerBookings'] });
-            await queryClient.invalidateQueries({ queryKey: ['chefBookings'] });
-          }}
+          onChanged={async () => { await reloadBookingDetails(); await queryClient.invalidateQueries(); }}
           onWithdraw={isManagerView ? () => void handleApprovalSubmit({ bookingId: booking.id, status: 'cancelled' }) : undefined} />}
         <OpenProblemAlert bookingId={booking.id} role={isManagerView ? 'manager' : 'chef'} chefName={chefName} kitchenName={kitchenName}
           timezone={tz || 'America/St_Johns'} active={booking.status === 'confirmed' && !!visitBounds && nowMs < visitBounds.endAt.getTime()}
