@@ -2428,7 +2428,7 @@ export default function KitchenBookingFlow({
 
         <div className="flex flex-col gap-0 lg:min-h-0 lg:flex-1 lg:flex-row lg:items-stretch lg:gap-6">
           {/* Left rail: kitchen details + sticky price (desktop) */}
-          <aside className="hidden w-[340px] shrink-0 flex-col lg:flex lg:h-full">
+          <aside className={cn("hidden w-[340px] shrink-0 flex-col lg:flex lg:h-full", isMultiDay && "overflow-y-auto [&>div]:shrink-0")}>
             <div className="mb-4">
               {selectedKitchen ? (
                 <BookingPlaceContext

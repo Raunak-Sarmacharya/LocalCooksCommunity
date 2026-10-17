@@ -156,7 +156,8 @@ describe('the existing flow with more days', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Choose hours' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: 'Choose hours' }));
     await waitFor(() => expect(hour(9)).toBeEnabled());
-    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Choose your hours' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Choose your hours' }));
     expect(screen.getByText(/Check your hours for Oct 7/, { selector: 'p[role="status"]' })).toBeInTheDocument();
     expect(screen.getByLabelText('Change one day')).toHaveValue('2030-10-07');
     expect(f.payload).toBeNull();
