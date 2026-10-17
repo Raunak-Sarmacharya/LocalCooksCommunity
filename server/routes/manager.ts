@@ -1,5 +1,5 @@
-import { bookingWindowCap } from '../services/booking-policy-settings';
-import { validBookingWindowDays } from '@shared/kitchen-booking-policies';
+import { bookingDaysCap, bookingWindowCap } from '../services/booking-policy-settings';
+import { bufferWritePatch, isBookingBufferMinutes, validBookingDays, validBookingWindowDays, validWeeklyChefHoursLimit } from '@shared/kitchen-booking-policies';
 import managerCustomersRouter from './manager-customers';
 import { revokeManagerLocationAccess, futureAccessBookings, deliverAccessNotice } from "../services/location-access-notices";
 import { projectBookingCloseout, projectBookingCloseouts } from '../services/clock-closeout';
@@ -3040,24 +3040,44 @@ async function handleKitchenWorkspaceSettings(req: Request, res: Response) {
       .innerJoin(locations, eq(kitchens.locationId, locations.id))
       .where(and(eq(kitchens.id, kitchenId), eq(locations.managerId, req.neonUser!.id))).limit(1);
     if (!owned) return res.status(403).json({ error: "Access denied" });
-    const cap = await bookingWindowCap();
+    const [cap, daysCap] = await Promise.all([bookingWindowCap(), bookingDaysCap()]);
     let kitchen = owned.kitchen;
     if (req.method === "PUT") {
       const patch: Partial<typeof kitchens.$inferInsert> = {};
-      for (const key of ["cancellationPolicyHours", "minimumBookingWindowHours", "defaultDailyBookingLimit", "maxAdvanceBookingDays"] as const) {
+      for (const key of ["cancellationPolicyHours", "minimumBookingWindowHours", "defaultDailyBookingLimit", "maxAdvanceBookingDays", "maxBookingDays"] as const) {
         const value = req.body?.[key];
         if (value === undefined) continue;
-        const min = key === "defaultDailyBookingLimit" || key === "maxAdvanceBookingDays" ? 1 : 0;
-        const max = key === "maxAdvanceBookingDays" ? cap : key === "defaultDailyBookingLimit" ? 24 : key === "minimumBookingWindowHours" ? 168 : 2147483647;
+        const min = key === "defaultDailyBookingLimit" || key === "maxAdvanceBookingDays" || key === "maxBookingDays" ? 1 : 0;
+        const max = key === "maxAdvanceBookingDays" ? cap : key === "maxBookingDays" ? daysCap : key === "defaultDailyBookingLimit" ? 24 : key === "minimumBookingWindowHours" ? 168 : 2147483647;
         if (value !== null && (!Number.isInteger(value) || value < min || value > max)) {
-          return res.status(400).json({ error: key === "maxAdvanceBookingDays" ? `Booking window must be a whole number from 1 to ${max} days.` : `Invalid ${key}` });
+          return res.status(400).json({
+            error: key === "maxAdvanceBookingDays" ? `Booking window must be a whole number from 1 to ${max} days.`
+              : key === "maxBookingDays" ? `Days per booking must be a whole number from 1 to ${max}.`
+              : `Invalid ${key}`,
+          });
         }
         patch[key] = value;
       }
-      if (req.body?.turnoverBufferEnabled !== undefined) {
-        const value = req.body.turnoverBufferEnabled;
-        if (value !== null && typeof value !== 'boolean') return res.status(400).json({ error: 'Invalid turnoverBufferEnabled' });
-        patch.turnoverBufferEnabled = value;
+      if (req.body?.allowMultiDayBookings !== undefined) {
+        const value = req.body.allowMultiDayBookings;
+        if (value !== null && typeof value !== 'boolean') return res.status(400).json({ error: 'Invalid allowMultiDayBookings' });
+        patch.allowMultiDayBookings = value;
+      }
+      if (req.body?.weeklyChefHoursLimit !== undefined) {
+        const value = req.body.weeklyChefHoursLimit;
+        if (value !== null && !validWeeklyChefHoursLimit(value)) {
+          return res.status(400).json({ error: 'Weekly chef hours limit must be empty or a whole number from 1 to 168.' });
+        }
+        patch.weeklyChefHoursLimit = value;
+      }
+      if (req.body?.bookingBufferMinutes !== undefined || req.body?.turnoverBufferEnabled !== undefined) {
+        const written = bufferWritePatch(kitchen, {
+          bookingBufferMinutes: req.body?.bookingBufferMinutes,
+          turnoverBufferEnabled: req.body?.turnoverBufferEnabled,
+        });
+        if ('error' in written) return res.status(400).json({ error: written.error });
+        patch.bookingBufferMinutes = written.bookingBufferMinutes;
+        patch.turnoverBufferEnabled = written.turnoverBufferEnabled;
       }
       if (req.body?.minimumBookingHours !== undefined) {
         const value = req.body.minimumBookingHours;
@@ -3076,8 +3096,8 @@ async function handleKitchenWorkspaceSettings(req: Request, res: Response) {
     }
     return res.json({
       kitchen,
-      defaults: resolveKitchenBookingPolicies({}, owned.location, cap),
-      effective: resolveKitchenBookingPolicies(kitchen, owned.location, cap),
+      defaults: resolveKitchenBookingPolicies({}, owned.location, cap, daysCap),
+      effective: resolveKitchenBookingPolicies(kitchen, owned.location, cap, daysCap),
     });
   } catch (error) {
     return errorResponse(res, error);
@@ -3095,24 +3115,53 @@ router.put("/locations/:locationId/kitchen-booking-policies", requireFirebaseAut
   if (!Number.isSafeInteger(locationId) || locationId <= 0) return res.status(400).json({ error: "Invalid location ID" });
   const locationPatch: Partial<typeof locations.$inferInsert> = {};
   const kitchenPatch: Partial<typeof kitchens.$inferInsert> = {};
-  for (const field of ["cancellationPolicyHours", "minimumBookingWindowHours", "defaultDailyBookingLimit", "maxAdvanceBookingDays"] as const) {
+  const [cap, daysCap] = await Promise.all([bookingWindowCap(), bookingDaysCap()]);
+  for (const field of ["cancellationPolicyHours", "minimumBookingWindowHours", "defaultDailyBookingLimit", "maxAdvanceBookingDays", "maxBookingDays"] as const) {
     const value = req.body?.[field];
     if (value === undefined) continue;
-    const min = field === "defaultDailyBookingLimit" || field === "maxAdvanceBookingDays" ? 1 : 0;
-    const max = field === "maxAdvanceBookingDays" ? await bookingWindowCap() : field === "defaultDailyBookingLimit" ? 24 : field === "minimumBookingWindowHours" ? 168 : 2147483647;
-    if (!Number.isInteger(value) || value < min || value > max) return res.status(400).json({ error: field === "maxAdvanceBookingDays" ? `Booking window must be a whole number from 1 to ${max} days.` : `Invalid ${field}` });
+    const min = field === "defaultDailyBookingLimit" || field === "maxAdvanceBookingDays" || field === "maxBookingDays" ? 1 : 0;
+    const max = field === "maxAdvanceBookingDays" ? cap : field === "maxBookingDays" ? daysCap : field === "defaultDailyBookingLimit" ? 24 : field === "minimumBookingWindowHours" ? 168 : 2147483647;
+    if (!Number.isInteger(value) || value < min || value > max) {
+      return res.status(400).json({
+        error: field === "maxAdvanceBookingDays" ? `Booking window must be a whole number from 1 to ${max} days.`
+          : field === "maxBookingDays" ? `Days per booking must be a whole number from 1 to ${max}.`
+          : `Invalid ${field}`,
+      });
+    }
     locationPatch[field] = value;
     kitchenPatch[field] = null;
+  }
+  if (req.body?.allowMultiDayBookings !== undefined) {
+    if (typeof req.body.allowMultiDayBookings !== 'boolean') return res.status(400).json({ error: 'Invalid allowMultiDayBookings' });
+    locationPatch.allowMultiDayBookings = req.body.allowMultiDayBookings;
+    kitchenPatch.allowMultiDayBookings = null;
   }
   if (req.body?.minimumBookingHours !== undefined) {
     const value = req.body.minimumBookingHours;
     if (!Number.isInteger(value) || value < 0 || value > 24) return res.status(400).json({ error: "Invalid minimum booking duration" });
     kitchenPatch.minimumBookingHours = value;
   }
-  if (req.body?.turnoverBufferEnabled !== undefined) {
-    if (typeof req.body.turnoverBufferEnabled !== 'boolean') return res.status(400).json({ error: 'Invalid turnoverBufferEnabled' });
-    locationPatch.turnoverBufferEnabled = req.body.turnoverBufferEnabled;
+  if (req.body?.bookingBufferMinutes !== undefined || req.body?.turnoverBufferEnabled !== undefined) {
+    // Location apply: set location numeric (+ legacy flag) and clear kitchen overrides of both representations.
+    if (req.body?.bookingBufferMinutes !== undefined) {
+      if (!isBookingBufferMinutes(req.body.bookingBufferMinutes)) return res.status(400).json({ error: 'Buffer must be off, 1 hour, or 2 hours.' });
+      locationPatch.bookingBufferMinutes = req.body.bookingBufferMinutes;
+      locationPatch.turnoverBufferEnabled = req.body.bookingBufferMinutes > 0;
+    } else {
+      if (typeof req.body.turnoverBufferEnabled !== 'boolean') return res.status(400).json({ error: 'Invalid turnoverBufferEnabled' });
+      locationPatch.bookingBufferMinutes = req.body.turnoverBufferEnabled ? 60 : 0;
+      locationPatch.turnoverBufferEnabled = req.body.turnoverBufferEnabled;
+    }
+    kitchenPatch.bookingBufferMinutes = null;
     kitchenPatch.turnoverBufferEnabled = null;
+  }
+  // Weekly limit is kitchen-only (no location default).
+  if (req.body?.weeklyChefHoursLimit !== undefined) {
+    const value = req.body.weeklyChefHoursLimit;
+    if (value !== null && !validWeeklyChefHoursLimit(value)) {
+      return res.status(400).json({ error: 'Weekly chef hours limit must be empty or a whole number from 1 to 168.' });
+    }
+    kitchenPatch.weeklyChefHoursLimit = value;
   }
   if (!Object.keys(kitchenPatch).length) return res.status(400).json({ error: "No booking policy changes provided" });
   try {
@@ -4937,6 +4986,9 @@ router.put(
         minimumBookingWindowHours,
         maxAdvanceBookingDays,
         turnoverBufferEnabled,
+        maxBookingDays,
+        allowMultiDayBookings,
+        bookingBufferMinutes,
         // Arrival timings. These live on the locations table alongside the other
         // time-based rules and are also written by the check-in/check-out
         // endpoint; managers edit them on the Booking Policies page.
@@ -5113,9 +5165,24 @@ router.put(
         if (!validBookingWindowDays(maxAdvanceBookingDays, cap)) return res.status(400).json({ error: `Booking window must be a whole number from 1 to ${cap} days.` });
         (updates as any).maxAdvanceBookingDays = maxAdvanceBookingDays;
       }
-      if (turnoverBufferEnabled !== undefined) {
-        if (typeof turnoverBufferEnabled !== 'boolean') return res.status(400).json({ error: 'Invalid turnoverBufferEnabled' });
-        (updates as any).turnoverBufferEnabled = turnoverBufferEnabled;
+      if (maxBookingDays !== undefined) {
+        const daysCap = await bookingDaysCap();
+        if (!validBookingDays(maxBookingDays, daysCap)) return res.status(400).json({ error: `Days per booking must be a whole number from 1 to ${daysCap}.` });
+        (updates as any).maxBookingDays = maxBookingDays;
+      }
+      if (allowMultiDayBookings !== undefined) {
+        if (typeof allowMultiDayBookings !== 'boolean') return res.status(400).json({ error: 'Invalid allowMultiDayBookings' });
+        (updates as any).allowMultiDayBookings = allowMultiDayBookings;
+      }
+      if (bookingBufferMinutes !== undefined || turnoverBufferEnabled !== undefined) {
+        const written = bufferWritePatch(
+          { bookingBufferMinutes: (location as any).bookingBufferMinutes, turnoverBufferEnabled: (location as any).turnoverBufferEnabled },
+          { bookingBufferMinutes, turnoverBufferEnabled },
+        );
+        if ('error' in written) return res.status(400).json({ error: written.error });
+        // Location columns are non-null for the legacy boolean; numeric may be null on pre-migration rows.
+        (updates as any).bookingBufferMinutes = written.bookingBufferMinutes ?? 0;
+        (updates as any).turnoverBufferEnabled = written.turnoverBufferEnabled ?? false;
       }
       if (minimumBookingWindowHours !== undefined) {
         (updates as any).minimumBookingWindowHours = minimumBookingWindowHours;
@@ -5372,7 +5439,11 @@ router.put(
           (updated as any).default_daily_booking_limit,
         maxAdvanceBookingDays: (updated as any).maxAdvanceBookingDays ?? 30,
         turnoverBufferEnabled: (updated as any).turnoverBufferEnabled ?? false,
+        maxBookingDays: (updated as any).maxBookingDays ?? 7,
+        allowMultiDayBookings: (updated as any).allowMultiDayBookings ?? true,
+        bookingBufferMinutes: (updated as any).bookingBufferMinutes ?? ((updated as any).turnoverBufferEnabled ? 60 : 0),
         maxAdvanceBookingDaysCap: await bookingWindowCap(),
+        maxBookingDaysCap: await bookingDaysCap(),
         minimumBookingWindowHours:
           (updated as any).minimumBookingWindowHours ??
           (updated as any).minimum_booking_window_hours ??
@@ -5448,7 +5519,7 @@ router.get(
       );
 
       // Map snake_case fields to camelCase for the frontend
-      const maxAdvanceBookingDaysCap = await bookingWindowCap();
+      const [maxAdvanceBookingDaysCap, maxBookingDaysCap] = await Promise.all([bookingWindowCap(), bookingDaysCap()]);
       const mappedLocations = locations.map((loc) => ({
         ...loc,
         notificationEmail:
@@ -5479,7 +5550,11 @@ router.get(
           (loc as any).default_daily_booking_limit,
         maxAdvanceBookingDays: (loc as any).maxAdvanceBookingDays ?? 30,
         turnoverBufferEnabled: (loc as any).turnoverBufferEnabled ?? false,
+        maxBookingDays: (loc as any).maxBookingDays ?? 7,
+        allowMultiDayBookings: (loc as any).allowMultiDayBookings ?? true,
+        bookingBufferMinutes: (loc as any).bookingBufferMinutes ?? ((loc as any).turnoverBufferEnabled ? 60 : 0),
         maxAdvanceBookingDaysCap,
+        maxBookingDaysCap,
         minimumBookingWindowHours:
           (loc as any).minimumBookingWindowHours ??
           (loc as any).minimum_booking_window_hours ??
@@ -5768,8 +5843,8 @@ router.put(
 
       // Verify the manager has access to this location
       const locations = await locationService.getLocationsByManagerId(user.id);
-      const hasAccess = locations.some((loc) => loc.id === locationId);
-      if (!hasAccess) {
+      const existingLocation = locations.find((loc) => loc.id === locationId);
+      if (!existingLocation) {
         return res
           .status(403)
           .json({ error: "Access denied to this location" });
@@ -5792,14 +5867,27 @@ router.put(
       } = req.body;
 
       const updates: any = {};
-      const cap = await bookingWindowCap();
+      const [cap, daysCap] = await Promise.all([bookingWindowCap(), bookingDaysCap()]);
       if (req.body.maxAdvanceBookingDays !== undefined) {
         if (!validBookingWindowDays(req.body.maxAdvanceBookingDays, cap)) return res.status(400).json({ error: `Booking window must be a whole number from 1 to ${cap} days.` });
         updates.maxAdvanceBookingDays = req.body.maxAdvanceBookingDays;
       }
-      if (req.body.turnoverBufferEnabled !== undefined) {
-        if (typeof req.body.turnoverBufferEnabled !== 'boolean') return res.status(400).json({ error: 'Invalid turnoverBufferEnabled' });
-        updates.turnoverBufferEnabled = req.body.turnoverBufferEnabled;
+      if (req.body.maxBookingDays !== undefined) {
+        if (!validBookingDays(req.body.maxBookingDays, daysCap)) return res.status(400).json({ error: `Days per booking must be a whole number from 1 to ${daysCap}.` });
+        updates.maxBookingDays = req.body.maxBookingDays;
+      }
+      if (req.body.allowMultiDayBookings !== undefined) {
+        if (typeof req.body.allowMultiDayBookings !== 'boolean') return res.status(400).json({ error: 'Invalid allowMultiDayBookings' });
+        updates.allowMultiDayBookings = req.body.allowMultiDayBookings;
+      }
+      if (req.body.bookingBufferMinutes !== undefined || req.body.turnoverBufferEnabled !== undefined) {
+        const written = bufferWritePatch(
+          { bookingBufferMinutes: (existingLocation as any).bookingBufferMinutes, turnoverBufferEnabled: (existingLocation as any).turnoverBufferEnabled },
+          { bookingBufferMinutes: req.body.bookingBufferMinutes, turnoverBufferEnabled: req.body.turnoverBufferEnabled },
+        );
+        if ('error' in written) return res.status(400).json({ error: written.error });
+        updates.bookingBufferMinutes = written.bookingBufferMinutes ?? 0;
+        updates.turnoverBufferEnabled = written.turnoverBufferEnabled ?? false;
       }
       if (name !== undefined) updates.name = name;
       if (address !== undefined) updates.address = address;
@@ -6048,7 +6136,11 @@ router.put(
         ...updated,
         maxAdvanceBookingDays: updated.maxAdvanceBookingDays ?? 30,
         turnoverBufferEnabled: updated.turnoverBufferEnabled ?? false,
+        maxBookingDays: updated.maxBookingDays ?? 7,
+        allowMultiDayBookings: updated.allowMultiDayBookings ?? true,
+        bookingBufferMinutes: updated.bookingBufferMinutes ?? (updated.turnoverBufferEnabled ? 60 : 0),
         maxAdvanceBookingDaysCap: cap,
+        maxBookingDaysCap: daysCap,
         managerId:
           (updated as any).managerId || (updated as any).manager_id || null,
         notificationEmail:

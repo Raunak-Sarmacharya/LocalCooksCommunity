@@ -22,6 +22,11 @@ interface Policies {
   defaultDailyBookingLimit: number;
   maxAdvanceBookingDays?: number;
   turnoverBufferEnabled?: boolean;
+  bookingBufferMinutes?: number;
+  allowMultiDayBookings?: boolean;
+  maxBookingDays?: number;
+  maxBookingDaysCap?: number;
+  weeklyChefHoursLimit?: number | null;
   maxAdvanceBookingDaysCap?: number;
 }
 type PolicyPatch = {
@@ -30,6 +35,10 @@ type PolicyPatch = {
   defaultDailyBookingLimit?: number | null;
   maxAdvanceBookingDays?: number | null;
   turnoverBufferEnabled?: boolean | null;
+  bookingBufferMinutes?: number | null;
+  allowMultiDayBookings?: boolean | null;
+  maxBookingDays?: number | null;
+  weeklyChefHoursLimit?: number | null;
 };
 export type PolicySaveScope = "kitchen" | "location";
 export interface KitchenPoliciesHandle { saveAllChanges: (scope: PolicySaveScope) => Promise<boolean> }
@@ -90,14 +99,25 @@ export default function KitchenWorkspaceControls({ kitchenId, location, mode, on
         kitchenName={data.kitchen.name} policyUpdating={change.isPending} onRequestSave={onRequestSave}
         minimumBookingHours={data.kitchen.minimumBookingHours ?? 0}
         policyOverrides={data.kitchen}
-        onResetPolicy={(field) => change.mutate({ [field]: null })}
+        onResetPolicy={(field) => {
+          if (field === "bookingBufferMinutes" || field === "turnoverBufferEnabled") {
+            change.mutate({ bookingBufferMinutes: null, turnoverBufferEnabled: null });
+            return;
+          }
+          change.mutate({ [field]: null });
+        }}
         onDirtyChange={onDirtyChange} onSave={async (updates) => {
           const patch: PolicyPatch & { minimumBookingHours?: number } = {};
           if (updates.minimumBookingHours !== (data.kitchen.minimumBookingHours ?? 0)) patch.minimumBookingHours = updates.minimumBookingHours;
-          for (const field of ["cancellationPolicyHours", "minimumBookingWindowHours", "defaultDailyBookingLimit", "maxAdvanceBookingDays", "turnoverBufferEnabled"] as const) {
+          for (const field of [
+            "cancellationPolicyHours", "minimumBookingWindowHours", "defaultDailyBookingLimit",
+            "maxAdvanceBookingDays", "bookingBufferMinutes", "allowMultiDayBookings", "maxBookingDays", "weeklyChefHoursLimit",
+          ] as const) {
             // The newer fields are only in `updates` when the server sent them (see BookingRulesSettings).
             if (updates[field] !== undefined && updates[field] !== data.effective[field]) (patch as Record<string, unknown>)[field] = updates[field];
           }
+          // Resetting buffer clears both numeric and legacy boolean representations.
+          if (patch.bookingBufferMinutes === null) patch.turnoverBufferEnabled = null;
           if (!Object.keys(patch).length) return;
           if (scopeRef.current === "location") {
             try { await apiPutWithMessage(`/manager/locations/${location.id}/kitchen-booking-policies`, patch); }

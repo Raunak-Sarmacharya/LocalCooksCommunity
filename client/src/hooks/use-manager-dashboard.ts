@@ -34,6 +34,10 @@ interface Location {
   minimumBookingWindowHours?: number;
   maxAdvanceBookingDays?: number;
   turnoverBufferEnabled?: boolean;
+  bookingBufferMinutes?: number;
+  allowMultiDayBookings?: boolean;
+  maxBookingDays?: number;
+  maxBookingDaysCap?: number;
   maxAdvanceBookingDaysCap?: number;
 }
 
