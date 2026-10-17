@@ -9,6 +9,8 @@ import { equipmentListings, kitchenBookings, kitchenCheckoutHolds } from '@share
 import { type OperatingSlot } from '@shared/operating-hours';
 import { waivesBuffer, type BookingRuleOverride } from './booking-rule-overrides';
 import { holdExcluded, weeklyQuotaShortfallsFor, WeeklyChefHoursLimitError } from './kitchen-booking-quota';
+// Cyclic with booking.service (it reads holds); only used inside functions, never at module load.
+import { bookingService } from '../domains/bookings/booking.service';
 
 export const HOLD_MINUTES = 37; // Stripe Checkout expires after 32 minutes; allow webhook delivery time.
 /** Advisory-lock namespace for equipment listings (shared with booking changes). */
@@ -184,7 +186,6 @@ export async function reserveKitchenCheckoutGroup(input: HoldOptions & {
   const equipmentIds = Array.from(new Set(days.flatMap(day => day.equipmentListingIds ?? [])));
   const policy = await kitchenBookingPolicies(input.kitchenId);
   const bufferMinutes = waivesBuffer(input.override) ? 0 : input.bufferMinutes ?? policyBufferMinutes(policy);
-  const { bookingService } = await import('../domains/bookings/booking.service');
   return db.transaction(async tx => {
     await lockKitchenInventory(tx, input.kitchenId, days.map(day => day.operatingDate), equipmentIds);
     for (const day of days) {
