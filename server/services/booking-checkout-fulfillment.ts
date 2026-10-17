@@ -11,8 +11,7 @@ import { parseCheckoutCancellationPolicy, parseCheckoutSlots } from './checkout-
 import { cancellationSnapshotFromMetadata } from './cancellation-policy-settings';
 import { fulfillKitchenCheckout, hasInventoryConflict, KitchenHoldMissingError, KitchenSlotUnavailableError } from './kitchen-checkout-holds';
 import { WeeklyChefHoursLimitError } from './kitchen-booking-quota';
-import { savedOverride } from './booking-rule-overrides';
-import { invitationOverrideScope } from './kitchen-invitations';
+import { savedInvitationOverride } from './booking-rule-overrides';
 import { queueBookingLifecycleEvent } from './booking-lifecycle-delivery';
 import { generateReferenceCode } from '../reference-code';
 import { kitchenPayoutTiming } from '@shared/kitchen-payout';
@@ -177,7 +176,7 @@ export async function fulfillQuotedKitchenBooking(session: Stripe.Checkout.Sessi
       }), async () => {
         const [existing] = await db.select().from(kitchenBookings).where(eq(kitchenBookings.paymentIntentId, intent.id)).limit(1);
         return existing;
-      }, replacesId, chefId, invitation ? savedOverride(invitation.bookingRuleOverrides, invitationOverrideScope(invitation)) : undefined);
+      }, replacesId, chefId, invitation ? savedInvitationOverride(invitation) : undefined);
     await updateCheckoutIncident(session.id, { outcome: 'booking_created', bookingId: booking.id, paymentIntentId: intent.id, amountCents: intent.amount, currency: session.currency, lastCheckedAt: new Date() });
     createdBookingId = booking.id;
   } catch (error) {

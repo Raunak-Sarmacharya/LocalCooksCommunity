@@ -27,9 +27,10 @@ import { friendlyTimezoneName } from '@shared/timezone-utils';
 import { operationalEmailAllowed } from './admin-email-preferences';
 import { isE2eOutboundSuppressed } from '../e2e-outbound-guard';
 import { kitchenBookingPolicies } from './booking-policy-settings';
-import { BookingRuleOverrideError, kitchenRuleOverride, overrideRecord, savedOverride, type BookingRuleOverride } from './booking-rule-overrides';
+import { BookingRuleOverrideError, invitationOverrideScope, kitchenRuleOverride, overrideRecord, savedInvitationOverride, type BookingRuleOverride } from './booking-rule-overrides';
 import { weeklyQuotaShortfallsFor } from './kitchen-booking-quota';
 import { weeklyQuotaMessage } from '@shared/kitchen-booking-quota';
+import { policyBufferMinutes } from '@shared/kitchen-booking-policies';
 
 export const invitationStatuses = [
   'sent', 'accepted_pending_payment', 'accepted', 'declined', 'withdrawn', 'expired', 'superseded', 'unavailable',
@@ -43,11 +44,6 @@ export type InvitationInput = {
   ruleOverride?: { ignoreBuffer?: boolean; ignoreWeeklyLimit?: boolean; reason?: string };
 };
 
-/** A saved override is valid only for the invitation row (kitchen and chef) it was granted on. */
-export const invitationOverrideScope = (row: { id: string; kitchenId: number; chefId: number }) =>
-  `invitation:${row.id}:${row.kitchenId}:${row.chefId}`;
-export const savedInvitationOverride = (row: typeof kitchenInvitations.$inferSelect) =>
-  savedOverride(row.bookingRuleOverrides, invitationOverrideScope(row));
 const scopedRecord = (override: BookingRuleOverride | undefined, row: { id: string; kitchenId: number; chefId: number }) =>
   override ? { ...overrideRecord(override)!, scope: invitationOverrideScope(row) } : null;
 
@@ -131,7 +127,7 @@ export async function previewKitchenInvitation(managerId: number, input: Invitat
   }
   const rules = await kitchenBookingPolicies(input.kitchenId);
   // Frozen with the invitation and used through checkout; an explicit kitchen waiver saves Off.
-  const bufferMinutes = override?.ignoreBuffer ? 0 : rules.bookingBufferMinutes;
+  const bufferMinutes = override?.ignoreBuffer ? 0 : policyBufferMinutes(rules);
   const eligibility = await chefService.getApplicationStatusForBooking(input.chefId, ctx.locationId, input.kitchenId);
   const date = new Date(`${input.date}T12:00:00.000Z`);
   const hourlyAvailability = await bookingService.validateBookingAvailability(input.kitchenId, date, input.startTime, input.endTime, { bufferMinutes, override });

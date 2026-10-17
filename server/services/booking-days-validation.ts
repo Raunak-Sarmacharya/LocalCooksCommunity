@@ -10,6 +10,7 @@ import { matchingLocalInstants } from '@shared/booking-dst';
 import type { DatedSlot } from '@shared/booking-occupancy';
 import { effectiveMaxBookingDays, validateBookingDaysContract, type BookingDayInput } from '@shared/booking-days-contract';
 import { weeklyQuotaMessage, type WeeklyQuotaWeek } from '@shared/kitchen-booking-quota';
+import { policyBufferMinutes } from '@shared/kitchen-booking-policies';
 import { calendarDateForOperatingTime, sortTimesInOperatingWindow } from '@shared/operating-hours';
 import { bookingService, type BookingDayReason } from '../domains/bookings/booking.service';
 import { chefService } from '../domains/users/chef.service';
@@ -152,7 +153,7 @@ export async function validateBookingDays(input: {
     return { ok: false, code: 'WEEKLY_CHEF_HOURS_LIMIT', error: message, weeks, timezone: policy.timezone, kind: 'weekly',
       dayErrors: days.filter(day => blocked.has(weekStartDate(day.date))).map(day => ({ date: day.date, reason: 'weekly_limit' as const, message })) };
   }
-  return { ok: true, days, bufferMinutes: waivesBuffer(input.override) ? 0 : input.bufferMinutes ?? policy.bookingBufferMinutes, timezone: policy.timezone };
+  return { ok: true, days, bufferMinutes: waivesBuffer(input.override) ? 0 : input.bufferMinutes ?? policyBufferMinutes(policy), timezone: policy.timezone };
 }
 
 /** HTTP body for a failed validation (weekly-limit failures carry their weeks for the "used 6 of 8 hours" message). */

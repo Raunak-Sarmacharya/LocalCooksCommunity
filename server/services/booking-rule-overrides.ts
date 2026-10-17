@@ -51,5 +51,11 @@ export function savedOverride(record: unknown, scope: string): BookingRuleOverri
     actorId: saved.actorId!, actorRole: saved.actorRole, reason: saved.reason, at: saved.at, scope };
 }
 
+/** A grant saved on an invitation is valid only for that invitation row (its kitchen and chef). */
+export const invitationOverrideScope = (row: { id: string; kitchenId: number; chefId: number }) =>
+  `invitation:${row.id}:${row.kitchenId}:${row.chefId}`;
+export const savedInvitationOverride = (row: { id: string; kitchenId: number; chefId: number; bookingRuleOverrides?: unknown }) =>
+  savedOverride(row.bookingRuleOverrides, invitationOverrideScope(row));
+
 export const waivesBuffer = (override: unknown) => isTrustedOverride(override) && override.ignoreBuffer;
 export const waivesWeeklyLimit = (override: unknown) => isTrustedOverride(override) && override.ignoreWeeklyLimit;

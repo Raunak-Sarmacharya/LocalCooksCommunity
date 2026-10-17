@@ -2,6 +2,7 @@
 import { db } from "../../db";
 import { bookingItemPriceCents } from '@shared/booking-item-price';
 import { resolveKitchenTracking } from "@shared/kitchen-tracking";
+import { policyBufferMinutes } from "@shared/kitchen-booking-policies";
 import { generateReferenceCode } from "../../reference-code";
 import {
     kitchenBookings,
@@ -68,7 +69,7 @@ export class BookingRepository {
     async createKitchenBooking(data: InsertKitchenBooking) {
         // Every new booking keeps the buffer that applied when it was made (owner, Oct 17).
         const bufferMinutesSnapshot = data.bufferMinutesSnapshot !== undefined ? data.bufferMinutesSnapshot
-            : (await (await import('../../services/booking-policy-settings')).kitchenBookingPolicies(data.kitchenId)).bookingBufferMinutes;
+            : policyBufferMinutes(await (await import('../../services/booking-policy-settings')).kitchenBookingPolicies(data.kitchenId));
         const [booking] = await db
             .insert(kitchenBookings)
             .values({ ...data, bufferMinutesSnapshot })

@@ -18,9 +18,9 @@ import {
   listKitchenInvitations,
   previewKitchenInvitation,
   replaceKitchenInvitation,
-  savedInvitationOverride,
   withdrawKitchenInvitation,
 } from '../services/kitchen-invitations';
+import { savedInvitationOverride } from '../services/booking-rule-overrides';
 import { WeeklyChefHoursLimitError } from '../services/kitchen-booking-quota';
 import { chefService } from '../domains/users/chef.service';
 import { bookingService } from '../domains/bookings/booking.service';

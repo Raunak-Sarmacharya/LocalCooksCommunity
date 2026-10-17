@@ -29,7 +29,7 @@ import { isUnambiguousBookingSlot, matchingLocalInstants } from '@shared/booking
 import { chefService } from "../users/chef.service";
 
 import { kitchenBookingPolicies } from '../../services/booking-policy-settings';
-import { bookingWindowLastDate } from '@shared/kitchen-booking-policies';
+import { bookingWindowLastDate, policyBufferMinutes } from '@shared/kitchen-booking-policies';
 import { datedOccupiedSlots, occupiedOperatingDates, pairBufferMinutes, slotBlock, type DatedSlot, type SlotBlock } from '@shared/booking-occupancy';
 import { weekStartDate, weeklyQuotaMessage } from '@shared/kitchen-booking-quota';
 import { waivesBuffer, type BookingRuleOverride } from '../../services/booking-rule-overrides';
@@ -53,25 +53,34 @@ export type BookingDateStatus = {
 type OccupancyEntry = { slot: DatedSlot; buffer: number | null; kind: 'booked' | 'held' };
 type BufferContext = { current: number; candidate: number; ignoreBuffer: boolean; timezone: string };
 
-const blockMessages: Record<SlotBlock, string> = {
+const blockMessages = {
     booked: "One or more selected time slots are no longer available",
     held: 'One or more selected time slots are temporarily reserved',
-    buffer: "One or more selected time slots are inside the kitchen's buffer between bookings",
 };
 
-/** Actual overlap with a booking, then with a hold, then the pair buffer (the larger of the two saved buffers). */
-export function slotBlockReason(entries: OccupancyEntry[], candidate: DatedSlot, context: BufferContext): SlotBlock | null {
-    let buffered = false;
-    for (const kind of ['booked', 'held'] as const) {
+/**
+ * Bookings first, then holds (today's order and messages): a slot conflicts with a source when it overlaps it or sits
+ * inside the pair buffer (the larger of the two saved buffers). `buffer` marks a conflict that is spacing only.
+ */
+export function slotConflict(entries: OccupancyEntry[], candidate: DatedSlot, context: BufferContext): { source: 'booked' | 'held'; buffer: boolean } | null {
+    for (const source of ['booked', 'held'] as const) {
+        let buffered = false;
         for (const entry of entries) {
-            if (entry.kind !== kind) continue;
+            if (entry.kind !== source) continue;
             const gap = context.ignoreBuffer ? 0 : pairBufferMinutes(entry.buffer, context.candidate, context.current);
             const block = slotBlock(entry.slot, candidate, gap, context.timezone);
-            if (block === 'overlap') return kind;
+            if (block === 'overlap') return { source, buffer: false };
             if (block === 'buffer') buffered = true;
         }
+        if (buffered) return { source, buffer: true };
     }
-    return buffered ? 'buffer' : null;
+    return null;
+}
+
+/** The picker's reason for one slot. */
+export function slotBlockReason(entries: OccupancyEntry[], candidate: DatedSlot, context: BufferContext): SlotBlock | null {
+    const conflict = slotConflict(entries, candidate, context);
+    return conflict ? conflict.buffer ? 'buffer' : conflict.source : null;
 }
 
 const firstReason = (reasons: Array<BookingDayReason | null>) =>
@@ -355,7 +364,8 @@ export class BookingService {
     /** Every noncancelled booking and active hold, one dated entry per occupied slot (later days included), with its saved buffer. */
     private async occupancy(kitchenId: number, options: { excludeBookingId?: number; excludeHoldId?: string } = {}) {
         const [bookings, holds] = await Promise.all([this.getBookingsByKitchen(kitchenId), getActiveKitchenHolds(kitchenId)]);
-        const live = bookings.filter(booking => booking.status !== 'cancelled' && booking.id !== options.excludeBookingId);
+        const live = bookings.filter(booking => booking.status !== 'cancelled'
+            && (options.excludeBookingId === undefined || booking.id !== options.excludeBookingId));
         const entries: OccupancyEntry[] = [
             ...live.flatMap(booking => datedOccupiedSlots(booking)
                 .map(slot => ({ slot, buffer: booking.bufferMinutesSnapshot ?? null, kind: 'booked' as const }))),
@@ -370,7 +380,7 @@ export class BookingService {
 
     private bufferContext(policy: { bookingBufferMinutes?: number; turnoverBufferEnabled?: boolean; timezone: string },
         options: { bufferMinutes?: number | null; override?: unknown } = {}): BufferContext {
-        const current = policy.bookingBufferMinutes ?? (policy.turnoverBufferEnabled ? 60 : 0);
+        const current = policyBufferMinutes(policy);
         const ignoreBuffer = waivesBuffer(options.override);
         return { current, candidate: ignoreBuffer ? 0 : options.bufferMinutes ?? current, ignoreBuffer, timezone: policy.timezone };
     }
@@ -431,9 +441,11 @@ export class BookingService {
                 return { valid: false, error: "Full-day booking is unavailable because this date already has a booking", code: 'booked' };
             }
             const context = this.bufferContext(policy, options);
-            const blocks = requestedIntervals.map(slot => slotBlockReason(entries, { date: dateStr, windowStartTime: window.startTime, ...slot }, context));
-            const block = (['booked', 'held', 'buffer'] as const).find(kind => blocks.includes(kind));
-            if (block) return { valid: false, error: blockMessages[block], code: block };
+            const conflicts = requestedIntervals.map(slot => slotConflict(entries, { date: dateStr, windowStartTime: window.startTime, ...slot }, context));
+            for (const source of ['booked', 'held'] as const) {
+                const conflict = conflicts.find(item => item?.source === source);
+                if (conflict) return { valid: false, error: blockMessages[source], code: conflict.buffer ? 'buffer' : source };
+            }
 
             return { valid: true, slots: requestedIntervals, windowStartTime: window.startTime, windowEndTime: window.endTime };
         } catch (error) {

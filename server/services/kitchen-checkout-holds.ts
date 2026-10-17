@@ -1,6 +1,7 @@
 import { kitchenBookingPolicies } from './booking-policy-settings';
 import { datedOccupiedSlots, pairBufferMinutes, slotBlock, type DatedSlot } from '@shared/booking-occupancy';
 import { weeklyQuotaMessage } from '@shared/kitchen-booking-quota';
+import { policyBufferMinutes } from '@shared/kitchen-booking-policies';
 import { randomUUID } from 'node:crypto';
 import { and, eq, gt, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { db, pool } from '../db';
@@ -102,7 +103,7 @@ export async function hasInventoryConflict(
   ]);
   const policy = await kitchenBookingPolicies(kitchenId);
   const ignoreBuffer = waivesBuffer(override);
-  const candidateBuffer = ignoreBuffer ? 0 : bufferMinutes ?? policy.bookingBufferMinutes;
+  const candidateBuffer = ignoreBuffer ? 0 : bufferMinutes ?? policyBufferMinutes(policy);
   const occupied: Array<{ slot: DatedSlot; buffer: number | null }> = [
     ...bookings.filter(booking => booking.status !== 'cancelled' && booking.id !== excludeBookingId)
       .flatMap(booking => datedOccupiedSlots(booking).map(slot => ({ slot, buffer: booking.bufferMinutesSnapshot }))),
@@ -113,7 +114,7 @@ export async function hasInventoryConflict(
   return slots.some(slot => {
     const candidate = { date: operatingDate, windowStartTime, startTime: slot.startTime, endTime: slot.endTime };
     return occupied.some(entry => slotBlock(entry.slot, candidate,
-      ignoreBuffer ? 0 : pairBufferMinutes(entry.buffer, candidateBuffer, policy.bookingBufferMinutes), policy.timezone) !== null);
+      ignoreBuffer ? 0 : pairBufferMinutes(entry.buffer, candidateBuffer, policyBufferMinutes(policy)), policy.timezone) !== null);
   });
 }
 
@@ -158,7 +159,7 @@ export async function reserveKitchenCheckout(
     const id = randomUUID();
     await db.insert(kitchenCheckoutHolds).values({
       id, kitchenId, chefId, operatingDate, windowStartTime, selectedSlots: slots,
-      bufferMinutesSnapshot: waivesBuffer(options.override) ? 0 : options.bufferMinutes ?? policy.bookingBufferMinutes,
+      bufferMinutesSnapshot: waivesBuffer(options.override) ? 0 : options.bufferMinutes ?? policyBufferMinutes(policy),
       expiresAt: new Date(Date.now() + HOLD_MINUTES * 60_000),
     });
     return id;
@@ -182,7 +183,7 @@ export async function reserveKitchenCheckoutGroup(input: HoldOptions & {
   if (input.quoteSnapshot == null) throw new Error('A grouped checkout needs its quote snapshot');
   const equipmentIds = Array.from(new Set(days.flatMap(day => day.equipmentListingIds ?? [])));
   const policy = await kitchenBookingPolicies(input.kitchenId);
-  const bufferMinutes = waivesBuffer(input.override) ? 0 : input.bufferMinutes ?? policy.bookingBufferMinutes;
+  const bufferMinutes = waivesBuffer(input.override) ? 0 : input.bufferMinutes ?? policyBufferMinutes(policy);
   const { bookingService } = await import('../domains/bookings/booking.service');
   return db.transaction(async tx => {
     await lockKitchenInventory(tx, input.kitchenId, days.map(day => day.operatingDate), equipmentIds);
@@ -292,7 +293,7 @@ export async function fulfillKitchenCheckout<T>(
       }
       const policy = await kitchenBookingPolicies(kitchenId);
       // The booking keeps the hold's buffer; an old hold without a snapshot (or none) takes the kitchen's current buffer.
-      const bufferMinutesSnapshot = hold?.bufferMinutesSnapshot ?? policy.bookingBufferMinutes;
+      const bufferMinutesSnapshot = hold?.bufferMinutesSnapshot ?? policyBufferMinutes(policy);
       if (await hasInventoryConflict(kitchenId, operatingDate, slots, windowStartTime, holdId, excludeBookingId, db, bufferMinutesSnapshot, override)) {
         throw new KitchenSlotUnavailableError();
       }

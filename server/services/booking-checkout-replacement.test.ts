@@ -9,7 +9,7 @@ vi.mock('./booking-response-deadline', () => ({ getBookingResponseDeadline: asyn
 vi.mock('./booking-replacement', async importOriginal => ({ ...(await importOriginal<typeof import('./booking-replacement')>()),
   replacedRequestForFulfillment: state.replaced, completeReplacementSafely: state.complete }));
 vi.mock('./kitchen-checkout-incidents', () => ({ registerKitchenCheckout: vi.fn(), checkoutIncident: async () => ({ chefId: 3, kitchenId: 4 }), updateCheckoutIncident: vi.fn(), resolveCheckoutConflict: vi.fn() }));
-vi.mock('./kitchen-checkout-holds', () => ({ fulfillKitchenCheckout: vi.fn(async (...args: any[]) => args[6]()), hasInventoryConflict: state.conflict,
+vi.mock('./kitchen-checkout-holds', () => ({ fulfillKitchenCheckout: vi.fn(async (...args: any[]) => args[6]({ bufferMinutesSnapshot: 0 })), hasInventoryConflict: state.conflict,
   KitchenHoldMissingError: class extends Error {}, KitchenSlotUnavailableError: class extends Error {} }));
 vi.mock('../db', () => {
   const database = (rows: Record<string, any[]>) => {
