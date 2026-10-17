@@ -21,7 +21,7 @@ type Allocation = typeof allocations.$inferSelect;
 export type DayTransfer = { amount: number; currency: 'cad'; destination: string; source_transaction: string;
   transfer_group: string; metadata: Record<string, string> };
 type Evidence = { state?: 'pending' | 'sent'; params?: DayTransfer; sentAt?: string; noticeTick?: string;
-  noticeQueued?: boolean; nextAttemptAt?: string; attempts?: number; lastError?: string; reversedCents?: number };
+  startedAt?: string; noticeQueued?: boolean; nextAttemptAt?: string; attempts?: number; lastError?: string; reversedCents?: number };
 const evidenceOf = (row: Installment) => row.evidence as Evidence;
 const captured = ['succeeded', 'partially_refunded', 'refunded'];
 export const dayTransferKey = (sourceId: number, visitId: number, revision: number) => `kitchen-day-transfer:${sourceId}:${visitId}:${revision}`;
@@ -155,6 +155,32 @@ export function verifyDayTransfer(transfer: Stripe.Transfer, params: DayTransfer
     throw Error('Provider installment differs from its frozen release');
 }
 
+/** Discovery may fail before create ever starts. Recheck holds until this durable attempt boundary. */
+async function startAttempt(row: Installment, source: Source, params: DayTransfer, now: Date) {
+  return db.transaction(async tx => {
+    await lockBookingMoneySources(tx, source.bookingId);
+    await tx.execute(sql`SELECT id FROM kitchen_bookings WHERE id = ${source.bookingId} FOR UPDATE`);
+    await tx.execute(sql`SELECT id FROM kitchen_booking_visits WHERE id = ${row.visitId} FOR UPDATE`);
+    const [current] = await tx.select().from(payouts).where(eq(payouts.id, row.id)).for('update');
+    if (current.transferId) return { started: false, transferId: current.transferId };
+    const proof = evidenceOf(current);
+    if (!sameTransferParams(proof.params, params)) throw Error('Frozen installment parameters changed');
+    if (!proof.startedAt) {
+      const [fresh] = await tx.select().from(paymentTransactions).where(eq(paymentTransactions.id, source.id));
+      const { eligibility } = await context(tx, fresh, row.visitId, now);
+      if (!eligibility.ready || refundPending(fresh)) {
+        await tx.update(payouts).set({ holdReason: eligibility.holdReason || 'refund_or_visit_review', evidence: { ...proof,
+          nextAttemptAt: new Date(now.getTime() + 3600_000).toISOString() } }).where(eq(payouts.id, row.id));
+        return { started: false };
+      }
+      await assertBookingMoneyWritable({ bookingId: source.bookingId, paymentTransactionId: source.id, visitId: row.visitId, payout: true,
+        operationKey: row.operationKey }, tx);
+      await tx.update(payouts).set({ evidence: { ...proof, startedAt: now.toISOString() }, updatedAt: now }).where(eq(payouts.id, row.id));
+    }
+    return { started: true };
+  });
+}
+
 export async function releaseDayPayout(id: number, now = new Date(), tick = now.toISOString()) {
   const { row, source, params } = await prepare(id, now, tick);
   if (!params) return { success: !!row.transferId || row.noEntitlement, transferred: !!row.transferId, transferId: row.transferId };
@@ -170,7 +196,9 @@ export async function releaseDayPayout(id: number, now = new Date(), tick = now.
     const charge = await provider.charges.retrieve(params.source_transaction);
     if (!charge.paid || !charge.captured || charge.currency !== 'cad' || charge.amount_captured !== Number(source.amount)
       || (typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent?.id) !== source.paymentIntentId
-      || charge.amount_refunded !== Number(source.refundAmount || 0)) throw Error('Source charge/refunds need reconciliation');
+      || charge.amount_refunded > 0 || charge.amount_refunded !== Number(source.refundAmount || 0)) throw Error('Source charge/refunds need reconciliation');
+    const attempt = await startAttempt(row, source, params, now);
+    if (!attempt.started) return { success: !!attempt.transferId, transferred: !!attempt.transferId, transferId: attempt.transferId || null };
     transfer = await provider.transfers.create(params, { idempotencyKey: row.operationKey });
   }
   verifyDayTransfer(transfer, params);

@@ -158,6 +158,14 @@ describe('CP5 daily releases', () => {
     h.transfers.push({ ...h.transfers[0], id: 'tr_duplicate' });
     await expect(releaseDayPayout((await day()).id, now())).rejects.toThrow('Multiple');
   });
+  it('rechecks a newly opened hold if discovery failed before the provider create started', async () => {
+    h.more = true; await expect(releaseDayPayout((await day()).id, now())).rejects.toThrow('incomplete');
+    expect((await day()).evidence.startedAt).toBeUndefined();
+    await h.db.insert(s.commitmentProblems).values({ sourceKey: 'new-hold', kind: 'live', bookingId: 1, visitId: 1, reportedBy: 3, description: 'Newly reported access problem' });
+    h.more = false; await releaseDayPayout((await day()).id, now()); expect(h.create).not.toHaveBeenCalled();
+    await h.db.update(s.commitmentProblems).set({ status: 'resolved' });
+    await releaseDayPayout((await day()).id, now()); expect(h.create).toHaveBeenCalledTimes(1);
+  });
   it('replays sweep, manual release and notice flush without duplicate money or notices', async () => {
     await releaseBookingDayPayouts(1, now()); await sweepDayPayouts(3, now()); await releaseBookingDayPayouts(1, now());
     await flushDayPayoutNotices(1); expect(h.create).toHaveBeenCalledTimes(1); expect(h.event).toHaveBeenCalledTimes(1);
