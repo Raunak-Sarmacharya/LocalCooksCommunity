@@ -3703,5 +3703,6 @@
   "paSentenceChef": "{kitchen} a répondu avec un nouveau total. Acceptez-le ou refusez-le ci-dessous.",
   "paSentenceKitchen": "{chef} examine votre nouveau total.",
   "paListAnswerNeeded": "Réponse requise",
-  "paListAnswerBy": "La cuisine propose un nouveau total. Répondez d’ici le {deadline}."
+  "paListAnswerBy": "La cuisine propose un nouveau total. Répondez d’ici le {deadline}.",
+  "assistTimeOfDay": "Heure"
 }

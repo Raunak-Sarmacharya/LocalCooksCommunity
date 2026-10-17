@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+vi.mock('@/components/ui/date-field', () => ({ DateField: ({ id, value, onChange, disabled, 'aria-label': ariaLabel }: any) => <input id={id} aria-label={ariaLabel} value={value} disabled={disabled} onChange={event => onChange(event.target.value)} /> }));
+import { formatTime } from '@/lib/formatters';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Router, Route, Switch } from 'wouter';
 import { memoryLocation } from 'wouter/memory-location';
@@ -52,6 +54,15 @@ function refreshByFocus() {
   document.dispatchEvent(new Event('visibilitychange', { bubbles: true }));
 }
 async function clearButton() { return screen.findByRole('button', { name: 'Finish inspection' }); }
+
+
+// Date + time pickers live in a group named after the field; the date half is a plain input here.
+function setWhen(name: RegExp, value: string) {
+  const [date, time] = value.split('T'), group = within(screen.getByRole('group', { name }));
+  fireEvent.change(group.getByRole('textbox'), { target: { value: date } });
+  fireEvent.click(group.getByRole('combobox'));
+  fireEvent.click(screen.getByRole('option', { name: formatTime(time) }));
+}
 
 describe('manager inspection with isolated API mocks', () => {
   beforeEach(() => {
@@ -341,7 +352,7 @@ describe('manager inspection with isolated API mocks', () => {
     booking.visits = [{ ...booking, id: 1002, blockIndex: 1, checkinStatus: 'checked_in' }];
     postError = 'This visit changed; refresh before assisting'; mount('/manager/booking/901/inspection?visitId=1002'); await clearButton();
     fireEvent.click(screen.getByRole('button', { name: 'Add a missed check-in or checkout' }));
-    fireEvent.change(screen.getByLabelText(/Departure time/), { target: { value: '2026-10-12T17:00' } });
+    setWhen(/Departure time/, '2026-10-12T17:00');
     fireEvent.change(within(screen.getByRole('region', { name: 'Add an arrival or departure' })).getByLabelText('Note to Mock visitor'), { target: { value: 'Visitor confirmed departure by phone' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save departure time' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(postError);

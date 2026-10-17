@@ -13,7 +13,7 @@ const offer = { id: '11111111-1111-4111-8111-111111111111', state: 'waiting', in
   equipment: [{ id: 31, status: 'cancelled' }], declined: [{ id: 31, name: 'Mixer', cents: 3000 }], oldTotalCents: 18300, newTotalCents: 14640 };
 
 beforeAll(async () => {
-  const created = await createTestDatabase([s.users, s.locations, s.kitchens, s.kitchenBookings, s.kitchenBookingVisits, s.kitchenBookingAttendanceEvents, s.chefKitchenApplications, s.paymentTransactions]);
+  const created = await createTestDatabase([s.users, s.locations, s.kitchens, s.kitchenBookings, s.kitchenBookingVisits, s.kitchenBookingAttendanceEvents, s.chefKitchenApplications, s.paymentTransactions, s.kitchenBookingDayPayouts]);
   h.db = created.db; h.client = created.client;
   await h.db.insert(s.users).values([{ id: 2, username: 'manager@test.invalid', password: 'x', role: 'manager' }, { id: 3, username: 'chef@test.invalid', password: 'x', role: 'chef' }]);
   await h.db.insert(s.locations).values({ id: 9, managerId: 2, name: 'Test', address: 'Test', timezone: 'America/St_Johns' });

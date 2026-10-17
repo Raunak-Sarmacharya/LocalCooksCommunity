@@ -3703,5 +3703,6 @@
   "paSentenceChef": "{kitchen} відповідає новою сумою. Прийміть або відхиліть її нижче.",
   "paSentenceKitchen": "{chef} переглядає вашу нову суму.",
   "paListAnswerNeeded": "Потрібна відповідь",
-  "paListAnswerBy": "Кухня пропонує нову суму. Дайте відповідь до {deadline}."
+  "paListAnswerBy": "Кухня пропонує нову суму. Дайте відповідь до {deadline}.",
+  "assistTimeOfDay": "Час"
 }

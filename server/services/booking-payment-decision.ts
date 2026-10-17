@@ -463,7 +463,7 @@ export async function reconcileBookingDecision(bookingId: number, recorded?: Dec
       if (booking!.invitationId) await (await import('./kitchen-invitations')).recordFulfilledInvitation(booking!.invitationId, bookingId, tx);
     }
     const answeredProposal = decision!.target === 'cancelled' && ['declined', 'expired', 'hold_ended'].includes(decision!.proposal?.outcome ?? '')
-      && (booking!.partialAcceptance as PartialAcceptance | null)?.id === decision!.proposal.id ? booking!.partialAcceptance as PartialAcceptance : null;
+      && (booking!.partialAcceptance as PartialAcceptance | null)?.id === decision!.proposal?.id ? booking!.partialAcceptance as PartialAcceptance : null;
     if (answeredProposal) {
       // The chef said no to the kitchen's new total, or didn't answer in time: both sides and Local Cooks hear it in those words.
       const outcome = decision!.proposal!.outcome as 'declined' | 'expired' | 'hold_ended';

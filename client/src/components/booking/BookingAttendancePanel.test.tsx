@@ -1,5 +1,7 @@
 vi.mock('@/i18n/chef-ns', async () => ({ ct: (await import('@/test/booking-i18n')).useBookingTranslation('chef').t }));
 ﻿import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+vi.mock('@/components/ui/date-field', () => ({ DateField: ({ id, value, onChange, disabled, 'aria-label': ariaLabel }: any) => <input id={id} aria-label={ariaLabel} value={value} disabled={disabled} onChange={event => onChange(event.target.value)} /> }));
+import { formatTime } from '@/lib/formatters';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, expect, it, vi } from 'vitest';
 import { BookingAttendancePanel } from './BookingAttendancePanel';
@@ -23,6 +25,15 @@ function mount(props: any = {}) {
 }
 const posts = (fetcher: any) => fetcher.mock.calls.filter(([, options]: any) => options?.method === 'POST');
 async function open() { fireEvent.click(await screen.findByRole('button', { name: 'Fix the visit record' })); return screen.getByRole('dialog'); }
+
+// Date + time pickers live in a group named after the field; the date half is a plain input here.
+function setWhen(name: RegExp, value: string) {
+  const [date, time] = value.split('T'), group = within(screen.getByRole('group', { name }));
+  fireEvent.change(group.getByRole('textbox'), { target: { value: date } });
+  fireEvent.click(group.getByRole('combobox'));
+  fireEvent.click(screen.getByRole('option', { name: formatTime(time) }));
+}
+
 it('has one quiet entry and named choices with consequences, no duplicate inspection link', async () => {
   mount({ managerVisitHref: '/manager/booking/10/inspection' });
   const dialog = await open();
@@ -55,7 +66,9 @@ it('makes a personal attended note optional and shows the factual default before
 });
 it('opens the missed-arrival form with the scheduled start in the kitchen zone', async () => {
   const { fetcher, onSaved } = mount(); await open(); fireEvent.click(screen.getByRole('button', { name: /Alex arrived but/ }));
-  expect(screen.getByLabelText(/Arrival time \(Newfoundland Time\)/)).toHaveValue('2026-10-03T09:00');
+  const arrival = within(screen.getByRole('group', { name: /Arrival time \(Newfoundland Time\)/ }));
+  expect(arrival.getByRole('textbox')).toHaveValue('2026-10-03');
+  expect(arrival.getByRole('combobox')).toHaveTextContent(formatTime('09:00'));
   fireEvent.change(screen.getByLabelText('Note to Alex'), { target: { value: 'Alex arrived while their phone was offline.' } });
   fireEvent.click(screen.getByRole('button', { name: 'Save arrival time' }));
   await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
@@ -66,7 +79,7 @@ it('offers departure only after recorded arrival and hides no-show for an arrive
   const { fetcher } = mount({ data: { ...record, visits: [{ ...record.visits[0], checkinStatus: 'checked_in' }] } }); await open();
   expect(screen.queryByRole('button', { name: /Alex didn’t show up/ })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: /Alex left without/ }));
-  fireEvent.change(screen.getByLabelText(/Departure time/), { target: { value: '2026-10-03T11:00' } });
+  setWhen(/Departure time/, '2026-10-03T11:00');
   fireEvent.change(screen.getByLabelText('Note to Alex'), { target: { value: 'Alex confirmed departure after an upload failed.' } });
   fireEvent.click(screen.getByRole('button', { name: 'Save departure time' }));
   await waitFor(() => expect(posts(fetcher)).toHaveLength(1));

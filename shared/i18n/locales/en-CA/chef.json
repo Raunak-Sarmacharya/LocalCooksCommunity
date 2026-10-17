@@ -3703,5 +3703,6 @@
   "paSentenceChef": "{kitchen} answered with a new total. Accept or decline it below.",
   "paSentenceKitchen": "{chef} is reviewing your new total.",
   "paListAnswerNeeded": "Answer needed",
-  "paListAnswerBy": "The kitchen offered a new total. Answer by {deadline}."
+  "paListAnswerBy": "The kitchen offered a new total. Answer by {deadline}.",
+  "assistTimeOfDay": "Time"
 }

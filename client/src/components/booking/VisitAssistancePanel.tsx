@@ -81,11 +81,12 @@ export function VisitAssistancePanel({ bookingId, updatedAt, visits = [], onSave
         {storage && <SelectItem value="confirm_removal">{t('assistRemoval')}</SelectItem>}
       </SelectContent>
     </Select></label>}
-    <label className="block text-sm" htmlFor={`${prefix}-time`}>{timeLabel}</label>
+    {/* One group name, distinct control names: screen readers hear "Arrival time …, Date" and "…, Time". */}
+    <fieldset className="space-y-1"><legend className="block text-sm">{timeLabel}</legend>
     <div className="grid gap-2 sm:grid-cols-2">
-      <DateField id={`${prefix}-time`} minToday={false} value={actualDate ?? ''} onChange={date => setActual(date, actualTime ?? '')} placeholder="yyyy-mm-dd" disabled={saving} />
-      <TimeSelect aria-label={timeLabel} value={actualTime ?? ''} onChange={time => setActual(actualDate ?? '', time)} stepMinutes={5} disabled={saving} />
-    </div>
+      <DateField id={`${prefix}-time`} aria-label={t('date')} minToday={false} value={actualDate ?? ''} onChange={date => setActual(date, actualTime ?? '')} placeholder="yyyy-mm-dd" disabled={saving} />
+      <TimeSelect aria-label={t('assistTimeOfDay')} value={actualTime ?? ''} onChange={time => setActual(actualDate ?? '', time)} stepMinutes={5} disabled={saving} />
+    </div></fieldset>
     {instants.length > 1 && <label className="block text-sm">{t('assistRepeated')} <Select value={occurrence === '' ? EMPTY : occurrence} onValueChange={value => setOccurrence(value === EMPTY ? '' : value)}>
       <SelectTrigger><SelectValue /></SelectTrigger>
       <SelectContent>

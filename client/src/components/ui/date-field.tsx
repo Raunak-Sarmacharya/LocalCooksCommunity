@@ -40,6 +40,7 @@ export interface DateFieldProps {
   disabled?: boolean;
   disabledDate?: (date: Date) => boolean;
   className?: string;
+  "aria-label"?: string;
 }
 
 export function DateField({
@@ -51,6 +52,7 @@ export function DateField({
   disabled,
   disabledDate,
   className,
+  "aria-label": ariaLabel,
 }: DateFieldProps) {
   const [open, setOpen] = React.useState(false);
   const selected = parse(value);
@@ -66,6 +68,7 @@ export function DateField({
         <button
           id={id}
           type="button"
+          aria-label={ariaLabel}
           disabled={disabled}
           className={cn(
             "flex h-10 w-full items-center gap-2 rounded-md border border-input bg-background px-3 text-left text-sm font-normal transition-colors",
