@@ -98,8 +98,8 @@ describe('per-reader wording', () => {
   it('words the end-of-term payout for the kitchen and the admin', async () => {
     await queueStorageRentalNotice(tx(), 5, 'payout_scheduled', { ...facts, eventKey: 'term1', payoutDate: '2026-10-28', amountCents: 6792 });
     expect(notice(5)).toBeUndefined();
-    expect(notice(2)!.title).toBe('You’ll be paid $67.92');
-    expect(notice(2)!.message).toBe('You’ll be paid $67.92 on Oct 28, 2026 for Maya Chen’s storage Oct 20, 2026–Oct 27, 2026.');
+    expect(notice(2)!.title).toBe('You’ll be paid $67.92, less the card fee');
+    expect(notice(2)!.message).toBe('You’ll be paid $67.92 on Oct 28, 2026 for Maya Chen’s storage Oct 20, 2026–Oct 27, 2026, less the card processing fee. Your rental page shows the exact amount.');
   });
   it.each(['fr-CA', 'uk'])('renders every reader in %s without raw keys or placeholders', async (value) => {
     locale(value);
