@@ -366,7 +366,8 @@ export const locations = pgTable("locations", {
   preferredContactMethod: text("preferred_contact_method").default("email").notNull(), // email, phone, or both
   cancellationPolicyHours: integer("cancellation_policy_hours").default(24).notNull(),
   cancellationPolicyMessage: text("cancellation_policy_message").default("Bookings cannot be cancelled within {hours} hours of the scheduled time.").notNull(),
-  defaultDailyBookingLimit: integer("default_daily_booking_limit").default(2).notNull(),
+  // NULL = no per-request hours cap (opening hours only). Kitchen may override.
+  defaultDailyBookingLimit: integer("default_daily_booking_limit"),
   maxAdvanceBookingDays: integer("max_advance_booking_days").default(60).notNull(),
   turnoverBufferEnabled: boolean("turnover_buffer_enabled").default(false).notNull(),
   // Multi-day / buffer controls (migration 0099). Numeric buffer nulls inherit legacy boolean.

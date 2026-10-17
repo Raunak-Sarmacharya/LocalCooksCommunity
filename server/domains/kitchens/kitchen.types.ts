@@ -115,7 +115,7 @@ export interface KitchenWithLocationDTO extends KitchenDTO {
     notificationPhone: string | null;
     cancellationPolicyHours: number;
     cancellationPolicyMessage: string;
-    defaultDailyBookingLimit: number;
+    defaultDailyBookingLimit: number | null;
     minimumBookingWindowHours: number;
     maxAdvanceBookingDays?: number;
     turnoverBufferEnabled?: boolean;

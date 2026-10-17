@@ -40,7 +40,6 @@ vi.mock('./ManagerStorageBookingsPage', () => ({ default: () => null }));
 vi.mock('@/components/manager/ViewingsDashboard', () => ({ default: () => null }));
 vi.mock('./ManagerKitchenApplications', () => ({ ManagerKitchenApplicationsContent: () => null }));
 vi.mock('@/components/dashboard/KitchenDashboardOverview', () => ({ default: () => null }));
-vi.mock('@/components/manager/overstays/OverstayPenaltyQueue', () => ({ OverstayPenaltyQueue: () => null }));
 vi.mock('@/components/manager/damage-claims/DamageClaimQueue', () => ({ DamageClaimQueue: () => null }));
 vi.mock('./ManagerRevenueDashboard', () => ({ default: () => null }));
 vi.mock('@/components/chat/UnifiedChatView', () => ({ default: () => null }));

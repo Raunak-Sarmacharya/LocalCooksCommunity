@@ -49,7 +49,10 @@ export const extensionOperation = (id: number, action: ExtensionOperation['actio
     ...(['authorize', 'pay'].includes(action) ? { attemptKey: randomUUID() } : {}), ...(target ? { target } : {}) });
 
 async function context(tx: Tx, bookingId: number, actor?: ExtensionActor) {
-  const [row] = await tx.select({ booking: kitchenBookings, kitchen: kitchens, managerId: locations.managerId, timezone: locations.timezone, locationBuffer: locations.turnoverBufferEnabled })
+  const [row] = await tx.select({
+    booking: kitchenBookings, kitchen: kitchens, managerId: locations.managerId, timezone: locations.timezone,
+    locationBuffer: locations.turnoverBufferEnabled, locationDailyLimit: locations.defaultDailyBookingLimit,
+  })
     .from(kitchenBookings).innerJoin(kitchens, eq(kitchens.id, kitchenBookings.kitchenId))
     .innerJoin(locations, eq(locations.id, kitchens.locationId)).where(eq(kitchenBookings.id, bookingId)).limit(1);
   if (!row || actor && !(actor.role === 'admin' || actor.role === 'chef' && actor.id === row.booking.chefId || actor.role === 'manager' && actor.id === row.managerId))
@@ -121,8 +124,11 @@ async function scheduleFacts(tx: Tx, row: Context, visit: VisitCloseout, now: Da
       ...holds.filter(hold => hold.id !== excludeHoldId).flatMap(hold => occupiedIntervals({ startTime: '', endTime: '', selectedSlots: hold.selectedSlots })
         .map(slot => operatingSlotInstants(hold.operatingDate, slot, hold.windowStartTime, row.timezone!))),
     ] : undefined;
+  const dailyLimit = row.kitchen.defaultDailyBookingLimit ?? row.locationDailyLimit ?? null;
   return { operatingDate, window: { startTime: window.startTime, endTime: window.endTime }, occupied, turnoverOccupied,
-    durationMinutes: Math.round(Number(row.booking.durationHours) * 60), maxMinutes: row.kitchen.defaultDailyBookingLimit == null ? null : row.kitchen.defaultDailyBookingLimit * 60 };
+    durationMinutes: Math.round(Number(row.booking.durationHours) * 60),
+    // null = no longest-booking cap (opening hours only).
+    maxMinutes: dailyLimit == null ? null : dailyLimit * 60 };
 }
 async function available(tx: Tx, row: Context, visit: VisitCloseout, now: Date, excludeHoldId?: string | null): Promise<ExtensionOption[]> {
   const facts = await scheduleFacts(tx, row, visit, now, excludeHoldId);

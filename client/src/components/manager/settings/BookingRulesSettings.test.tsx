@@ -53,7 +53,7 @@ const baseLocation = {
   id: 7,
   name: "Harbour Kitchen",
   cancellationPolicyHours: 24,
-  defaultDailyBookingLimit: 2,
+  defaultDailyBookingLimit: null as number | null,
   minimumBookingWindowHours: 1,
 };
 
@@ -105,7 +105,7 @@ describe("BookingRulesSettings", () => {
       expect(onSave).toHaveBeenCalledWith({
         locationId: 7,
         cancellationPolicyHours: 24,
-        defaultDailyBookingLimit: 2,
+        defaultDailyBookingLimit: null,
         minimumBookingWindowHours: 48,
         checkinWindowMinutesBefore: null,
         noShowGraceMinutes: null,

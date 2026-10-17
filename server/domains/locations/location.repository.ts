@@ -80,7 +80,7 @@ export class LocationRepository {
           preferredContactMethod: dto.preferredContactMethod || 'email',
           cancellationPolicyHours: dto.cancellationPolicyHours ?? 24,
           cancellationPolicyMessage: dto.cancellationPolicyMessage || 'Bookings cannot be cancelled within {hours} hours of the scheduled time.',
-          defaultDailyBookingLimit: dto.defaultDailyBookingLimit || 2,
+          defaultDailyBookingLimit: dto.defaultDailyBookingLimit ?? null,
           maxAdvanceBookingDays: dto.maxAdvanceBookingDays,
           turnoverBufferEnabled: dto.turnoverBufferEnabled,
           maxBookingDays: dto.maxBookingDays,

@@ -4184,5 +4184,8 @@
   "bpWeeklyLabel": "Limiter les heures par chef chaque semaine",
   "bpWeeklyHelp": "Facultatif. Compte toute la semaine du lundi au dimanche dans le fuseau horaire de cette cuisine, y compris les heures déjà utilisées. Les heures annulées ne comptent pas. Les journées complètes comptent comme les heures d’ouverture de ce jour.",
   "bpWeeklyOff": "Aucune limite d’heures hebdomadaires par chef.",
-  "bpWeeklyOnValue": "{count, plural, one {Chaque chef peut réserver jusqu’à 1 heure ici chaque semaine du lundi au dimanche.} other {Chaque chef peut réserver jusqu’à # heures ici chaque semaine du lundi au dimanche.}}"
+  "bpWeeklyOnValue": "{count, plural, one {Chaque chef peut réserver jusqu’à 1 heure ici chaque semaine du lundi au dimanche.} other {Chaque chef peut réserver jusqu’à # heures ici chaque semaine du lundi au dimanche.}}",
+  "bpLongestLabelOff": "Réservation la plus longue : aucune limite",
+  "bpLongestOff": "Aucune limite. Une réservation horaire peut durer jusqu'aux heures d'ouverture de la cuisine ce jour-là.",
+  "bpTermsSubheading": "Règles de la maison pour les chefs (équipement, nettoyage, sécurité). Les règles de réservation, d'annulation, de paiement et de réclamation sont définies dans les Politiques de réservation et les conditions de Local Cooks, et ce document ne peut pas les modifier."
 }

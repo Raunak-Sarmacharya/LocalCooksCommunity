@@ -22,12 +22,7 @@ import {
 import { StorageRequestCard } from "@/components/manager/storage/StorageRequestCard";
 import { StorageUnitCard } from "@/components/manager/storage/StorageUnitCard";
 
-interface ManagerStorageBookingsPageProps {
-  /** Kept for the dashboard's view contract; the board no longer routes to the legacy queues. */
-  onOpenOverstays?: () => void;
-}
-
-export default function ManagerStorageBookingsPage(_props: ManagerStorageBookingsPageProps = {}) {
+export default function ManagerStorageBookingsPage() {
   const { t } = useTranslation("storage");
   const { kitchens } = useManagerDashboard();
   const kitchenIds = useMemo(() => kitchens.map((kitchen) => kitchen.id), [kitchens]);

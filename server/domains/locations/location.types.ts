@@ -16,7 +16,7 @@ export interface CreateLocationDTO {
   preferredContactMethod?: 'email' | 'phone' | 'both';
   cancellationPolicyHours?: number;
   cancellationPolicyMessage?: string;
-  defaultDailyBookingLimit?: number;
+  defaultDailyBookingLimit?: number | null;
   maxAdvanceBookingDays?: number;
   turnoverBufferEnabled?: boolean;
   maxBookingDays?: number;
@@ -48,7 +48,7 @@ export interface UpdateLocationDTO {
   preferredContactMethod?: 'email' | 'phone' | 'both';
   cancellationPolicyHours?: number;
   cancellationPolicyMessage?: string;
-  defaultDailyBookingLimit?: number;
+  defaultDailyBookingLimit?: number | null;
   maxAdvanceBookingDays?: number;
   turnoverBufferEnabled?: boolean;
   maxBookingDays?: number;
@@ -97,7 +97,8 @@ export interface LocationDTO {
   preferredContactMethod: string;
   cancellationPolicyHours: number;
   cancellationPolicyMessage: string;
-  defaultDailyBookingLimit: number;
+  /** Null = no per-request hours cap (opening hours only). */
+  defaultDailyBookingLimit: number | null;
   minimumBookingWindowHours: number;
   maxAdvanceBookingDays?: number;
   turnoverBufferEnabled?: boolean;

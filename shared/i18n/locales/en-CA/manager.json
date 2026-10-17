@@ -4184,5 +4184,8 @@
   "bpWeeklyLabel": "Limit hours per chef each week",
   "bpWeeklyHelp": "Optional. Counts the whole Monday–Sunday week in this kitchen’s time zone, including hours already used. Cancelled hours do not count. Full days count as that day’s opening hours.",
   "bpWeeklyOff": "No weekly hours limit for each chef.",
-  "bpWeeklyOnValue": "{count, plural, one {Each chef can book up to 1 hour here each Monday–Sunday week.} other {Each chef can book up to # hours here each Monday–Sunday week.}}"
+  "bpWeeklyOnValue": "{count, plural, one {Each chef can book up to 1 hour here each Monday–Sunday week.} other {Each chef can book up to # hours here each Monday–Sunday week.}}",
+  "bpLongestLabelOff": "Longest booking: no limit",
+  "bpLongestOff": "No limit. One hourly booking can run up to the kitchen's opening hours that day.",
+  "bpTermsSubheading": "House rules for chefs (equipment use, cleaning, safety). Booking, cancellation, payment and claim rules are set in Booking policies and Local Cooks' terms, and can't be changed by this document."
 }

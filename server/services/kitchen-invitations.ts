@@ -71,6 +71,7 @@ async function context(kitchenId: number) {
     locationId: locations.id, locationName: locations.name, managerId: locations.managerId,
     timezone: locations.timezone, hourlyRate: kitchens.hourlyRate, dailyRate: kitchens.dailyRate,
     taxRatePercent: kitchens.taxRatePercent, listingStatus: kitchens.listingStatus, active: kitchens.isActive,
+    kitchenDailyLimit: kitchens.defaultDailyBookingLimit, locationDailyLimit: locations.defaultDailyBookingLimit,
   }).from(kitchens).innerJoin(locations, eq(locations.id, kitchens.locationId))
     .where(eq(kitchens.id, kitchenId)).limit(1);
   if (!row || !row.active || row.listingStatus !== 'active') throw new InvitationError('Kitchen not found.', 404);
@@ -118,6 +119,9 @@ export async function previewKitchenInvitation(managerId: number, input: Invitat
   const availability = useDaily ? dailyAvailability : hourlyAvailability;
   const slots = availability.slots || [];
   const pricingMode = useDaily || Number(ctx.hourlyRate || 0) <= 0 ? 'daily' as const : 'hourly' as const;
+  // Longest booking: null at kitchen + location = no cap; otherwise hourly length must fit.
+  const dailyLimit = ctx.kitchenDailyLimit ?? ctx.locationDailyLimit ?? null;
+  const exceedsDailyLimit = pricingMode === 'hourly' && dailyLimit != null && slots.length > dailyLimit;
   // An unavailable time still gets priced by the hours asked for, so the kitchen reads "not available", not a price error.
   const [startH, startM] = input.startTime.split(':').map(Number), [endH, endM] = input.endTime.split(':').map(Number);
   const requestedHours = ((endH * 60 + endM - startH * 60 - startM + 1440) % 1440) / 60;
@@ -140,6 +144,7 @@ export async function previewKitchenInvitation(managerId: number, input: Invitat
       inArray(kitchenInvitations.status, ['sent', 'accepted_pending_payment'])));
   const warnings = activeInvitations.some(row => overlaps(input, row))
     ? [tLocale(locale, 'booking:invOverlapWarning')] : [];
+  const available = eligibility.canBook && availability.valid && !conflict && !exceedsDailyLimit;
   return {
     pricing: {
       listSubtotalCents, offeredSubtotalCents, discount: input.discount || null,
@@ -148,11 +153,12 @@ export async function previewKitchenInvitation(managerId: number, input: Invitat
       managerEstimatedPayoutCents: fees.managerReceivesInCents,
     },
     expiresAt: expiresAt.toISOString(),
-    available: eligibility.canBook && availability.valid && !conflict,
-    ...(!eligibility.canBook || !availability.valid || conflict ? { unavailableReason: !eligibility.canBook
+    available,
+    ...(!available ? { unavailableReason: !eligibility.canBook
       ? tLocale(locale, 'booking:invUnavailable')
       : conflict ? tLocale(locale, 'booking:invPendingConflict')
-        : tLocale(locale, 'booking:invUnavailable') } : {}),
+        : exceedsDailyLimit ? tLocale(locale, 'booking:invUnavailable')
+          : tLocale(locale, 'booking:invUnavailable') } : {}),
     warnings,
     internal: { ctx, slots, pricingMode, policy, windowStartTime: availability.windowStartTime || input.startTime },
   };

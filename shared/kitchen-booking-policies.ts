@@ -23,7 +23,10 @@ export const CONFIRMED_BOOKING_REFUND_POLICY =
   'After confirmation, you can cancel immediately under your booking’s saved policy. Any refund keeps the actual card processing fee. Review the exact dollars before cancelling.';
 
 export function isKitchenBookingDurationValid(kitchen: KitchenPolicies, location: KitchenPolicies | null | undefined) {
-  return (kitchen.minimumBookingHours ?? 0) <= resolveKitchenBookingPolicies(kitchen, location).defaultDailyBookingLimit;
+  const limit = resolveKitchenBookingPolicies(kitchen, location).defaultDailyBookingLimit;
+  // NULL = no longest-booking cap; any minimum is fine.
+  if (limit == null) return true;
+  return (kitchen.minimumBookingHours ?? 0) <= limit;
 }
 
 export function effectiveBookingWindowDays(kitchen: KitchenPolicies, location: KitchenPolicies | null | undefined, cap = 90) {
@@ -138,6 +141,7 @@ export function resolveKitchenBookingPolicies(kitchen: KitchenPolicies, location
     weeklyChefHoursLimit: kitchen.weeklyChefHoursLimit ?? null,
     cancellationPolicyHours: kitchen.cancellationPolicyHours ?? location?.cancellationPolicyHours ?? 24,
     minimumBookingWindowHours: kitchen.minimumBookingWindowHours ?? location?.minimumBookingWindowHours ?? 1,
-    defaultDailyBookingLimit: kitchen.defaultDailyBookingLimit ?? location?.defaultDailyBookingLimit ?? 2,
+    // NULL at both levels = no per-request hours cap (opening hours only).
+    defaultDailyBookingLimit: kitchen.defaultDailyBookingLimit ?? location?.defaultDailyBookingLimit ?? null,
   };
 }

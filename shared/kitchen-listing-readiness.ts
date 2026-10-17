@@ -334,7 +334,8 @@ export interface KitchenReadinessDetails {
    * manager confirm what a chef is agreeing to, not to report a gap.
    */
   cancellationPolicyHours: number;
-  dailyBookingLimit: number;
+  /** Null = no per-request hours cap (opening hours only). */
+  dailyBookingLimit: number | null;
   minimumBookingWindowHours: number;
   minimumBookingHours: number;
 }

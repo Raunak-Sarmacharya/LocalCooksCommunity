@@ -16,7 +16,7 @@ vi.mock("@tanstack/react-query", () => ({
   useQueries: () => [
     { data: [{ id: 1, locationId: 33 }, { id: 2, locationId: 34 }] },
     { data: [] }, { data: { pendingCheckouts: [] } }, { data: { claims: [] }, isError: state.failed },
-    { data: { overstays: [] } }, { data: { bookings: [{ id: 3, kitchenId: 10 }, { id: 4, kitchenId: 11 }] } },
+    { data: { bookings: [{ id: 3, kitchenId: 10 }, { id: 4, kitchenId: 11 }] } },
   ],
 }));
 import { useManagerOverviewActivity } from "./use-manager-overview-activity";
