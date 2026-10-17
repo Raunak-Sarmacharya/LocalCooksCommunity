@@ -425,7 +425,7 @@
   "cpCancelled": "Votre réservation est annulée.",
   "cpFeePending": "Vous pouvez annuler maintenant. Local Cooks doit vérifier les frais réels de traitement de carte avant d’afficher et d’envoyer le remboursement exact.",
   "cpPendingButton": "Annuler et demander la vérification du remboursement",
-  "cpAddons": "L’équipement et l’entreposage liés à cette séance et non commencés sont inclus. L’entreposage utilisé reste réservé jusqu’au retrait confirmé; contactez Local Cooks pour obtenir de l’aide.",
+  "cpAddons": "L’équipement lié à cette séance et non commencé est inclus.",
   "cpKitchenCancel": "Annuler au nom de la cuisine",
   "cpKitchenConsequence": "Le chef reçoit un remboursement complet, frais de traitement de carte inclus. Votre versement est de 0,00 $. Des annulations fréquentes nuisent à votre annonce.",
   "cpReason": "Expliquez au chef pourquoi la cuisine doit annuler",
