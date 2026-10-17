@@ -149,13 +149,15 @@ export function LocationCancellationPolicyEditor({ locationId }: { locationId: n
     } catch (error) { setMessage(error instanceof Error ? error.message : t('cpError')); }
     finally { setBusy(false); }
   };
-  const followingNames = (data?.following ?? []).map((k) => k.name).join(', ');
+  const following = data?.following ?? [];
+  const overriding = data?.overriding ?? [];
+  const followingNames = following.map((k) => k.name).join(', ');
 
   return <PolicySection title={t('cpTitle')} description={mt('bpCancelLocationDescription')} testId="location-cancellation-section"
     footer={data && !isError ? <div className="space-y-3">
       <SettingChangePreview whatChanges={mt('scpCancellationWhat', { summary })} showPreview={dirty}
-        appliesTo={mt('bpCancelLocationApplies', { count: data.following.length })}
-        rightNow={dirty && data.following.length ? mt('bpCancelLocationImpact', { kitchens: followingNames }) : undefined}
+        appliesTo={mt('bpCancelLocationApplies', { count: following.length })}
+        rightNow={dirty && following.length ? mt('bpCancelLocationImpact', { kitchens: followingNames }) : undefined}
         undo={mt('scpCancellationUndo')} confirm actionLabel={mt('scpSaveCancellation')} align="end" quietWhenDisabled
         secondaryAction={dirty ? <Button variant="ghost" className="min-h-11" disabled={busy} onClick={() => { setNotice(data.noticeHours); setCharge(data.lateChargePercent); }}>{mt('bpDiscard')}</Button> : undefined}
         cancelLabel={mt('scpKeepPolicy')} disabled={busy || !dirty} onSave={save} />
@@ -164,19 +166,19 @@ export function LocationCancellationPolicyEditor({ locationId }: { locationId: n
     {isError || !data ? <div role="alert" className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm">
       {t('cpError')}<Button variant="outline" className="min-h-11" onClick={() => void refetch()}>{t('cpRetry')}</Button></div> : <div className="divide-y divide-border">
       <SettingsRow id={`loc-cp-notice-${locationId}`} label={mt('bpCancelNoticeLabel')}
-        hint={<span className="block">{mt('bpUsedByKitchens', { count: data.following.length })}
-          {dirty && data.following.length > 0 ? <span className="mt-1 block text-amber-700 dark:text-amber-400">{mt('bpLocationDefaultWarning', { kitchens: followingNames })}</span> : null}
-          {data.overriding.length > 0 ? <span className="mt-1 block">{mt('bpOverridesUnaffected', { kitchens: data.overriding.map((k) => k.name).join(', ') })}</span> : null}
+        hint={<span className="block">{mt('bpUsedByKitchens', { count: following.length })}
+          {dirty && following.length > 0 ? <span className="mt-1 block text-amber-700 dark:text-amber-400">{mt('bpLocationDefaultWarning', { kitchens: followingNames })}</span> : null}
+          {overriding.length > 0 ? <span className="mt-1 block">{mt('bpOverridesUnaffected', { kitchens: overriding.map((k) => k.name).join(', ') })}</span> : null}
         </span>}>
         <Select value={String(noticeHours)} disabled={busy} onValueChange={value => setNotice(Number(value))}>
           <SelectTrigger id={`loc-cp-notice-${locationId}`} className={SELECT_CLASS}><SelectValue /></SelectTrigger>
-          <SelectContent>{(data.settings.noticeOptions ?? [24, 48, 72]).map(hours => <SelectItem key={hours} value={String(hours)}>{t('cpHours', { hours })}</SelectItem>)}</SelectContent>
+          <SelectContent>{(data.settings?.noticeOptions ?? [24, 48, 72]).map(hours => <SelectItem key={hours} value={String(hours)}>{t('cpHours', { hours })}</SelectItem>)}</SelectContent>
         </Select>
       </SettingsRow>
       <SettingsRow id={`loc-cp-charge-${locationId}`} label={mt('bpCancelChargeLabel')}>
         <Select value={String(lateChargePercent)} disabled={busy} onValueChange={value => setCharge(Number(value))}>
           <SelectTrigger id={`loc-cp-charge-${locationId}`} className={SELECT_CLASS}><SelectValue /></SelectTrigger>
-          <SelectContent>{(data.settings.chargeOptions ?? [50, 100]).map(charge => <SelectItem key={charge} value={String(charge)}>{mt(charge === 50 ? 'bpChargeHalf' : 'bpChargeFull')}</SelectItem>)}</SelectContent>
+          <SelectContent>{(data.settings?.chargeOptions ?? [50, 100]).map(charge => <SelectItem key={charge} value={String(charge)}>{mt(charge === 50 ? 'bpChargeHalf' : 'bpChargeFull')}</SelectItem>)}</SelectContent>
         </Select>
       </SettingsRow>
       <div className="space-y-1 px-4 py-3 text-sm">
