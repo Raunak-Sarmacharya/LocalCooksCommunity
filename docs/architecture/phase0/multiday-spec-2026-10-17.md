@@ -57,3 +57,16 @@ tax %), arrival timing. Changed: longest booking (no default cap), buffer (Off/1
 keeps its title with a subheading that it holds house rules and can't change Local Cooks booking/refund/payment/claim rules.
 Removed: the legacy "Storage Overstay Penalties" page and its dashboard items (retired storage model; its charge action was
 already refused server-side), and dead unrouted location-settings screens holding stale duplicate booking fields.
+
+## Where each setting lives (owner, Oct 17)
+Model: location defaults that a kitchen can override (The Food Corridor sets cancellation and scheduling rules once per
+facility, with hours/rates per space). Every field must show its source ("Location default" / "Set for this kitchen · Use
+the location's rule"); editing a location default warns how many kitchens use it; "Copy these rules to your other kitchens"
+when a location has 2+ kitchens. Local Cooks overrides show locked with the reason (as extra time does today).
+| Level | Settings |
+|---|---|
+| Location only | Terms and conditions / house rules (chefs apply to and accept terms per location), application requirements, arrival timing, **tax rate (HST %)** — moved from kitchen; kitchen pages show "Set for {location}" |
+| Location default + kitchen override | Advance notice, how far ahead, shortest/longest booking, buffer, multi-day on/off + limit, **cancellation policy** (chefs still see and freeze the exact policy of the kitchen they book) |
+| Kitchen only | Hourly/daily rate, opening hours, equipment, extra time auto-approve, **weekly hours limit per chef** (labelled "at this kitchen") |
+HST (owner): HST on the kitchen price always goes to the kitchen, which remits it. Open for the accountant: HST on the Local
+Cooks service fee (if Local Cooks is GST/HST-registered) and the registration number for receipts.
