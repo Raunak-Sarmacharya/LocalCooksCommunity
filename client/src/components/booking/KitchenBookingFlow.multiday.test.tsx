@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -46,7 +46,7 @@ async function open() {
     <KitchenBookingFlow locationId={1} locationName="Harbour" onCancel={() => {}} />
   </QueryClientProvider>);
   await screen.findByText('Select Date');
-  await waitFor(() => expect(day(7)).not.toHaveAttribute('aria-disabled', 'true'));
+  await waitFor(() => expect(day(7) ?? screen.getAllByRole('gridcell', { name: '7' })[0]).not.toHaveAttribute('aria-disabled', 'true'));
 }
 function day(number: number) {
   return Array.from(document.querySelectorAll('button')).find(button => button.textContent === String(number) && button.getAttribute('aria-label')?.includes('October'))!;
@@ -74,7 +74,7 @@ describe('the existing flow with more days', () => {
     await open();
     for (const [number, reason] of [[4, 'Booked by someone else'], [5, 'Kitchen closed'], [6, 'Too soon'], [8, 'Over your weekly hours limit'], [10, 'Beyond how far ahead you can book']] as const) {
       const button = day(number); expect(button).toHaveAccessibleName(new RegExp(reason)); expect(button).toHaveAttribute('aria-disabled', 'true');
-      button.focus(); expect(button).toHaveFocus(); expect(screen.getByRole('status')).toHaveTextContent(reason);
+      act(() => button.focus()); expect(button).toHaveFocus(); expect(screen.getByRole('status')).toHaveTextContent(reason);
       fireEvent.click(button); expect(button).not.toHaveAttribute('aria-selected', 'true');
     }
   });

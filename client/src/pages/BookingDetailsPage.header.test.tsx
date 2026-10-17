@@ -743,7 +743,7 @@ it('shows a dated chef booking as a span, day count and chronological day list w
   render(<BookingDetailsPage />);
   expect(await screen.findByTestId('booking-day-list')).toHaveTextContent('Jan 15, 2030');
   expect(screen.getByTestId('booking-header')).toHaveTextContent('3 days');
-  expect(screen.getByTestId('booking-header')).toHaveTextContent(/Jan 15.*Jan 19/);
+  expect(screen.getByTestId('booking-header')).toHaveTextContent(/January 15.*January 19/);
   expect(screen.getByRole('link', { name: 'Open your visit' })).toHaveAttribute('href', '/booking/5/visit?visitId=11');
   expect(screen.getByTestId('payment-card')).toHaveTextContent('$300.00');
   expect(screen.getByTestId('cancellation-card')).toHaveTextContent(/Jan 14.*50%.*every day/);

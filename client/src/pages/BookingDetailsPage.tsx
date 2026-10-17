@@ -1253,21 +1253,32 @@ export default function BookingDetailsPage() {
   const tz = booking?.location?.timezone || undefined;
   const lang = i18n.language;
   const closeoutVisits = booking?.closeout?.visits || [];
+  const headerDay = datedBooking ? bookingDays.find(visit => {
+    if (visit.scheduleState !== 'active' || visit.checkinStatus === 'checked_out') return false;
+    const clock = closeoutVisits.find(clock => clock.visitId === visit.id);
+    if (clock) return Date.parse(clock.scheduledEndAt) > nowMs;
+    try { return createBookingDateTime(calendarDateForBookingTime(visit.visitDate!.slice(0, 10), visit.endTime, visit.operatingWindowStartTime, visit.startTime), visit.endTime, tz!).getTime() > nowMs; }
+    catch { return false; }
+  }) ?? bookingDays.filter(visit => visit.scheduleState === 'active').at(-1) : undefined;
+  const headerClock = headerDay ? closeoutVisits.find(clock => clock.visitId === headerDay.id) : undefined;
   const inspectionDue = closeoutVisits[0]?.inspection?.deadline;
   const inspectionDueText = inspectionDue ? formatEventTimestamp(inspectionDue) : null;
-  const inspectionCanRespond = closeoutVisits.some(visit => visit.inspection.canRespond);
+  const inspectionCanRespond = datedBooking ? !!headerClock?.inspection.canRespond : closeoutVisits.some(visit => visit.inspection.canRespond);
   const visitBounds = (() => {
     if (!booking || !tz) return null;
     try {
-      const day = booking.bookingDate.split('T')[0];
-      const startAt = createBookingDateTime(calendarDateForBookingTime(day, booking.startTime, booking.operatingWindowStartTime), booking.startTime, tz);
-      const endAt = createBookingDateTime(calendarDateForBookingTime(day, booking.endTime, booking.operatingWindowStartTime, booking.startTime), booking.endTime, tz);
+      const date = headerDay?.visitDate?.slice(0, 10) ?? booking.bookingDate.split('T')[0];
+      const start = headerDay?.startTime ?? booking.startTime;
+      const end = headerDay?.endTime ?? booking.endTime;
+      const anchor = headerDay?.operatingWindowStartTime ?? booking.operatingWindowStartTime;
+      const startAt = createBookingDateTime(calendarDateForBookingTime(date, start, anchor), start, tz);
+      const endAt = createBookingDateTime(calendarDateForBookingTime(date, end, anchor, start), end, tz);
       return { startAt, endAt, opensAt: new Date(startAt.getTime() - (booking.checkinWindowMinutesBefore ?? 15) * 60_000) };
     } catch { return null; }
   })();
   const phase: BookingHeaderPhase = booking ? bookingHeaderPhase({
-    status: booking.status, checkinStatus: booking.checkinStatus, visits: booking.visits, closeoutPhase: booking.closeout?.phase,
-    visitAttendance: booking.closeout?.legacy ? undefined : booking.closeout?.visits?.map(visit => visit.attendance), inspectionCanRespond, startAt: visitBounds?.startAt, endAt: visitBounds?.endAt, checkinOpensAt: visitBounds?.opensAt, timezone: tz,
+    status: booking.status, checkinStatus: headerDay?.checkinStatus ?? booking.checkinStatus, visits: datedBooking ? undefined : booking.visits, closeoutPhase: datedBooking ? headerClock?.phase : booking.closeout?.phase,
+    visitAttendance: datedBooking ? headerClock ? [headerClock.attendance] : undefined : booking.closeout?.legacy ? undefined : booking.closeout?.visits?.map(visit => visit.attendance), inspectionCanRespond, startAt: visitBounds?.startAt, endAt: visitBounds?.endAt, checkinOpensAt: visitBounds?.opensAt, timezone: tz,
   }) : 'confirmed';
   const cancelCause = booking ? bookingCancelCause({ status: booking.status, chefId: booking.chefId, paymentDecision: booking.paymentDecision }) : null;
   const findAnotherTimeHref = booking && !isManagerView && (cancelCause === 'declined' || cancelCause === 'expired') && (booking.location?.id ?? booking.kitchen?.locationId)
@@ -1386,7 +1397,7 @@ export default function BookingDetailsPage() {
     if (primary === 'review_request') openActionDialog();
     else if (primary === 'review_cancellation') openManagementDialog();
     else if (primary === 'review_checkout' || primary === 'inspect_visit') navigate(inspectionHref);
-    else if (primary === 'open_visit') navigate(`/booking/${booking.id}/visit`);
+    else if (primary === 'open_visit') navigate(`/booking/${booking.id}/visit${headerDay ? `?visitId=${headerDay.id}` : ''}`);
     // "They came": the existing visit-record statement (report_attended), with an optional note for the actual times.
     else if (primary === 'answer_attendance') openFix('report_attended');
   };

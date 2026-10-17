@@ -1121,13 +1121,12 @@ export default function KitchenBookingFlow({
 
   const blockedDateReason = (date: Date) => {
     const key = localDateKey(date);
+    if (selectedDates.includes(key)) return null;
     const limitReason = dateSelectionReason(key, selectedDates, Math.min(dayRules.maxBookingDays ?? 7, 14));
-    if (limitReason) return t(limitReason === 'count' ? 'mdCountLimit' : 'mdSpanLimit', { count: dayRules.maxBookingDays ?? 7 });
     if (date < today) return t('mdReasonPast');
     if (bookableThrough && key > bookableThrough) return t('mdReasonAdvance');
     const status = dateStatuses[key];
-    if (selectedDates.includes(key)) return null;
-    if (status?.hourly || status?.fullDay) return null;
+    if (status?.hourly || status?.fullDay) return limitReason ? t(limitReason === 'count' ? 'mdCountLimit' : 'mdSpanLimit', { count: dayRules.maxBookingDays ?? 7 }) : null;
     const reasons: Record<string, string> = { booked: 'mdReasonBooked', held: 'mdReasonBooked', closed: 'mdReasonClosed',
       notice: 'mdReasonNotice', beyond_advance_window: 'mdReasonAdvance', weekly_limit: 'mdReasonWeekly', buffer: 'mdReasonBuffer',
       clock_change: 'mdReasonClock', not_open_to_you: 'mdReasonAccess', maintenance: 'mdReasonMaintenance' };
