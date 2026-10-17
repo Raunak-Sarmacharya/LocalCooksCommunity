@@ -70,9 +70,9 @@ FROM (
   FROM kitchen_cancellation_policies p
   WHERE p.status = 'published'
   ORDER BY p.kitchen_id, p.version DESC
-) latest
-JOIN locations loc ON loc.id = k.location_id
+) latest, locations loc
 WHERE latest.kitchen_id = k.id
+  AND loc.id = k.location_id
   AND (latest.notice_hours IS DISTINCT FROM loc.cancellation_notice_hours
     OR latest.late_charge_percent IS DISTINCT FROM loc.cancellation_late_charge_percent);
 
