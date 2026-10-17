@@ -253,7 +253,7 @@ export function availableSupportActions(ctx: Pick<Context, 'booking' | 'payments
   // provider and either completes it from the original receipt or closes it as never executed, so it can never stay stuck.
   if (ctx.actions.some(row => row.status === 'recovery_required' && MONEY_ATTEMPT_TYPES.includes(row.actionType)) && !ctx.actions.some(row => row.status === 'executing'))
     result.push('resolve_money_attempt');
-  if (!busy && !recovering && ctx.flags.every(f => f.kind === 'chargeback') && !moneyNeedsReview && original?.payoutTiming === 'after_closeout'
+  if (!busy && !recovering && (original?.payoutPartition === 'per_day' || ctx.flags.every(f => f.kind === 'chargeback')) && !moneyNeedsReview && original?.payoutTiming === 'after_closeout'
     && !original.transferId && (original.payoutHoldReason === 'reported_issue' || original.payoutPartition === 'per_day')) result.push('release_payout');
   if (!busy && !recovering && !flags && !moneyNeedsReview && original && ['succeeded', 'partially_refunded'].includes(original.status)
     && cents(original.amount) > cents(original.refundAmount)) result.push('goodwill_refund');

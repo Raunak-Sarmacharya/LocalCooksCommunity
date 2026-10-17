@@ -286,7 +286,10 @@ export async function upcomingKitchenPayouts(managerId: number) {
   const sources = await db.select({ bookingId: paymentTransactions.bookingId }).from(paymentTransactions).where(and(
     eq(paymentTransactions.managerId, managerId), eq(paymentTransactions.payoutTiming, 'after_closeout'), isNull(paymentTransactions.transferId),
     inArray(paymentTransactions.bookingType, ['kitchen', 'bundle']), inArray(paymentTransactions.status, capturedStatuses as Source['status'][]),
-    sql`COALESCE(${paymentTransactions.metadata}->>'payoutNoEntitlement', 'false') <> 'true'`)).orderBy(asc(paymentTransactions.id)).limit(200);
+    sql`COALESCE(${paymentTransactions.metadata}->>'payoutNoEntitlement', 'false') <> 'true'`,
+    sql`(${paymentTransactions.payoutPartition} IS DISTINCT FROM 'per_day' OR EXISTS (SELECT 1 FROM kitchen_booking_day_payouts d
+      WHERE d.source_id = ${paymentTransactions.id} AND d.transfer_id IS NULL AND NOT d.no_entitlement)
+      OR NOT EXISTS (SELECT 1 FROM kitchen_booking_day_allocations a WHERE a.source_id = ${paymentTransactions.id}))`)).orderBy(asc(paymentTransactions.id)).limit(200);
   const ids = Array.from(new Set(sources.map(source => source.bookingId)));
   if (!ids.length) return { totalCents: 0, payouts: [] };
   const bookings = await db.select({ id: kitchenBookings.id, referenceCode: kitchenBookings.referenceCode }).from(kitchenBookings)

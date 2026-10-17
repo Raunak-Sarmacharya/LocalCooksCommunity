@@ -13,7 +13,7 @@ vi.mock('./booking-lifecycle-delivery', () => ({ queueBookingLifecycleEvent: h.e
 vi.mock('./booking-documents', () => ({ issueBookingDocumentsSafely: vi.fn() }));
 vi.mock('./stripe-service', () => ({ getStripeClient: () => ({ transfers: { create: h.create, list: async () => ({ data: structuredClone(h.transfers), has_more: h.more }) },
   charges: { retrieve: async () => h.charge } }), getDatedCaptureEvidence: async () => h.evidence }));
-import { dayEntitlement, ensureDayPayoutRows, releaseDayPayout, releaseBookingDayPayouts, readDayPayouts, sweepDayPayouts, flushDayPayoutNotices } from './kitchen-day-payouts';
+import { dayEntitlement, ensureDayPayoutRows, releaseDayPayout, releaseBookingDayPayouts, readDayPayouts, sweepDayPayouts, flushDayPayoutNotices, summarizeDayPayouts } from './kitchen-day-payouts';
 import { partitionDatedSupplement, syncDayPayoutSource } from './kitchen-day-payout-sources';
 import { assertBookingMoneyWritable } from './booking-money-guard';
 import { dayPaidSql, dayPendingSql } from './revenue-service-v2';
@@ -173,7 +173,9 @@ describe('CP5 daily releases', () => {
       SUM(${dayPaidSql})::integer AS paid, SUM(${dayPendingSql})::integer AS pending FROM payment_transactions pt`)).rows[0];
     expect(report).toEqual({ captured: 4680, fee: 80, paid: 2200, pending: 2200 });
     expect((await get(s.paymentHistory))).toHaveLength(1);
-    expect((await readDayPayouts([1])).map(d => d.status)).toEqual(['sent', 'scheduled']);
+    const days = await readDayPayouts([1]);
+    expect(days.map(d => d.status)).toEqual(['sent', 'scheduled']);
+    expect(summarizeDayPayouts(days).amountCents).toBe(2200);
   });
   it('pays a cancelled retained share at that visit scheduled end + grace', async () => {
     await h.db.update(s.kitchenBookingVisits).set({ scheduleState: 'cancelled' }).where(eq(s.kitchenBookingVisits.id, 2));
@@ -238,6 +240,10 @@ describe('CP5 daily releases', () => {
     await h.db.update(s.paymentTransactions).set({ metadata: { kitchenChangeId: 'no_manifest' } });
     h.evidence = { intentId: 'pi_days', capturedCents: 4680, currency: 'cad', feeCents: 200, chargeId: 'ch_days', balanceTransactionId: 'bt_days' };
     await expect(syncDayPayoutSource(1)).rejects.toThrow('allocations required'); expect(h.create).not.toHaveBeenCalled();
+  });
+  it('removes fully paid daily sources from the bounded upcoming query', async () => {
+    await releaseBookingDayPayouts(1, new Date('2099-10-08T14:00:00Z'));
+    expect(await (await import('./kitchen-payout-service')).upcomingKitchenPayouts(2)).toEqual({ totalCents: 0, payouts: [] });
   });
   it('executes migration FKs and rejects a problem linked to a nonexistent visit', async () => {
     await expect(h.db.insert(s.commitmentProblems).values({ sourceKey: 'bad', kind: 'live', bookingId: 1, visitId: 9999, reportedBy: 3, description: 'Bad visit' })).rejects.toThrow();

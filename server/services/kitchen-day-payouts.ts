@@ -300,5 +300,5 @@ export function summarizeDayPayouts(days: Awaited<ReturnType<typeof readDayPayou
     : days.some(d => d.status === 'sent') ? 'sent' : 'not_applicable', holdReason: pending.find(d => d.holdReason)?.holdReason || null,
     expectedAt: pending.map(d => d.expectedAt).filter((d): d is string => !!d).sort()[0] || null,
     sentAt: days.map(d => d.sentAt).filter((d): d is string => !!d).sort().at(-1) || null,
-    amountCents: days.reduce((sum, d) => sum + d.amountCents, 0), installments: days };
+    amountCents: (pending.length ? pending : days).reduce((sum, d) => sum + d.amountCents, 0), installments: days };
 }
