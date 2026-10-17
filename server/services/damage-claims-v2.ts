@@ -3,9 +3,11 @@ import { createHash } from 'node:crypto';
 import { and, asc, desc, eq, inArray, isNull, lte, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { damageClaims, damageEvidence, damageClaimHistory, kitchenBookings, kitchenBookingVisits,
-  kitchens, locations, users, supportActions, platformSettings } from '@shared/schema';
+  storageBookings, storageListings, kitchens, locations, users, supportActions, platformSettings } from '@shared/schema';
 import { approvedClaimAmount, claimFilingWindow, claimResponseDeadline, claimTotal, fileClaimInput,
   claimSupportInput, claimUpload, claimBookingHeld, validateClaimLines, type ClaimSupportInput } from '@shared/damage-claims';
+import { occupancyRange, toDateRange, localToday, type RentalDates } from '@shared/storage-rental';
+import { scheduleStorageTermPayout } from './storage-payouts';
 import { recordedDepartureAt } from '@shared/clock-closeout';
 import { calendarDateForBookingTime } from '@shared/operating-hours';
 import { createBookingDateTime } from '@shared/timezone-utils';
@@ -15,7 +17,10 @@ import { assertBookingMoneyWritable } from './booking-money-guard';
 
 export type ClaimTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export type Claim = typeof damageClaims.$inferSelect;
-export class DamageClaimError extends Error { constructor(message: string, public status = 409) { super(message); } }
+export class DamageClaimError extends Error { constructor(message: string, public status = 409, public code?: string) { super(message); } }
+export type ClaimTarget = { kind: 'booking' | 'storage'; id: number };
+export const claimBelongsTo = (claim: Pick<Claim, 'kitchenBookingId' | 'storageBookingId'>, target: ClaimTarget) =>
+  target.kind === 'storage' ? claim.storageBookingId === target.id && !claim.kitchenBookingId : claim.kitchenBookingId === target.id && !claim.storageBookingId;
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 export const chefCanSeeClaim = (claim: Claim) => !!claim.chefVisibleAt || claim.claimVersion === 1 && !!claim.submittedAt;
 export async function damageClaimsReviewFirst(tx: ClaimTx = db as unknown as ClaimTx) {
@@ -33,6 +38,7 @@ export async function claimHistory(tx: ClaimTx, claim: Claim, status: Claim['sta
   const [history] = await tx.insert(damageClaimHistory).values({ damageClaimId: claim.id, previousStatus: claim.status,
     newStatus: status, action, actionBy: actor, actionByUserId: actorId, notes: publicMessage,
     metadata: { publicMessage } }).returning();
+  if (claim.storageBookingId) await scheduleStorageTermPayout(claim.storageBookingId, tx);
   await (await import('./damage-claim-notices')).queueDamageClaimNotice(tx, { ...claim, status }, history);
 }
 async function bookingContext(bookingId: number, managerId: number, visitId: number | undefined, tx: ClaimTx) {
@@ -52,6 +58,28 @@ async function bookingContext(bookingId: number, managerId: number, visitId: num
   const window = claimFilingWindow(createBookingDateTime(endDay, visit.endTime, row.timezone), recordedDepartureAt(visit));
   return { ...row, visit, window };
 }
+async function storageClaimContext(rentalId: number, managerId: number, tx: ClaimTx) {
+  const [row] = await tx.select({ booking: storageBookings, timezone: storageBookings.timezone,
+    managerId: locations.managerId, locationId: locations.id, kitchenName: kitchens.name }).from(storageBookings)
+    .innerJoin(storageListings, eq(storageListings.id, storageBookings.storageListingId)).innerJoin(kitchens, eq(kitchens.id, storageListings.kitchenId))
+    .innerJoin(locations, eq(locations.id, kitchens.locationId)).where(eq(storageBookings.id, rentalId)).limit(1);
+  if (!row?.booking.rentalState || !row.booking.chefId || row.managerId !== managerId) throw new DamageClaimError('Storage rental not found.', 404, 'not_found');
+  if (!row.timezone || !row.booking.checkoutRequestedAt || !['move_out_requested', 'ended', 'active'].includes(row.booking.rentalState)
+    || row.booking.rentalState === 'active' && !row.booking.reopenedFrom) throw new DamageClaimError('Request move-out before reporting damage.', 409, 'claim_move_out_required');
+  const movedOut = row.booking.reopenedFrom || row.booking.checkoutRequestedAt;
+  const window = claimFilingWindow(movedOut, null);
+  const photos = (value: unknown) => Array.isArray(value) ? value.filter((url): url is string => typeof url === 'string') : [];
+  const before = [...photos(row.booking.checkinPhotoUrls), ...photos(row.booking.handoverPhotoUrls)];
+  const noBaseline = photos(row.booking.checkinPhotoUrls).length === 0;
+  return { ...row, timezone: row.timezone, window, visit: { ...row.booking, checkinPhotoUrls: before, noBaseline,
+    checkinNotes: row.booking.checkinNotes } };
+}
+export async function readStorageClaimFilingContext(rentalId: number, managerId: number) {
+  const ctx = await storageClaimContext(rentalId, managerId, db as unknown as ClaimTx);
+  return { allowed: ctx.window.allowed, deadline: ctx.window.deadline.toISOString(), endedAt: ctx.window.endedAt.toISOString(),
+    timezone: ctx.timezone, kitchenName: ctx.kitchenName, before: ctx.visit.checkinPhotoUrls, after: ctx.visit.checkoutPhotoUrls || [],
+    noBaseline: ctx.visit.noBaseline, baselineNote: ctx.visit.noBaseline ? 'No move-in photos were taken.' : null };
+}
 export async function readClaimFilingContext(bookingId: number, managerId: number, visitId?: number) {
   const ctx = await bookingContext(bookingId, managerId, visitId, db as unknown as ClaimTx);
   return { allowed: ctx.window.allowed, deadline: ctx.window.deadline.toISOString(), endedAt: ctx.window.endedAt.toISOString(),
@@ -60,33 +88,39 @@ export async function readClaimFilingContext(bookingId: number, managerId: numbe
 export async function fileDamageClaim(managerId: number, raw: unknown) {
   const parsed = fileClaimInput.safeParse(raw);
   if (!parsed.success) throw new DamageClaimError('Describe what happened and add a receipt, invoice or quote to every cost line.', 400);
-  const input = parsed.data, lines = validateClaimLines(input.lines), amount = claimTotal(lines);
+  const input = parsed.data;
+  if (claimTotal(input.lines) > 25000) throw new DamageClaimError('For amounts over $250, Local Cooks handles it with you.', 400);
+  const lines = validateClaimLines(input.lines), amount = claimTotal(lines);
+  const target: ClaimTarget = { kind: input.storageRentalId ? 'storage' : 'booking', id: (input.storageRentalId || input.bookingId)! };
   return db.transaction(async tx => {
-    await tx.execute(sql`SELECT id FROM kitchen_bookings WHERE id = ${input.bookingId} FOR UPDATE`);
+    await tx.execute(target.kind === 'storage' ? sql`SELECT id FROM storage_bookings WHERE id = ${target.id} FOR UPDATE`
+      : sql`SELECT id FROM kitchen_bookings WHERE id = ${target.id} FOR UPDATE`);
     const [existing] = await tx.select().from(damageClaims).where(and(eq(damageClaims.managerId, managerId), eq(damageClaims.requestKey, input.requestKey))).limit(1);
     if (existing) {
-      if (existing.kitchenBookingId !== input.bookingId || hash(existing.costLines) !== hash(lines) || existing.claimDescription !== input.description
+      if (!claimBelongsTo(existing, target) || hash(validateClaimLines(existing.costLines)) !== hash(lines) || existing.claimDescription !== input.description
         || (input.visitId !== undefined && existing.kitchenBookingVisitId !== input.visitId)) throw new DamageClaimError('This filing key belongs to different claim details.');
       return publicClaim(existing, tx);
     }
-    const ctx = await bookingContext(input.bookingId, managerId, input.visitId, tx);
-    if (!ctx.window.allowed) throw new DamageClaimError('Report within 72 hours of leaving the kitchen. Contact Local Cooks for help.');
+    const ctx = input.storageRentalId ? await storageClaimContext(input.storageRentalId, managerId, tx) : await bookingContext(input.bookingId!, managerId, input.visitId, tx);
+    if (!ctx.window.allowed) throw new DamageClaimError('Report within 72 hours of leaving the kitchen. Contact Local Cooks for help.', 409, input.storageRentalId ? 'claim_window_closed' : undefined);
     // One claim per visit keeps the $250 cap meaningful (no splitting); further costs go through Local Cooks.
     const visitKey = 'bookingId' in ctx.visit ? ctx.visit.id : null;
-    const [earlier] = await tx.select({ id: damageClaims.id }).from(damageClaims).where(and(eq(damageClaims.kitchenBookingId, input.bookingId),
+    const [earlier] = await tx.select({ id: damageClaims.id }).from(damageClaims).where(and(target.kind === 'storage' ? eq(damageClaims.storageBookingId, target.id) : eq(damageClaims.kitchenBookingId, target.id),
+      ...(target.kind === 'storage' ? [sql`${damageClaims.submittedAt} >= ${ctx.booking.checkoutRequestedAt}`] : []),
       eq(damageClaims.claimVersion, 2), sql`${damageClaims.status} <> 'draft'`,
       visitKey === null ? sql`${damageClaims.kitchenBookingVisitId} IS NULL` : eq(damageClaims.kitchenBookingVisitId, visitKey))).limit(1);
     if (earlier) throw new DamageClaimError('You already reported this visit. Contact Local Cooks to add more costs.', 409);
     const now = new Date();
-    const reviewFirst = await damageClaimsReviewFirst(tx);
+    const reviewFirst = target.kind === 'storage' || await damageClaimsReviewFirst(tx);
     const photos = (value: unknown) => Array.isArray(value) ? value.filter((url): url is string => typeof url === 'string') : [];
     const visitEvidence = { before: photos(ctx.visit.checkinPhotoUrls), after: photos(ctx.visit.checkoutPhotoUrls),
       checkinNotes: ctx.visit.checkinNotes, checkoutNotes: ctx.visit.checkoutNotes, endedAt: ctx.window.endedAt.toISOString(),
-      timezone: ctx.timezone, kitchenName: ctx.kitchenName, highlighted: input.selectedPhotoUrls };
+      timezone: ctx.timezone, kitchenName: ctx.kitchenName, highlighted: input.selectedPhotoUrls,
+      ...(target.kind === 'storage' ? { noBaseline: 'noBaseline' in ctx.visit && ctx.visit.noBaseline, baselineNote: 'noBaseline' in ctx.visit && ctx.visit.noBaseline ? 'No move-in photos were taken.' : undefined } : {}) };
     if (input.selectedPhotoUrls.some(url => ![...visitEvidence.before, ...visitEvidence.after].includes(url)))
       throw new DamageClaimError('Choose photos attached to this visit.', 400);
-    const [claim] = await tx.insert(damageClaims).values({ referenceCode: await generateReferenceCode('damage_claim'), claimVersion: 2,
-      requestKey: input.requestKey, bookingType: 'kitchen', kitchenBookingId: input.bookingId,
+    const [claim] = await tx.insert(damageClaims).values({ referenceCode: await generateReferenceCode('damage_claim', tx), claimVersion: 2,
+      requestKey: input.requestKey, bookingType: target.kind === 'storage' ? 'storage' : 'kitchen', kitchenBookingId: input.bookingId ?? null, storageBookingId: input.storageRentalId ?? null,
       kitchenBookingVisitId: 'bookingId' in ctx.visit ? ctx.visit.id : null, managerId, chefId: ctx.booking.chefId!, locationId: ctx.locationId,
       claimTitle: lines.every(line => line.type === 'extra_cleaning') ? 'Extra cleaning' : 'Damage and cleaning',
       claimDescription: input.description, damageDate: ctx.window.endedAt.toISOString().slice(0, 10), status: reviewFirst ? 'in_review' : 'submitted',
@@ -98,6 +132,15 @@ export async function fileDamageClaim(managerId: number, raw: unknown) {
       ...input.photos.map(photo => ({ ...photo, evidenceType: 'photo_after' as const })),
       ...lines.map(line => ({ ...line.document, description: line.description, amountCents: line.amountCents, evidenceType: 'invoice' as const })) ];
     if (evidence.length) await tx.insert(damageEvidence).values(evidence.map(item => ({ ...item, uploadedBy: managerId, damageClaimId: claim.id })));
+    if (input.storageRentalId) {
+      const rental = ctx.booking as typeof storageBookings.$inferSelect;
+      const releasedOn = rental.releasedOn || localToday(now, ctx.timezone);
+      const needsCleaning = rental.needsCleaning || !!rental.reopenedFrom;
+      const range = occupancyRange({ ...rental, rentalState: 'ended', releasedOn, needsCleaning } as RentalDates);
+      await tx.update(storageBookings).set({ rentalState: 'ended', endReason: 'claim', releasedOn, needsCleaning,
+        occupancy: range ? toDateRange(range) : null, checkoutApprovedAt: rental.checkoutApprovedAt || now,
+        checkoutStatus: 'checkout_claim_filed', status: 'completed', updatedAt: now }).where(eq(storageBookings.id, input.storageRentalId));
+    }
     await claimHistory(tx, claim, claim.status, 'submitted', 'manager', managerId);
     return publicClaim(claim, tx);
   });
@@ -123,7 +166,7 @@ export async function publicClaim(claim: Claim, tx: ClaimTx = db as unknown as C
   const sentIndex = history.findIndex(row => row.action === 'claim_send');
   const visibleHistory = !chef || claim.claimVersion !== 2 ? history : sentIndex >= 0 ? history.slice(sentIndex)
     : history.filter(row => claim.chefVisibleAt && row.createdAt >= claim.chefVisibleAt);
-  return { id: claim.id, referenceCode: claim.referenceCode, bookingId: claim.kitchenBookingId, visitId: claim.kitchenBookingVisitId,
+  return { id: claim.id, referenceCode: claim.referenceCode, bookingId: claim.kitchenBookingId, storageRentalId: claim.storageBookingId, visitId: claim.kitchenBookingVisitId,
     chefId: claim.chefId, managerId: claim.managerId, status: claim.status, claimVersion: claim.claimVersion,
     createdAt: claim.createdAt, claimTitle: claim.claimTitle,
     description: claim.claimDescription, amountCents: claim.finalAmountCents ?? claim.claimedAmountCents, claimedAmountCents: claim.claimedAmountCents,
@@ -141,16 +184,19 @@ export async function readManagerClaims(managerId: number) {
   const claims = await db.select().from(damageClaims).where(eq(damageClaims.managerId, managerId)).orderBy(desc(damageClaims.id)).limit(100);
   return { claims: await Promise.all(claims.map(claim => publicClaim(claim))) };
 }
-export async function readBookingClaims(bookingId: number, actor: { id: number; role: string | null }) {
+export async function readBookingClaims(bookingId: number, actor: { id: number; role: string | null }, kind: 'booking' | 'storage' = 'booking') {
   let kitchenParticipant = actor.role === 'admin';
   if (actor.role !== 'admin') {
-    const [row] = await db.select({ chefId: kitchenBookings.chefId, managerId: locations.managerId }).from(kitchenBookings)
+    const [row] = kind === 'storage' ? await db.select({ chefId: storageBookings.chefId, managerId: locations.managerId }).from(storageBookings)
+      .innerJoin(storageListings, eq(storageListings.id, storageBookings.storageListingId)).innerJoin(kitchens, eq(kitchens.id, storageListings.kitchenId))
+      .innerJoin(locations, eq(locations.id, kitchens.locationId)).where(eq(storageBookings.id, bookingId)).limit(1)
+      : await db.select({ chefId: kitchenBookings.chefId, managerId: locations.managerId }).from(kitchenBookings)
       .innerJoin(kitchens, eq(kitchens.id, kitchenBookings.kitchenId)).innerJoin(locations, eq(locations.id, kitchens.locationId))
       .where(eq(kitchenBookings.id, bookingId)).limit(1);
     if (!row || row.managerId !== actor.id && row.chefId !== actor.id) throw new DamageClaimError('Booking not found.', 404);
     kitchenParticipant = row.managerId === actor.id;
   }
-  const claims = await db.select().from(damageClaims).where(and(eq(damageClaims.kitchenBookingId, bookingId), sql`${damageClaims.status} <> 'draft'`))
+  const claims = await db.select().from(damageClaims).where(and(kind === 'storage' ? eq(damageClaims.storageBookingId, bookingId) : eq(damageClaims.kitchenBookingId, bookingId), sql`${damageClaims.status} <> 'draft'`))
     .orderBy(desc(damageClaims.id)).limit(50);
   return { claims: await Promise.all(claims.filter(claim => kitchenParticipant || chefCanSeeClaim(claim)).map(async claim => ({
     ...await publicClaim(claim, undefined, kitchenParticipant ? 'kitchen' : 'chef'),
@@ -218,9 +264,11 @@ export async function escalateDamageClaims(now = new Date(), limit = 3) {
   return results;
 }
 export async function readClaimBookingHold(chefId: number, now = new Date()) {
-  const rows = await db.select({ id: damageClaims.id, bookingId: damageClaims.kitchenBookingId, kitchenName: kitchens.name,
+  const rows = await db.select({ id: damageClaims.id, bookingId: damageClaims.kitchenBookingId, storageRentalId: damageClaims.storageBookingId, kitchenName: kitchens.name,
     amountCents: damageClaims.finalAmountCents }).from(damageClaims)
-    .leftJoin(kitchenBookings, eq(kitchenBookings.id, damageClaims.kitchenBookingId)).leftJoin(kitchens, eq(kitchens.id, kitchenBookings.kitchenId))
+    .leftJoin(kitchenBookings, eq(kitchenBookings.id, damageClaims.kitchenBookingId))
+    .leftJoin(storageBookings, eq(storageBookings.id, damageClaims.storageBookingId)).leftJoin(storageListings, eq(storageListings.id, storageBookings.storageListingId))
+    .leftJoin(kitchens, eq(kitchens.id, sql`COALESCE(${kitchenBookings.kitchenId}, ${storageListings.kitchenId})`))
     .where(and(eq(damageClaims.chefId, chefId), eq(damageClaims.chefOwes, true), isNull(damageClaims.holdReleasedAt),
       isNull(damageClaims.resolvedAt), isNull(damageClaims.chargeSucceededAt), lte(damageClaims.upheldAt, new Date(now.getTime() - 7 * 86400000)),
       sql`${damageClaims.status} NOT IN ('rejected','resolved','charge_succeeded','expired')`)).orderBy(asc(damageClaims.id)).limit(20);
@@ -245,25 +293,25 @@ export async function notifyDamageClaimBookingHolds(now = new Date()) {
     });
   }
 }
-export async function decideDamageClaim(bookingId: number, adminId: number, raw: unknown) {
+export async function decideDamageClaim(bookingId: number, adminId: number, raw: unknown, kind: 'booking' | 'storage' = 'booking') {
   const parsed = claimSupportInput.safeParse(raw);
   if (!parsed.success) throw new DamageClaimError('Choose the action, reason, internal note and message for both people.', 400);
   const input = parsed.data;
-  if (input.type === 'claim_restart_payment') return restartClaimPayment(bookingId, adminId, input);
-  if (input.type === 'claim_compensate') await cancelOpenChefPaymentForCompensation(bookingId, adminId, input);
+  if (input.type === 'claim_restart_payment') return restartClaimPayment(bookingId, adminId, input, kind);
+  if (input.type === 'claim_compensate') await cancelOpenChefPaymentForCompensation(bookingId, adminId, input, kind);
   const reserved = await db.transaction(async tx => {
     // Serialize support/claim money with flag writers using the same parent lock.
-    await tx.execute(sql`SELECT id FROM kitchen_bookings WHERE id = ${bookingId} FOR UPDATE`);
+    await tx.execute(kind === 'storage' ? sql`SELECT id FROM storage_bookings WHERE id = ${bookingId} FOR UPDATE` : sql`SELECT id FROM kitchen_bookings WHERE id = ${bookingId} FOR UPDATE`);
     const claim = await lockClaim(input.claimId, tx);
-    if (claim.kitchenBookingId !== bookingId) throw new DamageClaimError('Claim does not belong to this booking.', 404);
+    if (!claimBelongsTo(claim, { kind, id: bookingId })) throw new DamageClaimError('Claim does not belong to this booking.', 404);
     // Cancellation may have committed just before its audit acknowledgement was interrupted.
     if (input.type === 'claim_compensate' && claim.paymentOperation?.state === 'cancelled') await tx.execute(sql`
       UPDATE support_actions SET status = 'verified', completed_at = NOW(), error = NULL
-      WHERE booking_id = ${bookingId} AND action_type = 'claim_cancel_payment' AND status = 'executing'
+      WHERE ${kind === 'storage' ? sql`storage_booking_id` : sql`booking_id`} = ${bookingId} AND action_type = 'claim_cancel_payment' AND status = 'executing'
         AND before_state->>'claimId' = ${String(claim.id)}`);
     const [old] = await tx.select().from(supportActions).where(eq(supportActions.operationKey, input.operationKey)).limit(1);
     if (old) {
-      if (old.bookingId !== bookingId || old.actorUserId !== adminId || (old.beforeState as { inputHash?: string })?.inputHash !== hash(input))
+      if ((kind === 'storage' ? old.storageBookingId : old.bookingId) !== bookingId || old.actorUserId !== adminId || (old.beforeState as { inputHash?: string })?.inputHash !== hash(input))
         throw new DamageClaimError('This action key belongs to different details.');
       return { action: old, claim };
     }
@@ -283,7 +331,7 @@ export async function decideDamageClaim(bookingId: number, adminId: number, raw:
         input.amountCents ?? (firstReview ? claim.claimedAmountCents : claim.finalAmountCents ?? claim.claimedAmountCents)) : 0;
     if (input.type === 'claim_compensate') {
       if (claim.compensationOperation || claim.transferOperation) throw new DamageClaimError('A kitchen payment is already recorded.');
-      await assertBookingMoneyWritable({ bookingId, operationKey: input.operationKey }, tx);
+      await assertBookingMoneyWritable({ ...(kind === 'storage' ? { storageRentalId: bookingId } : { bookingId }), operationKey: input.operationKey }, tx);
     }
     const now = new Date(), update: Partial<typeof damageClaims.$inferInsert> = { adminDecisionReason: input.publicMessage,
       adminNotes: input.note, adminReviewerId: adminId, adminReviewedAt: now, updatedAt: now };
@@ -307,7 +355,7 @@ export async function decideDamageClaim(bookingId: number, adminId: number, raw:
     if (input.type === 'claim_withdraw') Object.assign(update, { status: 'resolved', resolvedAt: now, resolvedBy: adminId, chefOwes: false,
       resolutionType: 'withdrawn', withdrawalOperation: { key: `claim:${claim.id}:withdraw`, state: 'pending',
         intentId: claim.paymentOperation?.intentId, amountCents: claim.paymentOperation?.amountCents || 0, startedAt: now.toISOString() } });
-    const [action] = await tx.insert(supportActions).values({ bookingId, caseRef: claim.referenceCode || `#${claim.id}`,
+    const [action] = await tx.insert(supportActions).values({ bookingId: kind === 'booking' ? bookingId : null, storageBookingId: kind === 'storage' ? bookingId : null, caseRef: claim.referenceCode || `#${claim.id}`,
       actionType: input.type, actorUserId: adminId, actingFor: 'local_cooks', requestSource: input.requestSource,
       reasonCode: input.reasonCode, internalNote: input.note, amountCents: amount || null, currency: 'CAD',
       fundedBy: ['claim_compensate', 'claim_withdraw'].includes(input.type) ? 'local_cooks' : 'none', operationKey: input.operationKey,
@@ -350,13 +398,13 @@ export function claimPaymentReview(claim: Claim) {
  * The provider is asked again first: a found payment is attached (and settled if paid); a confirmed absence resets it. Only when the
  * check still can't decide does Local Cooks' own verification (checked in the provider, with a note) reset it. Audited.
  */
-async function restartClaimPayment(bookingId: number, adminId: number, input: ClaimSupportInput) {
+async function restartClaimPayment(bookingId: number, adminId: number, input: ClaimSupportInput, kind: 'booking' | 'storage') {
   const [claim] = await db.select().from(damageClaims).where(eq(damageClaims.id, input.claimId)).limit(1);
-  if (!claim || claim.kitchenBookingId !== bookingId) throw new DamageClaimError('Claim does not belong to this booking.', 404);
+  if (!claim || !claimBelongsTo(claim, { kind, id: bookingId })) throw new DamageClaimError('Claim does not belong to this booking.', 404);
   // A retried submission returns what was already done (never acts twice).
   const [done] = await db.select().from(supportActions).where(eq(supportActions.operationKey, input.operationKey)).limit(1);
   if (done) {
-    if (done.actionType !== 'claim_restart_payment' || (done.beforeState as { inputHash?: string })?.inputHash !== hash(input))
+    if ((kind === 'storage' ? done.storageBookingId : done.bookingId) !== bookingId || done.actorUserId !== adminId || done.actionType !== 'claim_restart_payment' || (done.beforeState as { inputHash?: string })?.inputHash !== hash(input))
       throw new DamageClaimError('This action key belongs to different details.');
     return { success: true, result: (done.beforeState as { result?: string }).result };
   }
@@ -377,7 +425,7 @@ async function restartClaimPayment(bookingId: number, adminId: number, input: Cl
     });
     result = 'verified_reset';
   }
-  await db.insert(supportActions).values({ bookingId, caseRef: claim.referenceCode || `#${claim.id}`, actionType: 'claim_restart_payment',
+  await db.insert(supportActions).values({ bookingId: kind === 'booking' ? bookingId : null, storageBookingId: kind === 'storage' ? bookingId : null, caseRef: claim.referenceCode || `#${claim.id}`, actionType: 'claim_restart_payment',
     actorUserId: adminId, actingFor: 'local_cooks', requestSource: input.requestSource, reasonCode: input.reasonCode, internalNote: input.note,
     amountCents: op.amountCents, currency: 'CAD', fundedBy: 'none', operationKey: input.operationKey,
     beforeState: { claimId: claim.id, inputHash: hash(input), operationKey: op.key, result }, status: 'verified', completedAt: new Date() });
@@ -389,28 +437,28 @@ async function restartClaimPayment(bookingId: number, adminId: number, input: Cl
     const t = (key: string) => tLocale(chef?.locale, key, { ns: 'booking' });
     await (await import('./notification.service')).notificationService.create({ userId: claim.chefId, target: 'chef', type: 'system_announcement',
       title: t(result === 'found' ? 'dcV2RestartFoundTitle' : 'dcV2RestartTitle'), message: input.publicMessage,
-      actionUrl: `/booking/${bookingId}`, actionLabel: t('dcV2View'), metadata: { damageClaimId: claim.id } });
+      actionUrl: kind === 'storage' ? `/storage/${bookingId}` : `/booking/${bookingId}`, actionLabel: t('dcV2View'), metadata: { damageClaimId: claim.id } });
   }
   return { success: true, result };
 }
 
 /** A kitchen compensation must not race an already opened chef payment. Reserve and audit cancellation first;
  * a processing/succeeded payment cannot be compensated again and is reconciled through its original intent. */
-async function cancelOpenChefPaymentForCompensation(bookingId: number, adminId: number, input: ClaimSupportInput) {
+async function cancelOpenChefPaymentForCompensation(bookingId: number, adminId: number, input: ClaimSupportInput, kind: 'booking' | 'storage') {
   const cancellation = await db.transaction(async tx => {
-    await tx.execute(sql`SELECT id FROM kitchen_bookings WHERE id = ${bookingId} FOR UPDATE`);
+    await tx.execute(kind === 'storage' ? sql`SELECT id FROM storage_bookings WHERE id = ${bookingId} FOR UPDATE` : sql`SELECT id FROM kitchen_bookings WHERE id = ${bookingId} FOR UPDATE`);
     const claim = await lockClaim(input.claimId, tx);
-    if (claim.kitchenBookingId !== bookingId) throw new DamageClaimError('Claim does not belong to this booking.', 404);
+    if (!claimBelongsTo(claim, { kind, id: bookingId })) throw new DamageClaimError('Claim does not belong to this booking.', 404);
     if (!claim.paymentOperation || ['cancelled', 'succeeded'].includes(claim.paymentOperation.state) || claim.compensationOperation) return null;
     approvedClaimAmount(claim.finalAmountCents ?? claim.claimedAmountCents, input.amountCents);
-    await assertBookingMoneyWritable({ bookingId, operationKey: input.operationKey }, tx);
+    await assertBookingMoneyWritable({ ...(kind === 'storage' ? { storageRentalId: bookingId } : { bookingId }), operationKey: input.operationKey }, tx);
     const key = `claim_cancel:${hash(input.operationKey)}`;
     const [existing] = await tx.select().from(supportActions).where(eq(supportActions.operationKey, key)).limit(1);
     if (existing) {
       if ((existing.beforeState as { inputHash?: string }).inputHash !== hash(input)) throw new DamageClaimError('This cancellation belongs to another decision.');
       return { claim, actionId: existing.id };
     }
-    const [action] = await tx.insert(supportActions).values({ bookingId, caseRef: claim.referenceCode || `#${claim.id}`, actionType: 'claim_cancel_payment',
+    const [action] = await tx.insert(supportActions).values({ bookingId: kind === 'booking' ? bookingId : null, storageBookingId: kind === 'storage' ? bookingId : null, caseRef: claim.referenceCode || `#${claim.id}`, actionType: 'claim_cancel_payment',
       actorUserId: adminId, actingFor: 'local_cooks', requestSource: input.requestSource, reasonCode: input.reasonCode, internalNote: input.note,
       amountCents: claim.paymentOperation.amountCents, currency: 'CAD', fundedBy: 'none', operationKey: key,
       beforeState: { claimId: claim.id, inputHash: hash(input) }, status: 'executing' }).returning();

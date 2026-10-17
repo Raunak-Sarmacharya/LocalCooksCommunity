@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-const state = vi.hoisted(() => ({ hold: vi.fn(), chefClaims: vi.fn(), pay: vi.fn(), dispute: vi.fn() }));
+const state = vi.hoisted(() => ({ file: vi.fn(), decide: vi.fn(), bookingClaims: vi.fn(), retry: vi.fn(), hold: vi.fn(), chefClaims: vi.fn(), pay: vi.fn(), dispute: vi.fn() }));
 vi.mock('../firebase-auth-middleware', () => ({ requireFirebaseAuthWithUser: (_req: any, _res: any, next: any) => next(),
   requireManager: (_req: any, _res: any, next: any) => next(), requireAdmin: (_req: any, _res: any, next: any) => next() }));
 vi.mock('./middleware', () => ({ requireChef: (_req: any, _res: any, next: any) => next() }));
 vi.mock('../services/booking-support', () => ({ executeDamageClaimSupportAction: vi.fn() }));
 vi.mock('../services/damage-claims-v2', () => ({ DamageClaimError: class extends Error { constructor(message: string, public status = 409) { super(message); } },
   readClaimBookingHold: state.hold, readChefClaims: state.chefClaims, disputeDamageClaim: state.dispute,
-  fileDamageClaim: vi.fn(), readBookingClaims: vi.fn(), readManagerClaims: vi.fn(), readClaimFilingContext: vi.fn(), replyToClaimReview: vi.fn() }));
-vi.mock('../services/damage-claim-money', () => ({ prepareClaimPayment: state.pay, syncClaimPayment: vi.fn(), cancelClaimPayment: vi.fn(), retrySavedClaimMoney: vi.fn() }));
+  fileDamageClaim: state.file, decideDamageClaim: state.decide, readStorageClaimFilingContext: vi.fn(), readBookingClaims: state.bookingClaims, readManagerClaims: vi.fn(), readClaimFilingContext: vi.fn(), replyToClaimReview: vi.fn() }));
+vi.mock('../services/damage-claim-money', () => ({ prepareClaimPayment: state.pay, syncClaimPayment: vi.fn(), cancelClaimPayment: vi.fn(), retrySavedClaimMoney: state.retry }));
 import router, { requireNoDamageClaimBookingHold } from './damage-claims';
 const response = () => { const res: any = { status: vi.fn(() => res), json: vi.fn(() => res) }; return res; };
 beforeEach(() => { vi.clearAllMocks(); state.hold.mockResolvedValue({ held: false, claims: [] }); state.chefClaims.mockResolvedValue({ claims: [] }); });
@@ -38,4 +38,18 @@ describe('claim route guards', () => {
     const res = response(); await layer.route.stack.at(-1).handle({ params: { id: '1' }, neonUser: { id: 5, role: 'chef' } }, res);
     expect(res.status).toHaveBeenCalledWith(404); expect(res.json).toHaveBeenCalledWith({ error: 'Claim not found.' });
   });
+});
+
+it('storage claim routes use the authenticated manager and explicit rental kind for admin actions and retries', async () => {
+  const call = async (path: string, body: unknown, params = { id: '7', claimId: '9' }) => {
+    const layer = (router as any).stack.find((item: any) => item.route?.path === path && item.route.methods.post);
+    const res = response(); await layer.route.stack.at(-1).handle({ params, body, neonUser: { id: 2, role: 'admin' } }, res);
+    return res;
+  };
+  await call('/manager/storage-rentals/:id/claims', { description: 'Damaged shelf.', storageRentalId: 99 });
+  expect(state.file).toHaveBeenCalledWith(2, { description: 'Damaged shelf.', storageRentalId: 7 });
+  await call('/admin/storage-rentals/:id/claims/actions', { type: 'claim_send' });
+  expect(state.decide).toHaveBeenCalledWith(7, 2, { type: 'claim_send' }, 'storage');
+  await call('/admin/storage-rentals/:id/claims/:claimId/retry', {});
+  expect(state.retry).toHaveBeenCalledWith(7, 9, 2, 'storage');
 });

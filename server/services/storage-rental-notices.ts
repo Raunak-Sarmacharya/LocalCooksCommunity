@@ -26,7 +26,7 @@ type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 export type StorageNoticeEvent = 'requested' | 'approved' | 'declined' | 'expired' | 'withdrawn' | 'authorization_lapsed' | 'move_in_due' | 'moved_in'
   | 'ending' | 'extended' | 'grace_started' | 'holdover_started' | 'holdover_charge' | 'holdover_waived' | 'not_moved_in' | 'removal_recorded' | 'reclaim'
-  | 'move_out_requested' | 'cleared' | 'reopened' | 'removal_review' | 'final_notice' | 'refund_issued'
+  | 'move_out_requested' | 'cleared' | 'auto_cleared' | 'reopened' | 'removal_review' | 'final_notice' | 'refund_issued'
   | 'payout_scheduled' | 'payout_released' | 'payout_on_hold' | 'payout_overdue' | 'kitchen_debt' | 'offer_extension' | 'support_flag';
 
 export type StorageNoticeFacts = {
@@ -77,7 +77,7 @@ export function storageNoticeAudiences(event: StorageNoticeEvent): Array<'chef' 
     case 'holdover_charge': case 'holdover_waived': return ['chef', 'admins'];
     case 'not_moved_in': return ['manager'];
     case 'reclaim': return ['chef', 'manager', 'admins'];
-    case 'move_out_requested': case 'cleared': case 'reopened': return ['chef', 'manager'];
+    case 'move_out_requested': case 'cleared': case 'auto_cleared': case 'reopened': return ['chef', 'manager'];
     case 'removal_review': case 'final_notice': return ['chef', 'manager', 'admins'];
     case 'removal_recorded': return ['chef', 'manager'];
     case 'refund_issued': return ['chef', 'manager', 'admins'];

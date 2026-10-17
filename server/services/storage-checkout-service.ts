@@ -1,20 +1,8 @@
+import { z } from 'zod';
 import { workerAfter, workerBatch, workerRecord, workerPageEnd } from './worker-context';
 import { queueStorageClearance, attemptOutcomeDelivery } from './outcome-delivery';
 import { queueBookingLifecycleEvent } from './booking-lifecycle-delivery';
-/**
- * Storage Checkout Service
- * 
- * Industry-standard storage checkout flow (Airbnb/Turo model):
- * 1. Chef checks out of storage → status: checkout_requested
- * 2. Manager inspects within admin-controlled review window:
- *    a) "Storage cleared (no issues)" → status: completed
- *    b) "Start damage/cleaning claim" → status: checkout_claim_filed, creates damage claim
- * 3. If no action by review deadline → auto-cleared by system (no issues assumed)
- * 4. Extended claim window allows filing claims for serious issues discovered later
- * 
- * NO deny/reclean option — mirrors move-out and equipment-return industry norms
- * where, if no issue is documented in time, the deposit is untouched.
- */
+/** Storage move-in/out: rental transitions plus legacy dialog compatibility. Damage claims use the v2 review flow. */
 
 import { db } from "../db";
 import { 
@@ -29,12 +17,94 @@ import {
   storageCheckinStatusEnum,
   damageEvidence,
 } from "@shared/schema";
-import { eq, desc, and, or, inArray, lt, isNull, sql } from "drizzle-orm";
+import { eq, ne, desc, and, or, inArray, lt, isNull, sql } from "drizzle-orm";
 import { storageDuties } from './visit-duties';
 import { validateDutySection, readVisitDuties } from '@shared/visit-duties';
 import { queueStorageVisitAction } from './outcome-delivery';
 import { generateStorageCheckoutEmail } from '../email';
 import { logger } from "../logger";
+import { localToday, occupancyRange, toDateRange, type RentalDates } from '@shared/storage-rental';
+import { queueStorageRentalNotice } from './storage-rental-notices';
+import { scheduleStorageTermPayout } from './storage-payouts';
+import { StorageRentalError } from './storage-rentals';
+
+type Rental = typeof storageBookings.$inferSelect;
+type VisitAction = 'move-in' | 'move-out' | 'handover' | 'clear-move-out' | 'items-still-here' | 'mark-ready';
+
+/** Future reservations also count as re-let: reopening must not take another chef's shelf. */
+export async function storageRentalRelet(rental: Rental, reader: Pick<typeof db, 'select'> = db) {
+  if (!rental.releasedOn) return false;
+  const [other] = await reader.select({ id: storageBookings.id }).from(storageBookings).where(and(
+    eq(storageBookings.storageListingId, rental.storageListingId), eq(storageBookings.unitIndex, rental.unitIndex!),
+    ne(storageBookings.id, rental.id), sql`${storageBookings.occupancy} && daterange(${rental.releasedOn}::date, NULL, '[)')`)).limit(1);
+  return !!other;
+}
+export function storageRentalVisitActions(rental: Rental, role: 'chef' | 'manager', now = new Date(), relet = false): string[] {
+  const started = !!rental.termStart && !!rental.timezone && rental.termStart <= localToday(now, rental.timezone);
+  if (role === 'chef') return started ? [
+    ...(rental.rentalState === 'reserved' ? ['move-in', 'move_in'] : []),
+    ...(['reserved', 'active', 'removal_review'].includes(rental.rentalState!) ? ['move-out', 'move_out'] : []),
+  ] : []; // Underscore aliases keep the WP-ST10 photo dialogs usable during cutover.
+  return [
+    ...(started && ['reserved', 'active'].includes(rental.rentalState!) && !rental.handoverAt ? ['handover'] : []),
+    ...(rental.rentalState === 'move_out_requested' ? ['clear-move-out'] : []),
+    ...(rental.rentalState === 'ended' && ['cleared', 'auto_cleared'].includes(rental.endReason!) && rental.checkoutApprovedAt
+      && now >= rental.checkoutApprovedAt && now.getTime() - rental.checkoutApprovedAt.getTime() <= 7 * 86400000 && !relet ? ['items-still-here'] : []),
+    ...(rental.rentalState === 'ended' && rental.needsCleaning ? ['mark-ready'] : []),
+  ];
+}
+
+/** Rental -> listing lock order matches approvals; every state and occupancy check is repeated under those locks. */
+export async function storageRentalVisitAction(id: number, actor: { id: number; role: 'chef' | 'manager' }, action: VisitAction,
+  input: { photoUrls?: string[]; note?: string; needsCleaning?: boolean; checklistItems?: Array<{ id: string; label: string; checked: boolean }> } = {}, now = new Date()) {
+  const parsed = z.object({ photoUrls: z.array(z.string().url().max(2000)).max(20).optional(), note: z.string().trim().max(2000).optional(),
+    needsCleaning: z.boolean().optional(), checklistItems: z.array(z.object({ id: z.string().max(200), label: z.string().max(500), checked: z.boolean() })).max(100).optional() }).strict().safeParse(input);
+  if (!parsed.success) throw new StorageRentalError('invalid_details', 400);
+  input = parsed.data;
+  return db.transaction(async tx => {
+    const [rental] = await tx.select().from(storageBookings).where(eq(storageBookings.id, id)).for('update');
+    if (!rental?.rentalState || !rental.timezone || !rental.termStart || !rental.paidThrough) throw new StorageRentalError('not_found', 404);
+    const [place] = await tx.select({ managerId: locations.managerId }).from(storageListings)
+      .innerJoin(kitchens, eq(kitchens.id, storageListings.kitchenId)).innerJoin(locations, eq(locations.id, kitchens.locationId))
+      .where(eq(storageListings.id, rental.storageListingId));
+    if ((actor.role === 'chef' ? rental.chefId : place?.managerId) !== actor.id) throw new StorageRentalError('not_found', 404);
+    await tx.select({ id: storageListings.id }).from(storageListings).where(eq(storageListings.id, rental.storageListingId)).for('update');
+    const relet = action === 'items-still-here' && await storageRentalRelet(rental, tx);
+    if (!storageRentalVisitActions(rental, actor.role, now, relet).includes(action)) throw new StorageRentalError(relet ? 'relet' : 'visit_action_invalid');
+    const photos = input.photoUrls || [], note = input.note || null, today = localToday(now, rental.timezone);
+    if ((action === 'handover' || action === 'items-still-here') && !photos.length) throw new StorageRentalError('visit_evidence_required', 400);
+    const update: Partial<typeof storageBookings.$inferInsert> = { updatedAt: now };
+    let reviewDeadline: Date | undefined;
+    if (action === 'move-in' || action === 'move-out') {
+      const duties = await storageDuties(id, tx, 'legacy_first_action');
+      if (action === 'move-out') reviewDeadline = new Date(now.getTime() + duties.checkoutReviewWindowMinutes * 60000);
+      const validation = validateDutySection(action === 'move-in' ? duties.arrival : duties.departure, photos, input.checklistItems);
+      if (!validation.valid) throw new StorageRentalError('visit_evidence_required', 400);
+    }
+    if (action === 'move-in') Object.assign(update, { rentalState: 'active', checkinStatus: 'checkin_completed', checkinCompletedAt: now,
+      checkinRequestedAt: now, checkinNotes: note, checkinPhotoUrls: photos, checkinChecklistItems: input.checklistItems || [] });
+    if (action === 'move-out') Object.assign(update, { rentalState: 'move_out_requested', checkoutStatus: 'checkout_requested',
+      checkoutRequestedAt: now, reopenedFrom: null, checkoutNotes: note, checkoutPhotoUrls: photos, checkoutChecklistItems: input.checklistItems || [],
+      rentalTerms: { ...(rental.rentalTerms as object), noBaseline: !(Array.isArray(rental.checkinPhotoUrls) && rental.checkinPhotoUrls.length) } });
+    if (action === 'handover') Object.assign(update, { rentalState: 'active', handoverAt: now, handoverPhotoUrls: photos });
+    if (action === 'clear-move-out') Object.assign(update, { rentalState: 'ended', endReason: 'cleared', releasedOn: today,
+      needsCleaning: input.needsCleaning ?? false, checkoutStatus: 'completed', checkoutApprovedAt: now, checkoutApprovedBy: actor.id, status: 'completed' });
+    if (action === 'items-still-here') Object.assign(update, { rentalState: 'active', endReason: null, releasedOn: null,
+      needsCleaning: false, reopenedFrom: rental.checkoutApprovedAt, checkoutStatus: 'active', status: 'confirmed' });
+    if (action === 'mark-ready') update.needsCleaning = false;
+    const next = { ...rental, ...update } as Rental;
+    const range = occupancyRange(next as RentalDates, today);
+    update.occupancy = range ? toDateRange(range) : null;
+    update.assistanceHistory = [...(Array.isArray(rental.assistanceHistory) ? rental.assistanceHistory : []), {
+      actorId: actor.id, action, reason: note, photoUrls: photos, recordedAt: now.toISOString(), previousState: rental.rentalState }];
+    await tx.update(storageBookings).set(update).where(eq(storageBookings.id, id));
+    await scheduleStorageTermPayout(id, tx, now);
+    const event = action === 'move-in' || action === 'handover' ? 'moved_in' : action === 'move-out' ? 'move_out_requested'
+      : action === 'clear-move-out' ? 'cleared' : action === 'items-still-here' ? 'reopened' : null;
+    if (event) await queueStorageRentalNotice(tx, id, event, { eventKey: `${action}:${now.toISOString()}`, date: now, deadline: reviewDeadline, photos: photos.length });
+    return { success: true, storageBookingId: id, checkoutStatus: next.checkoutStatus ?? undefined, checkinStatus: next.checkinStatus ?? undefined };
+  });
+}
 
 // ============================================================================
 // TYPES
@@ -43,6 +113,8 @@ import { logger } from "../logger";
 export interface CheckoutRequestResult {
   success: boolean;
   error?: string;
+  code?: string;
+  status?: number;
   storageBookingId?: number;
   checkoutStatus?: CheckoutStatus;
 }
@@ -50,6 +122,8 @@ export interface CheckoutRequestResult {
 export interface CheckinRequestResult {
   success: boolean;
   error?: string;
+  code?: string;
+  status?: number;
   storageBookingId?: number;
   checkinStatus?: StorageCheckinStatus;
 }
@@ -80,6 +154,8 @@ export interface PendingCheckinReview {
 export interface CheckoutReviewResult {
   success: boolean;
   error?: string;
+  code?: string;
+  status?: number;
   storageBookingId?: number;
   checkoutStatus?: CheckoutStatus;
   bookingCompleted?: boolean;
@@ -168,6 +244,9 @@ export async function requestStorageCheckout(
 
     const row = booking.booking;
     const locationId = booking.locationId;
+
+    if (row.rentalState) return await storageRentalVisitAction(storageBookingId, { id: chefId, role: 'chef' }, 'move-out',
+      { note: checkoutNotes, photoUrls: checkoutPhotoUrls, checklistItems: checkoutChecklistItems });
 
     // Verify ownership
     if (row.chefId !== chefId) {
@@ -267,7 +346,7 @@ export async function requestStorageCheckout(
     };
   } catch (error) {
     logger.error(`[StorageCheckout] Error requesting checkout:`, error);
-    return { success: false, error: 'Failed to request checkout' };
+    return { success: false, error: 'Failed to request checkout', ...(error instanceof StorageRentalError ? { code: error.code, status: error.status } : {}) };
   }
 }
 
@@ -318,6 +397,9 @@ export async function requestStorageCheckin(
 
     const row = booking.booking;
     const locationId = booking.locationId;
+
+    if (row.rentalState) return await storageRentalVisitAction(storageBookingId, { id: chefId, role: 'chef' }, 'move-in',
+      { note: checkinNotes, photoUrls: checkinPhotoUrls, checklistItems: checkinChecklistItems });
 
     if (row.cancellationAcceptedAt) return { success: false, error: 'Storage cancellation was accepted. Request checkout to confirm removal.' };
 
@@ -413,7 +495,7 @@ export async function requestStorageCheckin(
     };
   } catch (error) {
     logger.error(`[StorageCheckin] Error requesting check-in:`, error);
-    return { success: false, error: 'Failed to request check-in' };
+    return { success: false, error: 'Failed to request check-in', ...(error instanceof StorageRentalError ? { code: error.code, status: error.status } : {}) };
   }
 }
 
@@ -728,32 +810,13 @@ async function sendCheckoutClaimNotification(
 // MANAGER CHECKOUT REVIEW (Industry-Standard: Clear or Claim)
 // ============================================================================
 
-/**
- * Manager reviews a checkout request — either clears storage or starts a damage claim.
- * NO deny/reclean option (industry standard: Airbnb/Turo move-out model).
- * 
- * Actions:
- * - 'clear': Storage cleared, no issues. Booking completed.
- * - 'start_claim': Manager starts a damage/cleaning claim using existing damage claim engine.
- * - 'approve': Backward-compatible alias for 'clear'.
- * 
- * @param storageBookingId - ID of the storage booking
- * @param managerId - ID of the manager making the decision
- * @param action - 'clear', 'start_claim', or 'approve' (backward compat)
- * @param managerNotes - Optional notes from manager
- * @param claimData - Required if action is 'start_claim'
- */
+/** Legacy clear/approve/deny aliases; evidence-backed claims go through damage-claims-v2. */
 export async function processCheckoutApproval(
   storageBookingId: number,
   managerId: number,
-  action: 'clear' | 'start_claim' | 'approve' | 'deny',
+  action: 'clear' | 'approve' | 'deny',
   managerNotes?: string,
-  denialReasonOrClaimData?: string | {
-    claimTitle: string;
-    claimDescription: string;
-    claimedAmountCents: number;
-    damageDate?: string;
-  }
+  denialReason?: string
 ): Promise<CheckoutReviewResult> {
   try {
     // Validate input
@@ -770,18 +833,11 @@ export async function processCheckoutApproval(
     // Legacy deny → treat as clear with a warning log (deny is no longer supported)
     if (normalizedAction === 'deny') {
       logger.warn(`[StorageCheckout] Legacy 'deny' action called for booking ${storageBookingId}. Deny is deprecated — treating as clear.`);
-      return processCheckoutClear(storageBookingId, managerId, managerNotes);
-    }
-
-    if (normalizedAction === 'start_claim') {
-      if (!denialReasonOrClaimData || typeof denialReasonOrClaimData === 'string') {
-        return { success: false, error: 'Claim data is required when starting a damage/cleaning claim' };
-      }
-      return processCheckoutStartClaim(storageBookingId, managerId, denialReasonOrClaimData, managerNotes);
+      return await processCheckoutClear(storageBookingId, managerId, managerNotes);
     }
 
     // Default: clear
-    return processCheckoutClear(storageBookingId, managerId, managerNotes);
+    return await processCheckoutClear(storageBookingId, managerId, managerNotes);
   } catch (error) {
     logger.error(`[StorageCheckout] Error processing checkout review:`, error);
     return { success: false, error: 'Failed to process checkout review' };
@@ -791,7 +847,7 @@ export async function processCheckoutApproval(
 /**
  * Clear storage — no issues found. Booking completed.
  */
-async function processCheckoutClear(
+export async function processCheckoutClear(
   storageBookingId: number,
   managerId: number,
   managerNotes?: string
@@ -800,6 +856,7 @@ async function processCheckoutClear(
   const [booking]=await db
     .select({
       id: storageBookings.id,
+      rentalState: storageBookings.rentalState,
       kitchenBookingId: storageBookings.kitchenBookingId,
       chefId: storageBookings.chefId,
       checkoutStatus: storageBookings.checkoutStatus,
@@ -810,6 +867,11 @@ async function processCheckoutClear(
 
   if(!booking) {
     return { success: false,error: 'Storage booking not found' };
+  }
+
+  if (booking.rentalState) {
+    await storageRentalVisitAction(storageBookingId, { id: managerId, role: 'manager' }, 'clear-move-out', { note: managerNotes });
+    return { success: true, storageBookingId, checkoutStatus: 'completed', bookingCompleted: true };
   }
 
   // Verify manager has permission
@@ -849,10 +911,6 @@ async function processCheckoutClear(
   });
 
   logger.info(`[StorageCheckout] Manager ${managerId} cleared storage for booking ${storageBookingId} — no issues`);
-  // Freeze accrued overstay time only after the manager confirms physical removal.
-  const { detectOverstays }=await import('./overstay-penalty-service');
-  try { await detectOverstays(); } catch(error) { logger.error('Storage checkout saved; overstay finalization will retry on the scheduler',error); }
-
   await attemptOutcomeDelivery();
 
   return {
@@ -860,159 +918,6 @@ async function processCheckoutClear(
     storageBookingId,
     checkoutStatus: 'completed',
     bookingCompleted: true,
-  };
-}
-
-/**
- * Start a damage/cleaning claim from checkout review.
- * Uses the existing damage claim engine (same as kitchen booking claims).
- * Checkout continues to 'checkout_claim_filed' — storage is released but claim is tracked.
- */
-async function processCheckoutStartClaim(
-  storageBookingId: number,
-  managerId: number,
-  claimData: {
-    claimTitle: string;
-    claimDescription: string;
-    claimedAmountCents: number;
-    damageDate?: string;
-  },
-  managerNotes?: string
-): Promise<CheckoutReviewResult> {
-  // Get the storage booking
-  const [booking] = await db
-    .select({
-      id: storageBookings.id,
-      chefId: storageBookings.chefId,
-      checkoutStatus: storageBookings.checkoutStatus,
-      checkoutRequestedAt: storageBookings.checkoutRequestedAt,
-    })
-    .from(storageBookings)
-    .where(eq(storageBookings.id, storageBookingId))
-    .limit(1);
-
-  if (!booking) {
-    return { success: false, error: 'Storage booking not found' };
-  }
-
-  // Verify manager has permission
-  const hasPermission = await verifyManagerPermission(storageBookingId, managerId);
-  if (!hasPermission) {
-    return { success: false, error: 'You do not have permission to review this checkout' };
-  }
-
-  // Allow claim from checkout_requested OR completed (within extended window)
-  const currentCheckoutStatus = booking.checkoutStatus as CheckoutStatus | null;
-  if (currentCheckoutStatus !== 'checkout_requested' && currentCheckoutStatus !== 'completed') {
-    return { success: false, error: `Cannot start claim from checkout status: ${currentCheckoutStatus || 'active'}` };
-  }
-
-  // The shared claim service enforces the general filing window from scheduled booking end.
-
-  // Validate claim data
-  if (!claimData.claimTitle || claimData.claimTitle.trim().length < 5) {
-    return { success: false, error: 'Claim title must be at least 5 characters' };
-  }
-  if (!claimData.claimDescription || claimData.claimDescription.trim().length < 50) {
-    return { success: false, error: 'Claim description must be at least 50 characters' };
-  }
-  if (!claimData.claimedAmountCents || claimData.claimedAmountCents <= 0) {
-    return { success: false, error: 'Claimed amount must be greater than zero' };
-  }
-
-  // Create the damage claim using the existing damage claim engine
-  // Save a draft first; submission requires photos and cost evidence.
-  const { createDamageClaim } = await import('./damage-claim-service');
-  
-  const claimResult = await createDamageClaim({
-    bookingType: 'storage',
-    storageBookingId,
-    managerId,
-    checkoutHandoffKey: `storage:${storageBookingId}:${booking.checkoutRequestedAt?.toISOString() || 'legacy'}`,
-    claimTitle: claimData.claimTitle.trim(),
-    claimDescription: claimData.claimDescription.trim(),
-    claimedAmountCents: claimData.claimedAmountCents,
-    damageDate: claimData.damageDate || new Date().toISOString().split('T')[0],
-    submitImmediately: false,
-  });
-
-  if (!claimResult.success || !claimResult.claim) {
-    return { 
-      success: false, 
-      error: claimResult.error || 'Failed to create damage claim',
-    };
-  }
-
-  const claimId = claimResult.claim.id;
-
-  // Auto-attach checkout photos as evidence (enterprise-grade: no manual re-upload needed)
-  try {
-    const [bookingWithPhotos] = await db
-      .select({ checkoutPhotoUrls: storageBookings.checkoutPhotoUrls })
-      .from(storageBookings)
-      .where(eq(storageBookings.id, storageBookingId))
-      .limit(1);
-
-    const photoUrls = bookingWithPhotos?.checkoutPhotoUrls as string[] | null;
-    if (photoUrls && photoUrls.length > 0) {
-      const { damageEvidence } = await import('@shared/schema');
-      for (let i = 0; i < photoUrls.length; i++) {
-        await db.insert(damageEvidence).values({
-          damageClaimId: claimId,
-          evidenceType: 'photo_after',
-          fileUrl: photoUrls[i],
-          fileName: `checkout-photo-${i + 1}.jpg`,
-          description: `Chef checkout photo ${i + 1} of ${photoUrls.length} (auto-attached from checkout)`,
-          uploadedBy: managerId,
-        });
-      }
-      logger.info(`[StorageCheckout] Auto-attached ${photoUrls.length} checkout photos as evidence for claim #${claimId}`);
-    }
-  } catch (evidenceError) {
-    // Non-blocking: claim still valid even if photo attachment fails
-    logger.error(`[StorageCheckout] Error auto-attaching checkout photos to claim #${claimId}:`, evidenceError);
-  }
-
-  // Auto-attach check-in baseline photos as photo_before evidence — establishes
-  // the move-in baseline for the claim so managers can prove damage was new.
-  try {
-    const linkedCount = await linkCheckinPhotosToClaim(storageBookingId, claimId);
-    if (linkedCount > 0) {
-      logger.info(
-        `[StorageCheckout] Auto-attached ${linkedCount} check-in baseline photos as photo_before for claim #${claimId}`,
-      );
-    }
-  } catch (baselineError) {
-    // Non-blocking: claim still valid even if baseline linking fails
-    logger.error(
-      `[StorageCheckout] Error auto-linking check-in baseline photos to claim #${claimId}:`,
-      baselineError,
-    );
-  }
-
-  // Draft handoff does not establish physical removal or overwrite chef evidence.
-  const handedOff = await db.transaction(async tx => {
-    await tx.execute(sql`SELECT id FROM storage_bookings WHERE id = ${storageBookingId} FOR UPDATE`);
-    const [current] = await tx.select().from(storageBookings).where(eq(storageBookings.id, storageBookingId)).limit(1);
-    if (!current || current.checkoutStatus !== currentCheckoutStatus) return false;
-    await tx.update(storageBookings).set({ checkoutStatus: 'checkout_claim_filed', status: 'completed', updatedAt: new Date(),
-      assistanceHistory: [...(Array.isArray(current.assistanceHistory) ? current.assistanceHistory : []), { actorId: managerId, action: 'draft_claim_handoff',
-        reason: managerNotes || 'Inspection handed to a draft claim', recordedAt: new Date().toISOString(), claimId, previousStatus: current.checkoutStatus }]
-    }).where(eq(storageBookings.id, storageBookingId));
-    await queueStorageVisitAction(tx, storageBookingId, 'draft_claim', managerId);
-    return true;
-  });
-  if (!handedOff) return { success: false, error: 'Inspection changed; refresh. The saved draft remains available for review.', damageClaimId: claimId };
-  await attemptOutcomeDelivery();
-
-  // The chef's response window and notifications start only after evidence-backed submission.
-
-  return {
-    success: true,
-    storageBookingId,
-    checkoutStatus: 'checkout_claim_filed',
-    bookingCompleted: true,
-    damageClaimId: claimId,
   };
 }
 
@@ -1040,6 +945,7 @@ export async function autoCleanExpiredCheckout(
   chefId: number|null,
   checkoutRequestedAt: Date|null,
   reviewWindowHours: number,
+  throwOnError = false,
 ): Promise<boolean> {
   if(!checkoutRequestedAt) return false;
 
@@ -1050,6 +956,19 @@ export async function autoCleanExpiredCheckout(
   try {
     // Atomically clear only if still in checkout_requested (prevents double-clear race)
     const cleared=await db.transaction(async tx => {
+      const [rental] = await tx.select().from(storageBookings).where(eq(storageBookings.id, bookingId)).for('update');
+      if (rental?.rentalState) {
+        if (rental.rentalState !== 'move_out_requested' || rental.checkoutStatus !== 'checkout_requested'
+          || rental.checkoutRequestedAt?.getTime() !== checkoutRequestedAt.getTime()) return false;
+        const now = new Date(), releasedOn = localToday(now, rental.timezone!);
+        const range = occupancyRange({ ...rental, rentalState: 'ended', releasedOn, needsCleaning: false } as RentalDates);
+        await tx.update(storageBookings).set({ rentalState: 'ended', endReason: 'auto_cleared', releasedOn, needsCleaning: false,
+          occupancy: range ? toDateRange(range) : null, checkoutStatus: 'completed', checkoutApprovedAt: now, status: 'completed', updatedAt: now })
+          .where(eq(storageBookings.id, bookingId));
+        await scheduleStorageTermPayout(bookingId, tx, now);
+        await queueStorageRentalNotice(tx, bookingId, 'auto_cleared', { eventKey: `auto:${checkoutRequestedAt.toISOString()}`, date: now });
+        return true;
+      }
       const changed=await tx
         .update(storageBookings)
         .set({
@@ -1077,6 +996,7 @@ export async function autoCleanExpiredCheckout(
     return true;
   } catch(error) {
     logger.error(`[StorageCheckout] Error lazy auto-clearing booking ${bookingId}:`,error);
+    if (throwOnError) throw error;
     return false;
   }
 }
@@ -1103,6 +1023,7 @@ export async function processExpiredCheckoutReviews(): Promise<AutoClearResult> 
         id: storageBookings.id,
         chefId: storageBookings.chefId,
         checkoutRequestedAt: storageBookings.checkoutRequestedAt,
+        visitDuties: storageBookings.visitDuties,
       })
       .from(storageBookings)
       .where(
@@ -1128,24 +1049,8 @@ export async function processExpiredCheckoutReviews(): Promise<AutoClearResult> 
       await workerRecord('storageCheckout', checkout.id);
       try {
         // Auto-clear the checkout
-        const cleared=await db.transaction(async tx => {
-          const changed=await tx
-            .update(storageBookings)
-            .set({
-              checkoutStatus: 'completed',
-              checkoutApprovedAt: new Date(),
-              status: 'completed',
-              updatedAt: new Date(),
-            })
-            .where(and(eq(storageBookings.id,checkout.id),eq(storageBookings.checkoutStatus,'checkout_requested'),isNull(storageBookings.cancellationAcceptedAt),
-              sql`${storageBookings.checkoutRequestedAt} + COALESCE((${storageBookings.visitDuties}->>'checkoutReviewWindowMinutes')::integer, ${settings.reviewWindowHours * 60}) * interval '1 minute' <= CURRENT_TIMESTAMP`))
-            .returning({ id: storageBookings.id });
-
-          if(!changed.length) return false;
-
-          await queueStorageClearance(tx,checkout.id,true);
-          return true;
-        });
+        const cleared = await autoCleanExpiredCheckout(checkout.id, checkout.chefId, checkout.checkoutRequestedAt,
+          (readVisitDuties(checkout.visitDuties)?.checkoutReviewWindowMinutes ?? settings.reviewWindowHours * 60) / 60, true);
         if(!cleared) continue;
         result.cleared++;
 
@@ -1482,6 +1387,7 @@ export async function getCheckoutStatus(storageBookingId: number): Promise<{
   try {
     const [booking] = await db
       .select({
+        rentalState: storageBookings.rentalState, reopenedFrom: storageBookings.reopenedFrom,
         checkoutStatus: storageBookings.checkoutStatus,
         endDate: storageBookings.endDate,
         visitDuties: storageBookings.visitDuties,
@@ -1502,7 +1408,8 @@ export async function getCheckoutStatus(storageBookingId: number): Promise<{
     const { getStorageCheckoutSettings, getDamageClaimLimits } = await import('./damage-claim-limits-service');
     const settings = await getStorageCheckoutSettings();
     const filingLimits = await getDamageClaimLimits();
-    const filingDeadline = new Date(booking.endDate.getTime() + filingLimits.claimSubmissionDeadlineDays * 86400000);
+    const filingStart = booking.rentalState ? booking.reopenedFrom || booking.checkoutRequestedAt : booking.endDate;
+    const filingDeadline = new Date((filingStart || booking.endDate).getTime() + filingLimits.claimSubmissionDeadlineDays * 86400000);
     const now = new Date();
 
     const reviewDeadline = booking.checkoutRequestedAt
@@ -1538,13 +1445,13 @@ export async function getCheckoutStatus(storageBookingId: number): Promise<{
           reviewDeadline,
           isReviewExpired: true,
           extendedClaimDeadline: filingDeadline,
-          canFileExtendedClaim: now <= filingDeadline,
+          canFileExtendedClaim: !!filingStart && now <= filingDeadline,
         };
       }
     }
 
     const extendedClaimDeadline = filingDeadline;
-    const canFileExtendedClaim = extendedClaimDeadline ? now <= extendedClaimDeadline : false;
+    const canFileExtendedClaim = !!filingStart && now <= extendedClaimDeadline;
 
     return {
       checkoutStatus: booking.checkoutStatus as CheckoutStatus | null,

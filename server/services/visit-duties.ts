@@ -81,7 +81,7 @@ export async function storageDuties(bookingId: number, tx: DutyDatabase = db, ca
   const existing = readVisitDuties(row.booking.visitDuties);
   if (existing) return existing;
   const { getStorageCheckoutSettings } = await import('./damage-claim-limits-service');
-  const settings = await getStorageCheckoutSettings();
+  const settings = await getStorageCheckoutSettings(tx);
   const duties = makeVisitDuties(resolveKitchenChecklist(null, row.checklist), true, { checkinWindowMinutesBefore: 0,
     checkoutReviewWindowMinutes: settings.reviewWindowHours * 60 }, capture || 'legacy_first_action');
   if (capture) await tx.update(storageBookings).set({ visitDuties: duties })

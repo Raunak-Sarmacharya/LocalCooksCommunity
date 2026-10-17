@@ -379,18 +379,21 @@ export async function readRental(id: number, actor: RentalActor, now = new Date(
     : [];
   const payoutById = new Map(payments.map(payment => [payment.id, payment]));
   const chefName = resolvedChefName ?? (rental.chefId ? await getUserDisplayName(rental.chefId) : '');
+  const { storageRentalVisitActions, storageRentalRelet } = await import('./storage-checkout-service');
+  actions.push(...storageRentalVisitActions(rental, actor.role, now, rental.rentalState === 'ended' && await storageRentalRelet(rental)));
+  if (rental.termStart! <= localToday(now, rental.timezone!) && !['requested', 'declined', 'expired', 'withdrawn'].includes(rental.rentalState!)) actions.push('report_problem');
   return { id, ref: rental.referenceCode, kitchen: { id: ctx.kitchen.id, name: ctx.kitchen.name },
     listing: { id: ctx.listing.id, name: ctx.listing.name }, chef: { id: rental.chefId ?? null, name: chefName },
     unitLabel: String(rental.unitIndex), state: rental.rentalState, timezone: rental.timezone,
     phase: phase?.phase ?? null, startOn: rental.termStart, paidThrough: rental.paidThrough,
     graceEndsOn: phase?.graceEndsOn ?? addDays(rental.paidThrough!, GRACE_DAYS), holdoverDays: phase?.holdoverDays ?? 0,
     accruedCents: phase?.accruedCents ?? 0, responseDeadline: rental.responseDeadline, declineReason: rental.declineReason, rentalTerms: frozen, actions,
-    needsCleaning: rental.needsCleaning, releasedOn: rental.releasedOn,
     terms: terms.map(({ id, seq, kind, startsOn, endsOn, days, dailyPriceCents, subtotalCents, taxCents, serviceFeeCents, totalCents, status, paidAt, paymentTransactionId }) => {
       const payout = paymentTransactionId ? payoutById.get(paymentTransactionId) : undefined;
       return { id, seq, kind, startsOn, endsOn, days, dailyPriceCents, subtotalCents, taxCents, serviceFeeCents, totalCents, status, paidAt,
         payoutEligibleAt: payout?.payoutEligibleAt ?? null, payoutReleasedAt: payout?.payoutReleasedAt ?? null, payoutHoldReason: payout?.payoutHoldReason ?? null };
     }),
+    noBaseline: (rental.rentalTerms as { noBaseline?: boolean })?.noBaseline ?? false, needsCleaning: rental.needsCleaning, releasedOn: rental.releasedOn,
     evidence: { checkinPhotoUrls: rental.checkinPhotoUrls, handoverPhotoUrls: rental.handoverPhotoUrls, checkoutPhotoUrls: rental.checkoutPhotoUrls } };
 }
 async function contextForRead(listingId: number) {

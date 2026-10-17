@@ -137,9 +137,9 @@ export function getDefaultLimits(): DamageClaimLimits {
  * Get admin-controlled storage checkout review window settings
  * Controls how long managers have to inspect storage after chef checkout
  */
-export async function getStorageCheckoutSettings(): Promise<StorageCheckoutSettings> {
+export async function getStorageCheckoutSettings(reader: Pick<typeof db, 'select'> = db): Promise<StorageCheckoutSettings> {
   try {
-    const [reviewWindowSetting] = await db
+    const [reviewWindowSetting] = await reader
       .select()
       .from(platformSettings)
       .where(eq(platformSettings.key, 'storage_checkout_review_window_hours'))

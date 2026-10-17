@@ -1,9 +1,9 @@
 import Stripe from 'stripe';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import { db } from '../db';
-import { damageClaims, kitchenBookings, paymentTransactions, users } from '@shared/schema';
+import { damageClaims, storageBookings, kitchenBookings, paymentTransactions, users } from '@shared/schema';
 import { payableClaimStatuses, type ClaimMoneyOperation } from '@shared/damage-claims';
-import { chefCanSeeClaim, claimHistory, DamageClaimError, lockClaim, type Claim, type ClaimTx } from './damage-claims-v2';
+import { chefCanSeeClaim, claimBelongsTo, claimHistory, DamageClaimError, lockClaim, type Claim, type ClaimTx } from './damage-claims-v2';
 import { assertBookingMoneyWritable } from './booking-money-guard';
 import { assertWorkerTime, workerAfter, workerPageEnd, workerRecord, isWorkerBudgetError } from './worker-context';
 
@@ -13,8 +13,9 @@ function provider() {
   return new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2026-02-25.clover', maxNetworkRetries: 0, timeout: 1500 });
 }
 async function locked(id: number, tx: ClaimTx) {
-  const [row] = await tx.select({ bookingId: damageClaims.kitchenBookingId }).from(damageClaims).where(eq(damageClaims.id, id)).limit(1);
-  if (row?.bookingId) {
+  const [row] = await tx.select({ bookingId: damageClaims.kitchenBookingId, storageRentalId: damageClaims.storageBookingId }).from(damageClaims).where(eq(damageClaims.id, id)).limit(1);
+  if (row?.storageRentalId) await tx.execute(sql`SELECT id FROM storage_bookings WHERE id = ${row.storageRentalId} FOR UPDATE`);
+  else if (row?.bookingId) {
     // Same source → parent order as flag/refund writers, including the later transfer/refund receipt transaction.
     await (await import('./booking-support-flags')).lockBookingMoneySources(tx, row.bookingId);
     await tx.execute(sql`SELECT id FROM kitchen_bookings WHERE id = ${row.bookingId} FOR UPDATE`);
@@ -63,7 +64,8 @@ export async function resolveStalledClaimCreation(id: number, op: ClaimMoneyOper
   const found = matches[0];
   if (found.amount !== op.amountCents || found.currency !== 'cad' || intentReference(found.customer) !== op.customerId
     || found.metadata.damage_claim_id !== String(id) || found.metadata.chef_id !== String(claim.chefId)
-    || found.metadata.booking_id !== String(claim.kitchenBookingId)) return review('The payment found does not match the saved claim decision.');
+    || found.metadata.booking_id !== String(claim.storageBookingId || claim.kitchenBookingId)
+    || claim.storageBookingId && found.metadata.storage_rental_id !== String(claim.storageBookingId)) return review('The payment found does not match the saved claim decision.');
   await db.transaction(async tx => {
     const current = await locked(id, tx);
     if (current.paymentOperation?.key !== op.key || current.paymentOperation.intentId) return;
@@ -81,6 +83,11 @@ async function markClaimPaymentForReview(id: number, op: ClaimMoneyOperation, re
     const claim = await locked(id, tx);
     if (claim.paymentOperation?.key !== op.key || claim.paymentOperation.error === reason) return;
     await tx.update(damageClaims).set({ paymentOperation: { ...claim.paymentOperation, error: reason } }).where(eq(damageClaims.id, id));
+    if (claim.storageBookingId) {
+      await (await import('./storage-rental-notices')).queueStorageRentalNotice(tx, claim.storageBookingId, 'support_flag', {
+        eventKey: `claim-payment:${id}:${op.key}`, amountCents: op.amountCents, date: new Date(), message: reason });
+      return;
+    }
     if (!claim.kitchenBookingId) return;
     const { queueBookingLifecycleEvent } = await import('./booking-lifecycle-delivery');
     await queueBookingLifecycleEvent(tx, claim.kitchenBookingId, 'support_updated', 'A damage claim payment needs attention',
@@ -111,12 +118,14 @@ export async function prepareClaimPayment(id: number, chefId: number, newCard = 
     if (!chefCanSeeClaim(claim) || !payableClaimStatuses.includes(claim.status) || claim.resolvedAt || claim.chargeSucceededAt || !claim.chefOwes
       || claim.compensationOperation?.state === 'pending') throw new DamageClaimError('This claim cannot be paid now. Contact Local Cooks.');
     if (claim.claimVersion !== 2) throw new DamageClaimError('Local Cooks will help resolve this earlier claim. No automatic charge will be made.');
-    await assertBookingMoneyWritable({ bookingId: claim.kitchenBookingId! }, tx);
+    await assertBookingMoneyWritable({ ...(claim.storageBookingId ? { storageRentalId: claim.storageBookingId } : { bookingId: claim.kitchenBookingId! }) }, tx);
     if (claim.paymentOperation && claim.paymentOperation.state !== 'cancelled') {
       if (claim.paymentOperation.state === 'cancel_pending') throw new DamageClaimError('The previous payment is being cancelled. Please retry.');
       return { claim, operation: claim.paymentOperation };
     }
-    const [booking] = await tx.select().from(kitchenBookings).where(eq(kitchenBookings.id, claim.kitchenBookingId!)).limit(1);
+    const [booking] = claim.storageBookingId
+      ? await tx.select().from(storageBookings).where(eq(storageBookings.id, claim.storageBookingId)).limit(1)
+      : await tx.select().from(kitchenBookings).where(eq(kitchenBookings.id, claim.kitchenBookingId!)).limit(1);
     const [chef] = await tx.select({ customerId: users.stripeCustomerId }).from(users).where(eq(users.id, chefId)).limit(1);
     const customerId = booking?.stripeCustomerId || chef?.customerId;
     if (!customerId) throw new DamageClaimError('Add a card to your Local Cooks payment settings first.');
@@ -143,7 +152,7 @@ export async function prepareClaimPayment(id: number, chefId: number, newCard = 
     amount: op.amountCents, currency: 'cad', customer: op.customerId, ...(op.paymentMethodId ? { payment_method: op.paymentMethodId } : {}),
     automatic_payment_methods: { enabled: true, allow_redirects: 'never' }, capture_method: 'automatic',
     metadata: { type: 'damage_claim', damage_claim_v2: 'true', damage_claim_id: String(id), chef_id: String(chefId),
-      booking_id: String(saved.claim.kitchenBookingId), manager_id: String(saved.claim.managerId), claim_operation_key: op.key } }, { idempotencyKey: op.key }));
+      booking_id: String(saved.claim.storageBookingId || saved.claim.kitchenBookingId), ...(saved.claim.storageBookingId ? { storage_rental_id: String(saved.claim.storageBookingId) } : {}), manager_id: String(saved.claim.managerId), claim_operation_key: op.key } }, { idempotencyKey: op.key }));
   if (intent.amount !== op.amountCents || intent.currency !== 'cad' || intentReference(intent.customer) !== op.customerId
     || intent.metadata.claim_operation_key !== op.key) throw new DamageClaimError('The saved card payment needs verification before it can be shown.');
   const canReturnSecret = await db.transaction(async tx => {
@@ -200,14 +209,15 @@ export async function settleClaimPayment(intent: Stripe.PaymentIntent) {
     const claim = await locked(id, tx), op = claim.paymentOperation;
     if (!op || op.key !== intent.metadata.claim_operation_key || (op.intentId && op.intentId !== intent.id)
       || intent.amount_received !== op.amountCents || intent.currency !== 'cad' || intentReference(intent.customer) !== op.customerId
-      || intent.metadata.chef_id !== String(claim.chefId) || intent.metadata.booking_id !== String(claim.kitchenBookingId)
+      || intent.metadata.chef_id !== String(claim.chefId) || intent.metadata.booking_id !== String(claim.storageBookingId || claim.kitchenBookingId)
+      || claim.storageBookingId && intent.metadata.storage_rental_id !== String(claim.storageBookingId)
       || claim.finalAmountCents !== op.amountCents || ['cancelled'].includes(op.state)) throw new DamageClaimError('Claim payment does not match its saved decision.');
     const chargeId = intentReference(intent.latest_charge);
     if (!chargeId) throw new DamageClaimError('The payment charge is not available yet.');
     const now = new Date();
     const [source] = await tx.select().from(paymentTransactions).where(eq(paymentTransactions.paymentIntentId, intent.id)).limit(1);
     if (!source) {
-      const [created] = await tx.insert(paymentTransactions).values({ bookingId: claim.kitchenBookingId!, bookingType: 'kitchen', chefId: claim.chefId,
+      const [created] = await tx.insert(paymentTransactions).values({ bookingId: (claim.storageBookingId || claim.kitchenBookingId)!, bookingType: claim.storageBookingId ? 'storage' : 'kitchen', chefId: claim.chefId,
         managerId: claim.managerId, amount: String(op.amountCents), baseAmount: String(op.amountCents), serviceFee: '0', taxAmount: '0',
         managerRevenue: claim.fundedBy === 'local_cooks' ? '0' : String(op.amountCents), netAmount: String(op.amountCents), currency: 'CAD',
         paymentIntentId: intent.id, chargeId, status: 'succeeded', stripeStatus: 'succeeded', paidAt: now, payoutTiming: 'at_capture',
@@ -231,7 +241,7 @@ export async function settleClaimPayment(intent: Stripe.PaymentIntent) {
   try { await recordClaimProcessingCost(intent.id); }
   catch (error) { if (isWorkerBudgetError(error)) throw error; (await import('../logger')).logger.error('Claim processing cost needs fee reconciliation', { claimId: id }); }
   // Chef receipt for the claim payment and the kitchen's remittance (idempotent; never fails settlement).
-  await import('./booking-documents').then(documents => documents.issueBookingDocumentsSafely(claim.kitchenBookingId, 'claim_paid')).catch(() => undefined);
+  await import('./booking-documents').then(documents => claim.storageBookingId ? documents.issueStorageDocumentsSafely(claim.storageBookingId, 'claim_paid') : documents.issueBookingDocumentsSafely(claim.kitchenBookingId, 'claim_paid')).catch(() => undefined);
 }
 export async function recordClaimProcessingCost(intentId: string) {
   const stripe = provider(), intent = await stripe.paymentIntents.retrieve(intentId, { expand: ['latest_charge.balance_transaction'] });
@@ -267,7 +277,7 @@ export async function sendClaimKitchenMoney(id: number, kind: 'payment' | 'compe
   });
   let op = saved.operation;
   if (!op || op.state === 'succeeded') return { transferId: op?.transferId || null };
-  await assertBookingMoneyWritable({ bookingId: saved.claim.kitchenBookingId!, operationKey: supportKey });
+  await assertBookingMoneyWritable({ ...(saved.claim.storageBookingId ? { storageRentalId: saved.claim.storageBookingId } : { bookingId: saved.claim.kitchenBookingId! }), operationKey: supportKey });
   retrySafe(op);
   assertWorkerTime(2000);
   const stripe = provider();
@@ -281,7 +291,7 @@ export async function sendClaimKitchenMoney(id: number, kind: 'payment' | 'compe
     const claim = await locked(id, tx), current = claim[column];
     if (!current || current.key !== op!.key) throw new DamageClaimError('Kitchen payment changed.');
     if (current.state === 'succeeded') return current;
-    await assertBookingMoneyWritable({ bookingId: claim.kitchenBookingId!, operationKey: supportKey }, tx);
+    await assertBookingMoneyWritable({ ...(claim.storageBookingId ? { storageRentalId: claim.storageBookingId } : { bookingId: claim.kitchenBookingId! }), operationKey: supportKey }, tx);
     retrySafe(current);
     const attempted = { ...current, attemptedAt: current.attemptedAt || new Date().toISOString() };
     await tx.update(damageClaims).set({ [column]: attempted }).where(eq(damageClaims.id, id));
@@ -292,7 +302,7 @@ export async function sendClaimKitchenMoney(id: number, kind: 'payment' | 'compe
     const claim = await locked(id, tx), current = claim[column];
     if (!current || current.key !== op!.key) throw new DamageClaimError('Kitchen transfer needs reconciliation.');
     if (current.state === 'succeeded') return { transferId: current.transferId! };
-    await assertBookingMoneyWritable({ bookingId: claim.kitchenBookingId!, operationKey: supportKey }, tx);
+    await assertBookingMoneyWritable({ ...(claim.storageBookingId ? { storageRentalId: claim.storageBookingId } : { bookingId: claim.kitchenBookingId! }), operationKey: supportKey }, tx);
     assertWorkerTime(2000);
     // Decision AND first-attempt timestamp are already committed. Keep the source/parent locks only for the bounded
     // provider attempt and receipt, so a flag cannot open between the final freeze check and the outgoing transfer.
@@ -312,7 +322,7 @@ export async function withdrawClaimMoney(id: number, supportKey?: string) {
   const saved = await db.transaction(async tx => {
     const claim = await locked(id, tx);
     if (!claim.withdrawalOperation) throw new DamageClaimError('A saved withdrawal decision is required.');
-    await assertBookingMoneyWritable({ bookingId: claim.kitchenBookingId!, operationKey: supportKey }, tx);
+    await assertBookingMoneyWritable({ ...(claim.storageBookingId ? { storageRentalId: claim.storageBookingId } : { bookingId: claim.kitchenBookingId! }), operationKey: supportKey }, tx);
     if (!claim.withdrawalOperation.intentId && claim.paymentOperation?.intentId) {
       claim.withdrawalOperation = { ...claim.withdrawalOperation, intentId: claim.paymentOperation.intentId };
       await tx.update(damageClaims).set({ withdrawalOperation: claim.withdrawalOperation }).where(eq(damageClaims.id, id));
@@ -331,7 +341,7 @@ export async function withdrawClaimMoney(id: number, supportKey?: string) {
       ...(payment.paymentMethodId ? { payment_method: payment.paymentMethodId } : {}),
       automatic_payment_methods: { enabled: true, allow_redirects: 'never' }, capture_method: 'automatic',
       metadata: { type: 'damage_claim', damage_claim_v2: 'true', damage_claim_id: String(id), chef_id: String(saved.chefId),
-        booking_id: String(saved.kitchenBookingId), manager_id: String(saved.managerId), claim_operation_key: payment.key } }, { idempotencyKey: payment.key });
+        booking_id: String(saved.storageBookingId || saved.kitchenBookingId), ...(saved.storageBookingId ? { storage_rental_id: String(saved.storageBookingId) } : {}), manager_id: String(saved.managerId), claim_operation_key: payment.key } }, { idempotencyKey: payment.key });
     intentId = intent.id;
     op = { ...op, intentId };
     await db.update(damageClaims).set({ withdrawalOperation: op, stripePaymentIntentId: intentId,
@@ -349,7 +359,7 @@ export async function withdrawClaimMoney(id: number, supportKey?: string) {
       if (!op.refundId) retrySafe({ ...op, state: 'pending' });
       op = await db.transaction(async tx => {
         const claim = await locked(id, tx), current = claim.withdrawalOperation!;
-        await assertBookingMoneyWritable({ bookingId: claim.kitchenBookingId!, operationKey: supportKey }, tx);
+        await assertBookingMoneyWritable({ ...(claim.storageBookingId ? { storageRentalId: claim.storageBookingId } : { bookingId: claim.kitchenBookingId! }), operationKey: supportKey }, tx);
         const next = { ...current, attemptedAt: current.attemptedAt || new Date().toISOString() };
         await tx.update(damageClaims).set({ withdrawalOperation: next }).where(eq(damageClaims.id, id));
         return next;
@@ -389,7 +399,7 @@ export async function recoverDamageClaimMoney(limit = 3) {
     try {
       if (claim.withdrawalOperation?.state === 'pending') {
         const { supportActions } = await import('@shared/schema');
-        const [action] = await db.select().from(supportActions).where(and(eq(supportActions.bookingId, claim.kitchenBookingId!),
+        const [action] = await db.select().from(supportActions).where(and(claim.storageBookingId ? eq(supportActions.storageBookingId, claim.storageBookingId) : eq(supportActions.bookingId, claim.kitchenBookingId!),
           eq(supportActions.actionType, 'claim_withdraw'), sql`${supportActions.beforeState}->>'claimId' = ${String(claim.id)}`)).limit(1);
         if (!action) throw new DamageClaimError('Withdrawal support decision is missing.');
         const receipt = await withdrawClaimMoney(claim.id, action.operationKey);
@@ -398,7 +408,7 @@ export async function recoverDamageClaimMoney(limit = 3) {
       }
       if (claim.compensationOperation?.state === 'pending') {
         const { supportActions } = await import('@shared/schema');
-        const [action] = await db.select().from(supportActions).where(and(eq(supportActions.bookingId, claim.kitchenBookingId!),
+        const [action] = await db.select().from(supportActions).where(and(claim.storageBookingId ? eq(supportActions.storageBookingId, claim.storageBookingId) : eq(supportActions.bookingId, claim.kitchenBookingId!),
           eq(supportActions.actionType, 'claim_compensate'), sql`${supportActions.beforeState}->>'claimId' = ${String(claim.id)}`)).limit(1);
         if (!action) throw new DamageClaimError('Compensation support decision is missing.');
         const transfer = await sendClaimKitchenMoney(claim.id, 'compensation', action.operationKey);
@@ -409,14 +419,14 @@ export async function recoverDamageClaimMoney(limit = 3) {
   }
 }
 /** Staff retries a saved operation, never accepts a new amount/key or creates a second decision. */
-export async function retrySavedClaimMoney(bookingId: number, id: number, actorId: number) {
+export async function retrySavedClaimMoney(bookingId: number, id: number, actorId: number, kind: 'booking' | 'storage' = 'booking') {
   const { supportActions, damageClaimHistory } = await import('@shared/schema');
-  const [claim] = await db.select().from(damageClaims).where(and(eq(damageClaims.id, id), eq(damageClaims.kitchenBookingId, bookingId))).limit(1);
-  if (!claim) throw new DamageClaimError('Claim not found.', 404);
+  const [claim] = await db.select().from(damageClaims).where(and(eq(damageClaims.id, id), kind === 'storage' ? eq(damageClaims.storageBookingId, bookingId) : eq(damageClaims.kitchenBookingId, bookingId))).limit(1);
+  if (!claim || !claimBelongsTo(claim, { kind, id: bookingId })) throw new DamageClaimError('Claim not found.', 404);
   let receipt: { transferId?: string | null; refundId?: string | null };
   if (claim.compensationOperation || claim.withdrawalOperation) {
     const type = claim.withdrawalOperation ? 'claim_withdraw' : 'claim_compensate';
-    const [action] = await db.select().from(supportActions).where(and(eq(supportActions.bookingId, bookingId), eq(supportActions.actionType, type),
+    const [action] = await db.select().from(supportActions).where(and(kind === 'storage' ? eq(supportActions.storageBookingId, bookingId) : eq(supportActions.bookingId, bookingId), eq(supportActions.actionType, type),
       sql`${supportActions.beforeState}->>'claimId' = ${String(id)}`)).limit(1);
     if (!action) throw new DamageClaimError('The original support decision is missing.');
     receipt = type === 'claim_withdraw' ? await withdrawClaimMoney(id, action.operationKey) : await sendClaimKitchenMoney(id, 'compensation', action.operationKey);

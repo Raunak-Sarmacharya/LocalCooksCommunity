@@ -13,10 +13,10 @@ router.get('/', async (req, res) => {
   catch (error) { return errorResponse(res, error); }
 });
 router.get('/:kind/:id', async (req, res) => {
-  if (!['booking', 'tour'].includes(req.params.kind) || !Number.isSafeInteger(Number(req.params.id)) || Number(req.params.id) <= 0)
-    return res.status(400).json({ error: 'Choose a valid booking or tour' });
+  if (!['booking', 'tour', 'storage'].includes(req.params.kind) || !Number.isSafeInteger(Number(req.params.id)) || Number(req.params.id) <= 0)
+    return res.status(400).json({ error: 'Choose a valid booking, tour or storage' });
   try {
-    const kind = req.params.kind as 'booking' | 'tour', id = Number(req.params.id);
+    const kind = req.params.kind as 'booking' | 'tour' | 'storage', id = Number(req.params.id);
     const problems = await listProblems(req.neonUser!, kind, id);
     const context = await db.transaction(tx => problemContext(tx, kind, id));
     const opens = problemReportingOpensAt(context);
@@ -26,9 +26,9 @@ router.get('/:kind/:id', async (req, res) => {
   catch (error) { return errorResponse(res, error); }
 });
 router.post('/:kind/:id', async (req, res) => {
-  if (!['booking', 'tour'].includes(req.params.kind)) return res.status(400).json({ error: 'Choose booking or tour' });
+  if (!['booking', 'tour', 'storage'].includes(req.params.kind)) return res.status(400).json({ error: 'Choose booking, tour or storage' });
   try {
-    const result = await reportProblem(req.params.kind as 'booking' | 'tour', Number(req.params.id), req.neonUser!, req.body.description, req.body.requestKey, req.body.category);
+    const result = await reportProblem(req.params.kind as 'booking' | 'tour' | 'storage', Number(req.params.id), req.neonUser!, req.body.description, req.body.requestKey, req.body.category);
     await attemptOutcomeDelivery();
     res.json(result);
   } catch (error) { return errorResponse(res, error); }
