@@ -1,8 +1,9 @@
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import { z } from 'zod';
+import { ensureServerI18n, tLocale } from '../i18n';
 import { requireFirebaseAuthWithUser, requireManager, requireAdmin } from '../firebase-auth-middleware';
 import { requireChef } from './middleware';
-import { DamageClaimError, fileDamageClaim, disputeDamageClaim, readBookingClaims, readChefClaims, readClaimBookingHold, readClaimFilingContext, replyToClaimReview, readManagerClaims } from '../services/damage-claims-v2';
+import { DamageClaimError, decideDamageClaim, readStorageClaimFilingContext, fileDamageClaim, disputeDamageClaim, readBookingClaims, readChefClaims, readClaimBookingHold, readClaimFilingContext, replyToClaimReview, readManagerClaims } from '../services/damage-claims-v2';
 import { prepareClaimPayment, syncClaimPayment, cancelClaimPayment, retrySavedClaimMoney } from '../services/damage-claim-money';
 import { executeDamageClaimSupportAction } from '../services/booking-support';
 
@@ -10,6 +11,10 @@ const router = Router();
 const idOf = (value: unknown) => z.coerce.number().int().positive().parse(value);
 const handle = (fn: (req: Request) => Promise<unknown>) => async (req: Request, res: Response) => {
   try { res.json(await fn(req)); } catch (error) {
+    if (error instanceof DamageClaimError && error.code) {
+      await ensureServerI18n();
+      return res.status(error.status).json({ code: error.code, error: tLocale(req.neonUser?.preferredLocale, `stError_${error.code}`, { ns: 'storage' }) });
+    }
     res.status(error instanceof DamageClaimError ? error.status : error instanceof z.ZodError ? 400 : 503)
       .json({ error: error instanceof DamageClaimError ? error.message : error instanceof z.ZodError ? 'Check the claim details.' : 'This claim needs review. Please refresh before trying again.' });
   }
@@ -69,4 +74,18 @@ router.post('/admin/booking-support/:bookingId/claims/actions', requireFirebaseA
   handle(req => executeDamageClaimSupportAction(idOf(req.params.bookingId), req.neonUser!.id, req.body)));
 router.post('/admin/booking-support/:bookingId/claims/:id/retry', requireFirebaseAuthWithUser, requireAdmin,
   handle(req => retrySavedClaimMoney(idOf(req.params.bookingId), idOf(req.params.id), req.neonUser!.id)));
+router.get('/manager/storage-rentals/:id/claims/filing-context', requireFirebaseAuthWithUser, requireManager,
+  handle(req => readStorageClaimFilingContext(idOf(req.params.id), req.neonUser!.id)));
+router.post('/manager/storage-rentals/:id/claims', requireFirebaseAuthWithUser, requireManager,
+  handle(req => fileDamageClaim(req.neonUser!.id, { ...req.body, storageRentalId: idOf(req.params.id) })));
+router.get('/manager/storage-rentals/:id/claims', requireFirebaseAuthWithUser, requireManager,
+  handle(req => readBookingClaims(idOf(req.params.id), req.neonUser!, 'storage')));
+router.get('/chef/storage-rentals/:id/claims', requireFirebaseAuthWithUser, requireChef,
+  handle(req => readBookingClaims(idOf(req.params.id), req.neonUser!, 'storage')));
+router.get('/admin/storage-rentals/:id/claims', requireFirebaseAuthWithUser, requireAdmin,
+  handle(req => readBookingClaims(idOf(req.params.id), req.neonUser!, 'storage')));
+router.post('/admin/storage-rentals/:id/claims/actions', requireFirebaseAuthWithUser, requireAdmin,
+  handle(req => decideDamageClaim(idOf(req.params.id), req.neonUser!.id, req.body, 'storage')));
+router.post('/admin/storage-rentals/:id/claims/:claimId/retry', requireFirebaseAuthWithUser, requireAdmin,
+  handle(req => retrySavedClaimMoney(idOf(req.params.id), idOf(req.params.claimId), req.neonUser!.id, 'storage')));
 export default router;

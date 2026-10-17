@@ -103,7 +103,7 @@ describe('per-reader wording', () => {
     locale(value);
     const events: StorageNoticeEvent[] = ['requested', 'approved', 'declined', 'expired', 'withdrawn', 'authorization_lapsed', 'move_in_due', 'moved_in', 'ending',
       'extended', 'grace_started', 'holdover_started', 'holdover_charge', 'reclaim', 'move_out_requested', 'cleared',
-      'reopened', 'removal_review', 'final_notice', 'refund_issued', 'payout_scheduled', 'payout_released',
+      'auto_cleared', 'reopened', 'removal_review', 'final_notice', 'refund_issued', 'payout_scheduled', 'payout_released',
       'payout_on_hold', 'kitchen_debt', 'offer_extension'];
     for (const event of events) await queueStorageRentalNotice(tx(), 5, event, facts);
     expect(state.notices.length).toBeGreaterThan(events.length);
@@ -155,11 +155,17 @@ describe('no Stripe identifiers', () => {
   it('never leaks pi_/ch_/tr_/cs_ references into any notice or email', async () => {
     const events: StorageNoticeEvent[] = ['requested', 'approved', 'declined', 'expired', 'withdrawn', 'authorization_lapsed', 'move_in_due', 'moved_in', 'ending',
       'extended', 'grace_started', 'holdover_started', 'holdover_charge', 'reclaim', 'move_out_requested', 'cleared',
-      'reopened', 'removal_review', 'final_notice', 'refund_issued', 'payout_scheduled', 'payout_released',
+      'auto_cleared', 'reopened', 'removal_review', 'final_notice', 'refund_issued', 'payout_scheduled', 'payout_released',
       'payout_on_hold', 'kitchen_debt', 'offer_extension'];
     for (const event of events) await queueStorageRentalNotice(tx(), 5, event, facts);
     const rendered = [...state.notices.flatMap(row => [row.title, row.message]),
       ...state.emails.flatMap(row => [row.subject, row.textBody, row.htmlBody])];
     for (const text of rendered) expect(String(text)).not.toMatch(/pi_|ch_|tr_|cs_/);
   });
+});
+
+it('says when a move-out cleared automatically, without claiming the kitchen inspected it', async () => {
+  await queueStorageRentalNotice(tx(), 5, 'auto_cleared', { ...facts, date: '2026-10-27' });
+  expect(notice(5)?.message).toContain('ended on Oct 27, 2026');
+  expect(notice(2)?.message).toContain('cleared automatically');
 });

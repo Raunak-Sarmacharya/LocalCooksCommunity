@@ -7,14 +7,15 @@ export const claimUpload = z.object({ fileUrl: z.string().url().refine(value => 
   fileName: z.string().trim().min(1).max(255), mimeType: z.string().max(100).optional() }).strict();
 export const claimLine = z.object({ type: z.enum(['damage', 'extra_cleaning']), description: z.string().trim().min(3).max(500),
   amountCents: z.number().int().positive().max(CLAIM_CAP_CENTS), document: claimUpload }).strict();
-export const fileClaimInput = z.object({ bookingId: z.number().int().positive(), visitId: z.number().int().positive().optional(),
+export const fileClaimInput = z.object({ bookingId: z.number().int().positive().optional(), storageRentalId: z.number().int().positive().optional(), visitId: z.number().int().positive().optional(),
   description: z.string().trim().min(10).max(2000), lines: z.array(claimLine).min(1).max(20),
   selectedPhotoUrls: z.array(z.string().url()).max(40).default([]),
-  photos: z.array(claimUpload).max(20).default([]), requestKey: z.string().min(8).max(128).regex(/^[\w:-]+$/) }).strict();
+  photos: z.array(claimUpload).max(20).default([]), requestKey: z.string().min(8).max(128).regex(/^[\w:-]+$/) }).strict().refine(value =>
+    !!value.bookingId !== !!value.storageRentalId && !(value.storageRentalId && value.visitId), 'Choose one booking or storage rental');
 export type ClaimLine = z.infer<typeof claimLine>;
 export type FileClaimInput = z.infer<typeof fileClaimInput>;
 export type ClaimVisitEvidence = { before: string[]; after: string[]; checkinNotes: string | null; checkoutNotes: string | null;
-  highlighted?: string[];
+  highlighted?: string[]; noBaseline?: boolean; baselineNote?: string;
   endedAt: string; timezone: string; chefName?: string; kitchenName?: string };
 export type ClaimMoneyOperation = { key: string; state: 'pending' | 'ready' | 'cancel_pending' | 'cancelled' | 'succeeded';
   amountCents: number; startedAt: string; attemptedAt?: string; intentId?: string; transferId?: string;

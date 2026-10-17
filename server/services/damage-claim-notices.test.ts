@@ -96,3 +96,13 @@ it('a visible claim written off by Local Cooks closes only the chef debt; kitche
   await queueDamageClaimNotice(tx, { ...claim('approved', true), fundedBy: 'local_cooks', chefOwes: true }, history('claim_compensate'));
   expect(state.notices).toEqual([]);
 });
+
+it('routes storage claim notices to the rental, retaining first-review privacy', async () => {
+  await queueDamageClaimNotice(tx, { ...claim('in_review'), kitchenBookingId: null, storageBookingId: 7 }, history('submitted'));
+  expect(state.notices.map(row => row.userId)).toEqual([2, 99]);
+  expect(state.notices.find(row => row.userId === 2)?.actionUrl).toBe('/manager/storage/7');
+  expect(state.notices.find(row => row.userId === 99)?.actionUrl).toBe('/admin?section=storage-rentals&rental=7');
+  state.notices = []; state.emails = [];
+  await queueDamageClaimNotice(tx, { ...claim('submitted', true), kitchenBookingId: null, storageBookingId: 7 }, history('claim_send'));
+  expect(state.notices.find(row => row.userId === 5)?.actionUrl).toBe('/storage/7');
+});

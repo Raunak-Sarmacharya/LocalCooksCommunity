@@ -38,14 +38,14 @@ function generateCode(prefix: string): string {
  * Checks ALL reference_code columns across all booking tables to ensure global uniqueness.
  * Retries up to 5 times on collision (astronomically unlikely with 32^6 per prefix).
  */
-export async function generateReferenceCode(type: ReferenceType): Promise<string> {
+export async function generateReferenceCode(type: ReferenceType, reader: Pick<typeof db, 'execute'> = db): Promise<string> {
   const prefix = REFERENCE_PREFIXES[type];
 
   for (let attempt = 0; attempt < 5; attempt++) {
     const code = generateCode(prefix);
 
     // Check for collision across all tables with reference_code
-    const result = await db.execute(sql`
+    const result = await reader.execute(sql`
       SELECT 1 FROM (
         SELECT reference_code FROM kitchen_bookings WHERE reference_code = ${code}
         UNION ALL

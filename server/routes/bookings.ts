@@ -1394,6 +1394,11 @@ router.post("/chef/storage-bookings/:id/request-checkout", requireChef, async (r
         );
 
         if (!result.success) {
+            if (result.code) {
+                const { ensureServerI18n, tLocale } = await import('../i18n');
+                await ensureServerI18n();
+                return res.status(result.status || 409).json({ code: result.code, error: tLocale(req.neonUser?.preferredLocale, `stError_${result.code}`, { ns: 'storage' }) });
+            }
             return res.status(400).json({ error: result.error });
         }
 
@@ -1436,6 +1441,11 @@ router.post("/chef/storage-bookings/:id/checkin", requireChef, async (req: Reque
         );
 
         if (!result.success) {
+            if (result.code) {
+                const { ensureServerI18n, tLocale } = await import('../i18n');
+                await ensureServerI18n();
+                return res.status(result.status || 409).json({ code: result.code, error: tLocale(req.neonUser?.preferredLocale, `stError_${result.code}`, { ns: 'storage' }) });
+            }
             return res.status(400).json({ error: result.error });
         }
 

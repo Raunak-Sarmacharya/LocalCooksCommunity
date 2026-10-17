@@ -10,8 +10,9 @@ import { claimBookingHeld, type ClaimLine } from '@shared/damage-claims';
 const ClaimPayment = lazy(() => import('./DamageClaimPayment'));
 
 export function ClaimEvidence({ claim }: { claim: DamageClaimCardData }) {
-  const { t } = useTranslation('booking');
+  const { t } = useTranslation(['booking', 'storage']);
   return <details className="rounded-lg border p-3"><summary className="cursor-pointer text-sm font-medium">{t('dcV2Evidence')}</summary>
+    {claim.visitEvidence?.noBaseline && <p className="mt-3 text-sm">{t('stNoBaseline', { ns: 'storage' })}</p>}
     <div className="mt-3 grid gap-4 sm:grid-cols-2">{(['before', 'after'] as const).map(side => <section key={side}>
       <h3 className="text-sm font-medium">{t(side === 'before' ? 'dcV2Before' : 'dcV2After')}</h3>
       <p className="whitespace-pre-wrap text-sm">{claim.visitEvidence?.[side === 'before' ? 'checkinNotes' : 'checkoutNotes']}</p>

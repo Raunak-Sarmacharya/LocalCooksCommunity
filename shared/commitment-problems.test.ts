@@ -18,6 +18,9 @@ describe('Local Cooks problem ownership and resolution', () => {
     expect(() => problemTransition('acknowledged','reassign',1,2,'')).toThrow('Claim');
   });
   it('uses actual booking, tour and Local Cooks destinations', () => {
+    expect(problemDestination('storage',7,'chef')).toBe('/storage/7');
+    expect(problemDestination('storage',7,'manager')).toBe('/manager/storage/7');
+    expect(problemDestination('storage',7,'admin')).toBe('/admin?section=live-problems');
     expect(problemDestination('booking',10,'chef')).toBe('/booking/10');
     expect(problemDestination('booking',10,'manager')).toBe('/manager/booking/10');
     expect(problemDestination('tour',20,'chef')).toContain('viewing=20');

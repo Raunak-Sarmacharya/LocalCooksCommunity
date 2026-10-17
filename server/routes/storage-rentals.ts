@@ -8,11 +8,15 @@ import { openRemovalReview, raiseHoldoverCharge, recordRemoval, sendFinalNotice,
 import { createRentalCheckout, decideRental, listRentals, quoteRental, readRental, StorageRentalError, withdrawRental } from '../services/storage-rentals';
 import { payExtension, quoteExtension, syncStorageTerm } from '../services/storage-extensions';
 
+import { storageRentalVisitAction } from '../services/storage-checkout-service';
+
 const router = Router();
 const id = z.coerce.number().int().positive().safe();
 const details = z.object({ listingId: z.number().int().positive().safe(), startOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), days: z.number().int().min(1).max(30) });
 const checkout = details.extend({ requestKey: z.string().min(8).max(100).regex(/^[a-zA-Z0-9_-]+$/), expectedTotalCents: z.number().int().nonnegative().safe(),
   acceptedTermsVersion: z.string().max(50), cancellationPolicyVersion: z.number().int().positive(), disclosureVersion: z.string().max(50), quotedAt: z.string().datetime() });
+const visitDetails = z.object({ photoUrls: z.array(z.string().url().max(2000)).max(20).default([]), note: z.string().trim().max(2000).optional(),
+  checklistItems: z.array(z.object({ id: z.string(), label: z.string(), checked: z.boolean() })).max(100).optional() });
 const approve = z.object({ unitIndex: z.number().int().min(1).max(200).optional() });
 const decline = z.object({ reason: z.string().trim().min(1).max(500) });
 const holdoverCharge = z.object({ amountCents: z.number().int().positive().safe(), note: z.string().trim().max(500).optional() });
@@ -53,6 +57,12 @@ router.post('/chef/storage-rentals/:id/withdraw', endpoint(async req => {
   return readRental(rentalId, { id: req.neonUser!.id, role: 'chef' });
 }));
 
+for (const action of ['move-in', 'move-out'] as const) router.post(`/chef/storage-rentals/:id/${action}`, endpoint(async req => {
+  const rentalId = id.parse(req.params.id), actor = { id: req.neonUser!.id, role: 'chef' as const };
+  await storageRentalVisitAction(rentalId, actor, action, visitDetails.parse(req.body ?? {}));
+  return readRental(rentalId, actor);
+}));
+
 router.use('/manager/storage-rentals', requireFirebaseAuthWithUser, requireManager);
 router.get('/manager/storage-rentals', endpoint(req => listRentals({ id: req.neonUser!.id, role: 'manager' })));
 router.get('/manager/storage-rentals/:id', endpoint(req => readRental(id.parse(req.params.id), { id: req.neonUser!.id, role: 'manager' })));
@@ -66,6 +76,16 @@ router.post('/manager/storage-rentals/:id/decline', endpoint(async req => {
   await decideRental(rentalId, 'declined', actor, decline.parse(req.body));
   return readRental(rentalId, actor);
 }));
+for (const action of ['handover', 'clear-move-out', 'items-still-here', 'mark-ready'] as const) {
+  router.post(`/manager/storage-rentals/:id/${action}`, endpoint(async req => {
+    const rentalId = id.parse(req.params.id), actor = { id: req.neonUser!.id, role: 'manager' as const };
+    const input = action === 'clear-move-out' ? z.object({ needsCleaning: z.boolean() }).strict().parse(req.body)
+      : action === 'mark-ready' ? {} : visitDetails.extend({ photoUrls: z.array(z.string().url().max(2000)).min(1).max(20) }).parse(req.body ?? {});
+    await storageRentalVisitAction(rentalId, actor, action, input);
+    return readRental(rentalId, actor);
+  }));
+}
+
 // Holdover is a request the chef pays on-session (or disputes); nothing here charges a card.
 router.post('/manager/storage-rentals/:id/holdover-charge', endpoint(async req => {
   const rentalId = id.parse(req.params.id), actor = { id: req.neonUser!.id, role: 'manager' as const };

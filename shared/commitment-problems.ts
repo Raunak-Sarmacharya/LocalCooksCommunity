@@ -34,6 +34,7 @@ export function problemTransition(status: ProblemStatus, action: string, claimed
 
 export function problemDestination(kind: string, id: number, role: string) {
   if (role === 'admin') return '/admin?section=live-problems';
+  if (kind === 'storage') return role === 'manager' ? `/manager/storage/${id}` : `/storage/${id}`;
   if (kind === 'booking') return role === 'manager' ? `/manager/booking/${id}` : `/booking/${id}`;
   return `${role === 'manager' ? '/manager/dashboard' : '/dashboard'}?view=viewings&viewing=${id}`;
 }

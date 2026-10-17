@@ -15,7 +15,7 @@ vi.mock('@stripe/stripe-js', () => ({ loadStripe: () => Promise.resolve({}) }));
 vi.mock('@stripe/react-stripe-js', () => ({ Elements: ({ children }: any) => children, CardElement: () => <div>Card entry</div>,
   useElements: () => ({ getElement: () => ({}) }), useStripe: () => ({ confirmCardPayment: state.confirm }) }));
 import { DamageClaimSheet } from './DamageClaimSheet';
-import { DamageClaimCard, DamageClaimBookingHoldBanner } from './DamageClaimCards';
+import { ClaimEvidence, DamageClaimCard, DamageClaimBookingHoldBanner } from './DamageClaimCards';
 import DamageClaimPayment from './DamageClaimPayment';
 import { DamageClaimPanel } from '@/components/admin/booking-support/DamageClaimPanel';
 import type { DamageClaimCardData } from '@/lib/damage-claims';
@@ -131,4 +131,13 @@ describe('admin review-first panel', () => {
     expect(screen.queryByRole('button', { name: 'Send to chef' })).not.toBeInTheDocument();
     expect(screen.getByText('It was broken at arrival.')).toBeInTheDocument();
   });
+});
+
+it('shows the missing move-in photo note in the shared chef and staff evidence view', async () => {
+  const { testI18n } = await import('@/test/booking-i18n');
+  const storage = (await import('@shared/i18n/locales/en-CA/storage.json')).default;
+  testI18n.addResourceBundle('en-CA', 'storage', storage);
+  const value = claim(); value.visitEvidence = { ...value.visitEvidence!, noBaseline: true, baselineNote: 'No move-in photos were taken.' };
+  mount(<ClaimEvidence claim={value} />);
+  expect(screen.getByText('No move-in photos were taken.')).toBeInTheDocument();
 });

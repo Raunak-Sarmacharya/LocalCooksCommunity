@@ -5,7 +5,7 @@ import { emailLocalDateTime, renderTransactionalEmail } from '../email';
 import { createHash } from 'node:crypto';
 import { and, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import { db } from '../db';
-import { commitmentProblems, kitchenBookings, kitchenViewings, kitchens, locations, users, emailLogs, bookingLifecycleEvents } from '@shared/schema';
+import { commitmentProblems, storageBookings, storageListings, kitchenBookings, kitchenViewings, kitchens, locations, users, emailLogs, bookingLifecycleEvents } from '@shared/schema';
 import { problemCategoryLabel, parseProblemCategory, problemDestination, problemStatusLabel, problemTransition, type ProblemCategory, type ProblemStatus, type ProblemHistory } from '@shared/commitment-problems';
 import { notificationService } from './notification.service';
 import { getAppBaseUrl } from '../config';
@@ -16,6 +16,8 @@ import { DomainError } from '../shared/errors/domain-error';
 import { operationalEmailAllowed } from './admin-email-preferences';
 import { isPlatformEmailRecipientBlocked } from '../email-recipient-policy';
 import { ensureServerI18n, tLocale } from '../i18n';
+import { localDayStart } from '@shared/storage-rental';
+import { scheduleStorageTermPayout } from './storage-payouts';
 import { getUserDisplayName } from '../utils/user-display';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -23,7 +25,17 @@ type Problem = typeof commitmentProblems.$inferSelect;
 type Actor = { id: number; role: string | null };
 const reject = (message: string, status = 409): never => { throw new DomainError('PROBLEM_ACTION_INVALID', message, status); };
 
-export async function problemContext(tx: Tx, kind: 'booking' | 'tour', id: number) {
+export async function problemContext(tx: Tx, kind: 'booking' | 'tour' | 'storage', id: number) {
+  if (kind === 'storage') {
+    const [row] = await tx.select({ rental: storageBookings, managerId: locations.managerId, kitchenId: kitchens.id, kitchenName: kitchens.name })
+      .from(storageBookings).innerJoin(storageListings, eq(storageListings.id, storageBookings.storageListingId))
+      .innerJoin(kitchens, eq(kitchens.id, storageListings.kitchenId)).innerJoin(locations, eq(locations.id, kitchens.locationId))
+      .where(eq(storageBookings.id, id)).limit(1);
+    if (!row?.rental.rentalState || !row.rental.timezone || !row.rental.termStart) return undefined;
+    return { chefId: row.rental.chefId, managerId: row.managerId, kitchenId: row.kitchenId, kitchenName: row.kitchenName,
+      status: row.rental.status, wasConfirmed: !!row.rental.approvedAt, scheduledStart: localDayStart(row.rental.termStart, row.rental.timezone),
+      timezone: row.rental.timezone, reference: row.rental.referenceCode || `SB-${id}` };
+  }
   if (kind === 'booking') {
     const [row] = await tx.select({ booking: kitchenBookings, managerId: locations.managerId, timezone: locations.timezone, kitchenName: kitchens.name, locationId: kitchens.locationId })
       .from(kitchenBookings).innerJoin(kitchens, eq(kitchens.id, kitchenBookings.kitchenId))
@@ -75,7 +87,7 @@ export function canReportProblem(context: { chefId: number | null; managerId: nu
 type ProblemContext = NonNullable<Awaited<ReturnType<typeof problemContext>>>;
 
 /** Per-reader wording for a new live report. Chefs see the kitchen's name, kitchens see the chef's name. */
-async function liveReportCopy(tx: Tx, problem: Problem, context: ProblemContext, kind: 'booking' | 'tour') {
+async function liveReportCopy(tx: Tx, problem: Problem, context: ProblemContext, kind: 'booking' | 'tour' | 'storage') {
   await ensureServerI18n();
   const reporterIsChef = problem.reportedBy === context.chefId;
   const chefName = context.chefId ? await getUserDisplayName(context.chefId, 'chef', tx) : '';
@@ -105,7 +117,7 @@ ${access ? t('cpnAccessNext', { start }) : attendance ? t('cpnAttendanceNext') :
 }
 
 async function queueProblemNotice(tx: Tx, problem: Problem, action: string) {
-  const kind = problem.bookingId ? 'booking' : 'tour', id = problem.bookingId || problem.viewingId!;
+  const kind = problem.storageBookingId ? 'storage' : problem.bookingId ? 'booking' : 'tour', id = problem.storageBookingId || problem.bookingId || problem.viewingId!;
   const context = await problemContext(tx, kind, id);
   if (!context) throw Error('Problem commitment context missing');
   const people = await tx.select().from(users).where(or(context.chefId ? eq(users.id, context.chefId) : undefined,
@@ -120,20 +132,25 @@ async function queueProblemNotice(tx: Tx, problem: Problem, action: string) {
   const message = `Kitchen: ${context.kitchenName || 'See commitment details'}\nReported: ${time}\n${categoryLabel ? `Category: ${categoryLabel}\n` : ''}${problem.description}\n${last?.action === 'report' ? 'Report received.' : last?.note || ''}\n${problem.status === 'resolved' ? 'This support request has been resolved. View the response in your booking or tour.' : 'Follow the support request for updates and replies.'}`;
   const assignmentOnly = ['claim', 'reassign'].includes(action);
   // A live report (e.g. "can't get in" at check-in) is worded per reader: the reporter, the other side, Local Cooks.
-  const live = action === 'report' && problem.kind === 'live' ? await liveReportCopy(tx, problem, context, kind) : undefined;
+  if (kind === 'storage') await ensureServerI18n();
+  const live = kind !== 'storage' && action === 'report' && problem.kind === 'live' ? await liveReportCopy(tx, problem, context, kind) : undefined;
   for (const person of people) {
     const role = person.role === 'admin' ? 'admin' : person.id === context.chefId ? 'chef' : 'manager';
-    const copy = live?.(person, role);
+    const storageT = (key: string, values: Record<string, unknown> = {}) => tLocale(person.preferredLocale, key, { ns: 'storage', ...values });
+    const copy = kind === 'storage' ? {
+      title: storageT('stProblemTitle', { ref, status: storageT(`stProblemStatus_${problem.status}`) }),
+      message: `${storageT('stProblemAt', { name: role === 'manager' && context.chefId ? await getUserDisplayName(context.chefId, 'chef', tx) : context.kitchenName || '', date: emailLocalDateTime(problem.updatedAt || problem.createdAt, context.timezone, person.preferredLocale || 'en-CA') })}\n${problem.description}\n${last?.action === 'report' ? storageT('stProblemReceived') : last?.note || ''}`,
+    } : live?.(person, role);
     const personTitle = copy?.title ?? title, personMessage = copy?.message ?? message;
     // Internal assignment changes do not ask participants to act or change their report's public status.
     if (assignmentOnly && role !== 'admin') continue;
     const path = problemDestination(kind, id, role);
     await notificationService.create({ userId: person.id, target: role === 'chef' ? 'chef' : 'manager', type: 'system_announcement',
       priority: 'high', title: personTitle, message: personMessage,
-      actionUrl: path, actionLabel: role === 'admin' ? 'Claim or review problem' : 'View problem', metadata: { problemId: problem.id, revision: problem.revision } }, tx);
+      actionUrl: path, actionLabel: kind === 'storage' ? storageT('stViewProblem') : role === 'admin' ? 'Claim or review problem' : 'View problem', metadata: { problemId: problem.id, revision: problem.revision } }, tx);
     // Keep admin bell alerts for everyone; only opted-in admins receive email.
     if (assignmentOnly || !operationalEmailAllowed(person) || isPlatformEmailRecipientBlocked(person.username)) continue;
-    const content = renderTransactionalEmail({ to: person.username || '', locale: person.preferredLocale, subject: personTitle, recipientName: person.username || 'there', message: personMessage, facts: [{ label: 'Kitchen', value: context.kitchenName || 'See commitment details' }, { label: 'Reference', value: ref }, { label: 'Reported', value: time }], actionLabel: role === 'admin' ? 'Review problem' : 'View problem', actionUrl: `${getAppBaseUrl(role === 'admin' ? 'admin' : role === 'chef' ? 'chef' : 'kitchen')}${path}` });
+    const content = renderTransactionalEmail({ to: person.username || '', locale: person.preferredLocale, subject: personTitle, recipientName: person.username || 'there', message: personMessage, facts: kind === 'storage' ? [] : [{ label: 'Kitchen', value: context.kitchenName || 'See commitment details' }, { label: 'Reference', value: ref }, { label: 'Reported', value: time }], actionLabel: kind === 'storage' ? storageT('stViewProblem') : role === 'admin' ? 'Review problem' : 'View problem', actionUrl: `${getAppBaseUrl(role === 'admin' ? 'admin' : role === 'chef' ? 'chef' : 'kitchen')}${path}` });
     await tx.insert(emailLogs).values({ recipientEmail: person.username || '', recipientUserId: person.id, recipientRole: role,
       subject: personTitle, category: 'lifecycle_outcome', status: 'queued', previewText: personMessage,
       trackingId: `problem-outcome:${problem.id}:${problem.revision}:${person.id}`,
@@ -141,7 +158,7 @@ async function queueProblemNotice(tx: Tx, problem: Problem, action: string) {
   }
 }
 
-export async function createProblem(tx: Tx, input: { kind: 'live' | 'schedule'; commitment: 'booking' | 'tour'; id: number; actor: Actor; description: string; sourceKey: string; category?: ProblemCategory | null }) {
+export async function createProblem(tx: Tx, input: { kind: 'live' | 'schedule'; commitment: 'booking' | 'tour' | 'storage'; id: number; actor: Actor; description: string; sourceKey: string; category?: ProblemCategory | null }) {
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${input.sourceKey}, 0))`);
   const [prior] = await tx.select().from(commitmentProblems).where(eq(commitmentProblems.sourceKey, input.sourceKey)).limit(1);
   if (prior) {
@@ -154,19 +171,20 @@ export async function createProblem(tx: Tx, input: { kind: 'live' | 'schedule'; 
   if (input.kind === 'schedule' && context?.status !== 'confirmed') reject('Only a confirmed commitment can receive schedule recovery');
   const history: ProblemHistory[] = [{ revision: 1, actorId: input.actor.id, actorRole: input.actor.role || undefined, at: new Date().toISOString(), action: 'report', note: 'Report received' }];
   const [problem] = await tx.insert(commitmentProblems).values({ sourceKey: input.sourceKey, kind: input.kind,
-    bookingId: input.commitment === 'booking' ? input.id : null, viewingId: input.commitment === 'tour' ? input.id : null,
+    bookingId: input.commitment === 'booking' ? input.id : null, viewingId: input.commitment === 'tour' ? input.id : null, storageBookingId: input.commitment === 'storage' ? input.id : null,
     kitchenId: context!.kitchenId, reportedBy: input.actor.id, description: input.description, category: input.category ?? null, history }).returning();
+  if (problem.storageBookingId) await scheduleStorageTermPayout(problem.storageBookingId, tx);
   await queueProblemNotice(tx, problem, 'report');
   return problem;
 }
 
-export async function reportProblem(commitment: 'booking' | 'tour', id: number, actor: Actor, description: string, requestKey: string, rawCategory?: unknown) {
+export async function reportProblem(commitment: 'booking' | 'tour' | 'storage', id: number, actor: Actor, description: string, requestKey: string, rawCategory?: unknown) {
   const category = parseProblemCategory(rawCategory);
   if (category === undefined) reject('Choose safety, access, equipment, cleanliness or other as the problem category', 400);
   if (!Number.isSafeInteger(id) || id <= 0 || typeof description !== 'string' || description.trim().length < 10 || description.length > 2000 ||
     typeof requestKey !== 'string' || !/^[a-zA-Z0-9-]{16,80}$/.test(requestKey)) reject('Describe the problem in 10–2000 characters and supply a valid retry key', 400);
   return db.transaction(async tx => {
-    await tx.execute(commitment === 'booking' ? sql`SELECT id FROM kitchen_bookings WHERE id = ${id} FOR UPDATE` : sql`SELECT id FROM kitchen_viewings WHERE id = ${id} FOR UPDATE`);
+    await tx.execute(commitment === 'storage' ? sql`SELECT id FROM storage_bookings WHERE id = ${id} FOR UPDATE` : commitment === 'booking' ? sql`SELECT id FROM kitchen_bookings WHERE id = ${id} FOR UPDATE` : sql`SELECT id FROM kitchen_viewings WHERE id = ${id} FOR UPDATE`);
     authorizeProblem(await problemContext(tx, commitment, id), actor);
     return createProblem(tx, { kind: 'live', commitment, id, actor, description: description.trim(), category, sourceKey: `live:${commitment}:${id}:${actor.id}:${requestKey}` });
   });
@@ -175,10 +193,12 @@ export async function reportProblem(commitment: 'booking' | 'tour', id: number, 
 export async function updateProblem(id: number, actor: Actor, input: { action: string; expectedRevision: number; note?: string }) {
   if (actor.role !== 'admin' && input.action !== 'reply') reject('Local Cooks staff must claim and respond to this task', 403);
   return db.transaction(async tx => {
+    const [peek] = await tx.select().from(commitmentProblems).where(eq(commitmentProblems.id, id)).limit(1);
+    if (peek?.storageBookingId) await tx.execute(sql`SELECT id FROM storage_bookings WHERE id = ${peek.storageBookingId} FOR UPDATE`);
     const [row] = await tx.select().from(commitmentProblems).where(eq(commitmentProblems.id, id)).limit(1).for('update');
     if (!row) reject('Problem not found', 404);
     if (actor.role !== 'admin') {
-      const context = await problemContext(tx, row.bookingId ? 'booking' : 'tour', row.bookingId || row.viewingId!);
+      const context = await problemContext(tx, row.storageBookingId ? 'storage' : row.bookingId ? 'booking' : 'tour', row.storageBookingId || row.bookingId || row.viewingId!);
       authorizeProblem(context, actor);
       if (actor.role !== 'chef' && actor.role !== 'manager') reject('Only reservation participants can reply', 403);
       if (row.status === 'resolved') reject('This request is resolved. Create a new report if you need further help.');
@@ -201,20 +221,21 @@ export async function updateProblem(id: number, actor: Actor, input: { action: s
     const [updated] = await tx.update(commitmentProblems).set({ status, claimedBy: actor.role === 'admin' ? actor.id : row.claimedBy, revision, updatedAt: now,
       history: [...row.history as ProblemHistory[], { revision, at: now.toISOString(), actorId: actor.id, actorRole: actor.role || undefined, action: input.action, note: note || 'Assigned to support staff' }] })
       .where(eq(commitmentProblems.id, id)).returning();
+    if (updated.storageBookingId) await scheduleStorageTermPayout(updated.storageBookingId, tx);
     await queueProblemNotice(tx, updated, input.action);
     return updated;
   });
 }
 
-export async function listProblems(actor: Actor, commitment?: 'booking' | 'tour', id?: number) {
+export async function listProblems(actor: Actor, commitment?: 'booking' | 'tour' | 'storage', id?: number) {
   return db.transaction(async tx => {
     if (commitment && id) authorizeProblem(await problemContext(tx, commitment, id), actor);
     const rows = await tx.select().from(commitmentProblems).where(commitment && id
-      ? commitment === 'booking' ? eq(commitmentProblems.bookingId, id) : eq(commitmentProblems.viewingId, id)
+      ? commitment === 'storage' ? eq(commitmentProblems.storageBookingId, id) : commitment === 'booking' ? eq(commitmentProblems.bookingId, id) : eq(commitmentProblems.viewingId, id)
       : undefined).orderBy(desc(commitmentProblems.id));
     const visible = [];
     for (const row of rows) {
-      const context = await problemContext(tx, row.bookingId ? 'booking' : 'tour', row.bookingId || row.viewingId!);
+      const context = await problemContext(tx, row.storageBookingId ? 'storage' : row.bookingId ? 'booking' : 'tour', row.storageBookingId || row.bookingId || row.viewingId!);
       if (actor.role === 'admin' || actor.id === context?.chefId || actor.id === context?.managerId) visible.push(row);
     }
     return visible;

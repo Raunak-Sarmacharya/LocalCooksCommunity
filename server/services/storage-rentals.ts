@@ -365,6 +365,9 @@ export async function readRental(id: number, actor: RentalActor, now = new Date(
   const pending = terms.some(term => (term.operation as Decision | null)?.state === 'pending');
   const actions = rental.rentalState === 'requested' && !pending
     ? actor.role === 'chef' ? ['withdraw'] : rental.responseDeadline && now < rental.responseDeadline ? ['approve', 'decline'] : ['decline'] : [];
+  const { storageRentalVisitActions, storageRentalRelet } = await import('./storage-checkout-service');
+  actions.push(...storageRentalVisitActions(rental, actor.role, now, rental.rentalState === 'ended' && await storageRentalRelet(rental)));
+  if (rental.termStart! <= localToday(now, rental.timezone!) && !['requested', 'declined', 'expired', 'withdrawn'].includes(rental.rentalState!)) actions.push('report_problem');
   return { id, ref: rental.referenceCode, kitchen: { id: ctx.kitchen.id, name: ctx.kitchen.name },
     listing: { id: ctx.listing.id, name: ctx.listing.name }, unitLabel: String(rental.unitIndex), state: rental.rentalState,
     phase: phase?.phase ?? null, startOn: rental.termStart, paidThrough: rental.paidThrough,
@@ -372,6 +375,7 @@ export async function readRental(id: number, actor: RentalActor, now = new Date(
     accruedCents: phase?.accruedCents ?? 0, responseDeadline: rental.responseDeadline, declineReason: rental.declineReason, rentalTerms: frozen, actions,
     terms: terms.map(({ id, seq, kind, startsOn, endsOn, days, dailyPriceCents, subtotalCents, taxCents, serviceFeeCents, totalCents, status, paidAt }) =>
       ({ id, seq, kind, startsOn, endsOn, days, dailyPriceCents, subtotalCents, taxCents, serviceFeeCents, totalCents, status, paidAt })),
+    noBaseline: (rental.rentalTerms as { noBaseline?: boolean })?.noBaseline ?? false, needsCleaning: rental.needsCleaning, releasedOn: rental.releasedOn,
     evidence: { checkinPhotoUrls: rental.checkinPhotoUrls, handoverPhotoUrls: rental.handoverPhotoUrls, checkoutPhotoUrls: rental.checkoutPhotoUrls } };
 }
 async function contextForRead(listingId: number) {

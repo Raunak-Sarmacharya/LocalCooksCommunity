@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 const h = vi.hoisted(() => ({ quote: vi.fn(), checkout: vi.fn(), read: vi.fn(), list: vi.fn(), decide: vi.fn(), withdraw: vi.fn(),
-  extensionQuote: vi.fn(), extensionPay: vi.fn(), extensionSync: vi.fn(), raise: vi.fn(), waive: vi.fn(), record: vi.fn(), notice: vi.fn(), open: vi.fn() }));
+  visit: vi.fn(), extensionQuote: vi.fn(), extensionPay: vi.fn(), extensionSync: vi.fn(), raise: vi.fn(), waive: vi.fn(), record: vi.fn(), notice: vi.fn(), open: vi.fn() }));
+vi.mock('../services/storage-checkout-service', () => ({ storageRentalVisitAction: h.visit }));
 vi.mock('../services/storage-extensions', () => ({ quoteExtension: h.extensionQuote, payExtension: h.extensionPay, syncStorageTerm: h.extensionSync }));
 vi.mock('../firebase-auth-middleware', () => ({ requireFirebaseAuthWithUser: vi.fn(), requireManager: vi.fn(), requireAdmin: vi.fn() }));
 vi.mock('../services/storage-rental-lifecycle', () => ({ raiseHoldoverCharge: h.raise, waiveHoldover: h.waive, recordRemoval: h.record, sendFinalNotice: h.notice, openRemovalReview: h.open }));
@@ -88,5 +89,23 @@ describe('storage rental API contract', () => {
     const res = await call('post', '/manager/storage-rentals/:id/holdover-charge', { amountCents: 99999 });
     expect(res.status).toHaveBeenCalledWith(400);
     expect(res.json).toHaveBeenCalledWith({ code: 'exceeds_accrued', error: expect.not.stringContaining('stError_') });
+  });
+});
+
+describe('storage visit endpoints', () => {
+  it.each(['handover', 'clear-move-out', 'items-still-here', 'mark-ready'])('forwards %s as the authenticated manager and returns the refreshed DTO', async action => {
+    const input = action === 'clear-move-out' ? { needsCleaning: true } : action === 'mark-ready' ? {} : { photoUrls: ['https://example.invalid/photo.jpg'], note: ' Shelf inspected ' };
+    await call('post', `/manager/storage-rentals/:id/${action}`, input);
+    expect(h.visit).toHaveBeenCalledWith(7, { id: 3, role: 'manager' }, action,
+      action === 'clear-move-out' || action === 'mark-ready' ? input : { ...input, note: 'Shelf inspected' });
+    expect(h.read).toHaveBeenCalledWith(7, { id: 3, role: 'manager' });
+  });
+  it('validates photos and the cleaning choice; maps a re-let conflict to localized 409', async () => {
+    expect((await call('post', '/manager/storage-rentals/:id/clear-move-out', {})).status).toHaveBeenCalledWith(400);
+    expect((await call('post', '/manager/storage-rentals/:id/handover', { photoUrls: ['bad'] })).status).toHaveBeenCalledWith(400);
+    h.visit.mockRejectedValue(new StorageRentalError('relet'));
+    const result = await call('post', '/manager/storage-rentals/:id/items-still-here', { photoUrls: ['https://example.invalid/box.jpg'] });
+    expect(result.status).toHaveBeenCalledWith(409);
+    expect(result.json).toHaveBeenCalledWith({ code: 'relet', error: expect.not.stringContaining('stError_') });
   });
 });

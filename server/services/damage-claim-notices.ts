@@ -52,7 +52,9 @@ export async function queueDamageClaimNotice(tx: ClaimTx, claim: Claim, history:
     const message = participant
       ? `${t(roleKey, { kitchen, chef: chefName && chefName !== 'A chef' ? chefName : t('Chef'), amount, deadline, payBy, reduction, message: publicMessage }).replace(/\.\.$/, '.')}${reason ? ` ${reason}` : ''}`
       : `${t(`Notice_${event}`, { kitchen, amount, deadline })} ${debt} ${shared}`.trim();
-    const path = person.role === 'admin' ? `/admin?section=booking-support&booking=${claim.kitchenBookingId}`
+    const path = claim.storageBookingId ? person.role === 'admin' ? `/admin?section=storage-rentals&rental=${claim.storageBookingId}`
+      : chef ? `/storage/${claim.storageBookingId}` : `/manager/storage/${claim.storageBookingId}`
+      : person.role === 'admin' ? `/admin?section=booking-support&booking=${claim.kitchenBookingId}`
       : chef ? `/booking/${claim.kitchenBookingId}` : `/manager/booking/${claim.kitchenBookingId}`;
     await notificationService.create({ userId: person.id, target: chef ? 'chef' : 'manager', type: 'system_announcement',
       priority: review ? 'high' : 'normal', title, message, actionUrl: path, actionLabel: t('View'),
