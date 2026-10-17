@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { useSessionFileUpload } from '@/hooks/useSessionFileUpload';
@@ -109,8 +110,8 @@ function ClaimForm({ bookingId, storageRentalId, visitId, chefName, onDone, loca
     </>}
     {step === 2 && <>
       {lines.map((line, index) => <fieldset key={line.id} className="rounded-xl border p-4 space-y-3"><legend>{t('dcV2CostLine', { number: index + 1 })}</legend>
-        <label className="block space-y-1"><span>{t('dcV2Type')}</span><select className="w-full rounded-md border bg-background p-2" value={line.type} onChange={event => update(line.id, { type: event.target.value as ClaimLine['type'] })}>
-          <option value="damage">{t('dcV2Damage')}</option><option value="extra_cleaning">{t('dcV2Cleaning')}</option></select></label>
+        <label className="block space-y-1"><span>{t('dcV2Type')}</span><Select value={line.type} onValueChange={value => update(line.id, { type: value as ClaimLine['type'] })}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent>
+          <SelectItem value="damage">{t('dcV2Damage')}</SelectItem><SelectItem value="extra_cleaning">{t('dcV2Cleaning')}</SelectItem></SelectContent></Select></label>
         <label className="block space-y-1"><span>{t('dcV2CostDescription')}</span><Input value={line.description} maxLength={500} onChange={event => update(line.id, { description: event.target.value })} /></label>
         <label className="block space-y-1"><span>{t('dcV2CostAmount')}</span><Input inputMode="decimal" value={line.amount} onChange={event => update(line.id, { amount: event.target.value })} /></label>
         <label className="block space-y-1"><span>{t('dcV2CostDocument')}</span><Input type="file" accept="image/*,application/pdf" disabled={isUploading} onChange={event => { const file = event.target.files?.[0]; if (file) void upload(file, line.id); }} /></label>

@@ -4,9 +4,12 @@ import { formatVisitTime, friendlyTimezoneName } from '@/lib/visit-time';
 import { formatTime } from '@/lib/formatters';
 import { auth } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { matchingLocalInstants } from '@shared/booking-dst';
 import { DEFAULT_TIMEZONE } from '@shared/timezone-utils';
+
+const EMPTY = '__empty__';
 
 /** Kitchen wall time resolves on the owned server context; never default to click time. */
 export function VisitAssistancePanel({ bookingId, updatedAt, visits = [], onSaved, storage = false, history = [], disabled = false, timezone, fixedAction, scheduledStart, chefName }: {
@@ -59,18 +62,29 @@ export function VisitAssistancePanel({ bookingId, updatedAt, visits = [], onSave
     {history.length > 0 && <div className="text-sm space-y-2" aria-label={t('fixHistory')}>{history.map((entry, index) => <p key={index}>
       {t('assistHistory', { action: t(entry.action === 'arrival' ? 'assistArrivalTitle' : entry.action === 'departure' ? 'assistDepartureTitle' : 'assistRemoval'), time: entry.actualAt ? formatVisitTime(entry.actualAt, displayedZone, locale) : t('fixTimeUnavailable'), updated: formatVisitTime(entry.recordedAt, displayedZone, locale) })} {entry.reason}
     </p>)}</div>}
-    {visits.length > 1 && <label className="block text-sm">{t('bookingAttendanceVisit')} <select className="rounded border bg-background p-2" value={visitId} onChange={event => setVisitId(event.target.value)} disabled={saving}>
-      <option value="">{t('bookingAttendanceChooseVisit')}</option>{visits.map(visit => <option key={visit.id} value={visit.id}>{formatTime(visit.startTime, locale)}–{formatTime(visit.endTime, locale)}</option>)}
-    </select></label>}
-    {!fixedAction && <label className="block text-sm">{t('assistAction')} <select className="rounded border bg-background p-2" value={action} onChange={event => setAction(event.target.value)} disabled={saving}>
-      <option value="arrival">{t('assistArrivalTitle')}</option><option value="departure">{t('assistDepartureTitle')}</option>
-      {storage && <option value="confirm_removal">{t('assistRemoval')}</option>}
-    </select></label>}
+    {visits.length > 1 && <label className="block text-sm">{t('bookingAttendanceVisit')} <Select value={visitId === '' ? EMPTY : visitId} onValueChange={value => setVisitId(value === EMPTY ? '' : value)} disabled={saving}>
+      <SelectTrigger><SelectValue /></SelectTrigger>
+      <SelectContent>
+        <SelectItem value={EMPTY}>{t('bookingAttendanceChooseVisit')}</SelectItem>
+        {visits.map(visit => <SelectItem key={visit.id} value={String(visit.id)}>{formatTime(visit.startTime, locale)}–{formatTime(visit.endTime, locale)}</SelectItem>)}
+      </SelectContent>
+    </Select></label>}
+    {!fixedAction && <label className="block text-sm">{t('assistAction')} <Select value={action} onValueChange={setAction} disabled={saving}>
+      <SelectTrigger><SelectValue /></SelectTrigger>
+      <SelectContent>
+        <SelectItem value="arrival">{t('assistArrivalTitle')}</SelectItem><SelectItem value="departure">{t('assistDepartureTitle')}</SelectItem>
+        {storage && <SelectItem value="confirm_removal">{t('assistRemoval')}</SelectItem>}
+      </SelectContent>
+    </Select></label>}
     <label className="block text-sm" htmlFor={`${prefix}-time`}>{t(action === 'arrival' ? 'assistArrivalTime' : 'assistDepartureTime', { zone: zoneName })}</label>
     <input id={`${prefix}-time`} type="datetime-local" className="w-full rounded border bg-background p-2" value={actualAt} required onChange={event => { setActualAt(event.target.value); setOccurrence(''); }} disabled={saving} />
-    {instants.length > 1 && <label className="block text-sm">{t('assistRepeated')} <select className="rounded border bg-background p-2" value={occurrence} onChange={event => setOccurrence(event.target.value)}>
-      <option value="">{t('assistChooseOccurrence')}</option>{instants.map((instant, index) => <option key={instant} value={index}>{t(index === 0 ? 'assistFirst' : 'assistSecond')} ({formatVisitTime(new Date(instant).toISOString(), displayedZone, locale)})</option>)}
-    </select></label>}
+    {instants.length > 1 && <label className="block text-sm">{t('assistRepeated')} <Select value={occurrence === '' ? EMPTY : occurrence} onValueChange={value => setOccurrence(value === EMPTY ? '' : value)}>
+      <SelectTrigger><SelectValue /></SelectTrigger>
+      <SelectContent>
+        <SelectItem value={EMPTY}>{t('assistChooseOccurrence')}</SelectItem>
+        {instants.map((instant, index) => <SelectItem key={instant} value={String(index)}>{t(index === 0 ? 'assistFirst' : 'assistSecond')} ({formatVisitTime(new Date(instant).toISOString(), displayedZone, locale)})</SelectItem>)}
+      </SelectContent>
+    </Select></label>}
     <label className="block text-sm" htmlFor={`${prefix}-reason`}>{t('assistNote', { chef })}</label>
     <Textarea id={`${prefix}-reason`} value={reason} onChange={event => setReason(event.target.value)} maxLength={2000} disabled={saving} />
     {error && <p role="alert" className="text-sm text-destructive">{error} {t('assistRetained')}</p>}

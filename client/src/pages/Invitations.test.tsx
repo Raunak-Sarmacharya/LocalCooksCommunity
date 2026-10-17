@@ -31,6 +31,7 @@ const calls: Array<{ url: string; method: string; body?: any }> = [];
 const policyResponse = { policy: { id: 1, version: 1, noticeHours: 24, lateChargePercent: 50 }, timezone: 'America/St_Johns' };
 beforeEach(() => {
   calls.length = 0;
+  if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {};
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
     calls.push({ url, method: init?.method || 'GET', body: init?.body ? JSON.parse(String(init.body)) : undefined });
     const hit = routes.find(([pattern]) => pattern.test(url));
@@ -47,7 +48,7 @@ describe('kitchen: invite to book', () => {
       [/\/slots\?date=/, overnight], [/invitations\/preview/, { pricing, expiresAt: '2026-10-18T13:00:00Z', available: true, warnings: [] }],
       [/\/api\/manager\/invitations\?/, { invitations: [] }], [/\/api\/manager\/invitations$/, invitation()]];
     mount(<ManagerInvitationNewPage />);
-    expect(await screen.findByRole('option', { name: 'Sam Chef' })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText('Chef')).toHaveTextContent('Sam Chef'));
     fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2026-10-27' } });
     fireEvent.click(screen.getByRole('radio', { name: '$ off' }));
     fireEvent.change(screen.getByLabelText('Dollars off the kitchen time'), { target: { value: '10' } });
@@ -66,14 +67,18 @@ describe('kitchen: invite to book', () => {
       [/\/slots\?date=/, overnight], [/invitations\/preview/, { pricing, expiresAt: '2026-10-18T13:00:00Z', available: true, warnings: [] }],
       [/\/api\/manager\/invitations\?/, { invitations: [] }]];
     mount(<ManagerInvitationNewPage />);
-    await screen.findByRole('option', { name: 'Sam Chef' });
+    await waitFor(() => expect(screen.getByLabelText('Chef')).toHaveTextContent('Sam Chef'));
     expect(screen.getByLabelText('Start time')).toBeDisabled();
     fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2026-10-26' } });
+    await waitFor(() => expect(screen.getByLabelText('Start time')).toBeEnabled());
+    fireEvent.click(screen.getByLabelText('Start time'));
     expect(await screen.findByRole('option', { name: '12:00 a.m.' })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: '12:00 p.m. · booked' })).toBeDisabled();
-    fireEvent.change(screen.getByLabelText('Start time'), { target: { value: '23:00' } });
-    fireEvent.change(screen.getByLabelText('Length'), { target: { value: '2' } });
-    expect(screen.getAllByRole('option').filter(option => (option as HTMLOptionElement).value === '3' && option.closest('select') === screen.getByLabelText('Length'))).toHaveLength(0);
+    expect(screen.getByRole('option', { name: '12:00 p.m. · booked' })).toHaveAttribute('data-disabled');
+    fireEvent.click(screen.getByRole('option', { name: '11:00 p.m.' }));
+    fireEvent.click(screen.getByLabelText('Length'));
+    fireEvent.click(screen.getByRole('option', { name: '2 hours' }));
+    fireEvent.click(screen.getByLabelText('Length'));
+    expect(screen.queryByRole('option', { name: '3 hours' })).not.toBeInTheDocument();
     await waitFor(() => expect(calls.filter(call => call.url.includes('/preview')).at(-1)?.body).toMatchObject({ startTime: '23:00', endTime: '01:00' }));
   });
   it('an unavailable time explains why and cannot be sent', async () => {
@@ -81,7 +86,7 @@ describe('kitchen: invite to book', () => {
       [/\/slots\?date=/, overnight], [/invitations\/preview/, { pricing, expiresAt: '2026-10-18T13:00:00Z', available: false, unavailableReason: 'Sam Chef already has a request for this time.', warnings: [] }],
       [/\/api\/manager\/invitations\?/, { invitations: [] }]];
     mount(<ManagerInvitationNewPage />);
-    await screen.findByRole('option', { name: 'Sam Chef' });
+    await waitFor(() => expect(screen.getByLabelText('Chef')).toHaveTextContent('Sam Chef'));
     fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2026-10-27' } });
     expect(await screen.findByText('Sam Chef already has a request for this time.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Send invitation' })).toBeDisabled();

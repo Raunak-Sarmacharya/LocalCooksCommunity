@@ -3,7 +3,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { CancellationPolicyEditor } from './CancellationPolicyEditor';
-vi.mock('react-i18next', async () => ({ useTranslation: (await import('@/test/booking-i18n')).useBookingTranslation }));
+vi.mock('react-i18next', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-i18next')>();
+  const { useBookingTranslation } = await import('@/test/booking-i18n');
+  return { ...actual, useTranslation: useBookingTranslation };
+});
 const api = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn() }));
 vi.mock('@/lib/api', () => ({ apiGet: api.get, apiPut: api.put }));
 const policy = { policy: { id: 1, version: 1, noticeHours: 24, lateChargePercent: 100, adminOverrideReason: null as string | null }, settings: { noticeOptions: [24, 48, 72], chargeOptions: [50, 100] }, timezone: 'America/St_Johns' };
@@ -11,8 +15,10 @@ beforeEach(() => { vi.clearAllMocks(); api.get.mockResolvedValue(policy); api.pu
 function mount(admin = false) { const client = new QueryClient({ defaultOptions: { queries: { retry: false } } }); client.setQueryData(['managerBookings'], []); render(<QueryClientProvider client={client}><CancellationPolicyEditor kitchenId={10} admin={admin} /></QueryClientProvider>); }
 it('publishes exactly two choices with a live preview and new-bookings-only warning', async () => {
   mount(); await waitFor(() => expect(screen.getByLabelText('Free cancellation until')).toBeEnabled());
-  fireEvent.change(screen.getByLabelText('Free cancellation until'), { target: { value: '48' } });
-  fireEvent.change(screen.getByLabelText('Late cancellation charge'), { target: { value: '50' } });
+  fireEvent.click(screen.getByLabelText('Free cancellation until'));
+  fireEvent.click(screen.getByRole('option', { name: '48 hours before' }));
+  fireEvent.click(screen.getByLabelText('Late cancellation charge'));
+  fireEvent.click(screen.getByRole('option', { name: '50% of the booking' }));
   expect(screen.getByText(/Cancel at least 48 hours.*50%/)).toBeInTheDocument(); expect(screen.getByText(/Applies to new bookings only/)).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Save cancellation policy' }));
   expect(api.put).not.toHaveBeenCalled(); fireEvent.click(screen.getByRole('checkbox'));
@@ -28,7 +34,8 @@ it('stays quiet until a choice changes, then keeps the current policy when confi
   expect(screen.getByRole('button', { name: 'Save cancellation policy' })).toBeDisabled();
   expect(screen.queryByTestId('setting-change-preview')).not.toBeInTheDocument();
   expect(screen.getByText(/Chefs see:/)).toBeInTheDocument();
-  fireEvent.change(screen.getByLabelText('Free cancellation until'), { target: { value: '72' } });
+  fireEvent.click(screen.getByLabelText('Free cancellation until'));
+  fireEvent.click(screen.getByRole('option', { name: '72 hours before' }));
   expect(screen.getByTestId('setting-change-preview')).toHaveTextContent('Applies to new bookings only');
   fireEvent.click(screen.getByRole('button', { name: 'Save cancellation policy' }));
   fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Keep current policy' }));

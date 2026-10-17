@@ -4,9 +4,12 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { auth } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { formatTourWhen } from '@/lib/chef-viewing-display';
 import type { VisitEvent } from '@shared/tour-visit-evidence';
+
+const EMPTY = '__empty__';
 /** Historical evidence is preserved read-only; feedback and final outcomes have separate controls. */
 export function AdminTourVisitEvidence({ id, version, needsReview }: { id: number; version: string; needsReview?: boolean }) {
   const { t } = useTranslation('common');
@@ -47,12 +50,18 @@ export function AdminTourVisitEvidence({ id, version, needsReview }: { id: numbe
         </div>
         {data.tour?.visitEvidenceState === 'review' && <form className="space-y-3 border-t pt-4" onSubmit={event=>{event.preventDefault();void repair();}}>
           <p className="text-xs text-muted-foreground">{t('tourFeedbackLegacyRepairHelp')}</p>
-          {(['arrival','departure'] as const).map(field=><label key={field} className="block space-y-1">{t(field==='arrival'?'tourVisitArrival':'tourVisitDeparture')}
-            <select aria-label={t(field==='arrival'?'tourVisitArrival':'tourVisitDeparture')} className="block min-h-11 w-full min-w-0 rounded-md border bg-background px-2 text-base sm:text-sm" value={field==='arrival'?arrival:departure} disabled={saving} onChange={event=>(field==='arrival'?setArrival:setDeparture)(event.target.value)}>
-              <option value="">{t('tourFeedbackLegacyChoose')}</option>
-              {(field==='arrival'?data.tour.checkedInAt:data.tour.checkedOutAt) && <option value="keep">{t('tourFeedbackLegacyKeep')}</option>}
-              <option value="unknown">{t('tourFeedbackLegacyUnknown')}</option>
-            </select></label>)}
+          {(['arrival','departure'] as const).map(field=>{
+            const current = field==='arrival'?arrival:departure;
+            return <label key={field} className="block space-y-1">{t(field==='arrival'?'tourVisitArrival':'tourVisitDeparture')}
+            <Select value={current === '' ? EMPTY : current} disabled={saving} onValueChange={value => (field==='arrival'?setArrival:setDeparture)(value === EMPTY ? '' : value)}>
+              <SelectTrigger aria-label={t(field==='arrival'?'tourVisitArrival':'tourVisitDeparture')} className="min-h-11 w-full min-w-0 text-base sm:text-sm"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={EMPTY}>{t('tourFeedbackLegacyChoose')}</SelectItem>
+                {(field==='arrival'?data.tour.checkedInAt:data.tour.checkedOutAt) && <SelectItem value="keep">{t('tourFeedbackLegacyKeep')}</SelectItem>}
+                <SelectItem value="unknown">{t('tourFeedbackLegacyUnknown')}</SelectItem>
+              </SelectContent>
+            </Select></label>;
+          })}
           {!data.tour.confirmationVerified && <label className="flex gap-2 text-xs"><input type="checkbox" checked={confirmed} onChange={event=>setConfirmed(event.target.checked)} />{t('tourVisitVerifyConfirmation')}</label>}
           <Label htmlFor={`legacy-repair-${id}`}>{t('tourVisitWhatHappened')}</Label><Textarea id={`legacy-repair-${id}`} value={reason} maxLength={2000} onChange={event=>setReason(event.target.value)} />
           <Button size="sm" type="submit" disabled={saving || !arrival || !departure || reason.trim().length<10 || (!data.tour.confirmationVerified && !confirmed)}>{t('tourVisitSaveRepair')}</Button>

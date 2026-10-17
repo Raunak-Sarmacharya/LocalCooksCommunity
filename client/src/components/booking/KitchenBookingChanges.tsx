@@ -7,6 +7,7 @@ import { formatVisitTime } from '@/lib/visit-time';
 import { friendlyTimezoneName } from '@shared/timezone-utils';
 import { formatTime } from '@/lib/formatters';
 import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { addHour } from '@shared/operating-hours';
@@ -181,9 +182,10 @@ export function ChangeBookingDialog({ bookingId, kitchenId, kitchenName, timezon
               <input type="date" className="mt-1 block min-h-11 w-full rounded-md border bg-background px-3" value={date} disabled={busy} onChange={event => setDate(event.target.value)} />
             </label>
             <label className="text-sm font-medium">{t('chgHours')}
-              <select className="mt-1 block min-h-11 w-full rounded-md border bg-background px-3" value={hours} disabled={busy} onChange={event => setHours(Number(event.target.value))}>
-                {Array.from({ length: lengthCap - minHours + 1 }, (_, i) => i + minHours).map(n => <option key={n} value={n} disabled={n > maxHours}>{t('chgHoursOption', { count: n })}</option>)}
-              </select>
+              <Select value={String(hours)} disabled={busy} onValueChange={value => setHours(Number(value))}>
+                <SelectTrigger className="mt-1 min-h-11"><SelectValue /></SelectTrigger>
+                <SelectContent>{Array.from({ length: lengthCap - minHours + 1 }, (_, i) => i + minHours).map(n => <SelectItem key={n} value={String(n)} disabled={n > maxHours}>{t('chgHoursOption', { count: n })}</SelectItem>)}</SelectContent>
+              </Select>
             </label>
           </div>
           <fieldset>

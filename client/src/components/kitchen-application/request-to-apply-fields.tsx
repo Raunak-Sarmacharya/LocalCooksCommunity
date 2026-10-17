@@ -6,8 +6,11 @@ import { useTranslation } from "react-i18next";
 import { FormLegend } from "@/components/ui/form-legend";
 import { DateField } from "@/components/ui/date-field";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DocumentUploadField } from "./DocumentUploadField";
 import { cn } from "@/lib/utils";
+
+const EMPTY = "__empty__";
 
 export const REQUEST_TO_APPLY_BUSINESS_TYPES = [
   { value: "catering", key: "btCatering", fallback: "Catering & Events" },
@@ -114,19 +117,19 @@ export function RequestToApplyFields({
         <label className="block text-sm font-medium text-gray-700">
           {t("howOftenNeedKitchen")} <span className="text-destructive">*</span>
         </label>
-        <select
-          data-testid="rta-usage-frequency"
-          className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50 text-gray-900 bg-white"
-          value={draft.usageFrequency}
-          onChange={(e) => onChange({ usageFrequency: e.target.value })}
-        >
-          <option value="">{t("selectFrequency", "Select frequency")}</option>
-          {REQUEST_TO_APPLY_FREQUENCIES.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {t(opt.key, opt.fallback)}
-            </option>
-          ))}
-        </select>
+        <Select value={draft.usageFrequency === "" ? EMPTY : draft.usageFrequency} onValueChange={(value) => onChange({ usageFrequency: value === EMPTY ? "" : value })}>
+          <SelectTrigger data-testid="rta-usage-frequency" className="w-full px-4 py-2 text-gray-900 bg-white">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={EMPTY}>{t("selectFrequency", "Select frequency")}</SelectItem>
+            {REQUEST_TO_APPLY_FREQUENCIES.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>
+                {t(opt.key, opt.fallback)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="space-y-1">
@@ -243,19 +246,19 @@ export function RequestToApplyFields({
             {t("optional", "(Optional)")}
           </span>
         </label>
-        <select
-          data-testid="rta-business-type"
-          className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50 text-gray-900 bg-white"
-          value={draft.businessType}
-          onChange={(e) => onChange({ businessType: e.target.value })}
-        >
-          <option value="">{t("selectBusinessType")}</option>
-          {REQUEST_TO_APPLY_BUSINESS_TYPES.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {t(opt.key, opt.fallback)}
-            </option>
-          ))}
-        </select>
+        <Select value={draft.businessType === "" ? EMPTY : draft.businessType} onValueChange={(value) => onChange({ businessType: value === EMPTY ? "" : value })}>
+          <SelectTrigger data-testid="rta-business-type" className="w-full px-4 py-2 text-gray-900 bg-white">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={EMPTY}>{t("selectBusinessType")}</SelectItem>
+            {REQUEST_TO_APPLY_BUSINESS_TYPES.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>
+                {t(opt.key, opt.fallback)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
       <div className="space-y-1">
         <label className="block text-sm font-medium text-gray-700">

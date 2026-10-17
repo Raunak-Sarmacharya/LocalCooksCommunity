@@ -8,6 +8,7 @@ import { auth } from '@/lib/firebase';
 import { formatVisitTime, friendlyTimezoneName } from '@/lib/visit-time';
 import { formatTime } from '@/lib/formatters';
 import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { CommitmentProblems } from '@/components/support/CommitmentProblems';
@@ -15,6 +16,8 @@ import { MessageKitchenButton } from './MessageKitchenButton';
 import { VisitAssistancePanel } from './VisitAssistancePanel';
 import { hasBookingAttendanceEvidence } from '@shared/booking-attendance';
 import { lateCheckoutOpen, type BookingCloseout } from '@shared/clock-closeout';
+
+const EMPTY = '__empty__';
 
 type Event = { id: number; visitId: number | null; action: string; actorRole: string; sharedMessage: string | null; internalNotes?: string | null; createdAt: string };
 type Assistance = { actorId: number; action: string; reason: string; actualAt: string; recordedAt: string };
@@ -121,9 +124,13 @@ export function BookingAttendancePanel({ bookingId, manager, localCooks = false,
   // Opened from "They came" / "They didn't come": the kitchen already chose, so no chooser intro and no Back.
   const preset = presetApplied && action === fixAction && (action === 'report_no_show' || action === 'report_attended');
   const visitPicker = data && data.visits.length > 1 && <label className="block text-sm">{t('bookingAttendanceVisit')}
-    <select className="ml-2 max-w-full rounded border bg-background p-2" value={visitId ?? ''} disabled={saving} onChange={event => { setVisitId(event.target.value ? Number(event.target.value) : undefined); reset(); }}>
-      <option value="">{t('bookingAttendanceChooseVisit')}</option>{data.visits.map((visit, index) => <option key={visit.id} value={visit.id}>{t('fixVisitRange', { number: index + 1, start: formatTime(visit.startTime, locale), end: formatTime(visit.endTime, locale) })}</option>)}
-    </select></label>;
+    <Select value={visitId == null ? EMPTY : String(visitId)} disabled={saving} onValueChange={value => { setVisitId(value === EMPTY ? undefined : Number(value)); reset(); }}>
+      <SelectTrigger className="ml-2 max-w-full"><SelectValue /></SelectTrigger>
+      <SelectContent>
+        <SelectItem value={EMPTY}>{t('bookingAttendanceChooseVisit')}</SelectItem>
+        {data.visits.map((visit, index) => <SelectItem key={visit.id} value={String(visit.id)}>{t('formVisitRange', 'Visit {number}: {start}–{end}', { number: index + 1, start: formatTime(visit.startTime, locale), end: formatTime(visit.endTime, locale) })}</SelectItem>)}
+      </SelectContent>
+    </Select></label>;
   const eventLabel = (event: Event) => t(event.action === 'report_no_show' ? 'fixHistoryNoShow' : event.action === 'report_attended' ? 'fixHistoryAttended' : 'fixHistoryUndo', { actor: t(event.actorRole === 'admin' ? 'fixSupport' : 'fixKitchen') });
   if (data && !active && !hasHistory) return null;
   const header = !embedded || ((manager || localCooks) && data && !controlled);

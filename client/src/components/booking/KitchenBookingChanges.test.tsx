@@ -87,7 +87,8 @@ describe('Change date or time dialog', () => {
     expect(calls.some(call => call.url.includes('/api/chef/kitchens/54/slots?date=2030-11-10&changing=10'))).toBe(true);
     fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2030-11-12' } });
     fireEvent.click(await screen.findByRole('button', { name: /2:00/ }));
-    fireEvent.change(screen.getByLabelText('Length'), { target: { value: '2' } });
+    fireEvent.click(screen.getByLabelText('Length'));
+    fireEvent.click(screen.getByRole('option', { name: '2 hours' }));
     const preview = await screen.findByTestId('change-preview');
     expect(preview).toHaveTextContent('You’ll pay $30.50 more');
     expect(preview).toHaveTextContent(/Your refund deadline would move to/);
@@ -103,7 +104,8 @@ describe('Change date or time dialog', () => {
     routes = { '/slots': slots, '/changes': { original, canRequest: { allowed: true }, timezone: 'America/St_Johns' } };
     render(<ChangeBookingDialog bookingId={10} kitchenId={54} kitchenName="PHASE0 Main Kitchen" timezone="America/St_Johns" open onOpenChange={() => {}} onChanged={async () => {}} />);
     await screen.findByRole('button', { name: /11:00/ });
-    fireEvent.change(screen.getByLabelText('Length'), { target: { value: '2' } });
+    fireEvent.click(screen.getByLabelText('Length'));
+    fireEvent.click(screen.getByRole('option', { name: '2 hours' }));
     fireEvent.click(screen.getByRole('button', { name: /11:00/ }));
 
     expect(await screen.findByText(/the kitchen is free for 1 hour/)).toBeInTheDocument();

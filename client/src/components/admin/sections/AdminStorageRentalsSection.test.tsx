@@ -20,11 +20,13 @@ it('loads the table and drawer, requires a reason and previews a funded refund b
   expect(screen.getAllByText('stState_active').length).toBeGreaterThanOrEqual(1);
   expect(screen.getByText('stAdminSubtitle')).toBeInTheDocument();
   expect(screen.getByText('stAdminSection_payments')).toBeInTheDocument();
-  fireEvent.change(screen.getByLabelText('stAdminAction'), { target: { value: 'goodwill_refund' } });
+  fireEvent.click(screen.getByLabelText('stAdminAction'));
+  fireEvent.click(screen.getByRole('option', { name: 'stAdminAction_goodwill_refund' }));
   expect(screen.getByRole('button', { name: 'stPreview' })).toBeDisabled();
   fireEvent.change(screen.getByLabelText('stAdminReason'), { target: { value: 'Kitchen agreed to a refund.' } });
   fireEvent.change(screen.getByLabelText('stAmountLabel'), { target: { value: '5.00' } });
-  fireEvent.change(screen.getByLabelText('stFundedBy'), { target: { value: 'local_cooks' } });
+  fireEvent.click(screen.getByLabelText('stFundedBy'));
+  fireEvent.click(screen.getByRole('option', { name: 'stFunded_local_cooks' }));
   fireEvent.click(screen.getByRole('button', { name: 'stPreview' }));
   expect(await screen.findByText(/\$5.00/)).toBeInTheDocument();
   expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/actions'))).toHaveLength(0);

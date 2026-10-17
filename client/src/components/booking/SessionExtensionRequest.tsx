@@ -9,8 +9,11 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { CheckCircle2, Clock, Loader2, MessageSquare } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { checkoutExtension, createExtension, isExtensionState, isQuickPick, kitchenClock, lapsedAt, lengthText, money, newRequestKey, readExtensions, useServerNow, withCardAction,
   type ExtensionItem, type ExtensionOption, type ExtensionState } from "@/lib/session-extensions"
+
+const EMPTY = "__empty__"
 
 const POLL_MS = 20_000
 type View = { kind: "unavailable"; state: ExtensionState | null } | { kind: "idle" } | { kind: "loading" } | { kind: "options"; state: ExtensionState } | { kind: "busy"; state: ExtensionState }
@@ -219,12 +222,15 @@ export function SessionExtensionRequest({ bookingId, kitchenName, timezone, clas
         onClick={() => setCustom({ open: true, minutes: null })}>{t("sxChooseOther", { defaultValue: "Choose a time…" })}</Button>
         : <div className="space-y-2 rounded-md border p-2" data-testid="extension-custom">
           <label htmlFor={`extension-end-${bookingId}`} className="block text-sm font-medium">{t("sxNewEndLabel", { defaultValue: "New end time" })}</label>
-          <select id={`extension-end-${bookingId}`} className="block w-full min-h-11 rounded-md border bg-background p-2" disabled={busy}
-            value={custom.minutes ?? ""} onChange={event => setCustom({ open: true, minutes: event.target.value ? Number(event.target.value) : null })}>
-            <option value="">{t("sxPickEnd", { defaultValue: "Pick a time" })}</option>
-            {state.options.map(option => <option key={option.minutes} value={option.minutes}>
-              {t("sxUntilLength", { defaultValue: "Until {time} ({duration})", time: clock(option.endAt, state.timezone), duration: duration(option.minutes) })}</option>)}
-          </select>
+          <Select disabled={busy} value={custom.minutes == null ? EMPTY : String(custom.minutes)}
+            onValueChange={value => setCustom({ open: true, minutes: value === EMPTY ? null : Number(value) })}>
+            <SelectTrigger id={`extension-end-${bookingId}`} className="min-h-11"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value={EMPTY}>{t("sxPickEnd", { defaultValue: "Pick a time" })}</SelectItem>
+              {state.options.map(option => <SelectItem key={option.minutes} value={String(option.minutes)}>
+                {t("sxUntilLength", { defaultValue: "Until {time} ({duration})", time: clock(option.endAt, state.timezone), duration: duration(option.minutes) })}</SelectItem>)}
+            </SelectContent>
+          </Select>
           {chosen && <>
             <p className="text-sm tabular-nums" data-testid="extension-custom-summary">{t("sxSummaryUntil", { defaultValue: "Until {time} · {amount}", time: clock(chosen.endAt, state.timezone), amount: money(chosen.amountCents, state.currency, locale) })}</p>
             <Button type="button" className={className} disabled={busy} onClick={() => void choose(state, chosen)}>{optionLabel(chosen)}</Button>

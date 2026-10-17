@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { apiGet, apiPut } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SettingChangePreview } from '@/components/manager/settings/SettingChangePreview';
 import type { PolicyResponse } from '@/components/booking/CancellationPolicySummary';
 
@@ -27,8 +28,8 @@ export function AdminCancellationPolicyEditor({ kitchenId }: { kitchenId: number
   };
   return <Card><CardHeader><CardTitle>{t('cpTitle')}</CardTitle></CardHeader><CardContent className="space-y-4">
     {isError || data && !data.policy ? <p role="alert">{t('cpError')} <Button variant="outline" onClick={() => void refetch()}>{t('cpRetry')}</Button></p> : <>
-      <label className="block text-sm">{t('cpNotice')}<select className="mt-1 block rounded border bg-background p-2" value={noticeHours} disabled={!data || busy} onChange={event => setNotice(Number(event.target.value))}>{(data?.settings.noticeOptions ?? [24, 48, 72]).map(hours => <option key={hours} value={hours}>{t('cpHours', { hours })}</option>)}</select></label>
-      <label className="block text-sm">{t('cpCharge')}<select className="mt-1 block rounded border bg-background p-2" value={lateChargePercent} disabled={!data || busy} onChange={event => setCharge(Number(event.target.value))}>{(data?.settings.chargeOptions ?? [50, 100]).map(charge => <option key={charge} value={charge}>{t(charge === 50 ? 'cpHalf' : 'cpFull')}</option>)}</select></label>
+      <label className="block text-sm">{t('cpNotice')}<Select value={String(noticeHours)} disabled={!data || busy} onValueChange={value => setNotice(Number(value))}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent>{(data?.settings.noticeOptions ?? [24, 48, 72]).map(hours => <SelectItem key={hours} value={String(hours)}>{t('cpHours', { hours })}</SelectItem>)}</SelectContent></Select></label>
+      <label className="block text-sm">{t('cpCharge')}<Select value={String(lateChargePercent)} disabled={!data || busy} onValueChange={value => setCharge(Number(value))}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent>{(data?.settings.chargeOptions ?? [50, 100]).map(charge => <SelectItem key={charge} value={String(charge)}>{t(charge === 50 ? 'cpHalf' : 'cpFull')}</SelectItem>)}</SelectContent></Select></label>
       {data?.policy?.adminOverrideReason && <p className="text-sm">{t('cpOverride', { reason: data.policy.adminOverrideReason })}</p>}
       <label className="block text-sm">{t('cpOverrideReason')}<textarea className="mt-1 block w-full rounded border p-2" value={reason} maxLength={2000} onChange={event => setReason(event.target.value)} /></label>
       <SettingChangePreview whatChanges={mt('scpCancellationWhat', { summary: t(lateChargePercent === 100 ? 'cpSummaryNoRefund' : 'cpSummary', { hours: noticeHours, charge: t('cpHalf') }) })}

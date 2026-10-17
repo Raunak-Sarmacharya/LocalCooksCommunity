@@ -13,7 +13,10 @@ import { formatBookingDate, formatCurrency } from "@/lib/formatters";
 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+
+const EMPTY = "__empty__";
 
 interface AdminStorageRental {
   id: number;
@@ -90,10 +93,13 @@ export function AdminStorageRentalsSection() {
       <div className="grid gap-3 sm:grid-cols-3">
         <Input aria-label={t('stSearch')} placeholder={t('stSearch')} value={search} onChange={event => setSearch(event.target.value)} />
         <Input aria-label={t('stAdminColKitchen')} placeholder={t('stKitchenId')} type="number" min={1} value={kitchenId} onChange={event => setKitchenId(event.target.value)} />
-        <select aria-label={t('stAdminColState')} value={state} onChange={event => setState(event.target.value)} className="rounded-md border p-2">
-          <option value="">{t('stFilterAll')}</option>
-          {['requested','reserved','active','move_out_requested','removal_review','ended','declined','withdrawn','expired'].map(value => <option key={value} value={value}>{t(`stState_${value}` as never)}</option>)}
-        </select>
+        <Select value={state === "" ? EMPTY : state} onValueChange={value => setState(value === EMPTY ? "" : value)}>
+          <SelectTrigger aria-label={t('stAdminColState')} className="rounded-md"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value={EMPTY}>{t('stFilterAll')}</SelectItem>
+            {['requested','reserved','active','move_out_requested','removal_review','ended','declined','withdrawn','expired'].map(value => <SelectItem key={value} value={value}>{t(`stState_${value}` as never)}</SelectItem>)}
+          </SelectContent>
+        </Select>
         <label><input type="checkbox" checked={needsAttention} onChange={event => setNeedsAttention(event.target.checked)} /> {t('stFilterNeedsAction')}</label>
       </div>
       {query.error && <p role="alert">{t('stActionFailed')}</p>}
@@ -218,10 +224,13 @@ function AdminStorageTools({ id, onDone }: { id: number; onDone: () => void }) {
     </section>)}
     <div onChange={() => setPreview(null)} className="space-y-3">
       <Label htmlFor="admin-storage-action">{t('stAdminAction')}</Label>
-      <select id="admin-storage-action" className="w-full rounded border p-2" value={type} onChange={event => { setType(event.target.value); setOperationKey(crypto.randomUUID()); }}>
-        <option value="">{t('stChooseAction')}</option>
-        {data.adminActions.map((action: string) => <option key={action} value={action}>{t(`stAdminAction_${action}` as never)}</option>)}
-      </select>
+      <Select value={type === "" ? EMPTY : type} onValueChange={value => { setType(value === EMPTY ? "" : value); setOperationKey(crypto.randomUUID()); }}>
+        <SelectTrigger id="admin-storage-action"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value={EMPTY}>{t('stChooseAction')}</SelectItem>
+          {data.adminActions.map((action: string) => <SelectItem key={action} value={action}>{t(`stAdminAction_${action}` as never)}</SelectItem>)}
+        </SelectContent>
+      </Select>
       {type && <>
         <Label htmlFor="admin-storage-reason">{t('stAdminReason')}</Label>
         <Textarea id="admin-storage-reason" value={reason} onChange={event => setReason(event.target.value)} />
@@ -231,12 +240,12 @@ function AdminStorageTools({ id, onDone }: { id: number; onDone: () => void }) {
           <label className="block"><input type="checkbox" checked={emergency} onChange={event => setEmergency(event.target.checked)} /> {t('stEmergency')}</label>
           <label className="block"><input type="checkbox" checked={refund} onChange={event => setRefund(event.target.checked)} /> {t('stRefundUnused')}</label>
         </div>}
-        {money && <><Label htmlFor="admin-storage-funding">{t('stFundedBy')}</Label><select id="admin-storage-funding" value={fundedBy} onChange={event => setFundedBy(event.target.value)} className="w-full rounded border p-2">
-          <option value="kitchen">{t('stFunded_manager')}</option><option value="local_cooks">{t('stFunded_local_cooks')}</option>
-        </select></>}
-        {type === 'resolve_flag' && <><Label htmlFor="admin-storage-flag">{t('stFlag')}</Label><select id="admin-storage-flag" value={flagId} onChange={event => setFlagId(event.target.value)} className="w-full rounded border p-2">
-          <option value="">{t('stChooseAction')}</option>{data.flags.filter((flag: any) => !flag.resolvedAt).map((flag: any) => <option key={flag.id} value={flag.id}>{flag.note ?? t(`stFlag_${flag.kind}` as never)}</option>)}
-        </select></>}
+        {money && <><Label htmlFor="admin-storage-funding">{t('stFundedBy')}</Label><Select value={fundedBy} onValueChange={setFundedBy}><SelectTrigger id="admin-storage-funding"><SelectValue /></SelectTrigger><SelectContent>
+          <SelectItem value="kitchen">{t('stFunded_manager')}</SelectItem><SelectItem value="local_cooks">{t('stFunded_local_cooks')}</SelectItem>
+        </SelectContent></Select></>}
+        {type === 'resolve_flag' && <><Label htmlFor="admin-storage-flag">{t('stFlag')}</Label><Select value={flagId === "" ? EMPTY : flagId} onValueChange={value => setFlagId(value === EMPTY ? "" : value)}><SelectTrigger id="admin-storage-flag"><SelectValue /></SelectTrigger><SelectContent>
+          <SelectItem value={EMPTY}>{t('stChooseAction')}</SelectItem>{data.flags.filter((flag: any) => !flag.resolvedAt).map((flag: any) => <SelectItem key={flag.id} value={String(flag.id)}>{flag.note ?? t(`stFlag_${flag.kind}` as never)}</SelectItem>)}
+        </SelectContent></Select></>}
         {type === 'send_final_notice' && <>
           <Label htmlFor="admin-storage-photos">{t('stPhotosLabel')}</Label><Textarea id="admin-storage-photos" value={photos} onChange={event => setPhotos(event.target.value)} />
           {items.map((item, index) => <div key={index} className="space-y-2 rounded border p-2">

@@ -12,6 +12,7 @@ import { useFirebaseAuth } from '@/hooks/use-auth';
 import { apiClient } from '@/lib/api';
 import ManagerBookingLayout from '@/layouts/ManagerBookingLayout';
 import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { SmartImage } from '@/components/ui/smart-image';
 import { VisitAssistancePanel } from '@/components/booking/VisitAssistancePanel';
@@ -27,6 +28,8 @@ import { formatVisitWhen } from '@/lib/visit-when';
 import { initials, sentence } from '@/lib/booking-header-state';
 import { bookingReference } from '@/lib/booking-reference';
 import { readVisitDuties, type DutySection, type VisitDuties } from '@shared/visit-duties';
+
+const EMPTY = '__empty__';
 
 type Evidence = {
   closeout?: import("@shared/clock-closeout").VisitCloseout;
@@ -174,12 +177,16 @@ function InspectionVisits({ booking, refresh, stale }: { booking: ManagerInspect
       </div>
       {!timezone && <p className="text-[13px] leading-[18px] text-muted-foreground">{t('fixTimeUnavailable')}</p>}
       {booking.visits.length > 1 && <div className="text-sm"><label htmlFor="inspection-visit">{t('inspectCopy36')}</label>
-        <select id="inspection-visit" className="ml-2 max-w-full rounded border bg-background p-2" value={visitId} disabled={stale}
-          onChange={event => navigate(`/manager/booking/${booking.id}/inspection${event.target.value ? `?visitId=${event.target.value}` : ''}`)}>
-          <option value="">{t('inspectCopy37')}</option>{booking.visits.map(visit => <option key={visit.id} value={visit.id}>{t('fixVisitRange', { number: visit.blockIndex + 1, start: formatTime(visit.startTime, locale), end: formatTime(visit.endTime, locale) })}</option>)}
-        </select><span className="mt-1 block text-muted-foreground">{t('inspectCopy38')}</span>
+        <Select value={visitId === '' || visitId == null ? EMPTY : String(visitId)} disabled={stale}
+          onValueChange={value => navigate(`/manager/booking/${booking.id}/inspection${value === EMPTY ? '' : `?visitId=${value}`}`)}>
+          <SelectTrigger id="inspection-visit" className="ml-2 max-w-full"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value={EMPTY}>{t('inspectCopy37')}</SelectItem>
+            {booking.visits.map(visit => <SelectItem key={visit.id} value={String(visit.id)}>{t('formVisitRange', 'Visit {number}: {start}–{end}', { number: visit.blockIndex + 1, start: formatTime(visit.startTime, locale), end: formatTime(visit.endTime, locale) })}</SelectItem>)}
+          </SelectContent>
+        </Select><span className="mt-1 block text-muted-foreground">{t('inspectCopy38')}</span>
       </div>}
-      {selected && <p className="text-[15px] font-medium leading-[22px] tabular-nums">{booking.visits.length ? t('inspectVisitOf', { number: booking.visits.findIndex(visit => visit.id === selected.id) + 1, total: booking.visits.length }) + ' · ' : ''}{schedule}</p>}
+    {selected && <p className="text-[15px] font-medium leading-[22px] tabular-nums">{booking.visits.length ? t('inspectVisitOf', { number: booking.visits.findIndex(visit => visit.id === selected.id) + 1, total: booking.visits.length }) + ' · ' : ''}{schedule}</p>}
     </section>
     {contextError && <p role="alert">{contextError}</p>}
     {inSessionEnds(booking).length > 0 && <div className="flex flex-wrap gap-2">

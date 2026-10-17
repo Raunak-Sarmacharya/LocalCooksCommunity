@@ -5,11 +5,12 @@ import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { apiGet, apiPut } from '@/lib/api';
 import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SettingsRow } from './SettingsRow';
 import { PolicySection } from './PolicySection';
 import type { PolicyResponse } from '@/components/booking/CancellationPolicySummary';
 
-const SELECT_CLASS = 'h-11 w-full min-w-[12rem] rounded-md border border-input bg-background px-3 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 sm:w-56';
+const SELECT_CLASS = 'h-11 w-full min-w-[12rem] sm:w-56';
 
 /**
  * Cancellation policy (versioned server-side: a save publishes a new version that applies to new
@@ -58,14 +59,16 @@ export function CancellationPolicyEditor({ kitchenId, admin = false }: { kitchen
     {isError || data && !data.policy ? <div role="alert" className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm">
       {t('cpError')}<Button variant="outline" className="min-h-11" onClick={() => void refetch()}>{t('cpRetry')}</Button></div> : <div className="divide-y divide-border">
       <SettingsRow id={`cp-notice-${kitchenId}`} label={mt('bpCancelNoticeLabel')}>
-        <select id={`cp-notice-${kitchenId}`} className={SELECT_CLASS} value={noticeHours} disabled={!data || busy || overridden} onChange={event => setNotice(Number(event.target.value))}>
-          {(data?.settings.noticeOptions ?? [24, 48, 72]).map(hours => <option key={hours} value={hours}>{t('cpHours', { hours })}</option>)}
-        </select>
+        <Select value={String(noticeHours)} disabled={!data || busy || overridden} onValueChange={value => setNotice(Number(value))}>
+          <SelectTrigger id={`cp-notice-${kitchenId}`} className={SELECT_CLASS}><SelectValue /></SelectTrigger>
+          <SelectContent>{(data?.settings.noticeOptions ?? [24, 48, 72]).map(hours => <SelectItem key={hours} value={String(hours)}>{t('cpHours', { hours })}</SelectItem>)}</SelectContent>
+        </Select>
       </SettingsRow>
       <SettingsRow id={`cp-charge-${kitchenId}`} label={mt('bpCancelChargeLabel')}>
-        <select id={`cp-charge-${kitchenId}`} className={SELECT_CLASS} value={lateChargePercent} disabled={!data || busy || overridden} onChange={event => setCharge(Number(event.target.value))}>
-          {(data?.settings.chargeOptions ?? [50, 100]).map(charge => <option key={charge} value={charge}>{mt(charge === 50 ? 'bpChargeHalf' : 'bpChargeFull')}</option>)}
-        </select>
+        <Select value={String(lateChargePercent)} disabled={!data || busy || overridden} onValueChange={value => setCharge(Number(value))}>
+          <SelectTrigger id={`cp-charge-${kitchenId}`} className={SELECT_CLASS}><SelectValue /></SelectTrigger>
+          <SelectContent>{(data?.settings.chargeOptions ?? [50, 100]).map(charge => <SelectItem key={charge} value={String(charge)}>{mt(charge === 50 ? 'bpChargeHalf' : 'bpChargeFull')}</SelectItem>)}</SelectContent>
+        </Select>
       </SettingsRow>
       {/* At rest: the sentence chefs see. While editing, the preview below says it (once) with the new values. */}
       {hasStorageListing && <p className="px-4 py-3 text-xs text-muted-foreground">{mt('scpStorageApplies')}</p>}

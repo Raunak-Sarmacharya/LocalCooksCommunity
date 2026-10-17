@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { ClaimEvidence, ClaimTimeline } from '@/components/booking/DamageClaimCards';
 import { claimAction, claimMoney, claimRequest, type DamageClaimCardData } from '@/lib/damage-claims';
@@ -85,8 +86,7 @@ function ClaimReview({ claim, bookingId, onChanged }: { claim: DamageClaimCardDa
     {type && <div className="rounded-xl border p-4 space-y-3">
       <p className="text-sm font-medium">{t(`dcV2Consequence_${type}`, { amount: claimMoney(moneyAction ? amountCents : claim.amountCents, i18n.language) })}</p>
       {moneyAction && <label className="block space-y-1"><span>{t('dcV2ApprovedAmount')}</span><Input inputMode="decimal" value={amount} disabled={busy || retrying} onChange={event => setAmount(event.target.value)} /></label>}
-      {type === 'claim_compensate' && !firstReview && <label className="block space-y-1"><span>{t('dcV2DebtChoice')}</span><select className="w-full rounded border p-2 bg-background" value={String(chefStillOwes)} disabled={busy || retrying} onChange={event => setChefStillOwes(event.target.value === 'true')}>
-        <option value="false">{t('dcV2WriteOff')}</option><option value="true">{t('dcV2ChefOwes')}</option></select></label>}
+      {type === 'claim_compensate' && !firstReview && <label className="block space-y-1"><span>{t('dcV2DebtChoice')}</span><Select value={String(chefStillOwes)} disabled={busy || retrying} onValueChange={value => setChefStillOwes(value === 'true')}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="false">{t('dcV2WriteOff')}</SelectItem><SelectItem value="true">{t('dcV2ChefOwes')}</SelectItem></SelectContent></Select></label>}
       {type === 'claim_compensate' && firstReview && <p className="text-sm">{t('dcV2FirstCompensation')}</p>}
       {type === 'claim_restart_payment' && <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={verifiedNoPayment} disabled={busy || retrying} onChange={event => setVerifiedNoPayment(event.target.checked)} />
         <span>{t('dcV2VerifiedNoPayment')}</span></label>}
@@ -95,8 +95,7 @@ function ClaimReview({ claim, bookingId, onChanged }: { claim: DamageClaimCardDa
         <span className="block text-xs text-muted-foreground">{t('dcV2MinChars', { min: 10, count: note.trim().length })}</span></div>
       <div className="space-y-1"><label className="block space-y-1"><span className={req}>{t(firstReview ? 'dcV2MessageKitchen' : 'dcV2MessageBoth')}</span><Textarea required aria-required value={publicMessage} maxLength={2000} disabled={busy || retrying} onChange={event => setMessage(event.target.value)} /></label>
         <span className="block text-xs text-muted-foreground">{t('dcV2MinChars', { min: 10, count: publicMessage.trim().length })}</span></div>
-      <label className="block space-y-1"><span>{t('dcV2Source')}</span><select className="rounded border p-2 bg-background" value={source} disabled={busy || retrying} onChange={event => setSource(event.target.value as typeof source)}>
-        {(['proactive', 'message', 'call', 'email', 'in_person'] as const).map(value => <option value={value} key={value}>{t(`dcV2Source_${value}`)}</option>)}</select></label>
+      <label className="block space-y-1"><span>{t('dcV2Source')}</span><Select value={source} disabled={busy || retrying} onValueChange={value => setSource(value as typeof source)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{(['proactive', 'message', 'call', 'email', 'in_person'] as const).map(value => <SelectItem value={value} key={value}>{t(`dcV2Source_${value}`)}</SelectItem>)}</SelectContent></Select></label>
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       {retrying && <p className="text-sm">{t('dcV2RetrySaved')}</p>}
       <div className="flex flex-wrap gap-2"><Button disabled={busy || saveBlocked} title={saveHint || undefined} aria-describedby={saveBlocked ? `claim-${claim.id}-save-hint` : undefined} onClick={() => void submit()}>{t(busy ? 'dcV2Sending' : retrying ? 'dcV2Retry' : 'dcV2SaveDecision')}</Button>

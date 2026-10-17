@@ -17,7 +17,8 @@ describe('manager assistance consumer', () => {
     render(<VisitAssistancePanel bookingId={10} updatedAt={updatedAt} visits={[{ id: 5, startTime: '16:00', endTime: '18:00', updatedAt: '2026-10-02T18:01:00Z' }, { id: 6, startTime: '19:00', endTime: '20:00', updatedAt }]} onSaved={onSaved} />);
     expect(screen.getByRole('button', { name: 'Save departure time' })).toBeDisabled();
     enterEvidence(); expect(screen.getByRole('button', { name: 'Save departure time' })).toBeDisabled();
-    fireEvent.change(screen.getByLabelText('Visit'), { target: { value: '5' } });
+    fireEvent.click(screen.getByLabelText('Visit'));
+    fireEvent.click(screen.getByRole('option', { name: /4:00|16:00/ }));
     fetchMock.mockResolvedValue({ ok: true, json: async () => ({ success: true }) });
     fireEvent.click(screen.getByRole('button', { name: 'Save departure time' }));
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
@@ -31,7 +32,8 @@ describe('manager assistance consumer', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Your note is still here');
     expect(screen.getByLabelText(/Note to/)).toHaveValue('Chef reported leaving after upload failed');
     expect(onSaved).not.toHaveBeenCalled();
-    fireEvent.change(screen.getByLabelText('What happened?'), { target: { value: 'confirm_removal' } });
+    fireEvent.click(screen.getByLabelText('What happened?'));
+    fireEvent.click(screen.getByRole('option', { name: 'Confirm storage collected' }));
     fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ success: true }) });
     fireEvent.click(screen.getByRole('button', { name: 'Confirm storage collected' }));
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
@@ -42,7 +44,8 @@ describe('manager assistance consumer', () => {
     render(<VisitAssistancePanel bookingId={10} updatedAt={updatedAt} onSaved={async () => {}} />);
     enterEvidence('2026-11-01T01:30');
     expect(screen.getByRole('button', { name: 'Save departure time' })).toBeDisabled();
-    fireEvent.change(screen.getByLabelText(/This time occurs twice/), { target: { value: '1' } });
+    fireEvent.click(screen.getByLabelText(/This time occurs twice/));
+    fireEvent.click(screen.getByRole('option', { name: /Second occurrence/ }));
     expect(screen.getByRole('button', { name: 'Save departure time' })).toBeEnabled();
     fireEvent.change(screen.getByLabelText(/Departure time/), { target: { value: '2026-03-08T02:30' } });
     expect(screen.getByRole('button', { name: 'Save departure time' })).toBeDisabled();
@@ -64,7 +67,8 @@ describe('manager assistance consumer', () => {
     render(<VisitAssistancePanel bookingId={10} updatedAt={updatedAt} timezone="America/Toronto" onSaved={async () => {}} />);
     enterEvidence('2026-11-01T01:30');
     expect(screen.getByRole('button', { name: 'Save departure time' })).toBeDisabled();
-    fireEvent.change(screen.getByLabelText(/This time occurs twice/), { target: { value: '1' } });
+    fireEvent.click(screen.getByLabelText(/This time occurs twice/));
+    fireEvent.click(screen.getByRole('option', { name: /Second occurrence/ }));
     fetchMock.mockResolvedValue({ ok: true, json: async () => ({ success: true }) });
     fireEvent.click(screen.getByRole('button', { name: 'Save departure time' }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());

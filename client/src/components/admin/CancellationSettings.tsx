@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { apiGet, apiPut } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AdminCancellationPolicyEditor } from '@/components/admin/AdminCancellationPolicyEditor';
 type Settings = { noticeOptions: number[]; chargeOptions: number[]; default: { notice: number; charge: number } };
 export function CancellationSettings() {
@@ -17,8 +18,8 @@ export function CancellationSettings() {
     {value && <>
       {(['noticeOptions', 'chargeOptions'] as const).map(key => <fieldset key={key}><legend className="text-sm font-medium">{t(key === 'noticeOptions' ? 'cpAllowedNotice' : 'cpAllowedCharge')}</legend><div className="flex gap-4">{(key === 'noticeOptions' ? [24, 48, 72] : [50, 100]).map(option => <label key={option} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={value[key].includes(option)} onChange={event => setValue({ ...value, [key]: event.target.checked ? [...value[key], option] : value[key].filter(item => item !== option) })} />{key === 'noticeOptions' ? t('cpHours', { hours: option }) : `${option}%`}</label>)}</div></fieldset>)}
       <fieldset><legend className="text-sm font-medium">{t('cpDefault')}</legend><div className="flex gap-3">
-        <select aria-label={t('cpNotice')} value={value.default.notice} onChange={event => setValue({ ...value, default: { ...value.default, notice: Number(event.target.value) } })}>{value.noticeOptions.map(hours => <option key={hours} value={hours}>{t('cpHours', { hours })}</option>)}</select>
-        <select aria-label={t('cpCharge')} value={value.default.charge} onChange={event => setValue({ ...value, default: { ...value.default, charge: Number(event.target.value) } })}>{value.chargeOptions.map(charge => <option key={charge} value={charge}>{charge}%</option>)}</select>
+        <Select value={String(value.default.notice)} onValueChange={notice => setValue({ ...value, default: { ...value.default, notice: Number(notice) } })}><SelectTrigger aria-label={t('cpNotice')}><SelectValue /></SelectTrigger><SelectContent>{value.noticeOptions.map(hours => <SelectItem key={hours} value={String(hours)}>{t('cpHours', { hours })}</SelectItem>)}</SelectContent></Select>
+        <Select value={String(value.default.charge)} onValueChange={charge => setValue({ ...value, default: { ...value.default, charge: Number(charge) } })}><SelectTrigger aria-label={t('cpCharge')}><SelectValue /></SelectTrigger><SelectContent>{value.chargeOptions.map(charge => <SelectItem key={charge} value={String(charge)}>{charge}%</SelectItem>)}</SelectContent></Select>
       </div></fieldset>
       <Button disabled={busy} onClick={() => void save()}>{t('cpPublish')}</Button><p className="text-xs text-muted-foreground">{t('cpNewOnly')}</p>
     </>}

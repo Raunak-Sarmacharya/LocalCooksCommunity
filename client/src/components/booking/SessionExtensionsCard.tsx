@@ -14,12 +14,15 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Clock, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { NowAttentionRow } from "@/components/booking/BookingNowCard"
 import { MessageKitchenButton } from "./MessageKitchenButton"
 import { checkoutExtension, syncCheckoutReturn, createExtension, decideExtension, defaultFreeChoice, isExtensionState, isQuickPick, kitchenClock, lapsedAt, lengthText, money, newRequestKey, readExtensions, useServerNow, withCardAction,
   type ExtensionItem, type ExtensionState } from "@/lib/session-extensions"
+
+const EMPTY = "__empty__"
 
 /** A manager's pick before sending: which time, and Free or Charge (Free is only preselected up to 30 minutes). */
 type Pick = { kind: "offer" | "early_start"; minutes: number; at: string; amountCents: number; free: boolean }
@@ -286,11 +289,14 @@ export function SessionExtensionsCard({ bookingId, manager, chefName, onChanged,
           </div>
           {choosing && <div className="space-y-1">
             <label htmlFor={`extra-time-choice-${bookingId}`} className="block text-sm font-medium">{fieldLabel}</label>
-            <select id={`extra-time-choice-${bookingId}`} className="block w-full min-h-11 rounded-md border bg-background p-2" disabled={!!busy}
-              value={pick?.minutes ?? ""} onChange={event => { const option = all.find(item => item.minutes === Number(event.target.value)); if (option) choose(option); else setPick(null) }}>
-              <option value="">{t("sxbPickTime", { defaultValue: "Pick a time" })}</option>
-              {all.map(option => <option key={option.minutes} value={option.minutes}>{label(option)}</option>)}
-            </select>
+            <Select disabled={!!busy} value={pick?.minutes == null ? EMPTY : String(pick.minutes)}
+              onValueChange={value => { const option = all.find(item => item.minutes === Number(value)); if (option) choose(option); else setPick(null) }}>
+              <SelectTrigger id={`extra-time-choice-${bookingId}`} className="min-h-11"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={EMPTY}>{t("sxbPickTime", { defaultValue: "Pick a time" })}</SelectItem>
+                {all.map(option => <SelectItem key={option.minutes} value={String(option.minutes)}>{label(option)}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </div>}
         </>
       })()}

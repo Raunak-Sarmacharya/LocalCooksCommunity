@@ -12,6 +12,7 @@ import { z } from "zod";
 import AnimatedButton from "./AnimatedButton";
 import AnimatedInput from "./AnimatedInput";
 import { FormLegend } from "@/components/ui/form-legend";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import EmailVerificationScreen from "./EmailVerificationScreen";
 import LoadingOverlay from "./LoadingOverlay";
 import { getEmailContinueMessage } from "./EmailContinueHint";
@@ -36,6 +37,8 @@ import {
   provisionPendingPhoneRegistration,
   savePendingPhoneRegistration,
 } from "@/lib/phone-registration";
+
+const EMPTY = "__empty__";
 
 const registerSchema = z.object({
   displayName: z.string().min(2, "Name must be at least 2 characters"),
@@ -1029,21 +1032,23 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
                 <label htmlFor="usageFrequency" className="block text-sm font-medium text-gray-700">
                   How often will you use the kitchen? <span className="text-red-500" aria-hidden="true">*</span>
                 </label>
-                <select
-                  id="usageFrequency"
-                  className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50 text-gray-900 bg-white"
-                  {...form.register('usageFrequency', {
-                    required: forceApplying || isApplying ? t("requiredField", "This field is required") : false,
-                  })}
+                <Select
+                  value={(form.watch('usageFrequency') || "") === "" ? EMPTY : form.watch('usageFrequency')!}
                   required={forceApplying || isApplying}
+                  onValueChange={(value) => form.setValue('usageFrequency', value === EMPTY ? "" : value, { shouldValidate: true, shouldDirty: true })}
                 >
-                  <option value="">-- Select frequency --</option>
-                  <option value="weekly">Weekly</option>
-                  <option value="few-times-month">A few times a month</option>
-                  <option value="monthly">Monthly</option>
-                  <option value="occasionally">Occasionally</option>
-                  <option value="not-sure">Not sure yet</option>
-                </select>
+                  <SelectTrigger id="usageFrequency" className="w-full px-4 py-2 text-gray-900 bg-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={EMPTY}>-- Select frequency --</SelectItem>
+                    <SelectItem value="weekly">Weekly</SelectItem>
+                    <SelectItem value="few-times-month">A few times a month</SelectItem>
+                    <SelectItem value="monthly">Monthly</SelectItem>
+                    <SelectItem value="occasionally">Occasionally</SelectItem>
+                    <SelectItem value="not-sure">Not sure yet</SelectItem>
+                  </SelectContent>
+                </Select>
                 {form.formState.errors.usageFrequency && (
                   <p className="text-sm text-red-500 mt-1">{form.formState.errors.usageFrequency.message}</p>
                 )}
@@ -1053,16 +1058,20 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
                 <label htmlFor="foodSafetyLicense" className="block text-sm font-medium text-gray-700">
                   Do you have a Food Safety License? <span className="text-red-500" aria-hidden="true">*</span>
                 </label>
-                <select 
-                  id="foodSafetyLicense"
-                  className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50 text-gray-900 bg-white"
-                  {...form.register('foodSafetyLicense')}
+                <Select
+                  value={form.watch('foodSafetyLicense')}
                   required
+                  onValueChange={(value) => form.setValue('foodSafetyLicense', value as 'yes' | 'no' | 'notSure', { shouldValidate: true, shouldDirty: true })}
                 >
-                  <option value="yes">Yes</option>
-                  <option value="no">No</option>
-                  <option value="notSure">Not sure</option>
-                </select>
+                  <SelectTrigger id="foodSafetyLicense" className="w-full px-4 py-2 text-gray-900 bg-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="yes">Yes</SelectItem>
+                    <SelectItem value="no">No</SelectItem>
+                    <SelectItem value="notSure">Not sure</SelectItem>
+                  </SelectContent>
+                </Select>
                 {form.formState.errors.foodSafetyLicense && (
                   <p className="text-sm text-red-500 mt-1">{form.formState.errors.foodSafetyLicense.message}</p>
                 )}
@@ -1073,16 +1082,20 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
                 <label htmlFor="kitchenPreference" className="block text-sm font-medium text-gray-700">
                   Kitchen Preference <span className="text-red-500" aria-hidden="true">*</span>
                 </label>
-                <select 
-                  id="kitchenPreference"
-                  className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50 text-gray-900 bg-white"
-                  {...form.register('kitchenPreference')}
+                <Select
+                  value={form.watch('kitchenPreference')}
                   required
+                  onValueChange={(value) => form.setValue('kitchenPreference', value as 'notSure' | 'commercial' | 'home', { shouldValidate: true, shouldDirty: true })}
                 >
-                  <option value="notSure">Not sure</option>
-                  <option value="commercial">Commercial Kitchen</option>
-                  <option value="home">Home Kitchen</option>
-                </select>
+                  <SelectTrigger id="kitchenPreference" className="w-full px-4 py-2 text-gray-900 bg-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="notSure">Not sure</SelectItem>
+                    <SelectItem value="commercial">Commercial Kitchen</SelectItem>
+                    <SelectItem value="home">Home Kitchen</SelectItem>
+                  </SelectContent>
+                </Select>
                 {form.formState.errors.kitchenPreference && (
                   <p className="text-sm text-red-500 mt-1">{form.formState.errors.kitchenPreference.message}</p>
                 )}
@@ -1092,20 +1105,25 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
               {/* Optional after required */}
               <div className="space-y-1">
                 <label className="block text-sm font-medium text-gray-700">Business Type (Optional)</label>
-                <select 
-                  className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50 text-gray-900 bg-white"
-                  {...form.register('businessType')}
+                <Select
+                  value={(form.watch('businessType') || "") === "" ? EMPTY : form.watch('businessType')!}
+                  onValueChange={(value) => form.setValue('businessType', value === EMPTY ? "" : value, { shouldValidate: true, shouldDirty: true })}
                 >
-                  <option value="">-- Select your business type --</option>
-                  <option value="catering">Catering</option>
-                  <option value="bakery">Bakery / Desserts</option>
-                  <option value="meal-prep">Meal Prep / Delivery</option>
-                  <option value="specialty">Specialty Artisan Foods</option>
-                  <option value="pasta">Fresh Pasta</option>
-                  <option value="sauce">Sauces / Condiments</option>
-                  <option value="prepared">Prepared Foods for Retail</option>
-                  <option value="other">Other / Not Sure</option>
-                </select>
+                  <SelectTrigger className="w-full px-4 py-2 text-gray-900 bg-white" aria-label="Business Type (Optional)">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={EMPTY}>-- Select your business type --</SelectItem>
+                    <SelectItem value="catering">Catering</SelectItem>
+                    <SelectItem value="bakery">Bakery / Desserts</SelectItem>
+                    <SelectItem value="meal-prep">Meal Prep / Delivery</SelectItem>
+                    <SelectItem value="specialty">Specialty Artisan Foods</SelectItem>
+                    <SelectItem value="pasta">Fresh Pasta</SelectItem>
+                    <SelectItem value="sauce">Sauces / Condiments</SelectItem>
+                    <SelectItem value="prepared">Prepared Foods for Retail</SelectItem>
+                    <SelectItem value="other">Other / Not Sure</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               <AnimatedInput

@@ -13,8 +13,10 @@ it('requires explicit verified/unknown decisions and an explanation before repai
   const client=new QueryClient({defaultOptions:{queries:{retry:false}}});clients.push(client);
   render(<QueryClientProvider client={client}><AdminTourVisitEvidence id={10} version={data.tour.updatedAt} needsReview /></QueryClientProvider>);
   const save=await screen.findByRole('button',{name:'tourVisitSaveRepair'});expect(save).toBeDisabled();
-  fireEvent.change(screen.getByRole('combobox',{name:'tourVisitArrival'}),{target:{value:'unknown'}});
-  fireEvent.change(screen.getByRole('combobox',{name:'tourVisitDeparture'}),{target:{value:'unknown'}});
+  fireEvent.click(screen.getByRole('combobox',{name:'tourVisitArrival'}));
+  fireEvent.click(screen.getByRole('option',{name:'tourFeedbackLegacyUnknown'}));
+  fireEvent.click(screen.getByRole('combobox',{name:'tourVisitDeparture'}));
+  fireEvent.click(screen.getByRole('option',{name:'tourFeedbackLegacyUnknown'}));
   expect(save).toBeDisabled();fireEvent.change(screen.getByLabelText('tourVisitWhatHappened'),{target:{value:'Original records conflict and no reliable times can be verified.'}});
   fireEvent.click(save);
   await waitFor(()=>expect(fetcher.mock.calls.some(([,options])=>options?.method==='POST')).toBe(true));

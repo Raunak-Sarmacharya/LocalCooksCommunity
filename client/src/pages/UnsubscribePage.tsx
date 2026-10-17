@@ -2,12 +2,15 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, CheckCircle, Loader2, Mail } from "lucide-react";
 import React, { useState } from 'react';
 import { useLocation } from "wouter";
 import { SmartImage } from "@/components/ui/smart-image";
+
+const EMPTY = "__empty__";
 
 const UnsubscribePage: React.FC = () => {
   const [, setLocation] = useLocation();
@@ -154,19 +157,19 @@ const UnsubscribePage: React.FC = () => {
               <Label htmlFor="reason" className="text-sm font-medium text-gray-700">
                 Reason for unsubscribing (optional)
               </Label>
-              <select
-                id="reason"
-                value={formData.reason}
-                onChange={(e) => handleInputChange('reason', e.target.value)}
-                className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-red-500 focus:border-red-500"
-              >
-                <option value="">Select a reason</option>
-                <option value="too-many-emails">Too many emails</option>
-                <option value="not-relevant">Content not relevant</option>
-                <option value="never-signed-up">Never signed up</option>
-                <option value="privacy-concerns">Privacy concerns</option>
-                <option value="other">Other</option>
-              </select>
+              <Select value={formData.reason === "" ? EMPTY : formData.reason} onValueChange={(value) => handleInputChange('reason', value === EMPTY ? '' : value)}>
+                <SelectTrigger id="reason" className="mt-1 w-full border-gray-300 shadow-sm focus:ring-red-500 focus:border-red-500">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={EMPTY}>Select a reason</SelectItem>
+                  <SelectItem value="too-many-emails">Too many emails</SelectItem>
+                  <SelectItem value="not-relevant">Content not relevant</SelectItem>
+                  <SelectItem value="never-signed-up">Never signed up</SelectItem>
+                  <SelectItem value="privacy-concerns">Privacy concerns</SelectItem>
+                  <SelectItem value="other">Other</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             <div>

@@ -6,11 +6,14 @@ import { ArrowLeft, CheckCircle2, Loader2 } from 'lucide-react';
 import ManagerBookingLayout from '@/layouts/ManagerBookingLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { formatTime } from '@/lib/formatters';
 import { friendlyTimezoneName } from '@shared/timezone-utils';
 import { getAuthHeaders } from '@/lib/api';
 import { addHours, invitationOpen, invitationRequest, type Invitation, type InvitationDraft, type InvitationPreview } from '@/lib/invitations';
+
+const EMPTY = '__empty__';
 
 type Kitchen = { id: number; name: string };
 const EXPIRY = [24, 48, 168] as const;
@@ -128,30 +131,43 @@ export default function ManagerInvitationNewPage() {
             <section className="space-y-4 rounded-2xl border bg-card p-5">
               <h2 className="font-semibold">{t('invWhoWhere')}</h2>
               <label className={field}>{t('invChef')}
-                <select className={box} value={chefId || ''} onChange={event => setChefId(Number(event.target.value))} required>
-                  <option value="" disabled>{chefs.isPending ? t('invLoading') : t('invChooseChef')}</option>
-                  {chefs.data?.chefs.map(chef => <option key={chef.id} value={chef.id}>{chef.name}</option>)}
-                </select></label>
+                <Select value={chefId ? String(chefId) : EMPTY} required onValueChange={value => setChefId(value === EMPTY ? 0 : Number(value))}>
+                  <SelectTrigger className={box}><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={EMPTY} disabled>{chefs.isPending ? t('invLoading') : t('invChooseChef')}</SelectItem>
+                    {chefs.data?.chefs.map(chef => <SelectItem key={chef.id} value={String(chef.id)}>{chef.name}</SelectItem>)}
+                  </SelectContent>
+                </Select></label>
               {chefs.data && !chefs.data.chefs.length && <p className="text-sm text-muted-foreground">{t('invNoChefs')}</p>}
               <label className={field}>{t('invKitchen')}
-                <select className={box} value={kitchenId || ''} onChange={event => setKitchenId(Number(event.target.value))} required>
-                  {kitchens.data?.map(kitchen => <option key={kitchen.id} value={kitchen.id}>{kitchen.name}</option>)}
-                </select></label>
+                <Select value={kitchenId ? String(kitchenId) : EMPTY} required onValueChange={value => { if (value !== EMPTY) setKitchenId(Number(value)); }}>
+                  <SelectTrigger className={box}><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {!kitchenId && <SelectItem value={EMPTY} disabled>{t('invLoading')}</SelectItem>}
+                    {kitchens.data?.map(kitchen => <SelectItem key={kitchen.id} value={String(kitchen.id)}>{kitchen.name}</SelectItem>)}
+                  </SelectContent>
+                </Select></label>
             </section>
             <section className="space-y-4 rounded-2xl border bg-card p-5">
               <h2 className="font-semibold">{t('invWhen_title')}</h2>
               <div className="grid gap-4 sm:grid-cols-3">
                 <label className={field}>{t('invDate')}<Input type="date" className="mt-1 min-h-11" value={date} onChange={event => setDate(event.target.value)} required /></label>
                 <label className={field}>{t('invStart')}
-                  <select className={box} value={start} disabled={!slotTimes.length} onChange={event => setStart(event.target.value)}>
-                    {!slotTimes.length && <option value={start}>{t(date && daySlots.isSuccess ? 'invClosedDay' : 'invChooseDateFirst')}</option>}
-                    {slotTimes.map(time => <option key={time} value={time} disabled={!isFree(time)}>
-                      {isFree(time) ? formatTime(time, locale) : t('invSlotTaken', { time: formatTime(time, locale) })}</option>)}
-                  </select></label>
+                  <Select value={start || EMPTY} disabled={!slotTimes.length} onValueChange={setStart}>
+                    <SelectTrigger className={box}><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {!slotTimes.length && <SelectItem value={start || EMPTY}>{t(date && daySlots.isSuccess ? 'invClosedDay' : 'invChooseDateFirst')}</SelectItem>}
+                      {slotTimes.map(time => <SelectItem key={time} value={time} disabled={!isFree(time)}>
+                        {isFree(time) ? formatTime(time, locale) : t('invSlotTaken', { time: formatTime(time, locale) })}</SelectItem>)}
+                    </SelectContent>
+                  </Select></label>
                 <label className={field}>{t('invLength')}
-                  <select className={box} value={hours} onChange={event => setHours(Number(event.target.value))}>
-                    {Array.from({ length: maxHours }, (_, i) => i + 1).map(n => <option key={n} value={n}>{t('chgHoursOption', { count: n })}</option>)}
-                  </select></label>
+                  <Select value={String(hours)} onValueChange={value => setHours(Number(value))}>
+                    <SelectTrigger className={box}><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: maxHours }, (_, i) => i + 1).map(n => <SelectItem key={n} value={String(n)}>{t('chgHoursOption', { count: n })}</SelectItem>)}
+                    </SelectContent>
+                  </Select></label>
               </div>
             </section>
             <section className="space-y-4 rounded-2xl border bg-card p-5">

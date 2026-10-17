@@ -118,7 +118,8 @@ describe('manager inspection with isolated API mocks', () => {
       checkoutReviewDeadline: index ? '2026-10-13T06:00:00Z' : '2026-10-12T23:00:00Z' }));
     mount(); expect(await screen.findByText(/Choose a visit to see/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Finish inspection' })).not.toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('Choose a visit to inspect'), { target: { value: '1002' } });
+    fireEvent.click(screen.getByLabelText('Choose a visit to inspect'));
+    fireEvent.click(screen.getAllByRole('option')[2]);
     expect(screen.getByTestId('inspection-sentence')).toHaveTextContent('Inspect by Oct 13, 3:30');
     fireEvent.change(screen.getByLabelText(/Note to Mock visitor/), { target: { value: 'Kitchen inspected and reset.' } });
     await confirmClear(await clearButton());
@@ -201,7 +202,8 @@ describe('manager inspection with isolated API mocks', () => {
     booking.visits = [0, 1].map(index => ({ ...booking, id: 1001 + index, blockIndex: index, checkoutReviewDeadline: booking.inspection!.checkoutReviewDeadline }));
     mount('/manager/booking/901/inspection?visitId=1001'); await clearButton();
     fireEvent.change(screen.getByLabelText(/Note to Mock visitor/), { target: { value: 'First visit note' } });
-    fireEvent.change(screen.getByLabelText('Choose a visit to inspect'), { target: { value: '1002' } });
+    fireEvent.click(screen.getByLabelText('Choose a visit to inspect'));
+    fireEvent.click(screen.getAllByRole('option')[2]);
     expect(screen.getByLabelText(/Note to Mock visitor/)).toHaveValue('');
     fireEvent.change(screen.getByLabelText(/Note to Mock visitor/), { target: { value: 'Second visit note' } });
     const second = booking.visits.pop()!;
@@ -209,7 +211,8 @@ describe('manager inspection with isolated API mocks', () => {
     await screen.findByText(/visit is no longer available/);
     booking.visits.push(second); refreshByFocus();
     await waitFor(() => expect(screen.getByLabelText(/Note to Mock visitor/)).toHaveValue('Second visit note'));
-    fireEvent.change(screen.getByLabelText('Choose a visit to inspect'), { target: { value: '1001' } });
+    fireEvent.click(screen.getByLabelText('Choose a visit to inspect'));
+    fireEvent.click(screen.getAllByRole('option')[1]);
     expect(screen.getByLabelText(/Note to Mock visitor/)).toHaveValue('First visit note'); expect(posts()).toHaveLength(0);
   });
 
