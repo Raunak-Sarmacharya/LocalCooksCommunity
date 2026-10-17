@@ -303,6 +303,9 @@ type BookingStep = "calendar" | "slots" | "equipment" | "confirm";
 type BookingRateMode = KitchenBookingRateMode;
 
 type StepMeta = { key: BookingStep; label: string; subtext: string };
+const DATE_REASON_KEYS: Record<string, string> = { booked: 'mdReasonBooked', held: 'mdReasonBooked', closed: 'mdReasonClosed',
+  notice: 'mdReasonNotice', beyond_advance_window: 'mdReasonAdvance', weekly_limit: 'mdReasonWeekly', buffer: 'mdReasonBuffer',
+  clock_change: 'mdReasonClock', not_open_to_you: 'mdReasonAccess', maintenance: 'mdReasonMaintenance' };
 
 /** Matches kitchen preview / prefs panel — fixed 32px cells → true circular selection. */
 const BOOKING_CALENDAR_CLASS_NAMES = {
@@ -1127,13 +1130,19 @@ export default function KitchenBookingFlow({
     if (bookableThrough && key > bookableThrough) return t('mdReasonAdvance');
     const status = dateStatuses[key];
     if (status?.hourly || status?.fullDay) return limitReason ? t(limitReason === 'count' ? 'mdCountLimit' : 'mdSpanLimit', { count: dayRules.maxBookingDays ?? 7 }) : null;
-    const reasons: Record<string, string> = { booked: 'mdReasonBooked', held: 'mdReasonBooked', closed: 'mdReasonClosed',
-      notice: 'mdReasonNotice', beyond_advance_window: 'mdReasonAdvance', weekly_limit: 'mdReasonWeekly', buffer: 'mdReasonBuffer',
-      clock_change: 'mdReasonClock', not_open_to_you: 'mdReasonAccess', maintenance: 'mdReasonMaintenance' };
-    return t(reasons[status?.reason ?? ''] ?? 'mdReasonUnavailable');
+    return t(DATE_REASON_KEYS[status?.reason ?? ''] ?? 'mdReasonUnavailable');
   };
   const selectMultipleDates = (dates: Date[] | undefined) => {
     const keys = (dates ?? []).map(localDateKey).sort();
+    // Returning to one date retains that day's edits, then resumes the scalar flow.
+    if (isMultiDay && keys.length === 1) {
+      const day = datedDays.find(day => day.date === keys[0]);
+      if (day) {
+        setTemplateRateMode(day.pricingMode);
+        setTemplateSlots(day.slots.map(slot => slot.startTime));
+        setSelectedEquipmentIds(day.equipmentIds);
+      }
+    }
     setSelectedDates(keys);
     setSelectedDate(keys.length ? new Date(`${keys[0]}T12:00:00`) : null);
     setEditingDay(null);
@@ -1686,6 +1695,9 @@ export default function KitchenBookingFlow({
               })}
             </div>
           ) : null}
+          {isMultiDay && hasDailyRate && !isFullDayAvailable && <p className="text-sm text-muted-foreground">{t('mdFullDayUnavailable', {
+            reason: t(DATE_REASON_KEYS[dateStatuses[editingDay ?? selectedDates[0]]?.fullDayReason ?? ''] ?? 'mdReasonUnavailable'),
+          })}</p>}
 
           {bookingRateMode === "daily" ? (
             <div className="rounded-xl border border-[#E10939]/20 bg-[#FFF8F9] px-3 py-3">

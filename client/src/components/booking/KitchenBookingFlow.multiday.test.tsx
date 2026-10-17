@@ -127,6 +127,15 @@ describe('the existing flow with more days', () => {
     expect(f.payload.cancellationDisclosureVersion).toBe('food-corridor-v3');
     expect(f.payload.selectedSlots).toEqual([{ startTime: '09:00', endTime: '10:00' }]);
   });
+  it('retains the last remaining day’s own full-day choice when returning to a single date', async () => {
+    await open(); await chooseDays(7, 11); fireEvent.click(hour(9));
+    fireEvent.change(screen.getByLabelText('Change one day'), { target: { value: '2030-10-11' } });
+    fireEvent.click(screen.getByRole('button', { name: /Full day/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Change date' })); fireEvent.click(day(7));
+    fireEvent.click(screen.getByRole('button', { name: 'Choose hours' }));
+    expect(screen.queryByText('Same hours every day')).toBeNull();
+    await waitFor(() => expect(screen.getByRole('button', { name: /Full day/ })).toHaveAttribute('aria-pressed', 'true'));
+  });
   it.each(['enabled', 'allowed'] as const)('keeps the legacy calendar when %s is off', async rule => {
     f[rule] = false; await open(); expect(screen.queryByText(/Choose up to/)).toBeNull();
     expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('date-status'))).toBe(false);

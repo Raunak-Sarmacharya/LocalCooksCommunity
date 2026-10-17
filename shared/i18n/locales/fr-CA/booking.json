@@ -1328,5 +1328,6 @@
   "mdDayToday": "Aujourd’hui",
   "mdDayDone": "Terminée",
   "mdDayCancelled": "Annulée",
-  "mdOpenVisit": "Ouvrir votre visite"
+  "mdOpenVisit": "Ouvrir votre visite",
+  "mdFullDayUnavailable": "Journée complète non disponible : {reason}. Vous pouvez choisir des heures disponibles."
 }

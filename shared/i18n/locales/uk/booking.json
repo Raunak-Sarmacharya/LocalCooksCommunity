@@ -1328,5 +1328,6 @@
   "mdDayToday": "Сьогодні",
   "mdDayDone": "Завершено",
   "mdDayCancelled": "Скасовано",
-  "mdOpenVisit": "Відкрити ваш візит"
+  "mdOpenVisit": "Відкрити ваш візит",
+  "mdFullDayUnavailable": "Повний день недоступний: {reason}. Ви можете вибрати вільні години."
 }

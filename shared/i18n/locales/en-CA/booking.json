@@ -1328,5 +1328,6 @@
   "mdDayToday": "Today",
   "mdDayDone": "Done",
   "mdDayCancelled": "Cancelled",
-  "mdOpenVisit": "Open your visit"
+  "mdOpenVisit": "Open your visit",
+  "mdFullDayUnavailable": "Full day unavailable: {reason}. You can still choose available hours."
 }
