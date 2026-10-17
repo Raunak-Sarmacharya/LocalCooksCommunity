@@ -37,7 +37,7 @@ describe('tour messaging entry', () => {
     const props = JSON.parse(screen.getByTestId('specific-chat').textContent!);
     expect(props).toEqual({ userId: role === 'chef' ? 8 : 12, role, initialConversationId: 'original', initialTourId: '20', hideConversationList: true });
     expect(state.resolve).toHaveBeenCalledWith(20);
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
   it.each([{ status: 'pending_local_cooks', adminReviewDecision: null }, { status: 'cancelled', adminReviewDecision: 'denied' },
@@ -60,7 +60,7 @@ describe('tour messaging entry', () => {
     await screen.findByRole('dialog');
     expect(state.resolve.mock.calls).toEqual([[20]]);
     expect(screen.getByTestId('specific-chat')).toHaveTextContent('"initialTourId":"20"');
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(state.resolve).toHaveBeenCalledTimes(1);
   });
