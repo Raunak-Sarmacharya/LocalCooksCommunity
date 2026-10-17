@@ -32,8 +32,6 @@ export interface BookingListRow {
   checkoutRequestedAt?: string | null;
   /** The kitchen's new total waiting for the chef (accepted without some equipment). */
   partialAcceptance?: unknown;
-  paymentStatus?: string | null;
-  paymentDecision?: unknown;
 }
 
 /** The request waits for the chef's answer to the kitchen's new total: nothing is left for the kitchen to do. */

@@ -161,7 +161,7 @@ export async function decideAuthorizedBooking(bookingId: number, target: 'confir
         || current.updatedAt.getTime() !== booking.updatedAt.getTime()) throw new Error('Booking changed; refresh before deciding');
       const open = waitingPartialAcceptance(current);
       if (accepting) {
-        if (open?.id !== options.proposalId || open.intentId !== intent.id) throw new PartialAcceptanceConflict(CLOSED_MESSAGE);
+        if (!open || open.id !== options.proposalId || open.intentId !== intent.id) throw new PartialAcceptanceConflict(CLOSED_MESSAGE);
         if (new Date() >= new Date(open.deadlineAt)) throw new PartialAcceptanceConflict(PASSED_MESSAGE);
       } else if (target === 'confirmed' && open) throw new PartialAcceptanceConflict(WAITING_MESSAGE);
       else if (target === 'confirmed' && !current.invitationId && current.createdAt && new Date() >= await getBookingResponseDeadline(current, tx))

@@ -67,3 +67,19 @@ action-form.ts,types.ts}`, locales (booking/chef/manager/admin × en-CA/fr-CA/uk
 ## Verification
 
 See the final section (filled in after the checks).
+
+### Results (Oct 17)
+
+- Server: 35 files, **811 passed** (CP4/dated, decision, checkout, support, expiry, delivery, notices, reminders, payouts,
+  cancellation, extensions), including 10 new PGlite partial-acceptance tests (proposal, exact partial capture 11109 of 11232
+  with allocations conserving, free-item decline, chef decline, expiry/late accept, kitchen withdraw, accept-vs-withdraw and
+  accept-vs-expiry races, hold ended at Stripe, unknown proposal), 17 in `partial-acceptance.test.ts` (3 h guard boundaries
+  2 h 59 / 3 h 00 and after-start, migration 0102 executed in PGlite, en/fr/uk notices, admin copy), 6 single-day decision tests,
+  1 expiry and 1 support-availability test.
+- Client: 11 files, **267 passed**, including dialog copy ("Accept without …", ask-chef line, last-minute line + "Message the
+  chef" link, full accept/decline unchanged), the chef card (accept, confirm-before-decline, refused answer, kitchen view)
+  and the list ("Waiting for the chef", no action, under Upcoming).
+- `node scripts/i18n-lint.mjs`: OK.
+- `npx tsc --noEmit -p tsconfig.json`, run once (17 min): **3 errors, all in new code** (`open` possibly null in the accept
+  check; a list-row type widening that made `Booking[]` unassignable to the agenda rows). Fixed in the follow-up commit and
+  re-verified with the affected suites (104 + 46 passed); the full compiler was not run a second time (one-run rule).
