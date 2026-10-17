@@ -107,6 +107,16 @@ describe('support state × action matrix', () => {
     state.booking.status = status; state.booking.paymentStatus = payment; state.payments[0].status = payment === 'refunded' ? 'refunded' : payment === 'authorized' ? 'authorized' : 'succeeded';
     expect(availableSupportActions(context()).some(row => row.type === action)).toBe(allowed);
   });
+  it('while the chef answers the kitchen’s new total: accept-for-chef or close, never confirm-for-kitchen; none after the deadline', () => {
+    state.booking.status = 'pending'; state.booking.paymentStatus = 'authorized'; state.payments[0].status = 'authorized';
+    state.booking.partialAcceptance = { id: 'p1', state: 'waiting', deadlineAt: '2099-01-01T00:00:00.000Z' };
+    const types = availableSupportActions(context(), new Date('2098-12-31T23:00:00Z')).map(row => row.type);
+    expect(types).toEqual(expect.arrayContaining(['accept_proposal_for_chef', 'decline_for_manager', 'release_hold_for_chef']));
+    expect(types).not.toContain('confirm_for_manager');
+    expect(availableSupportActions(context(), new Date('2099-01-01T00:00:00Z')).map(row => row.type)).not.toContain('accept_proposal_for_chef');
+    state.booking.partialAcceptance = null;
+    expect(availableSupportActions(context(), new Date('2098-12-31T23:00:00Z')).map(row => row.type)).not.toContain('accept_proposal_for_chef');
+  });
   it('offers recovery only for a saved pending decision', () => {
     expect(availableSupportActions(context()).some(row => row.type === 'replay_payment_decision')).toBe(false);
     state.booking.paymentDecision = { state: 'pending', target: 'confirmed' };

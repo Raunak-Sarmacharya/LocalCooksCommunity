@@ -1592,7 +1592,7 @@ export default function BookingDetailsPage() {
       </>}
       whenLine={whenLine}
       pill={{ label: proposal ? t(isManagerView ? 'paPillKitchen' : 'paPillChef') : t(now.pill.key), tone: now.pill.tone }}
-      sentence={now.sentence}
+      sentence={proposal ? t(isManagerView ? 'paSentenceKitchen' : 'paSentenceChef', { kitchen: kitchenName, chef: chefName }) : now.sentence}
       sentenceExtra={isManagerView && booking.runningLate && booking.status === 'confirmed' && !visitStarted && visitBounds && nowMs < visitBounds.endAt.getTime() ? (
         <p className="text-sm font-medium text-sky-900" data-testid="booking-running-late">
           {t('rlManagerLine', { chef: chefName, duration: t(`rlDurationShort${booking.runningLate.minutes}`), time: clockTime(booking.runningLate.reportedAt) })}

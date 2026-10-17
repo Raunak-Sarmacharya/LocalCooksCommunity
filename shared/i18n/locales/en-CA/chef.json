@@ -3699,5 +3699,7 @@
   "paPillKitchen": "Waiting for the chef",
   "paPillChef": "Your answer needed",
   "paSentTitle": "Sent to the chef",
-  "paSentBody": "We’ll ask the chef to confirm the new total. Nothing is charged until they do."
+  "paSentBody": "We’ll ask the chef to confirm the new total. Nothing is charged until they do.",
+  "paSentenceChef": "{kitchen} answered with a new total. Accept or decline it below.",
+  "paSentenceKitchen": "{chef} is reviewing your new total."
 }

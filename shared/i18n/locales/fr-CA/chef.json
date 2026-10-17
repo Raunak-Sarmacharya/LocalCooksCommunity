@@ -3699,5 +3699,7 @@
   "paPillKitchen": "En attente du chef",
   "paPillChef": "Votre réponse est requise",
   "paSentTitle": "Envoyé au chef",
-  "paSentBody": "Nous demanderons au chef de confirmer le nouveau total. Rien n’est débité avant sa confirmation."
+  "paSentBody": "Nous demanderons au chef de confirmer le nouveau total. Rien n’est débité avant sa confirmation.",
+  "paSentenceChef": "{kitchen} a répondu avec un nouveau total. Acceptez-le ou refusez-le ci-dessous.",
+  "paSentenceKitchen": "{chef} examine votre nouveau total."
 }

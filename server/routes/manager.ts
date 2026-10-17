@@ -4578,7 +4578,8 @@ router.put(
             || session.metadata?.kitchen_id !== String(booking.kitchenId)
             || session.metadata?.type !== 'kitchen_booking' || session.status !== 'complete' || session.currency?.toLowerCase() !== 'cad'
             || session.amount_total !== paymentIntent.amount) throw new BookingTermsReviewRequired();
-          checkoutTerms = bookingCaptureTerms(session.metadata, paymentIntent.amount);
+          // A dated booking's frozen quote is verified by the decision command itself (CP4); its metadata has no scalar fee model.
+          if (!(booking.scheduleRevision > 0)) checkoutTerms = bookingCaptureTerms(session.metadata, paymentIntent.amount);
         }
         // AUTH-THEN-CAPTURE: If payment is authorized, capture is deferred until AFTER
         // storage/equipment actions are determined, so we can do PARTIAL capture.
