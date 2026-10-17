@@ -74,8 +74,13 @@ export function SessionExtensionSettingsCard({ kitchenId, admin = false }: { kit
         {t("sxsError", { defaultValue: "This setting couldn’t be loaded. Try again." })}
         <Button variant="outline" className="min-h-11" onClick={() => void refetch()}>{t("sxsRetry", { defaultValue: "Retry" })}</Button></div> : <>
         <SettingsRow id={`auto-extend-${kitchenId}`} label={t("bpAutoLabel")}
-          hint={locked ? t("sxsLocked", { defaultValue: "Local Cooks set this for your kitchen: {reason}", reason: data?.overrideReason || "" })
-            : t(checked ? "bpAutoOn" : "bpAutoOff")}>
+          hint={locked ? <span className="flex flex-wrap items-center gap-x-1.5">
+            <span>{t("bpSetByLocalCooks", { reason: data?.overrideReason || "", defaultValue: "Set by Local Cooks: {reason}" })}</span>
+            <span aria-hidden>·</span>
+            <a href="mailto:support@localcooks.ca" className="-my-3 inline-flex min-h-11 items-center rounded-md px-1 font-medium text-foreground underline decoration-muted-foreground/40 underline-offset-4 hover:decoration-foreground">
+              {t("cuContactLocalCooks", { defaultValue: "Contact Local Cooks" })}
+            </a>
+          </span> : t(checked ? "bpAutoOn" : "bpAutoOff")}>
           <Switch id={`auto-extend-${kitchenId}`} checked={checked} disabled={!data || busy || locked || admin} onCheckedChange={setDraft} />
         </SettingsRow>
         {data && !data.enabled && <p className="border-t border-border px-4 py-3 text-sm text-muted-foreground">{t("sxsPaused", { defaultValue: "Extra time is paused on Local Cooks right now. Chefs can still message you." })}</p>}

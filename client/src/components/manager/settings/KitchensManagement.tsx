@@ -787,6 +787,8 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
             <TabsContent value="policies" className="mt-0">
               {activeKitchenId && <KitchenWorkspaceControls key={activeKitchenId} kitchenId={activeKitchenId} location={location}
                 mode="policies" showTerms onDirtyChange={setPoliciesDirty} saveRef={policiesRef}
+                kitchenCount={kitchens.length}
+                onEditLocation={() => onNavigate("settings-booking-rules")}
                 onRequestSave={() => { if (!policyScopeSaving && !policyScopeOpen) void requestPolicySave(); }} />}
             </TabsContent>
 

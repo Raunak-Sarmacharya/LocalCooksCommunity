@@ -107,6 +107,7 @@ describe("BookingRulesSettings", () => {
         cancellationPolicyHours: 24,
         defaultDailyBookingLimit: null,
         minimumBookingWindowHours: 48,
+        taxRatePercent: null,
         checkinWindowMinutesBefore: null,
         noShowGraceMinutes: null,
       });

@@ -1502,9 +1502,16 @@ router.post("/kitchens", async (req: Request, res: Response) => {
             pricingModel: 'hourly',
             taxRatePercent: taxRatePercent ? parseFloat(taxRatePercent) : null
         });
-        const { cancellationSettings, publishCancellationPolicy } = await import('../services/cancellation-policy-settings');
-        const defaults = (await cancellationSettings()).default;
-        await publishCancellationPolicy(kitchen.id, user.id, { noticeHours: defaults.notice, lateChargePercent: defaults.charge, reason: 'Initial platform default for a new kitchen' }, true, true);
+        const { publishCancellationPolicy } = await import('../services/cancellation-policy-settings');
+        const [locDefaults] = await db.select({
+          noticeHours: locations.cancellationNoticeHours,
+          lateChargePercent: locations.cancellationLateChargePercent,
+        }).from(locations).where(eq(locations.id, locationIdNum)).limit(1);
+        await publishCancellationPolicy(kitchen.id, user.id, {
+          noticeHours: locDefaults?.noticeHours ?? 24,
+          lateChargePercent: locDefaults?.lateChargePercent ?? 100,
+          reason: 'Initial platform default for a new kitchen',
+        }, true, true);
         res.status(201).json(kitchen);
     } catch (error: any) {
         logger.error("Error creating kitchen:", error);

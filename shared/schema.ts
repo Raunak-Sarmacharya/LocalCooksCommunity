@@ -366,6 +366,9 @@ export const locations = pgTable("locations", {
   preferredContactMethod: text("preferred_contact_method").default("email").notNull(), // email, phone, or both
   cancellationPolicyHours: integer("cancellation_policy_hours").default(24).notNull(),
   cancellationPolicyMessage: text("cancellation_policy_message").default("Bookings cannot be cancelled within {hours} hours of the scheduled time.").notNull(),
+  // Versioned cancellation default (migration 0101). Kitchen may override via kitchen_cancellation_policies.
+  cancellationNoticeHours: integer("cancellation_notice_hours").default(24).notNull(),
+  cancellationLateChargePercent: integer("cancellation_late_charge_percent").default(100).notNull(),
   // NULL = no per-request hours cap (opening hours only). Kitchen may override.
   defaultDailyBookingLimit: integer("default_daily_booking_limit"),
   maxAdvanceBookingDays: integer("max_advance_booking_days").default(60).notNull(),
@@ -375,6 +378,8 @@ export const locations = pgTable("locations", {
   allowMultiDayBookings: boolean("allow_multiday_bookings").default(true).notNull(),
   bookingBufferMinutes: integer("booking_buffer_minutes").default(0),
   minimumBookingWindowHours: integer("minimum_booking_window_hours").default(1).notNull(),
+  // Location-owned HST % (migration 0101). Synced onto every kitchen so checkout readers stay on kitchens.tax_rate_percent.
+  taxRatePercent: numeric("tax_rate_percent"),
   logoUrl: text("logo_url"), // Logo URL for the location (for manager header)
   brandImageUrl: text("brand_image_url"), // Brand image URL for the location (displayed on public kitchen listings)
   timezone: text("timezone").default("America/St_Johns").notNull(), // Timezone for this location (default: Newfoundland)
@@ -506,6 +511,8 @@ export const kitchens = pgTable("kitchens", {
   weeklyChefHoursLimit: integer("weekly_chef_hours_limit"),
   minimumBookingWindowHours: integer("minimum_booking_window_hours"),
   defaultDailyBookingLimit: integer("default_daily_booking_limit"),
+  // true = kitchen uses the location's cancellation default (migration 0101).
+  cancellationFollowsLocation: boolean("cancellation_follows_location").default(true).notNull(),
   checkinCheckoutEnabled: boolean("checkin_checkout_enabled").default(false).notNull(),
   autoApproveSessionExtensions: boolean('auto_approve_session_extensions').default(false).notNull(),
   sessionExtensionsAdminOverride: boolean('session_extensions_admin_override'),
@@ -515,6 +522,7 @@ export const kitchens = pgTable("kitchens", {
   currency: text("currency").default("CAD").notNull(), // Currency code (ISO 4217)
   minimumBookingHours: integer("minimum_booking_hours").default(1).notNull(), // Minimum booking duration
   pricingModel: text("pricing_model").default("hourly").notNull(), // Pricing structure ('hourly', 'daily', 'weekly')
+  // Kept in sync from locations.tax_rate_percent on save (shortcut: checkout/revenue still read this column).
   taxRatePercent: numeric("tax_rate_percent"), // Optional tax percentage (e.g., 13 for 13%)
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),

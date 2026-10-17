@@ -961,6 +961,26 @@ router.get('/kitchens/:id/cancellation-policy', requireFirebaseAuthWithUser, req
   try { res.json(await (await import('../services/cancellation-policy-settings')).managedCancellationPolicy(Number(req.params.id), req.neonUser!.id)); }
   catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : 'Policy unavailable' }); }
 });
+router.get('/locations/:locationId/cancellation-policy-default', requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+  try { res.json(await (await import('../services/cancellation-policy-settings')).managedLocationCancellationPolicy(Number(req.params.locationId), req.neonUser!.id)); }
+  catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : 'Policy unavailable' }); }
+});
+router.put('/locations/:locationId/cancellation-policy-default', requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+  try { res.json(await (await import('../services/cancellation-policy-settings')).publishLocationCancellationPolicy(Number(req.params.locationId), req.neonUser!.id, req.body)); }
+  catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : 'Policy could not be published' }); }
+});
+router.get('/locations/:locationId/booking-policy-impact', requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+  try { res.json(await (await import('../services/location-booking-policy-impact')).locationBookingPolicyImpact(Number(req.params.locationId), req.neonUser!.id)); }
+  catch (error) { const status = typeof error === 'object' && error && 'status' in error ? Number((error as any).status) : 400; res.status(status || 400).json({ error: error instanceof Error ? error.message : 'Impact unavailable' }); }
+});
+router.get('/kitchens/:kitchenId/copy-booking-policies', requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+  try { res.json(await (await import('../services/booking-policy-copy')).previewCopyBookingPolicies(Number(req.params.kitchenId), req.neonUser!.id)); }
+  catch (error) { const status = typeof error === 'object' && error && 'status' in error ? Number((error as any).status) : 400; res.status(status || 400).json({ error: error instanceof Error ? error.message : 'Preview unavailable' }); }
+});
+router.post('/kitchens/:kitchenId/copy-booking-policies', requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+  try { res.json(await (await import('../services/booking-policy-copy')).applyCopyBookingPolicies(Number(req.params.kitchenId), req.neonUser!.id)); }
+  catch (error) { const status = typeof error === 'object' && error && 'status' in error ? Number((error as any).status) : 400; res.status(status || 400).json({ error: error instanceof Error ? error.message : 'Copy failed' }); }
+});
 
 router.put(
   "/bookings/:id/cancellation-request",
@@ -2364,9 +2384,20 @@ router.post(
         pricingModel: dailyRate > 0 && !(hourlyRate > 0) ? "daily" : "hourly",
       });
 
-      const { cancellationSettings, publishCancellationPolicy } = await import('../services/cancellation-policy-settings');
-      const defaults = (await cancellationSettings()).default;
-      await publishCancellationPolicy(created.id, req.neonUser!.id, { noticeHours: defaults.notice, lateChargePercent: defaults.charge });
+      const { publishCancellationPolicy } = await import('../services/cancellation-policy-settings');
+      const [locDefaults] = await db.select({
+        noticeHours: locations.cancellationNoticeHours,
+        lateChargePercent: locations.cancellationLateChargePercent,
+        taxRatePercent: locations.taxRatePercent,
+      }).from(locations).where(eq(locations.id, locationId)).limit(1);
+      await publishCancellationPolicy(created.id, req.neonUser!.id, {
+        noticeHours: locDefaults?.noticeHours ?? 24,
+        lateChargePercent: locDefaults?.lateChargePercent ?? 100,
+      }, false, true);
+      // shortcut: new kitchens inherit the location HST % so checkout readers of kitchen.taxRatePercent stay correct.
+      if (locDefaults?.taxRatePercent != null) {
+        await db.update(kitchens).set({ taxRatePercent: locDefaults.taxRatePercent, updatedAt: new Date() }).where(eq(kitchens.id, created.id));
+      }
       res.status(201).json(created);
     } catch (error: any) {
       logger.error("Error creating kitchen:", error);
@@ -3264,6 +3295,8 @@ router.get(
       }
 
       res.json({
+        locationId: location.id,
+        locationName: location.name,
         hourlyRate: kitchen.hourlyRate, // In dollars if getKitchenById handled it, or cents?
         dailyRate: kitchen.dailyRate,
         // routes.ts typically converted it?
@@ -3397,9 +3430,10 @@ router.put(
             error: "Pricing model must be 'hourly' or 'daily'",
           });
       }
-      if (taxRatePercent !== undefined && taxRatePercent !== null &&
-          (typeof taxRatePercent !== 'number' || !Number.isFinite(taxRatePercent) || taxRatePercent < 0 || taxRatePercent > 100)) {
-        return res.status(400).json({ error: 'Tax rate must be between 0 and 100 percent' });
+      if (taxRatePercent !== undefined) {
+        return res.status(400).json({
+          error: 'HST is set for the location. Edit it in location Booking policies.',
+        });
       }
 
       // Rates are integer cents throughout the API and checkout.
@@ -3414,9 +3448,6 @@ router.put(
       if (minimumBookingHours !== undefined)
         pricing.minimumBookingHours = minimumBookingHours;
       if (pricingModel !== undefined) pricing.pricingModel = pricingModel;
-      if (taxRatePercent !== undefined) {
-        pricing.taxRatePercent = taxRatePercent;
-      }
 
       const updated = await kitchenService.updateKitchen({
         id: kitchenId,
@@ -5317,6 +5348,18 @@ router.put(
         });
       }
 
+      const taxRateInput = req.body?.taxRatePercent;
+      let parsedTax: number | null | undefined;
+      if (taxRateInput !== undefined) {
+        const { parseTaxRatePercent } = await import('../services/location-tax-settings');
+        const parsed = parseTaxRatePercent(taxRateInput);
+        if (parsed && typeof parsed === 'object' && 'error' in parsed) {
+          return res.status(400).json({ error: parsed.error });
+        }
+        parsedTax = parsed as number | null;
+        (updates as any).taxRatePercent = parsedTax == null ? null : String(parsedTax);
+      }
+
       logger.info(
         "[PUT] Final updates object before DB update:",
         JSON.stringify(updates, null, 2),
@@ -5333,11 +5376,21 @@ router.put(
         (updates as any).logo_url,
       );
 
-      const updatedResults = await db
-        .update(locations)
-        .set(updates)
-        .where(eq(locations.id, locationIdNum))
-        .returning();
+      const updatedResults = await db.transaction(async (tx) => {
+        const rows = await tx
+          .update(locations)
+          .set(updates)
+          .where(eq(locations.id, locationIdNum))
+          .returning();
+        if (parsedTax !== undefined) {
+          // shortcut: keep kitchens.tax_rate_percent identical so checkout/revenue readers stay on the kitchen column.
+          await tx.update(kitchens).set({
+            taxRatePercent: parsedTax == null ? null : String(parsedTax),
+            updatedAt: new Date(),
+          }).where(eq(kitchens.locationId, locationIdNum));
+        }
+        return rows;
+      });
 
       logger.info(
         "[PUT] Updated location from DB (full object):",

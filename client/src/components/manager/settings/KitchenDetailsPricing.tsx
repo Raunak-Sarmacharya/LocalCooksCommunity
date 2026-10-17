@@ -282,6 +282,7 @@ const KitchenDetailsPricing = forwardRef<
         ref={pricingRef}
         selectedLocationId={locationId}
         selectedKitchenId={kitchen.id}
+        locationName={locationName}
         onDirtyChange={setPricingDirty}
       />
 
