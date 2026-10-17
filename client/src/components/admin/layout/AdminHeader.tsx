@@ -40,6 +40,7 @@ const SECTION_META: Record<AdminSection, { category: string; title: string }> = 
   transactions: { category: "Revenue", title: "Transaction History" },
   "overstay-penalties-history": { category: "Revenue", title: "Overstay Penalties" },
   "damage-claims-history": { category: "Revenue", title: "Claims history" },
+  "storage-rentals": { category: "Revenue", title: "Storage rentals" },
   "security-settings": { category: "Settings", title: "Security & Rate Limits" },
   "password-reset": { category: "Management", title: "Password Reset" },
   "email-log": { category: "Communications", title: "Email Log" },

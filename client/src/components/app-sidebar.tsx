@@ -45,7 +45,7 @@ const navData: { navMain: NavGroup[] } = {
                     ],
                 },
                 {
-                    labelKey: "navStorageBookings",
+                    labelKey: "navStorage",
                     url: "storage-bookings",
                     icon: managerNavIcons["storage-bookings"],
                 },

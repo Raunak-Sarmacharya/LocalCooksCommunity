@@ -27,6 +27,7 @@ export type AdminSection =
   | "transactions"
   | "overstay-penalties-history"
   | "damage-claims-history"
+  | "storage-rentals"
   | "security-settings"
   | "password-reset"
   | "email-log";
@@ -80,6 +81,7 @@ const NAV_GROUPS = [
     items: [
       { id: "transactions" as AdminSection, label: "Transactions", icon: CreditCard },
       { id: "overstay-penalties-history" as AdminSection, label: "Overstay Penalties", icon: Package },
+      { id: "storage-rentals" as AdminSection, label: "Storage rentals", icon: Package },
       { id: "damage-claims-history" as AdminSection, label: "Claims history", icon: FileWarning },
       { id: "manager-revenues" as AdminSection, label: "Manager Revenues", icon: DollarSign },
       { id: "platform-overview" as AdminSection, label: "Platform Overview", icon: BarChart3 },
