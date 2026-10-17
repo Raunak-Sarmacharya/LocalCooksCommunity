@@ -25,6 +25,7 @@ export const ACTION_SPECS: Record<SupportActionType, Spec> = {
   confirm_for_manager: { acting: M, reasons: ["manager_asked", "no_response_from_manager", "other"], fields: ["items"], notifies: "both" },
   decline_for_manager: { acting: M, reasons: ["manager_asked", "kitchen_could_not_serve", "other"], fields: [], notifies: "both" },
   release_hold_for_chef: { acting: C, reasons: ["customer_asked", "kitchen_could_not_serve", "other"], fields: [], notifies: "both" },
+  accept_proposal_for_chef: { acting: C, reasons: ["customer_asked", "other"], fields: [], notifies: "both" },
   replay_payment_decision: { acting: ANY, reasons: ["payment_problem", "other"], fields: [], notifies: "both" },
   cancel_kitchen_caused: { acting: M, reasons: ["kitchen_could_not_serve", "safety_concern", "other"], fields: [], notifies: "both" },
   refund_captured_request: { acting: M, reasons: ["payment_problem", "customer_asked", "other"], fields: [], notifies: "both" },

@@ -23,6 +23,7 @@ import { kitchenPayoutNotice, kitchenCheckoutPayoutNotice, managerVisitNotice, m
 import { cancellationNotice, type CancellationNotice } from './cancellation-notice';
 import { requestReplacementNotice, type ReplacementNotice } from './request-replacement-notice';
 import { addonRemovalNotice, type AddonRemovalNotice } from './addon-removal-notice';
+import { partialAcceptanceNotice, type PartialAcceptanceNotice } from './partial-acceptance-notice';
 import type { AdminBookingFacts } from './admin-booking-notice';
 
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -317,6 +318,8 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
         chefName: nameOf(context.chefId), kitchenName: context.kitchenName, reference: String(context.referenceCode || `#${bookingId}`), date: visitWhen() })
       : metadata.cancellationNotice ? await cancellationNotice(chef ? 'chef' : 'manager', person.locale, { ...(metadata.cancellationNotice as CancellationNotice),
         chefName: nameOf(context.chefId), kitchenName: context.kitchenName, date: visitWhen() })
+      : metadata.partialAcceptance && !localCooks ? await partialAcceptanceNotice(chef ? 'chef' : 'manager', person.locale, metadata.partialAcceptance as PartialAcceptanceNotice,
+        { chefName: nameOf(context.chefId), kitchenName: context.kitchenName, timezone: context.timezone })
       : (metadata.roleText as Record<string, { title: string; message: string }> | undefined)?.[chef ? 'chef' : 'manager'];
     const roleActionLabel = (roleText as { actionLabel?: string } | undefined)?.actionLabel;
     const adminCopy = localCooks && adminTracked ? adminBookingNotice(kind, { chef: nameOf(context.chefId) || 'The chef', kitchen: context.kitchenName,
@@ -325,6 +328,7 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
         context.startTime ? emailClock(context.startTime, person.locale || 'en-CA') : ''].filter(Boolean).join(', '),
       cancellation: metadata.cancellationNotice as CancellationNotice | undefined, addon: metadata.addonRemoval as AdminBookingFacts['addon'], requestExpired: metadata.requestExpired === true,
       requestOutcome: ['declined', 'withdrawn', 'support', 'replaced'].includes(String(metadata.requestOutcome)) ? metadata.requestOutcome as 'declined' | 'withdrawn' | 'support' | 'replaced' : undefined,
+      partialAcceptance: metadata.partialAcceptance as AdminBookingFacts['partialAcceptance'],
       replacesRef: typeof metadata.replacesRef === 'string' ? metadata.replacesRef : undefined,
       invitation: metadata.invitation as AdminBookingFacts['invitation'],
       replacedByRef: (metadata.replacementNotice as ReplacementNotice | undefined)?.newRef,
@@ -337,7 +341,7 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
     if (metadata.emailRecipientPolicy !== 'none' && (arrivalNotice || person.email && operationalEmailAllowed(person)) && (adminCopy || metadata.emailRecipientPolicy !== 'manager' || person.id === context.managerId)) {
       const url = `${getAppBaseUrl(chef ? 'chef' : localCooks ? 'admin' : 'kitchen')}${path}`;
       emails.push({ key: String(person.id), to: person.email, url, adminRecipient: localCooks, locale: person.locale, recipientName: nameOf(person.id) || 'there', facts: bookingEmailFacts({ ...context, timezone: context.timezone || DEFAULT_TIMEZONE, locationAddress: context.locationAddress || undefined, bookingId, locale: person.locale }), ...(arrivalNotice ? { afterFailedAttempts } : {}),
-        ...(closedCopy || metadata.cancellationNotice || metadata.addonRemoval || metadata.requestOutcome || metadata.replacementNotice ? { content: renderTransactionalEmail({ to: person.email, locale: person.locale,
+        ...(closedCopy || metadata.cancellationNotice || metadata.addonRemoval || metadata.requestOutcome || metadata.replacementNotice || metadata.partialAcceptance ? { content: renderTransactionalEmail({ to: person.email, locale: person.locale,
           recipientName: nameOf(person.id), subject: closedCopy?.title ?? roleText?.title ?? title,
           heading: closedCopy?.title ?? roleText?.title ?? title, message: closedCopy?.message ?? roleText?.message ?? message,
           facts: [], actionLabel: roleActionLabel || 'View booking', actionUrl: url }) } : {}),

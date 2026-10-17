@@ -38,6 +38,8 @@ export interface EquipmentItemForAction {
   name: string;
   totalPrice: number; // in cents
   rejected?: boolean; // true if already rejected (read-only in action dialog)
+  /** The day this item is booked for (dated multi-day bookings book equipment per day). */
+  visitDate?: string | null;
 }
 
 export interface BookingForAction {
@@ -61,17 +63,20 @@ export interface BookingForAction {
   managerRevenue?: number; // manager received in cents
   taxRatePercent?: number; // tax rate (e.g. 13 for 13%)
   paymentStatus?: string; // 'authorized' | 'paid' | etc.
+  /** False when the chef would have under 3 h to answer a new total (owner, Oct 17): accept everything or decline only. */
+  canAskChef?: boolean;
 }
 
 type ItemAction = "confirmed" | "cancelled";
 
-function BookingItemDecision({ name, details, price, icon, decision, disabled, onDecision }: {
+function BookingItemDecision({ name, details, price, icon, decision, disabled, declineDisabled, onDecision }: {
   name: string;
   details?: ReactNode;
   price?: number;
   icon: ReactNode;
   decision: ItemAction;
   disabled: boolean;
+  declineDisabled?: boolean;
   onDecision: (decision: ItemAction) => void;
 }) {
   return (
@@ -92,7 +97,7 @@ function BookingItemDecision({ name, details, price, icon, decision, disabled, o
             size="sm"
             variant="ghost"
             aria-pressed={decision === value}
-            disabled={disabled}
+            disabled={disabled || (value === "cancelled" && declineDisabled)}
             onClick={() => onDecision(value)}
             className={cn("flex-1 px-3 sm:flex-none", decision === value && (value === "confirmed"
               ? "bg-success/10 text-success hover:bg-success/15 hover:text-success"
@@ -540,6 +545,13 @@ function BookingActionDialogContent({
 
   const allApproved = rejectedCount === 0;
   const allRejected = approvedCount === 0;
+  // Owner (Oct 17): accepting without some equipment asks the chef to approve the new total; nothing is captured before.
+  const declinedEquipment = isAuthorized && !kitchenIsRejected
+    ? actionableEquipmentItems.filter((i) => equipmentDecisions.get(i.equipmentBookingId) === "cancelled") : [];
+  const asksChef = declinedEquipment.length > 0;
+  const lastMinute = isAuthorized && booking.canAskChef === false;
+  const itemLabel = (item: EquipmentItemForAction) => item.visitDate ? `${item.name} (${formatDate(item.visitDate)})` : item.name;
+  const declinedNames = new Intl.ListFormat(i18n.language || "en-CA", { type: "conjunction" }).format(declinedEquipment.map(itemLabel));
   const titleRef = useRef<HTMLSpanElement>(null);
 
   return (
@@ -687,14 +699,24 @@ function BookingActionDialogContent({
                   <BookingItemDecision
                     key={item.equipmentBookingId}
                     name={item.name}
+                    details={item.visitDate ? formatDate(item.visitDate) : undefined}
                     price={item.totalPrice}
                     icon={<Package className="h-4 w-4" />}
                     decision={decision}
                     disabled={isDisabled || isLoading}
+                    declineDisabled={lastMinute}
                     onDecision={value => { if (value !== decision) toggleEquipmentDecision(item.equipmentBookingId); }}
                   />
                 );
               })}
+              {lastMinute && actionableEquipmentItems.length > 0 && !kitchenIsRejected && (
+                <div className="space-y-2 rounded-lg border bg-muted/30 p-3 text-sm leading-6" data-testid="review-last-minute">
+                  <p>{mt("reviewLastMinuteLine")}</p>
+                  <Button asChild variant="outline" size="sm" className="min-h-11 sm:min-h-9">
+                    <a href={`/manager/booking/${booking.id}?action=message`}>{mt("reviewMessageChef")}</a>
+                  </Button>
+                </div>
+              )}
 
               {/* Already-rejected equipment items — read-only */}
               {rejectedEquipmentItems.map((item) => (
@@ -815,6 +837,13 @@ function BookingActionDialogContent({
           </>
         )}
 
+        {asksChef && (
+          <div className="flex items-start gap-2 rounded-lg border border-blue-200 bg-background p-3" data-testid="review-asks-chef">
+            <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
+            <p className="text-sm leading-6">{mt("reviewAsksChefLine")}</p>
+          </div>
+        )}
+
         {/* ── Auth-Then-Capture: Partial Approval ──────────────────────────── */}
         {isAuthorized && captureCalc && captureCalc.isPartialCapture && (
           <>
@@ -828,7 +857,7 @@ function BookingActionDialogContent({
               </div>
               <p className="text-sm leading-6 text-muted-foreground">
                 {mt("chefCardHoldAmount", { amount: formatPrice(captureCalc.transactionAmount) })}{" "}
-                {mt("partialCaptureReleasedNote")}
+                {mt(asksChef ? "reviewNewTotalReleasedNote" : "partialCaptureReleasedNote")}
               </p>
 
               {/* Capture Breakdown */}
@@ -1022,7 +1051,7 @@ function BookingActionDialogContent({
             <span className="font-medium text-foreground sm:ml-auto">{mt("reviewRefundAmount", { amount: formatPrice(effectiveRefundAmount) })}</span>
           )}
           {isAuthorized && captureCalc && (
-            <span className="font-medium text-foreground sm:ml-auto">{mt("reviewChargeAmount", { amount: formatPrice(captureCalc.captureAmount) })}</span>
+            <span className="font-medium text-foreground sm:ml-auto">{mt(asksChef ? "reviewNewTotalAmount" : "reviewChargeAmount", { amount: formatPrice(captureCalc.captureAmount) })}</span>
           )}
         </div>
 
@@ -1053,6 +1082,8 @@ function BookingActionDialogContent({
               ? mt("processingEllipsis")
               : kitchenIsRejected
               ? mt("reviewDeclineRequest")
+              : asksChef
+              ? mt("reviewAcceptWithout", { items: declinedNames })
               : allApproved
               ? mt("reviewApproveBooking")
               : mt("reviewApproveSelected")}

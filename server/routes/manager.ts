@@ -33,7 +33,7 @@ import {
 import { format } from "date-fns";
 import { db } from "../db";
 import { buildKitchenReadiness } from "../services/kitchen-listing-readiness-service";
-import { getBookingResponseDeadlineAt } from '../services/booking-response-deadline';
+import { getBookingResponseDeadlineAt, getPartialAcceptanceWindow } from '../services/booking-response-deadline';
 import { normalizeTrackingSetup } from '@shared/tracking-setup';
 import { managerWorkspaceVisibility } from "../domains/managers/manager-workspace-visibility";
 import { includeCancelledStorageHistory } from "../domains/managers/storage-booking-history";
@@ -108,6 +108,7 @@ import {
   storageListings,
   equipmentListings,
   kitchenBookings,
+  kitchenBookingVisits,
   paymentTransactions,
   storageOverstayRecords,
 } from "@shared/schema";
@@ -4238,9 +4239,13 @@ router.get(
             .from(equipmentListings)
             .where(eq(equipmentListings.id, eb.equipmentListingId))
             .limit(1);
+          // A dated booking books equipment per day: the review names the day so the kitchen can decline one day's item.
+          const [visit] = booking.scheduleRevision > 0 && eb.kitchenBookingVisitId ? await db.select({ visitDate: kitchenBookingVisits.visitDate })
+            .from(kitchenBookingVisits).where(eq(kitchenBookingVisits.id, eb.kitchenBookingVisitId)).limit(1) : [];
           return {
             ...eb,
             equipmentListing: listing || null,
+            visitDate: visit?.visitDate ?? null,
           };
         }),
       );
@@ -4414,6 +4419,9 @@ router.get(
         // Read-only: extra time and claim payments on this booking, with the kitchen's share of each.
         additionalCharges: await (await import('../services/booking-additional-charges')).readAdditionalCharges(db, id, 'manager', booking.paymentIntentId).catch(() => []),
         responseDeadlineAt: await getBookingResponseDeadlineAt(booking, undefined, location.timezone),
+        // Owner (Oct 17): too close to the start (< 3 h for the chef to answer) means accept everything or decline; the dialog mirrors this.
+        partialAcceptanceAvailable: booking.status === 'pending' && booking.paymentStatus === 'authorized'
+          ? await getPartialAcceptanceWindow(booking, new Date(), undefined, location.timezone).then(window => window.allowed, () => false) : false,
         visitCode: visitCodeFor(null),
         inspection: {
           duties: inspectionDuties,

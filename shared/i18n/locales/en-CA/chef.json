@@ -3695,5 +3695,9 @@
   "ovhLegacyDeadline": "Dispute deadline: {date}",
   "ovhLegacyDispute": "Dispute final amount",
   "ovhLegacyPrompt": "Explain why you disagree with this amount",
-  "ovhLegacySend": "Send for admin review"
+  "ovhLegacySend": "Send for admin review",
+  "paPillKitchen": "Waiting for the chef",
+  "paPillChef": "Your answer needed",
+  "paSentTitle": "Sent to the chef",
+  "paSentBody": "We’ll ask the chef to confirm the new total. Nothing is charged until they do."
 }

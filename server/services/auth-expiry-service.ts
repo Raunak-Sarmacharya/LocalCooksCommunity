@@ -33,6 +33,7 @@ import { getBookingResponseDeadline } from './booking-response-deadline';
 import { locations } from '@shared/schema';
 import { DEFAULT_TIMEZONE } from '@shared/timezone-utils';
 import { RESPONSE_WINDOW_HOURS } from '@shared/booking-response-deadline';
+import { waitingPartialAcceptance } from '@shared/partial-acceptance';
 
 export interface AuthExpiryResult {
   type: "kitchen_booking" | "storage_extension";
@@ -67,9 +68,16 @@ async function expireKitchenAuthorization(bookingId: number, paymentIntentId: st
     await (await import('./booking-payment-decision')).decideAuthorizedBooking(bookingId, 'confirmed', [], [], invitation.managerId);
     return false;
   }
+  const { decideAuthorizedBooking } = await import('./booking-payment-decision');
+  // The kitchen answered with a new total: only the chef's deadline applies now.
+  const proposal = waitingPartialAcceptance(current);
+  if (proposal) {
+    if (now < new Date(proposal.deadlineAt)) return false;
+    await decideAuthorizedBooking(bookingId, 'cancelled', [], [], undefined, undefined, { proposalOutcome: 'expired' });
+    return true;
+  }
   const deadline = await getBookingResponseDeadline(current);
   if (now < deadline) return false;
-  const { decideAuthorizedBooking } = await import('./booking-payment-decision');
   await decideAuthorizedBooking(bookingId, 'cancelled', [], [], undefined, { responseDeadlineAt: deadline.toISOString() });
   return true;
 }

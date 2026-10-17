@@ -18,7 +18,9 @@ export async function currentManagerDecisionReminders(tx: Parameters<Parameters<
   const [row] = await tx.select({ booking: kitchenBookings, kitchen: kitchens, location: locations }).from(kitchenBookings)
     .innerJoin(kitchens, eq(kitchens.id, kitchenBookings.kitchenId)).innerJoin(locations, eq(locations.id, kitchens.locationId))
     .where(eq(kitchenBookings.id, id)).limit(1);
-  if (!row || row.booking.status !== 'pending' || row.booking.paymentStatus !== 'authorized' || row.booking.paymentDecision || !row.location.managerId) return [];
+  if (!row || row.booking.status !== 'pending' || row.booking.paymentStatus !== 'authorized' || row.booking.paymentDecision || !row.location.managerId
+    // Waiting for the chef's answer to the kitchen's new total: nothing is left for the kitchen to do.
+    || (row.booking.partialAcceptance as { state?: string } | null)?.state === 'waiting') return [];
   const timing = await getLifecycleSettings(tx);
   const timezone = row.location.timezone || DEFAULT_TIMEZONE;
   const deadline = responseDeadlineForBooking(row.booking, timezone, timing.managerResponseBufferHours);

@@ -3695,5 +3695,9 @@
   "ovhLegacyDeadline": "Date limite de contestation : {date}",
   "ovhLegacyDispute": "Contester le montant final",
   "ovhLegacyPrompt": "Expliquez pourquoi vous n’êtes pas d’accord avec ce montant",
-  "ovhLegacySend": "Envoyer pour examen"
+  "ovhLegacySend": "Envoyer pour examen",
+  "paPillKitchen": "En attente du chef",
+  "paPillChef": "Votre réponse est requise",
+  "paSentTitle": "Envoyé au chef",
+  "paSentBody": "Nous demanderons au chef de confirmer le nouveau total. Rien n’est débité avant sa confirmation."
 }

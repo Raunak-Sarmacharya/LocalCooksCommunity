@@ -2,7 +2,8 @@ import type Stripe from 'stripe';
 import { asc, eq } from 'drizzle-orm';
 import { db } from '../db';
 import { kitchenBookingDayAllocations, paymentTransactions, kitchenBookingVisits, equipmentBookings } from '@shared/schema';
-import { allocateDatedCapture, datedCheckoutMetadata, verifyDatedQuote, type DayComponent } from './dated-booking-quote';
+import { allocateDatedCapture, datedCheckoutMetadata, verifyDatedQuote, type DayComponent, type DatedBookingManifest } from './dated-booking-quote';
+import { approvedBookingCapture } from '@shared/booking-capture-terms';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export type DatedCaptureEvidence = { intentId: string; capturedCents: number; currency: string; feeCents: number | null;
@@ -11,7 +12,8 @@ export type DatedCaptureEvidence = { intentId: string; capturedCents: number; cu
 const ref = (value: string | { id: string } | null) => typeof value === 'string' ? value : value?.id;
 
 export async function verifiedDatedCaptureEvidence(intent: Stripe.PaymentIntent, provider: Stripe): Promise<DatedCaptureEvidence> {
-  if (intent.status !== 'succeeded' || intent.currency !== 'cad' || intent.amount_received !== intent.amount) throw Error('Dated capture is not verified');
+  // A partial capture (the chef accepted the kitchen's new total) receives less than the authorization; the exact amount is checked against the source.
+  if (intent.status !== 'succeeded' || intent.currency !== 'cad' || !(intent.amount_received > 0 && intent.amount_received <= intent.amount)) throw Error('Dated capture is not verified');
   const evidence: DatedCaptureEvidence = { intentId: intent.id, capturedCents: intent.amount_received, currency: intent.currency,
     feeCents: null, chargeId: null, balanceTransactionId: null, feeDetails: null, metadata: intent.metadata };
   if (!intent.latest_charge) return evidence;
@@ -31,11 +33,15 @@ export async function verifiedDatedCaptureEvidence(intent: Stripe.PaymentIntent,
 /** Also checked before capture: saved equipment/visit identities must still match the entire frozen quote. */
 export async function datedSourceComponents(tx: Tx, source: typeof paymentTransactions.$inferSelect) {
   if (source?.payoutPartition !== 'per_day') throw Error('Dated source partition is required before capture');
-  const saved = source.metadata as { datedQuote?: unknown; dayComponents?: DayComponent[] };
-  const quote = verifyDatedQuote(saved.datedQuote), m = quote.manifest, components = saved.dayComponents;
-  if (Number(source.amount) !== m.totalCents || source.chefId !== m.chefId || source.managerId !== m.managerId
-    || source.currency.toLowerCase() !== 'cad' || Number(source.baseAmount) !== m.subtotalCents + m.taxCents
-    || Number(source.taxAmount) !== m.taxCents || Number(source.serviceFee) !== m.serviceFeeCents
+  const saved = source.metadata as { datedQuote?: unknown; dayComponents?: DayComponent[]; datedDeclinedEquipmentIds?: number[] };
+  const quote = verifyDatedQuote(saved.datedQuote), m = quote.manifest;
+  // Equipment the kitchen declined and the chef agreed to go without: excluded from the capture and from every allocation.
+  const declined = new Set(saved.datedDeclinedEquipmentIds ?? []);
+  const components = saved.dayComponents?.filter(row => !(row.kind === 'equipment' && declined.has(row.bookingId)));
+  const captured = acceptedDatedTotals(m, components?.reduce((sum, row) => sum + row.subtotalCents, 0) ?? 0, declined.size > 0);
+  if (Number(source.amount) !== captured.totalCents || source.chefId !== m.chefId || source.managerId !== m.managerId
+    || source.currency.toLowerCase() !== 'cad' || Number(source.baseAmount) !== captured.subtotalCents + captured.taxCents
+    || Number(source.taxAmount) !== captured.taxCents || Number(source.serviceFee) !== captured.serviceFeeCents
     || source.payoutTiming !== 'after_closeout' || !components?.length) throw Error('Dated allocation source needs review');
   const visits = await tx.select().from(kitchenBookingVisits).where(eq(kitchenBookingVisits.bookingId, source.bookingId));
   const equipment = await tx.select().from(equipmentBookings).where(eq(equipmentBookings.kitchenBookingId, source.bookingId));
@@ -47,20 +53,30 @@ export async function datedSourceComponents(tx: Tx, source: typeof paymentTransa
     for (const item of day.equipment) {
       const row = equipment.find(row => row.kitchenBookingVisitId === visit.id && row.equipmentListingId === item.listingId);
       if (!row || Number(row.totalPrice) !== item.cents) throw Error('Dated allocation equipment needs review');
+      if (declined.has(row.id)) continue;
       expected.push({ visitId: visit.id, sessionIndex, componentKey: `equipment:${row.id}`, kind: 'equipment', bookingId: row.id, subtotalCents: item.cents });
     }
   }
   if (expected.length !== components.length || expected.some((row, index) => Object.entries(row).some(([key, value]) => components[index][key as keyof DayComponent] !== value)))
     throw Error('Dated allocation components need review');
-  if (equipment.length !== expected.filter(row => row.kind === 'equipment').length) throw Error('Unexpected dated equipment rows');
-  return { saved, quote, components: expected };
+  if (equipment.length !== expected.filter(row => row.kind === 'equipment').length + declined.size
+    || equipment.some(row => declined.has(row.id) && row.status === 'confirmed')) throw Error('Unexpected dated equipment rows');
+  return { saved, quote, components: expected, captured };
+}
+
+/** What the source captures: the frozen totals, or the same approved-share arithmetic as single-day for accepted components. */
+export function acceptedDatedTotals(m: DatedBookingManifest, acceptedSubtotalCents: number, partial: boolean) {
+  if (!partial) return { subtotalCents: m.subtotalCents, taxCents: m.taxCents, serviceFeeCents: m.serviceFeeCents, totalCents: m.totalCents };
+  const capture = approvedBookingCapture({ subtotal: m.subtotalCents, tax: m.taxCents, commission: m.serviceFeeCents, rate: m.taxRatePercent,
+    authorizedAmount: m.totalCents }, acceptedSubtotalCents);
+  return { subtotalCents: acceptedSubtotalCents, taxCents: capture.tax, serviceFeeCents: capture.commission, totalCents: capture.amount };
 }
 
 /** Source lock precedes booking/visit locks. Unknown fee rows remain NULL until verified provider evidence arrives. */
 export async function writeDatedCaptureAllocations(tx: Tx, sourceId: number, evidence: DatedCaptureEvidence) {
   const [source] = await tx.select().from(paymentTransactions).where(eq(paymentTransactions.id, sourceId)).for('update');
-  const { saved, quote, components: expected } = await datedSourceComponents(tx, source);
-  const m = quote.manifest;
+  const { saved, quote, components: expected, captured } = await datedSourceComponents(tx, source);
+  const m = { ...quote.manifest, ...captured };
   if (source.paymentIntentId !== evidence.intentId || evidence.currency !== 'cad' || evidence.capturedCents !== m.totalCents
     || Object.entries(datedCheckoutMetadata(quote)).some(([key, value]) => evidence.metadata[key] !== value)) throw Error('Dated allocation source needs review');
   const allocations = allocateDatedCapture(expected, m, evidence.feeCents);

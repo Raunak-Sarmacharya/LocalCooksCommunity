@@ -178,6 +178,13 @@ export function DeadlinesCard({ c }: { c: SupportCase }) {
         <Row label={t("bsDeadlineResponse")}>{when(c.deadlines.responseAt)}</Row>
         <Row label={t("bsDeadlineInspection")}>{when(c.deadlines.inspectionAt)}</Row>
         <Row label={t("bsDeadlineCloseout")}>{when(c.deadlines.closeoutAt)}</Row>
+        {c.partialAcceptance && <>
+          <Row label={t("bsProposal")}>{t(`bsProposalState_${c.partialAcceptance.state}`)}</Row>
+          <Row label={t("bsProposalTerms")}>{t("bsProposalTermsValue", { newTotal: fmtMoney(c.partialAcceptance.newTotalCents, c.money.currency),
+            oldTotal: fmtMoney(c.partialAcceptance.oldTotalCents, c.money.currency), items: c.partialAcceptance.declined.map(item => item.date ? `${item.name} (${item.date})` : item.name).join(", ") })}</Row>
+          <Row label={t("bsDeadlineChefAnswer")}>{when(c.partialAcceptance.deadlineAt)}</Row>
+          {c.partialAcceptance.supportReason && <Row label={t("bsProposalSupportReason")}>{c.partialAcceptance.supportReason}</Row>}
+        </>}
       </dl></CardContent>
     </Card>
   );

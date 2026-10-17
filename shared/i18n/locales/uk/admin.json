@@ -305,5 +305,17 @@
   "bsChangeConfirm_close_keep_refund": "Залишити бронювання на {current}. Шеф зберігає вже надіслане повернення {amount}; його фінансує Local Cooks. Запитаний час {requested} не застосовується.",
   "bsChangeConfirmDo": "Підтвердити",
   "bsChangeWorking": "Обробка…",
-  "bsChangeStale": "Цей запит змінився. Оновіть і спробуйте знову."
+  "bsChangeStale": "Цей запит змінився. Оновіть і спробуйте знову.",
+  "bsAction_accept_proposal_for_chef": "Прийняти нову суму за кухаря",
+  "bsProposal": "Нова сума від кухні",
+  "bsProposalState_waiting": "Очікуємо кухаря",
+  "bsProposalState_accepted": "Прийнято",
+  "bsProposalState_declined": "Відхилено кухарем",
+  "bsProposalState_expired": "Без відповіді вчасно",
+  "bsProposalState_withdrawn": "Відкликано кухнею",
+  "bsProposalState_closed": "Закрито",
+  "bsProposalTerms": "Пропозиція",
+  "bsProposalTermsValue": "{newTotal} (було {oldTotal}) без {items}",
+  "bsDeadlineChefAnswer": "Кухар відповідає до",
+  "bsProposalSupportReason": "Примітка підтримки"
 }

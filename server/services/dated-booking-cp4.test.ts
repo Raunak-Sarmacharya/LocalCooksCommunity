@@ -5,7 +5,8 @@ import { eq } from 'drizzle-orm';
 import * as s from '@shared/schema';
 import { createTestDatabase } from './kitchen-booking-changes.pglite';
 import { allocateCents, DATED_DISCLOSURE_VERSION } from '@shared/cancellation-policy';
-import { responseDeadlineForBooking } from '@shared/booking-response-deadline';
+import { responseDeadlineForBooking, bookingFirstStart } from '@shared/booking-response-deadline';
+import { partialAcceptanceAllowed } from '@shared/partial-acceptance';
 
 const h = vi.hoisted(() => ({ db: null as any, client: null as any, provider: null as any, sessions: [] as any[], intent: null as any,
   policy: {} as any, closed: new Set<string>(), canBook: true, loseCreate: false, loseCapture: false, capturedKeys: new Set<string>(),
@@ -23,7 +24,12 @@ vi.mock('../domains/bookings/booking.service', () => ({ bookingService: {
 } }));
 vi.mock('../reference-code', () => ({ generateReferenceCode: async () => `CP4-${++h.next}` }));
 vi.mock('./booking-lifecycle-delivery', () => ({ queueBookingLifecycleEvent: h.event }));
-vi.mock('./booking-response-deadline', () => ({ getBookingResponseDeadline: async (booking: any) => responseDeadlineForBooking(booking, 'UTC') }));
+vi.mock('./booking-response-deadline', () => ({ getBookingResponseDeadline: async (booking: any) => responseDeadlineForBooking(booking, 'UTC'),
+  getPartialAcceptanceWindow: async (booking: any, now = new Date()) => {
+    const deadline = responseDeadlineForBooking({ ...booking, createdAt: now }, 'UTC');
+    return { deadline, allowed: partialAcceptanceAllowed(deadline, bookingFirstStart(booking, 'UTC'), now) };
+  } }));
+vi.mock('./advance-reminders', () => ({ scheduleAdvanceReminders: vi.fn() }));
 vi.mock('./visit-code-challenge', () => ({ ensureChallengesForBooking: vi.fn() }));
 vi.mock('./booking-documents', () => ({ issueBookingDocumentsSafely: vi.fn() }));
 vi.mock('./auth-expiry-service', () => ({ lazyExpireKitchenBookingAuth: h.lazyExpire, sendAuthExpiryNotification: vi.fn() }));
@@ -40,7 +46,7 @@ vi.mock('./stripe-service', () => ({ getBookingPaymentIntent: async () => struct
 
 import { datedCheckoutMetadata, datedManifestHash, verifyDatedQuote, verifyDatedCheckout, allocateDatedCapture } from './dated-booking-quote';
 import { fulfillQuotedKitchenBooking } from './booking-checkout-fulfillment';
-import { decideAuthorizedBooking } from './booking-payment-decision';
+import { decideAuthorizedBooking, answerPartialAcceptance, recoverPendingBookingDecisions } from './booking-payment-decision';
 import { verifiedDatedCaptureEvidence, syncDatedPayment } from './dated-booking-allocations';
 import { recoverUnboundDatedCheckouts, reconcileKitchenCheckout, registerKitchenCheckout, archiveExpiredDatedCheckout } from './kitchen-checkout-incidents';
 import { assertLegacyBookingRefund } from './dated-booking-refund-guard';
@@ -107,7 +113,8 @@ beforeEach(async () => {
   h.capture.mockImplementation(async (_id: string, amount: number, _fee: unknown, key: string) => {
     const [source] = await h.db.select().from(s.paymentTransactions);
     expect(source.payoutPartition).toBe('per_day'); expect(source.payoutTiming).toBe('after_closeout');
-    expect(amount).toBe(h.intent.amount);
+    // A chef-accepted new total captures less than the hold; never more.
+    expect(amount).toBeLessThanOrEqual(h.intent.amount);
     h.capturedKeys.add(key); h.intent.status = 'succeeded'; h.intent.amount_received = amount; h.intent.amount_capturable = 0;
     if (h.loseCapture) throw Error('lost capture response');
   });
@@ -185,6 +192,122 @@ describe('CP4 dated quote and authorization', () => {
       const bad = structuredClone(q); mutate(bad.manifest); expect(() => verifyDatedQuote(bad)).toThrow();
       bad.hash = datedManifestHash(bad.manifest); expect(() => verifyDatedQuote(bad)).toThrow();
     }
+  });
+});
+
+describe('Partial acceptance: the chef approves the new total before any capture (owner, Oct 17)', () => {
+  // Mixer on the daily second day (101 cents) declined: 9106 accepted -> tax 1366, fee half-up 644*9106/9207 = 637 -> 11109.
+  async function propose(listingId = 10, date = '2099-10-07') {
+    const id = await fulfill();
+    const visits = await rows(s.kitchenBookingVisits), items = await rows(s.equipmentBookings);
+    const visit = visits.find((row: any) => row.visitDate === date);
+    const item = items.find((row: any) => row.kitchenBookingVisitId === visit.id && row.equipmentListingId === listingId);
+    const result: any = await decideAuthorizedBooking(id, 'confirmed', [], [{ equipmentBookingId: item.id, action: 'cancelled' }], 2);
+    return { id, item, proposal: result.proposal };
+  }
+  function partialCharge(amount: number, fee = 352) {
+    h.intent.latest_charge = { id: 'ch_pa', payment_intent: h.intent.id, paid: true, captured: true, currency: 'cad', amount_captured: amount,
+      balance_transaction: { id: 'txn_pa', source: 'ch_pa', currency: 'cad', amount, fee, net: amount - fee, fee_details: [{ type: 'stripe_fee', amount: fee, currency: 'cad' }] } };
+  }
+  const expire = (id: number) => decideAuthorizedBooking(id, 'cancelled', [], [], undefined, undefined, { proposalOutcome: 'expired' });
+
+  it('saves a proposal instead of capturing: hold, days and pending state stay; the chef is asked', async () => {
+    const { id, item, proposal } = await propose();
+    expect(h.capture).not.toHaveBeenCalled(); expect(h.cancel).not.toHaveBeenCalled();
+    const [booking] = await rows(s.kitchenBookings);
+    expect(booking).toMatchObject({ status: 'pending', paymentStatus: 'authorized', paymentDecision: null });
+    expect(booking.partialAcceptance).toMatchObject({ id: proposal.id, state: 'waiting', actorId: 2, oldTotalCents: 11232, newTotalCents: 11109,
+      declined: [{ id: item.id, name: 'Mixer', cents: 101, date: '2099-10-07' }] });
+    // 24 h after the proposal (the booking is far away, so the refund-deadline cap does not apply).
+    expect(Date.parse(booking.partialAcceptance.deadlineAt) - Date.parse(booking.partialAcceptance.proposedAt)).toBe(24 * 3_600_000);
+    expect(h.event).toHaveBeenCalledWith(expect.anything(), id, 'partial_acceptance_proposed', expect.any(String), expect.any(String), 2,
+      expect.objectContaining({ recipientPolicy: 'chef', partialAcceptance: expect.objectContaining({ variant: 'proposed', newCents: 11109, oldCents: 11232,
+        items: [{ name: 'Mixer', date: '2099-10-07' }] }) }));
+    expect((await rows(s.equipmentBookings)).every((row: any) => row.status === 'pending')).toBe(true);
+    // The kitchen cannot change or re-confirm it while it waits.
+    await expect(decideAuthorizedBooking(id, 'confirmed', [], [], 2)).rejects.toThrow('Waiting for the chef');
+  });
+  it('chef accepts: captures exactly the new total, excludes the declined item from every allocation and conserves the source', async () => {
+    const { id, item, proposal } = await propose();
+    partialCharge(11109);
+    await answerPartialAcceptance(id, proposal.id, 'accept', 3);
+    expect(h.capture).toHaveBeenCalledOnce();
+    expect(h.capture).toHaveBeenCalledWith(h.intent.id, 11109, undefined, expect.stringMatching(/^booking-decision:/));
+    const allocations = await rows(s.kitchenBookingDayAllocations);
+    expect(allocations).toHaveLength(4);
+    expect(allocations.some((row: any) => row.componentKey === `equipment:${item.id}`)).toBe(false);
+    expect(allocations.reduce((sum: number, row: any) => sum + row.subtotalCents + row.taxCents + row.serviceFeeCents, 0)).toBe(11109);
+    expect(allocations.reduce((sum: number, row: any) => sum + row.subtotalCents, 0)).toBe(9106);
+    expect(allocations.reduce((sum: number, row: any) => sum + row.stripeFeeCents, 0)).toBe(352);
+    const [source] = await rows(s.paymentTransactions), [booking] = await rows(s.kitchenBookings);
+    expect(source).toMatchObject({ amount: '11109', taxAmount: '1366', serviceFee: '637', status: 'succeeded', managerRevenue: String(11109 - 637 - 352) });
+    expect(booking).toMatchObject({ status: 'confirmed', paymentStatus: 'paid', totalPrice: '9106', partialAcceptance: { state: 'accepted', answeredBy: 3 } });
+    expect((await rows(s.equipmentBookings)).find((row: any) => row.id === item.id)).toMatchObject({ status: 'cancelled', paymentStatus: 'failed' });
+    expect(h.event).toHaveBeenCalledWith(expect.anything(), id, 'confirmed', expect.any(String), expect.any(String), 2, expect.anything());
+    // Replays (a retried answer, the recovery worker, a duplicate capture webhook) never capture again.
+    await expect(answerPartialAcceptance(id, proposal.id, 'accept', 3)).resolves.toMatchObject({ recovered: true });
+    await recoverPendingBookingDecisions();
+    await syncDatedPayment(h.intent.id);
+    expect(h.capture).toHaveBeenCalledOnce(); expect(await rows(s.kitchenBookingDayAllocations)).toHaveLength(4);
+    await expect(answerPartialAcceptance(id, proposal.id, 'decline', 3)).rejects.toThrow('already answered');
+  });
+  it('a declined included (free) item still asks the chef; accepting keeps the full total', async () => {
+    const { id, proposal } = await propose(11, '2099-10-05');
+    expect(proposal).toMatchObject({ oldTotalCents: 11232, newTotalCents: 11232 });
+    partialCharge(11232);
+    await answerPartialAcceptance(id, proposal.id, 'accept', 3);
+    expect(h.capture).toHaveBeenCalledWith(h.intent.id, 11232, undefined, expect.any(String));
+    expect(await rows(s.kitchenBookingDayAllocations)).toHaveLength(4);
+  });
+  it('chef declines: the whole hold is released, the request closes and both sides plus admins are told', async () => {
+    const { id, proposal } = await propose();
+    await answerPartialAcceptance(id, proposal.id, 'decline', 3);
+    expect(h.capture).not.toHaveBeenCalled(); expect(h.cancel).toHaveBeenCalledOnce();
+    expect((await rows(s.kitchenBookings))[0]).toMatchObject({ status: 'cancelled', paymentStatus: 'failed', partialAcceptance: { state: 'declined', answeredBy: 3 } });
+    // 'cancelled' is an admin-tracked kind: chef, kitchen and all admins (email only to toggle-on admins) are notified.
+    expect(h.event).toHaveBeenLastCalledWith(expect.anything(), id, 'cancelled', 'New total declined', expect.any(String), 3,
+      expect.objectContaining({ partialAcceptance: expect.objectContaining({ variant: 'declined' }) }));
+    await expect(answerPartialAcceptance(id, proposal.id, 'accept', 3)).rejects.toThrow('already answered');
+  });
+  it('no answer by the deadline: a late accept is refused and the expiry releases the whole hold', async () => {
+    const { id, proposal } = await propose();
+    await h.db.update(s.kitchenBookings).set({ partialAcceptance: { ...proposal, deadlineAt: new Date(Date.now() - 1000).toISOString() } });
+    await expect(answerPartialAcceptance(id, proposal.id, 'accept', 3)).rejects.toThrow('time to answer has passed');
+    expect(h.lazyExpire).toHaveBeenCalled(); expect(h.capture).not.toHaveBeenCalled();
+    await expire(id);
+    expect((await rows(s.kitchenBookings))[0]).toMatchObject({ status: 'cancelled', paymentStatus: 'failed', partialAcceptance: { state: 'expired' } });
+    expect(h.cancel).toHaveBeenCalledOnce();
+    expect(h.event).toHaveBeenLastCalledWith(expect.anything(), id, 'cancelled', 'Request closed', expect.any(String), undefined,
+      expect.objectContaining({ partialAcceptance: expect.objectContaining({ variant: 'expired' }) }));
+  });
+  it('the kitchen withdraws (declines the request): the chef can no longer accept', async () => {
+    const { id, proposal } = await propose();
+    await decideAuthorizedBooking(id, 'cancelled', [], [], 2);
+    expect((await rows(s.kitchenBookings))[0]).toMatchObject({ status: 'cancelled', partialAcceptance: { state: 'withdrawn' } });
+    await expect(answerPartialAcceptance(id, proposal.id, 'accept', 3)).rejects.toThrow('already answered');
+    expect(h.capture).not.toHaveBeenCalled();
+  });
+  it.each([['kitchen withdraw', (id: number) => decideAuthorizedBooking(id, 'cancelled', [], [], 2)], ['expiry', expire]] as const)(
+    'race: chef accept vs %s — exactly one decision and one Stripe call', async (_name, other) => {
+      const { id, proposal } = await propose();
+      partialCharge(11109);
+      const results = await Promise.allSettled([answerPartialAcceptance(id, proposal.id, 'accept', 3), other(id)]);
+      expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1);
+      const [booking] = await rows(s.kitchenBookings);
+      expect(h.capture.mock.calls.length + h.cancel.mock.calls.length).toBe(1);
+      expect(booking.partialAcceptance.state).toBe(booking.status === 'confirmed' ? 'accepted' : _name === 'expiry' ? 'expired' : 'withdrawn');
+    });
+  it('the card hold ended at the card network: accepting closes the request without charging', async () => {
+    const { id, proposal } = await propose();
+    h.intent.status = 'canceled';
+    await expect(answerPartialAcceptance(id, proposal.id, 'accept', 3)).rejects.toThrow('card hold ended');
+    expect(h.capture).not.toHaveBeenCalled();
+    expect((await rows(s.kitchenBookings))[0]).toMatchObject({ status: 'cancelled', partialAcceptance: { state: 'expired' } });
+  });
+  it('refuses to answer someone else’s or an unknown proposal', async () => {
+    const { id } = await propose();
+    await expect(answerPartialAcceptance(id, '00000000-0000-4000-8000-000000000000', 'accept', 3)).rejects.toThrow('no longer open');
+    expect(h.capture).not.toHaveBeenCalled();
   });
 });
 
@@ -365,9 +488,9 @@ describe('CP4 all-or-nothing capture and actual day allocations', () => {
     expect(allocations.reduce((sum: number, row: any) => sum + row.subtotalCents + row.taxCents + row.serviceFeeCents, 0)).toBe(11232);
     expect((await rows(s.kitchenBookings))[0]).toMatchObject({ status: 'confirmed', paymentStatus: 'paid' });
   });
-  it('never partially accepts/rejects equipment, including zero-price included items', async () => {
-    const id = await fulfill(), items = await rows(s.equipmentBookings);
-    for (const item of items) await expect(decideAuthorizedBooking(id, 'confirmed', [], [{ equipmentBookingId: item.id, action: 'cancelled' }])).rejects.toThrow('whole booking');
+  it('still refuses storage decisions on a dated booking (days stay all-or-nothing)', async () => {
+    const id = await fulfill();
+    await expect(decideAuthorizedBooking(id, 'confirmed', [{ storageBookingId: 1, action: 'cancelled' }], [])).rejects.toThrow('whole booking');
     expect(h.capture).not.toHaveBeenCalled(); expect((await rows(s.kitchenBookings))[0].paymentDecision).toBeNull();
   });
   it('declines every day and item and voids the whole authorization', async () => {

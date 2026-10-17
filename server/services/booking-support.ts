@@ -11,7 +11,8 @@ import { bookingChangeSchedule, kitchenRescheduleCutoff } from '@shared/kitchen-
 import { bookingAttendanceEnd, visitAttendanceEnd } from '@shared/booking-attendance';
 import { chefVisitCodes, ensureChallengesForBooking, issueNewCode, setMode, resolveArrivalTarget } from './visit-code-challenge';
 import { queueBookingLifecycleEvent, requeueBookingNotice } from './booking-lifecycle-delivery';
-import { decideAuthorizedBooking, reconcileBookingDecision } from './booking-payment-decision';
+import { decideAuthorizedBooking, reconcileBookingDecision, answerPartialAcceptance } from './booking-payment-decision';
+import { waitingPartialAcceptance, type PartialAcceptance } from '@shared/partial-acceptance';
 import { acceptCancellationRefund, readCancellationRefund, requestChefCancellation, refundSupportGoodwill, cancelKitchenCausedBooking, retryCancellationRefund } from './booking-cancellation-refund';
 import { assertLegacyCancellation } from './dated-booking-refund-guard';
 import { getBookingPaymentIntent, getCancellationPaymentFacts, getBookingCheckoutSession, getPaymentIntentRefunds } from './stripe-service';
@@ -94,6 +95,7 @@ async function loadContext(id: number, tx: Tx = db as unknown as Tx) {
 type Context = Awaited<ReturnType<typeof loadContext>>;
 const labels: Record<SupportActionType, string> = {
   confirm_for_manager: 'Confirm for the kitchen', decline_for_manager: 'Decline for the kitchen', release_hold_for_chef: 'Release the card hold',
+  accept_proposal_for_chef: 'Accept the new total for the chef',
   replay_payment_decision: 'Check the saved payment decision', cancel_kitchen_caused: 'Cancel because the kitchen cannot host',
   request_cancellation_for_chef: 'Cancel the booking for the chef', accept_cancellation_for_manager: 'Accept the cancellation for the kitchen',
   issue_visit_code: 'Get a new check-in code', set_arrival_mode: 'Change how arrival is recorded', record_assisted_arrival: 'Add a reported arrival',
@@ -216,7 +218,10 @@ export function availableSupportActions(ctx: Pick<Context, 'booking' | 'payments
   // No money is involved and the command is state-checked, so a failed earlier attempt may be retried under a new key.
   if (holdReleased && !ctx.actions.some(row => row.status === 'executing')) result.push('decline_for_manager', 'release_hold_for_chef');
   if (!busy && !recovering && booking.status === 'pending' && booking.paymentStatus === 'authorized' && !decision && booking.chefId && booking.paymentIntentId) {
-    if (!flags && now < (ctx.responseDeadlineAt ?? responseDeadlineForBooking(booking, ctx.location?.timezone || DEFAULT_TIMEZONE))) result.push('confirm_for_manager');
+    // Waiting for the chef's answer to the kitchen's new total: support may accept it for the chef, or close the request.
+    const proposal = waitingPartialAcceptance(booking);
+    if (proposal) { if (!flags && now < new Date(proposal.deadlineAt)) result.push('accept_proposal_for_chef'); }
+    else if (!flags && now < (ctx.responseDeadlineAt ?? responseDeadlineForBooking(booking, ctx.location?.timezone || DEFAULT_TIMEZONE))) result.push('confirm_for_manager');
     result.push('decline_for_manager', 'release_hold_for_chef');
   }
   if (!busy && !recovering && booking.status === 'confirmed' && ['paid', 'partially_refunded'].includes(booking.paymentStatus || '')) {
@@ -348,6 +353,12 @@ export async function readBookingSupport(id: number) {
       manager: ctx.manager && { ...ctx.manager, name: await partyName(ctx.manager, 'manager') } }, kitchen: ctx.kitchen, location: ctx.location,
     schedule: { timezone, zoneLabel, blocks: schedule }, decision: ctx.booking.paymentDecision ? {
       state: (ctx.booking.paymentDecision as { state: string }).state, target: (ctx.booking.paymentDecision as { target: string }).target } : null,
+    partialAcceptance: (() => {
+      const proposal = ctx.booking.partialAcceptance as PartialAcceptance | null;
+      return proposal ? { state: waitingPartialAcceptance(ctx.booking) ? 'waiting' : proposal.state === 'waiting' ? 'closed' : proposal.state,
+        deadlineAt: proposal.deadlineAt, proposedAt: proposal.proposedAt, oldTotalCents: proposal.oldTotalCents, newTotalCents: proposal.newTotalCents,
+        declined: proposal.declined, answeredAt: proposal.answeredAt ?? null, supportReason: proposal.supportReason ?? null } : null;
+    })(),
     deadlines: { responseAt: ctx.booking.status === 'pending' ? ctx.responseDeadlineAt?.toISOString() ?? null : null,
       inspectionAt: closeout.checkoutReviewDeadline || null, closeoutAt: closeout.closeout.serviceEndedAt, closeout: closeout.closeout },
     visits: ctx.visits.map(visit => ({ id: visit.id, blockIndex: visit.blockIndex, checkinStatus: visit.checkinStatus,
@@ -375,7 +386,7 @@ export async function readBookingSupport(id: number) {
 }
 
 const requiredActingFor: Partial<Record<SupportActionType, SupportActionInput['actingFor']>> = {
-  confirm_for_manager: 'manager', decline_for_manager: 'manager', release_hold_for_chef: 'chef',
+  confirm_for_manager: 'manager', decline_for_manager: 'manager', release_hold_for_chef: 'chef', accept_proposal_for_chef: 'chef',
   cancel_kitchen_caused: 'manager', request_cancellation_for_chef: 'chef', accept_cancellation_for_manager: 'manager',
   issue_visit_code: 'manager', set_arrival_mode: 'manager', record_assisted_arrival: 'manager',
   clear_checkout_for_manager: 'manager', report_issue_for_manager: 'manager', goodwill_refund: 'local_cooks', release_payout: 'local_cooks',
@@ -402,7 +413,13 @@ async function dispatch(ctx: Context, actorId: number, input: SupportActionInput
   switch (input.type) {
     case 'confirm_for_manager': return decideAuthorizedBooking(id, 'confirmed', (d.storageActions || []).map(item => ({ storageBookingId: item.id, action: item.action })), (d.equipmentActions || []).map(item => ({ equipmentBookingId: item.id, action: item.action })), actorId);
     // Support may also close a confirmation whose card hold was released (verified with Stripe inside); nothing was charged.
-    case 'decline_for_manager': case 'release_hold_for_chef': return decideAuthorizedBooking(id, 'cancelled', [], [], actorId, undefined, { supersedeDeadEnd: true });
+    case 'decline_for_manager': case 'release_hold_for_chef': return decideAuthorizedBooking(id, 'cancelled', [], [], actorId, undefined, { supersedeDeadEnd: true, proposalOutcome: 'closed' });
+    case 'accept_proposal_for_chef': {
+      // The saved proposal (a replay finishes the answer already recorded; a closed one is refused by the command).
+      const proposal = ctx.booking.partialAcceptance as PartialAcceptance | null;
+      if (!proposal) throw new BookingSupportError('The kitchen’s new total is no longer waiting for the chef. Refresh the case.');
+      return answerPartialAcceptance(id, proposal.id, 'accept', actorId, `${input.reasonCode}: ${input.note}`);
+    }
     case 'replay_payment_decision': return reconcileBookingDecision(id);
     case 'cancel_kitchen_caused': case 'refund_captured_request': return cancelKitchenCausedBooking(id, managerId!, actorId, input.operationKey);
     case 'finish_kitchen_refund': return cancelKitchenCausedBooking(id, managerId!, actorId, input.operationKey, undefined, { fundedByLocalCooks: d.fundedByLocalCooks === true });
@@ -537,7 +554,7 @@ export async function executeBookingSupportAction(id: number, actorId: number, r
           return { action: { id: reserved.action.id, operationKey: input.operationKey, status: closed ? 'failed' : reserved.action.status, exception: reserved.action.exception },
             case: await readBookingSupport(id), replayed: true };
         }
-      } else if (['confirm_for_manager', 'decline_for_manager', 'release_hold_for_chef', 'replay_payment_decision'].includes(input.type)) {
+      } else if (['confirm_for_manager', 'decline_for_manager', 'release_hold_for_chef', 'replay_payment_decision', 'accept_proposal_for_chef'].includes(input.type)) {
         const decision = reserved.ctx.booking.paymentDecision as { intentId?: string; target?: string; amount?: number } | null;
         if (decision?.intentId) {
           const intent = await getBookingPaymentIntent(decision.intentId);
@@ -573,7 +590,7 @@ export async function executeBookingSupportAction(id: number, actorId: number, r
     }
   } catch {
     // A rejected/unknown provider response is never evidence that no money moved.
-    outcome = ['confirm_for_manager', 'decline_for_manager', 'release_hold_for_chef', 'replay_payment_decision', 'goodwill_refund', 'cancel_kitchen_caused', 'refund_captured_request', 'finish_kitchen_refund', 'accept_cancellation_for_manager', 'release_payout', 'retry_refund', 'mark_refunded'].includes(input.type) ? 'recovery_required' : 'failed';
+    outcome = ['confirm_for_manager', 'accept_proposal_for_chef', 'decline_for_manager', 'release_hold_for_chef', 'replay_payment_decision', 'goodwill_refund', 'cancel_kitchen_caused', 'refund_captured_request', 'finish_kitchen_refund', 'accept_cancellation_for_manager', 'release_payout', 'retry_refund', 'mark_refunded'].includes(input.type) ? 'recovery_required' : 'failed';
     error = outcome === 'recovery_required' ? 'Local Cooks needs to verify this original payment operation before another attempt.' : 'The update could not be completed. Refresh the booking and review the next step.';
   }
   await db.transaction(async tx => {

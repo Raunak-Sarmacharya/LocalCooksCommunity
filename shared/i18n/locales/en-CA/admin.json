@@ -305,5 +305,17 @@
   "bsChangeConfirm_close_keep_refund": "Keep the booking at {current}. The chef keeps the refund of {amount} already sent; Local Cooks funds it. The requested time {requested} is not applied.",
   "bsChangeConfirmDo": "Confirm",
   "bsChangeWorking": "Working…",
-  "bsChangeStale": "This request changed. Refresh and try again."
+  "bsChangeStale": "This request changed. Refresh and try again.",
+  "bsAction_accept_proposal_for_chef": "Accept the new total for the chef",
+  "bsProposal": "Kitchen’s new total",
+  "bsProposalState_waiting": "Waiting for the chef",
+  "bsProposalState_accepted": "Accepted",
+  "bsProposalState_declined": "Declined by the chef",
+  "bsProposalState_expired": "Not answered in time",
+  "bsProposalState_withdrawn": "Withdrawn by the kitchen",
+  "bsProposalState_closed": "Closed",
+  "bsProposalTerms": "Offer",
+  "bsProposalTermsValue": "{newTotal} (was {oldTotal}) without {items}",
+  "bsDeadlineChefAnswer": "Chef answers by",
+  "bsProposalSupportReason": "Support note"
 }

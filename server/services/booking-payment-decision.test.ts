@@ -42,6 +42,14 @@ vi.mock('../utils/user-display', () => ({ getUserDisplayName: vi.fn(async () => 
 import { decideAuthorizedBooking, recordReplacementWithdrawal, BookingRequestExpired } from './booking-payment-decision';
 import { db } from '../db';
 import { queueBookingLifecycleEvent } from './booking-lifecycle-delivery';
+// Owner (Oct 17): a partial capture now follows the chef's acceptance of the kitchen's waiting proposal.
+const PROPOSAL = '11111111-1111-4111-8111-111111111111';
+function waitingProposal() {
+  mocks.state.kitchen_bookings[0].partialAcceptance = { id: PROPOSAL, state: 'waiting', intentId: 'pi_fixture', actorId: 2,
+    proposedAt: new Date().toISOString(), deadlineAt: new Date(Date.now() + 3_600_000).toISOString(),
+    equipment: [{ id: 2, status: 'cancelled' }], declined: [{ id: 2, name: 'Mixer', cents: 1000 }], oldTotalCents: 2440, newTotalCents: 1220 };
+}
+const acceptProposal = () => decideAuthorizedBooking(1, 'confirmed', [], [{ equipmentBookingId: 2, action: 'cancelled' }], 3, undefined, { proposalId: PROPOSAL });
 describe('durable booking capture recovery (isolated Stripe and transaction model)', () => {
   beforeEach(() => {
     vi.resetAllMocks(); mocks.failFinalize = false;
@@ -56,7 +64,8 @@ describe('durable booking capture recovery (isolated Stripe and transaction mode
   });
   it('leaves the booking pending and retains its frozen decision after capture timeout', async () => {
     mocks.capture.mockRejectedValue(new Error('timeout'));
-    await expect(decideAuthorizedBooking(1, 'confirmed', [], [{ equipmentBookingId: 2, action: 'cancelled' }])).rejects.toThrow('timeout');
+    waitingProposal();
+    await expect(acceptProposal()).rejects.toThrow('timeout');
     expect(mocks.state.kitchen_bookings[0]).toMatchObject({ status: 'pending', paymentStatus: 'authorized',
       paymentDecision: { state: 'pending', amount: 1220, subtotal: 1000, commission: 70, tax: 150 } });
     expect(mocks.state.equipment_bookings[0].status).toBe('pending');
@@ -78,7 +87,8 @@ describe('durable booking capture recovery (isolated Stripe and transaction mode
       .mockResolvedValueOnce({ id: 'pi_fixture', status: 'requires_capture', amount: 2440 })
       .mockResolvedValue({ id: 'pi_fixture', status: 'succeeded', amount_received: 1220 });
     mocks.failFinalize = true;
-    await expect(decideAuthorizedBooking(1, 'confirmed', [], [{ equipmentBookingId: 2, action: 'cancelled' }])).rejects.toThrow('DB unavailable');
+    waitingProposal();
+    await expect(acceptProposal()).rejects.toThrow('DB unavailable');
     expect(mocks.state.kitchen_bookings[0].status).toBe('pending');
     mocks.failFinalize = false;
     await expect(decideAuthorizedBooking(1, 'confirmed')).resolves.toMatchObject({ success: true });
@@ -109,8 +119,10 @@ describe('durable booking capture recovery (isolated Stripe and transaction mode
       expect(payment).toMatchObject({ status: 'succeeded', amount: '1220', managerRevenue: '1150' });
       expect(equipment).toMatchObject({ status: 'cancelled', paymentStatus: 'failed' });
     });
-    await decideAuthorizedBooking(1, 'confirmed', [], [{ equipmentBookingId: 2, action: 'cancelled' }]);
-    expect(queueBookingLifecycleEvent).toHaveBeenCalledWith(expect.anything(), 1, 'confirmed', expect.any(String), expect.any(String), undefined, expect.objectContaining({ decisionId: expect.any(String) }));
+    waitingProposal();
+    await acceptProposal();
+    expect(mocks.state.kitchen_bookings[0].partialAcceptance).toMatchObject({ state: 'accepted', answeredBy: 3 });
+    expect(queueBookingLifecycleEvent).toHaveBeenCalledWith(expect.anything(), 1, 'confirmed', expect.any(String), expect.any(String), 2, expect.objectContaining({ decisionId: expect.any(String) }));
   });
   it('does not change a persisted approval into rejection', async () => {
     mocks.capture.mockRejectedValue(new Error('timeout'));
@@ -159,7 +171,8 @@ describe('durable booking capture recovery (isolated Stripe and transaction mode
   it('blocks partial capture when original item prices are missing', async () => {
     const session = await mocks.session(); delete session.metadata.addon_prices;
     mocks.session.mockResolvedValue(session);
-    await expect(decideAuthorizedBooking(1, 'confirmed', [], [{ equipmentBookingId: 2, action: 'cancelled' }])).rejects.toThrow('original checkout terms');
+    waitingProposal();
+    await expect(acceptProposal()).rejects.toThrow('original checkout terms');
     expect(mocks.capture).not.toHaveBeenCalled();
   });
   it('sends a checkout that priced storage before the cutover to review instead of capturing it', async () => {

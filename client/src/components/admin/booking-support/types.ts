@@ -53,6 +53,9 @@ export type SupportCase = {
   location: { id: number; name: string; address: string | null; timezone: string } | null;
   schedule: { timezone: string; zoneLabel: string; blocks: { startAt: string; endAt: string; localStart: string; localEnd: string }[] };
   decision: { state: string; target: string | null } | null;
+  /** The kitchen accepted without some equipment; the chef approves the new total before anything is captured. */
+  partialAcceptance?: { state: string; deadlineAt: string; proposedAt: string; oldTotalCents: number; newTotalCents: number;
+    declined: Array<{ id: number; name: string; cents: number; date?: string }>; answeredAt: string | null; supportReason: string | null } | null;
   deadlines: {
     responseAt: string | null; inspectionAt: string | null; closeoutAt: string | null;
     closeout?: { phase?: string; nextDueAt?: string | null; visits?: CloseoutVisit[] } | null;

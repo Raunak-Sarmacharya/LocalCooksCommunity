@@ -13,6 +13,8 @@ import { BookingFeedbackCard } from '@/components/booking/BookingFeedbackCard';
 import { CommitmentProblems } from '@/components/support/CommitmentProblems';
 import { OpenProblemAlert } from '@/components/support/OpenProblemAlert';
 import { ManagerDamageClaimEntry, claimFilingOpen } from '@/components/booking/ManagerDamageClaimEntry';
+import { PartialAcceptanceCard } from '@/components/booking/PartialAcceptanceCard';
+import { waitingPartialAcceptance, type PartialAcceptance } from '@shared/partial-acceptance';
 import { BookingNowCard, ClampedBlock, NowClaimRows, chefCanPayClaim, closedClaimLine, closedClaims, nowClaims, type NowSecondaryLink } from '@/components/booking/BookingNowCard';
 import { BookingVisitRecord, type VisitTimelineEvent } from '@/components/booking/BookingVisitRecord';
 import { BookingReceipts, useBookingDocuments } from "@/components/booking/BookingReceipts";
@@ -109,6 +111,10 @@ interface BookingDetails {
   status: string;
   paymentStatus?: string;
   paymentDecision?: { state?: string; amount?: number; target?: string; actorId?: number | null; replacedBy?: { bookingId?: number; reference?: string } | null } | null;
+  /** The kitchen accepted without some equipment; the chef answers the new total before anything is charged. */
+  partialAcceptance?: PartialAcceptance | null;
+  /** Kitchen view: whether accepting without some equipment may still ask the chef (false in the last 3 h). */
+  partialAcceptanceAvailable?: boolean;
   cancellationPolicyHours?: number;
   cancellationRequestDeclinedAt?: string | null;
   specialNotes?: string;
@@ -792,8 +798,10 @@ export default function BookingDetailsPage() {
         name: e.equipmentListing?.equipmentType || `Equipment #${e.equipmentListingId}`,
         totalPrice: e.totalPrice,
         rejected: e.paymentStatus === 'failed' || e.status === 'cancelled',
+        visitDate: (e as { visitDate?: string | null }).visitDate ?? null,
       })),
     paymentStatus: booking.paymentStatus,
+    canAskChef: booking.partialAcceptanceAvailable !== false,
   } : null;
 
   const handleApprovalSubmit = async (params: {
@@ -826,6 +834,16 @@ export default function BookingDetailsPage() {
       }
 
       const responseData = await response.json().catch(() => ({}));
+
+      // Accepted without some equipment: the request waits for the chef's answer; nothing was charged.
+      if (responseData.proposal) {
+        queryClient.invalidateQueries({ queryKey: ['managerBookings'] });
+        toast({ title: t('paSentTitle'), description: t('paSentBody') });
+        await reloadBookingDetails();
+        setIsUpdatingStatus(false);
+        setActionDialogOpen(false);
+        return;
+      }
 
       // Determine updated paymentStatus based on server response
       // - Voided auth (rejected authorized booking): paymentStatus → 'failed'
@@ -1333,7 +1351,9 @@ export default function BookingDetailsPage() {
     canDownload, managerCanManage, claimFilingOpen: claimWindowOpen, findAnotherTime: !!findAnotherTimeHref,
     replacedByRef: newRequestHref ? replacedBy?.reference || `#${replacedBy?.bookingId}` : null,
   } });
-  const primary = now.primary;
+  // Waiting for the chef's answer to the kitchen's new total: the kitchen has nothing to review; the card below carries the answer.
+  const proposal = booking ? waitingPartialAcceptance(booking) : null;
+  const primary = proposal && now.primary === 'review_request' ? null : now.primary;
 
   const payableClaim = !isManagerView ? nowClaims(claims, false).find(chefCanPayClaim) : undefined;
   const claimTakesPrimary = !primary && !!payableClaim;
@@ -1571,7 +1591,7 @@ export default function BookingDetailsPage() {
         </DropdownMenu>
       </>}
       whenLine={whenLine}
-      pill={{ label: t(now.pill.key), tone: now.pill.tone }}
+      pill={{ label: proposal ? t(isManagerView ? 'paPillKitchen' : 'paPillChef') : t(now.pill.key), tone: now.pill.tone }}
       sentence={now.sentence}
       sentenceExtra={isManagerView && booking.runningLate && booking.status === 'confirmed' && !visitStarted && visitBounds && nowMs < visitBounds.endAt.getTime() ? (
         <p className="text-sm font-medium text-sky-900" data-testid="booking-running-late">
@@ -1581,6 +1601,10 @@ export default function BookingDetailsPage() {
       ) : undefined}
       attention={<>
         {/* "Can't get in" / safety reports surface here while the visit is on; the support list below keeps the thread. */}
+        {proposal && <PartialAcceptanceCard bookingId={booking.id} proposal={proposal} manager={isManagerView} kitchenName={kitchenName} chefName={chefName}
+          timezone={booking.location?.timezone || undefined} withdrawing={isUpdatingStatus}
+          onChanged={async () => { await reloadBookingDetails(); await queryClient.invalidateQueries(); }}
+          onWithdraw={isManagerView ? () => void handleApprovalSubmit({ bookingId: booking.id, status: 'cancelled' }) : undefined} />}
         <OpenProblemAlert bookingId={booking.id} role={isManagerView ? 'manager' : 'chef'} chefName={chefName} kitchenName={kitchenName}
           timezone={tz || 'America/St_Johns'} active={booking.status === 'confirmed' && !!visitBounds && nowMs < visitBounds.endAt.getTime()}
           checkedIn={!!booking.checkinStatus && booking.checkinStatus !== 'not_checked_in'} messageButton={messageButton()} onViewReport={goToHelp} />

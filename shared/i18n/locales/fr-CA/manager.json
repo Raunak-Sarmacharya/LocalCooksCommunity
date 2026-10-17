@@ -4222,5 +4222,11 @@
   "thisLocation": "cet établissement",
   "thisKitchen": "cette cuisine",
   "bpMaxDaysHint": "Les jours peuvent être n’importe quelles dates dans les 14 jours suivant le premier.",
-  "bpTaxLabel": "Taux de taxe (TVH %)"
+  "bpTaxLabel": "Taux de taxe (TVH %)",
+  "reviewAcceptWithout": "Accepter sans {items}",
+  "reviewAsksChefLine": "Nous demanderons au chef de confirmer le nouveau total. Rien n’est débité avant sa confirmation.",
+  "reviewNewTotalReleasedNote": "Si le chef accepte, seul le nouveau total est débité et le reste du blocage est libéré.",
+  "reviewNewTotalAmount": "Nouveau total : {amount}",
+  "reviewLastMinuteLine": "Cette réservation commence bientôt; il n’y a donc pas le temps de demander au chef d’accepter un changement. Acceptez la demande complète, ou refusez-la et écrivez au chef.",
+  "reviewMessageChef": "Écrire au chef"
 }

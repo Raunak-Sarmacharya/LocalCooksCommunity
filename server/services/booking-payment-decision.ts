@@ -1,8 +1,9 @@
 import { workerAfter, workerBatch, workerRecord, workerPageEnd } from './worker-context';
 import { randomUUID } from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';
-import { kitchenBookings, kitchenInvitations, storageBookings, equipmentBookings, paymentTransactions, bookingLifecycleEvents, users, kitchens } from '@shared/schema';
+import { kitchenBookings, kitchenInvitations, storageBookings, equipmentBookings, equipmentListings, kitchenBookingVisits, paymentTransactions, bookingLifecycleEvents, users, kitchens } from '@shared/schema';
 import { approvedBookingCapture, bookingCaptureTerms, BookingTermsReviewRequired } from '@shared/booking-capture-terms';
+import { waitingPartialAcceptance, type PartialAcceptance, type PartialAcceptanceOutcome } from '@shared/partial-acceptance';
 import { db } from '../db';
 import { capturePaymentIntent, cancelPaymentIntent, getBookingCheckoutSession, getBookingPaymentIntent } from './stripe-service';
 import { cancelLinkedBookingDates } from './booking-linked-cancellation';
@@ -10,7 +11,7 @@ import { queueBookingLifecycleEvent } from './booking-lifecycle-delivery';
 import { ensureChallengesForBooking } from './visit-code-challenge';
 import { bookingAddonPrices } from '@shared/booking-addon-prices';
 import { capturedComponentAllocations } from '@shared/captured-component-allocations';
-import { getBookingResponseDeadline } from './booking-response-deadline';
+import { getBookingResponseDeadline, getPartialAcceptanceWindow } from './booking-response-deadline';
 import { kitchenPayoutTiming } from '@shared/kitchen-payout';
 import { verifyDatedQuote, verifyDatedCheckout } from './dated-booking-quote';
 
@@ -31,7 +32,9 @@ type Decision = { id: string; target: 'confirmed' | 'cancelled'; state: 'pending
     /** The new request's card hold and kitchen-local times, for the chef's "Request updated" notice. */
     holdCents?: number; next?: { date: string; startTime: string; endTime: string } };
   /** Id of the dead-end decision a support action replaced with this one. */
-  supersedes?: string };
+  supersedes?: string;
+  /** The kitchen's proposal (accepted without some equipment) this decision answered, and how. */
+  proposal?: { id: string; outcome: PartialAcceptanceOutcome } };
 
 /** Caller holds the original booking FOR UPDATE. Persist the withdrawal with the new booking; Stripe runs after commit. */
 export async function recordReplacementWithdrawal(tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
@@ -46,7 +49,25 @@ export async function recordReplacementWithdrawal(tx: Parameters<Parameters<type
     actorId: booking.chefId ?? undefined, amount: 0, subtotal: 0, tax: 0, commission: 0, taxRate: 0, authorizedAmount,
     storage: [],
     equipment: equipment.map(item => ({ id: item.id, status: 'cancelled' })), startedAt: new Date().toISOString(), replacedBy };
-  await tx.update(kitchenBookings).set({ paymentDecision: decision, updatedAt: new Date() }).where(eq(kitchenBookings.id, booking.id));
+  const waiting = waitingPartialAcceptance(booking);
+  if (waiting) decision.proposal = { id: waiting.id, outcome: 'closed' };
+  await tx.update(kitchenBookings).set({ paymentDecision: decision, updatedAt: new Date(),
+    ...(waiting ? { partialAcceptance: answered(waiting, 'closed', booking.chefId ?? undefined) } : {}) }).where(eq(kitchenBookings.id, booking.id));
+}
+
+/** A conflict the user can read (409), e.g. the chef answering a proposal that is no longer open. */
+export class PartialAcceptanceConflict extends BookingTermsReviewRequired {
+  constructor(message: string) { super(); this.message = message; }
+}
+
+const WAITING_MESSAGE = 'Waiting for the chef to answer your new total. To withdraw it, decline the request.';
+const CLOSED_MESSAGE = 'This offer is no longer open. Refresh the booking for its current state.';
+const ANSWERED_MESSAGE = 'This request was already answered. Refresh the booking for its current state.';
+export const LAST_MINUTE_MESSAGE = 'This booking starts soon, so there isn’t time to ask the chef about a change. Accept the full request, or decline it and message the chef.';
+const PASSED_MESSAGE = 'The time to answer has passed, so this request is closed. You weren’t charged.';
+
+function answered(proposal: PartialAcceptance, state: PartialAcceptanceOutcome, actorId?: number, reason?: string): PartialAcceptance {
+  return { ...proposal, state, answeredAt: new Date().toISOString(), ...(actorId ? { answeredBy: actorId } : {}), ...(reason ? { supportReason: reason } : {}) };
 }
 
 /** A request past its manager response deadline can no longer be confirmed. Reads no longer
@@ -62,24 +83,40 @@ export class BookingRequestExpired extends BookingTermsReviewRequired {
 /** Persist one immutable decision before Stripe; retries reconcile that same decision. */
 export async function decideAuthorizedBooking(bookingId: number, target: 'confirmed' | 'cancelled',
   storageActions: ItemAction[] = [], equipmentActions: ItemAction[] = [], actorId?: number, expiry?: Decision['expiry'],
-  options: { supersedeDeadEnd?: boolean; message?: string; replacedBy?: Decision['replacedBy'] } = {}) {
+  options: { supersedeDeadEnd?: boolean; message?: string; replacedBy?: Decision['replacedBy'];
+    /** Accept this waiting proposal (the chef, or Local Cooks for them): capture its new total exactly. */
+    proposalId?: string;
+    /** How a release closes a waiting proposal; inferred from the actor when omitted. */
+    proposalOutcome?: PartialAcceptanceOutcome; supportReason?: string } = {}) {
   const [booking] = await db.select().from(kitchenBookings).where(eq(kitchenBookings.id, bookingId)).limit(1);
   if (!booking?.paymentIntentId) throw new BookingTermsReviewRequired();
-  if (booking.scheduleRevision > 0 && (storageActions.length || equipmentActions.some(action => action.action !== target)))
-    throw new Error('Accept all dated days and equipment, or decline the whole booking');
+  // Days of a dated booking stay all-or-nothing and storage is rented separately (ST12); equipment may be declined.
+  if (booking.scheduleRevision > 0 && storageActions.length)
+    throw new Error('Accept all dated days, or decline the whole booking');
   let decision = booking.paymentDecision as Decision | null;
+  const waiting = waitingPartialAcceptance(booking);
+  const accepting = target === 'confirmed' && !!options.proposalId;
+  // Owner (Oct 17): declining any equipment item turns the acceptance into a proposal the chef must approve first.
+  const proposing = target === 'confirmed' && !accepting && !decision && equipmentActions.some(action => action.action === 'cancelled');
+  if (!decision && target === 'confirmed') {
+    if (waiting && !accepting) throw new PartialAcceptanceConflict(WAITING_MESSAGE);
+    if (accepting && waiting?.id !== options.proposalId) throw new PartialAcceptanceConflict(CLOSED_MESSAGE);
+  }
+  if (decision && accepting && decision.proposal?.id !== options.proposalId) throw new PartialAcceptanceConflict(ANSWERED_MESSAGE);
   if (!decision && target === 'confirmed' && booking.status === 'pending' && booking.paymentStatus === 'authorized') {
     const { lazyExpireKitchenBookingAuth } = await import('./auth-expiry-service');
-    if (!booking.invitationId && booking.createdAt && new Date() >= await getBookingResponseDeadline(booking)) {
+    const due = accepting ? new Date(waiting!.deadlineAt) : !booking.invitationId && booking.createdAt ? await getBookingResponseDeadline(booking) : null;
+    if (due && new Date() >= due) {
       // Release the hold now rather than leaving it for the next worker tick.
       await lazyExpireKitchenBookingAuth(booking);
-      throw new BookingRequestExpired();
+      throw accepting ? new PartialAcceptanceConflict(PASSED_MESSAGE) : new BookingRequestExpired();
     }
   }
   if (decision && decision.target !== target) {
     // Only Local Cooks support may replace a confirmation whose card hold was released: that capture can never succeed.
     if (options.supersedeDeadEnd && target === 'cancelled' && decision.target === 'confirmed' && decision.state === 'pending' && decision.deadEnd?.kind === 'hold_canceled')
       decision = await supersedeReleasedHoldDecision(bookingId, decision, actorId);
+    else if (decision.proposal) throw new PartialAcceptanceConflict(ANSWERED_MESSAGE);
     else throw new Error('A different payment decision already exists. Local Cooks must review this booking.');
   }
   if (decision) {
@@ -114,6 +151,7 @@ export async function decideAuthorizedBooking(bookingId: number, target: 'confir
       // A checkout opened before storage left kitchen booking (ST12) priced storage that no rental now backs.
       if (itemPrices?.s.length) throw new BookingTermsReviewRequired();
     }
+    let proposed: PartialAcceptance | undefined;
     decision = await db.transaction(async tx => {
       if (booking.scheduleRevision > 0) await tx.select({ id: paymentTransactions.id }).from(paymentTransactions)
         .where(eq(paymentTransactions.paymentIntentId, intent.id)).limit(1).for('update');
@@ -121,7 +159,12 @@ export async function decideAuthorizedBooking(bookingId: number, target: 'confir
       if (current?.paymentDecision) return current.paymentDecision as Decision;
       if (!current || current.status !== 'pending' || current.paymentStatus !== 'authorized'
         || current.updatedAt.getTime() !== booking.updatedAt.getTime()) throw new Error('Booking changed; refresh before deciding');
-      if (target === 'confirmed' && !current.invitationId && current.createdAt && new Date() >= await getBookingResponseDeadline(current, tx))
+      const open = waitingPartialAcceptance(current);
+      if (accepting) {
+        if (open?.id !== options.proposalId || open.intentId !== intent.id) throw new PartialAcceptanceConflict(CLOSED_MESSAGE);
+        if (new Date() >= new Date(open.deadlineAt)) throw new PartialAcceptanceConflict(PASSED_MESSAGE);
+      } else if (target === 'confirmed' && open) throw new PartialAcceptanceConflict(WAITING_MESSAGE);
+      else if (target === 'confirmed' && !current.invitationId && current.createdAt && new Date() >= await getBookingResponseDeadline(current, tx))
         throw new BookingRequestExpired();
       const equipment = await tx.select().from(equipmentBookings).where(eq(equipmentBookings.kitchenBookingId, bookingId)).for('update');
       for (const [actions, key, items] of [[equipmentActions, 'equipmentBookingId', equipment]] as const) {
@@ -139,6 +182,9 @@ export async function decideAuthorizedBooking(bookingId: number, target: 'confir
         items.map(item => ({ id: item.id, status: (target === 'cancelled' || item.status === 'cancelled' ? 'cancelled'
           : actions.find(action => action[key] === item.id)?.action || 'confirmed') as 'confirmed' | 'cancelled' }));
       const equipmentPlan = plan(equipment, equipmentActions, 'equipmentBookingId');
+      // The chef accepts exactly what the kitchen proposed; nothing may have changed since.
+      if (accepting && (equipmentPlan.length !== open!.equipment.length
+        || equipmentPlan.some(item => open!.equipment.find(row => row.id === item.id)?.status !== item.status))) throw new BookingTermsReviewRequired();
       if (target === 'confirmed' && itemPrices) {
         for (const [items, prices, key] of [[equipment, itemPrices.e, 'equipmentListingId']] as const)
           if (items.length !== prices.length || items.some(item => !prices.some(([id, cents]) => id === (item as any)[key] && cents === Number(item.totalPrice))))
@@ -150,16 +196,50 @@ export async function decideAuthorizedBooking(bookingId: number, target: 'confir
         if (!Number.isSafeInteger(price) || price < 0) throw new BookingTermsReviewRequired();
         return sum + (itemPlan.find(entry => entry.id === item.id)?.status === 'cancelled' ? price : 0);
       }, 0);
-      if (target === 'confirmed' && rejectedCents > 0 && !itemPrices) throw new BookingTermsReviewRequired();
+      if (target === 'confirmed' && rejectedCents > 0 && !itemPrices && !(current.scheduleRevision > 0)) throw new BookingTermsReviewRequired();
       const subtotal = target === 'confirmed' ? terms.subtotal - rejectedCents : 0;
+      // Dated bookings use the same approved-share arithmetic over the frozen quote; with nothing declined it is the full hold.
       const capture = target === 'confirmed' ? approvedBookingCapture(terms, subtotal) : { amount: 0, tax: 0, commission: 0 };
-      if (current.scheduleRevision > 0 && target === 'confirmed' && capture.amount !== terms.authorizedAmount)
+      if (current.scheduleRevision > 0 && target === 'confirmed' && rejectedCents === 0 && capture.amount !== terms.authorizedAmount)
         throw new Error('Dated bookings require full capture');
-      const next: Decision = { id: randomUUID(), target, state: 'pending', intentId: intent.id, subtotal, actorId, expiry,
+      const declinedIds = equipmentPlan.filter(item => item.status === 'cancelled' && equipment.find(row => row.id === item.id)?.status !== 'cancelled').map(item => item.id);
+      if (proposing && declinedIds.length) {
+        // Saved instead of a decision: the hold and the reserved days stay; nothing is captured until the chef accepts.
+        const now = new Date();
+        // 24 h after the proposal, or an hour before the refund deadline if sooner; under 3 h (or past the first start) is refused.
+        const { deadline, allowed } = await getPartialAcceptanceWindow(current, now, tx);
+        if (!allowed) throw new PartialAcceptanceConflict(LAST_MINUTE_MESSAGE);
+        const names = await tx.select({ id: equipmentBookings.id, name: equipmentListings.equipmentType, date: kitchenBookingVisits.visitDate })
+          .from(equipmentBookings).innerJoin(equipmentListings, eq(equipmentListings.id, equipmentBookings.equipmentListingId))
+          .leftJoin(kitchenBookingVisits, eq(kitchenBookingVisits.id, equipmentBookings.kitchenBookingVisitId))
+          .where(eq(equipmentBookings.kitchenBookingId, bookingId));
+        proposed = { id: randomUUID(), state: 'waiting', intentId: intent.id, actorId: actorId ?? 0, proposedAt: now.toISOString(), deadlineAt: deadline.toISOString(),
+          equipment: equipmentPlan, oldTotalCents: terms.authorizedAmount, newTotalCents: capture.amount,
+          declined: declinedIds.map(id => {
+            const row = names.find(item => item.id === id);
+            return { id, name: row?.name || 'Equipment', cents: Number(equipment.find(item => item.id === id)!.totalPrice),
+              ...(current.scheduleRevision > 0 && row?.date ? { date: String(row.date).slice(0, 10) } : {}) };
+          }) };
+        await tx.update(kitchenBookings).set({ partialAcceptance: proposed, updatedAt: now }).where(eq(kitchenBookings.id, bookingId));
+        await queueBookingLifecycleEvent(tx, bookingId, 'partial_acceptance_proposed', 'Accept the new total?',
+          `The kitchen can host you, but can’t provide ${proposed.declined.map(item => item.name).join(', ')}. New total $${(proposed.newTotalCents / 100).toFixed(2)} (was $${(proposed.oldTotalCents / 100).toFixed(2)}).`,
+          actorId, { recipientPolicy: 'chef', partialAcceptance: noticeFacts(proposed, 'proposed') });
+        // The kitchen has answered: its "respond by" reminders stop.
+        await (await import('./advance-reminders')).scheduleAdvanceReminders(tx, 'manager_decision', bookingId);
+        return null;
+      }
+      const closing = target === 'cancelled' ? open : undefined;
+      const proposalOutcome: PartialAcceptanceOutcome | undefined = accepting ? 'accepted' : closing
+        ? options.proposalOutcome ?? (actorId && actorId === current.chefId ? 'declined' : 'withdrawn') : undefined;
+      const next: Decision = { id: randomUUID(), target, state: 'pending', intentId: intent.id, subtotal,
+        // The kitchen accepted; who answered for the chef is recorded on the proposal.
+        actorId: accepting ? open!.actorId || actorId : actorId, expiry,
         ...capture, authorizedAmount: terms.authorizedAmount, taxRate: terms.rate, storage: [],
         equipment: equipmentPlan, startedAt: new Date().toISOString(),
+        ...(proposalOutcome ? { proposal: { id: (open ?? closing)!.id, outcome: proposalOutcome } } : {}),
         ...(target === 'cancelled' && options.message?.trim() ? { declineMessage: options.message.trim().slice(0, 500) } : {}),
         ...(target === 'cancelled' && options.replacedBy ? { replacedBy: options.replacedBy } : {}) };
+      if (accepting && next.amount !== open!.newTotalCents) throw new BookingTermsReviewRequired();
       // The webhook needs this split before capture to calculate the manager transfer.
       const [transaction] = await tx.select().from(paymentTransactions).where(eq(paymentTransactions.paymentIntentId, intent.id)).limit(1).for('update');
       if (!transaction && target === 'confirmed') throw new BookingTermsReviewRequired();
@@ -179,12 +259,22 @@ export async function decideAuthorizedBooking(bookingId: number, target: 'confir
         managerRevenue: String(subtotal + next.tax),
         metadata: { ...(transaction.metadata as object || {}), partialCapture: next.amount < terms.authorizedAmount,
           approvedSubtotal: subtotal, approvedTax: next.tax, taxRatePercent: terms.rate, platformCommission: next.commission,
-          bookingDecisionId: next.id, ...(current.scheduleRevision > 0 ? {} : { capturedComponentAllocations: allocations, componentAllocationVersion: 'original-tax-largest-remainder-v1' }) } }).where(eq(paymentTransactions.id, transaction.id));
-      await tx.update(kitchenBookings).set({ paymentDecision: next, updatedAt: new Date() }).where(eq(kitchenBookings.id, bookingId));
+          bookingDecisionId: next.id, ...(current.scheduleRevision > 0 ? declinedIds.length ? { datedDeclinedEquipmentIds: declinedIds } : {}
+            : { capturedComponentAllocations: allocations, componentAllocationVersion: 'original-tax-largest-remainder-v1' }) } }).where(eq(paymentTransactions.id, transaction.id));
+      await tx.update(kitchenBookings).set({ paymentDecision: next, updatedAt: new Date(),
+        ...(open && proposalOutcome ? { partialAcceptance: answered(open, proposalOutcome, actorId, options.supportReason) } : {}) })
+        .where(eq(kitchenBookings.id, bookingId));
       return next;
     });
+    if (proposed) {
+      // Exact expiry at the chef's deadline; the worker tick stays the backstop.
+      (await import('./deadline-timer')).scheduleDeadlineTimer('booking_request', bookingId, proposed.deadlineAt);
+      return { success: true, status: 'pending' as const, proposal: proposed };
+    }
   }
-  if (decision.target !== target) throw new Error('A different payment decision already exists. Local Cooks must review this booking.');
+  if (!decision) throw new BookingTermsReviewRequired();
+  if (decision.target !== target) throw decision.proposal ? new PartialAcceptanceConflict(ANSWERED_MESSAGE)
+    : new Error('A different payment decision already exists. Local Cooks must review this booking.');
   try { return await reconcileBookingDecision(bookingId, decision); }
   catch (error) {
     // Record a shared recovery task once; a timeout never means capture or release succeeded.
@@ -204,6 +294,26 @@ export async function decideAuthorizedBooking(bookingId: number, target: 'confir
     }).catch(() => { /* The persisted decision remains the source of truth during a database outage. */ });
     throw error;
   }
+}
+
+/**
+ * The chef (or Local Cooks for them) answers the kitchen's new total. Accept captures exactly that total from the existing
+ * hold and releases the rest; decline releases the whole hold. A replay finishes the answer already recorded.
+ */
+export async function answerPartialAcceptance(bookingId: number, proposalId: string, answer: 'accept' | 'decline', actorId: number, supportReason?: string) {
+  const [booking] = await db.select().from(kitchenBookings).where(eq(kitchenBookings.id, bookingId)).limit(1);
+  const proposal = booking?.partialAcceptance as PartialAcceptance | null | undefined;
+  const waiting = booking ? waitingPartialAcceptance(booking) : null;
+  if (!booking || proposal?.id !== proposalId || !waiting && (booking.paymentDecision as Decision | null)?.proposal?.id !== proposalId)
+    throw new PartialAcceptanceConflict(CLOSED_MESSAGE);
+  if (answer === 'decline') return decideAuthorizedBooking(bookingId, 'cancelled', [], [], actorId, undefined, { proposalOutcome: 'declined', supportReason });
+  // The hold ended at the card network (authorization lifetime): close the request like any released pending request.
+  if (waiting && (await getBookingPaymentIntent(waiting.intentId)).status === 'canceled') {
+    await decideAuthorizedBooking(bookingId, 'cancelled', [], [], undefined, undefined, { proposalOutcome: 'expired' });
+    throw new PartialAcceptanceConflict('The card hold ended before you answered, so this request is closed. You weren’t charged.');
+  }
+  return decideAuthorizedBooking(bookingId, 'confirmed', [], proposal.equipment.map(item => ({ equipmentBookingId: item.id, action: item.status })),
+    actorId, undefined, { proposalId, supportReason });
 }
 
 export async function reconcileBookingDecision(bookingId: number, recorded?: Decision) {
@@ -316,7 +426,17 @@ export async function reconcileBookingDecision(bookingId: number, recorded?: Dec
       await ensureChallengesForBooking(tx, bookingId, decision!.actorId);
       if (booking!.invitationId) await (await import('./kitchen-invitations')).recordFulfilledInvitation(booking!.invitationId, bookingId, tx);
     }
-    if (decision!.expiry) await (await import('./auth-expiry-service')).sendAuthExpiryNotification(booking!.chefId, bookingId, 'kitchen_booking', booking!.kitchenId, tx, decision!.expiry.responseDeadlineAt);
+    const answeredProposal = decision!.target === 'cancelled' && (decision!.proposal?.outcome === 'declined' || decision!.proposal?.outcome === 'expired')
+      && (booking!.partialAcceptance as PartialAcceptance | null)?.id === decision!.proposal.id ? booking!.partialAcceptance as PartialAcceptance : null;
+    if (answeredProposal) {
+      // The chef said no to the kitchen's new total, or didn't answer in time: both sides and Local Cooks hear it in those words.
+      const outcome = decision!.proposal!.outcome as 'declined' | 'expired';
+      await queueBookingLifecycleEvent(tx, bookingId, 'cancelled', outcome === 'declined' ? 'New total declined' : 'Request closed',
+        outcome === 'declined' ? 'The chef declined the new total. The request is closed and the card hold was released.'
+          : 'The chef didn’t answer the new total in time. The request is closed and the card hold was released.',
+        decision!.actorId, { decisionId: decision!.id, partialAcceptance: noticeFacts(answeredProposal, outcome) });
+    }
+    else if (decision!.expiry) await (await import('./auth-expiry-service')).sendAuthExpiryNotification(booking!.chefId, bookingId, 'kitchen_booking', booking!.kitchenId, tx, decision!.expiry.responseDeadlineAt);
     else {
     const [paidTiming] = decision!.target === 'confirmed' ? await tx.select({ timing: paymentTransactions.payoutTiming }).from(paymentTransactions).where(eq(paymentTransactions.paymentIntentId, decision!.intentId)).limit(1) : [];
     // An unaccepted request released by someone: say who, to each side (never the generic "cancelled … storage" text).
@@ -379,6 +499,12 @@ async function supersedeReleasedHoldDecision(bookingId: number, decision: Decisi
     await tx.update(kitchenBookings).set({ paymentDecision: next }).where(eq(kitchenBookings.id, bookingId));
     return next;
   });
+}
+
+/** Raw proposal facts for per-reader notices; wording and formats are resolved in each reader's locale. */
+function noticeFacts(proposal: PartialAcceptance, variant: 'proposed' | 'declined' | 'expired') {
+  return { variant, items: proposal.declined.map(item => ({ name: item.name, ...(item.date ? { date: item.date } : {}) })),
+    newCents: proposal.newTotalCents, oldCents: proposal.oldTotalCents, deadlineAt: proposal.deadlineAt };
 }
 
 /** Who released an unaccepted request, and what each side reads. Owner (Oct 15): role-specific, no generic cancellation text. */
