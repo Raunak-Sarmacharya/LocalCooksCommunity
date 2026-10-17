@@ -82,5 +82,30 @@ browser. It made no application-database or payment-provider connection. The tem
 ## Verification
 
 `npm ci` installed this worktree’s dependencies normally, without links or manifest edits. Implementation was committed
-in small checkpoints before final checks. Results and the final single TypeScript invocation are recorded below when
-complete. No push, deployment, migration application, live Stripe operation or rollout-setting change was performed.
+in small checkpoints before final checks. No push, deployment, migration application, live Stripe operation or
+rollout-setting change was performed. The local fixture server was stopped and its files removed after browser checks.
+
+- Requested broad run: `npx vitest run client/src/components/booking client/src/pages` — 55 files, initially 580 passed
+  and 5 failed. Four failures were assertions in the new tests (full versus abbreviated date names, React focus updates,
+  and the legacy calendar’s original accessible names); the fifth was an existing VisitAssistancePanel 5-second timeout
+  under full worker load.
+- Corrected focused run: `npx vitest run client/src/components/booking/KitchenBookingFlow.multiday.test.tsx
+  client/src/pages/BookingDetailsPage.header.test.tsx client/src/components/booking/VisitAssistancePanel.test.tsx
+  --maxWorkers=2` — **79 passed, 3 files**, including the prior timeout. The page fix also makes the current/next dated
+  visit drive the header. Additional final-day-retention/restored-cap cases brought the final picker run to **9 passed**.
+  The **consolidated final coverage is 587 unique passing tests across 55 files**; only affected suites were rerun after
+  failures/changes. The broad command was not repeatedly rerun.
+- New coverage: **9** real-flow tests, **4** draft/validation/ICS tests, **2** day-list tests and **1** dated booking-page
+  test. Existing single-day booking/page tests passed, including the original scalar checkout shape and disclosure.
+- `node scripts/i18n-lint.mjs` — passed after final copy changes; 15 namespaces synced for fr-CA and uk.
+- `git diff --check` — passed.
+- `npx tsc --noEmit -p tsconfig.json` — one foreground invocation started after the last application commit;
+  final result follows below.
+
+## Files
+
+Booking composition/readers: `KitchenBookingFlow.tsx`, `DatedCalendarDay.tsx`, `dated-booking-draft.ts`,
+`BookingPriceSummary.tsx`, `CheckoutCancellationDisclosure.tsx`, `BookingCancellationCard.tsx`, `BookingDayList.tsx`,
+`ChangeRequestNotice.tsx`, `BookingDetailsPage.tsx`; calendar export: `client/src/lib/booking-ics.ts`.
+Tests live beside the affected components and in `BookingDetailsPage.header.test.tsx`. The three booking locale JSON
+files and this report complete the change. No dependency, backend, migration or manager/admin screen changed.
