@@ -8,7 +8,7 @@ export const kitchenPayoutNoticeKinds: string[] = ['payout_released', 'payout_on
 /** Manager-only copy for the payout notices; the outbox snapshots it per recipient locale. */
 export async function kitchenPayoutNotice(kind: KitchenPayoutNoticeKind, locale: string | null | undefined,
   input: { reference: string; amountCents?: number; currency?: string; chef: string | null; date: Date; timezone: string;
-    lines?: Array<{ kind: string; amountCents: number; minutes?: number }>; startTime?: string | null; chefPaidCents?: number; feeCents?: number; processingCents?: number; payoutsUrl?: string }) {
+    lines?: Array<{ kind: string; amountCents: number; minutes?: number; operatingDate?: string }>; startTime?: string | null; chefPaidCents?: number; feeCents?: number; processingCents?: number; remainingNetCents?: number; payoutsUrl?: string }) {
   await ensureServerI18n();
   const language = locale || 'en-CA';
   const amount = new Intl.NumberFormat(language, { style: 'currency', currency: (input.currency || 'CAD').toUpperCase() })
@@ -22,11 +22,13 @@ export async function kitchenPayoutNotice(kind: KitchenPayoutNoticeKind, locale:
     ...(input.lines || []).map(line => {
       const minutes = line.minutes || 0, hours = Math.floor(minutes / 60), remainder = minutes % 60;
       const duration = tEmail(language, hours ? remainder ? 'ncDurationHoursMinutes' : 'ncDurationHours' : 'ncDurationMinutes', { hours, minutes: hours ? remainder : minutes });
-      return { label: tEmail(language, line.kind === 'booking' ? 'ncPayoutBooking' : line.kind === 'charge' ? 'ncPayoutCharge' : 'ncPayoutExtension', { duration }), value: money(line.amountCents) };
+      const day = line.operatingDate ? new Intl.DateTimeFormat(language, { dateStyle: 'medium', timeZone: 'UTC' }).format(new Date(`${line.operatingDate}T12:00:00Z`)) : null;
+      return { label: day || tEmail(language, line.kind === 'booking' ? 'ncPayoutBooking' : line.kind === 'charge' ? 'ncPayoutCharge' : 'ncPayoutExtension', { duration }), value: money(line.amountCents) };
     }),
     ...(input.chefPaidCents != null ? [{ label: tEmail(language, 'payoutFactChefPaid'), value: money(input.chefPaidCents) }] : []),
     ...(input.feeCents ? [{ label: tEmail(language, 'payoutFactFee'), value: money(input.feeCents) }] : []),
     ...(input.processingCents != null ? [{ label: tEmail(language, 'payoutFactProcessing'), value: money(input.processingCents) }] : []),
+    ...(input.remainingNetCents != null ? [{ label: language.startsWith('fr') ? 'Versements \u00e0 venir' : 'Remaining payouts', value: money(input.remainingNetCents) }] : []),
     { label: tEmail(language, 'payoutFactPayout'), value: amount }];
   return kind === 'payout_released'
     ? { title: tEmail(language, 'payoutReleasedTitle', { amount, reference: input.reference }),

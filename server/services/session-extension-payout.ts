@@ -39,6 +39,12 @@ export function extensionPayoutDecision(source: Pick<Source, 'payoutTiming' | 't
 }
 
 export async function releaseSessionExtensionPayoutForSource(sourceId: number, now = new Date()): Promise<ExtensionPayoutResult> {
+  const partitioned = await db.transaction(tx => import('./kitchen-day-payout-sources').then(d => d.partitionDatedSupplement(sourceId, tx)));
+  if (partitioned) {
+    await (await import('./kitchen-day-payout-sources')).syncDayPayoutSource(sourceId);
+    const [source] = await db.select().from(paymentTransactions).where(eq(paymentTransactions.id, sourceId));
+    return (await import('./kitchen-day-payouts')).releaseBookingDayPayouts(source.bookingId, now, sourceId);
+  }
   const decided = await db.transaction(async (tx): Promise<{ result?: ExtensionPayoutResult; source?: Source }> => {
     const [initial] = await tx.select().from(paymentTransactions).where(eq(paymentTransactions.id, sourceId)).limit(1);
     if (!initial || !isSessionExtensionSource(initial) || !initial.bookingId) return { result: { success: false, reason: 'Not a session-extension charge' } };
@@ -58,7 +64,7 @@ export async function releaseSessionExtensionPayoutForSource(sourceId: number, n
         .where(eq(paymentTransactions.id, source.id));
       return { result: { success: false, deferred: true, reason: 'Released together with the booking payout' } };
     }
-    await assertBookingMoneyWritable({ bookingId: source.bookingId!, paymentTransactionId: source.id }, tx);
+    await assertBookingMoneyWritable({ bookingId: source.bookingId!, paymentTransactionId: source.id, payout: true }, tx);
     if (decision === 'release') {
       const saved = (source.metadata || {}) as Record<string, any>;
       const [released] = await tx.update(paymentTransactions).set({ payoutReleasedAt: now, payoutHoldReason: null, updatedAt: now,

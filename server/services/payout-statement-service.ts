@@ -248,7 +248,13 @@ export function summarizePayoutStatementBookings(rows: any[]) {
   let totalEarnings = 0, totalPlatformFees = 0, totalStripeProcessingFees = 0, totalNetEarnings = 0;
   const resolvedAmounts = new Map<any, { subtotal: number; tax: number; managerRevenue: number }>();
   const bookings: any[] = [];
+  const represented = new Set<string>();
   rows.forEach((booking: any) => {
+    if (booking.transferId || booking.transactionId) {
+      const key = booking.transferId ? `transfer:${booking.transferId}` : `source:${booking.transactionId}`;
+      if (represented.has(key)) return;
+      represented.add(key);
+    }
     const transactionMetadata = booking.transactionMetadata || booking.transaction_metadata || {};
     const isExtension = transactionMetadata.type === 'session_extension' || transactionMetadata.sessionExtensionId != null;
     // An extension row carries the parent booking's columns; its own subtotal is the approved extension subtotal.
@@ -274,7 +280,7 @@ export function summarizePayoutStatementBookings(rows: any[]) {
     const taxAmount = financials.taxCents / 100;
     const reconciledGross = totalPrice + taxAmount;
     const storedManagerRevenue = Number(booking.managerRevenue || 0) / 100;
-    const managerRevenue = storedManagerRevenue > 0 && storedManagerRevenue <= reconciledGross
+    const managerRevenue = booking.installmentId ? storedManagerRevenue : storedManagerRevenue > 0 && storedManagerRevenue <= reconciledGross
       ? storedManagerRevenue
       : reconciledGross - stripeProcessingFee;
 
@@ -288,5 +294,5 @@ export function summarizePayoutStatementBookings(rows: any[]) {
     totalStripeProcessingFees += stripeProcessingFee;
     totalNetEarnings += managerRevenue;
   });
-  return { totalEarnings, totalPlatformFees, totalStripeProcessingFees, totalNetEarnings, totalBookings: bookings.length, resolvedAmounts, bookings };
+  return { totalEarnings, totalPlatformFees, totalStripeProcessingFees, totalNetEarnings, totalBookings: new Set(bookings.map(b => b.bookingId ?? b.id)).size, resolvedAmounts, bookings };
 }

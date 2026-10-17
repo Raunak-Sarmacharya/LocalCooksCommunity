@@ -2825,6 +2825,7 @@ export type BookingFeedbackResponse = typeof bookingFeedbackResponses.$inferSele
 export const commitmentProblems = pgTable('commitment_problems', {
   id: serial('id').primaryKey(),
   sourceKey: text('source_key').notNull().unique(),
+  visitId: integer('visit_id').references(() => kitchenBookingVisits.id, { onDelete: 'restrict' }),
   kind: text('kind').notNull(), // live | schedule
   bookingId: integer('booking_id').references(() => kitchenBookings.id, { onDelete: "cascade" }),
   viewingId: integer('viewing_id').references(() => kitchenViewings.id, { onDelete: "cascade" }),
@@ -2889,6 +2890,7 @@ export const bookingFlags = pgTable('booking_flags', {
   id: serial('id').primaryKey(), bookingId: integer('booking_id').references(() => kitchenBookings.id),
   storageBookingId: integer('storage_booking_id').references(() => storageBookings.id),
   kind: text('kind').notNull(), providerRef: text('provider_ref'),
+  visitId: integer('visit_id').references(() => kitchenBookingVisits.id, { onDelete: 'restrict' }),
   openedAt: timestamp('opened_at', { withTimezone: true }).notNull().defaultNow(),
   resolvedAt: timestamp('resolved_at', { withTimezone: true }), resolvedBy: integer('resolved_by').references(() => users.id),
   note: text('note'),

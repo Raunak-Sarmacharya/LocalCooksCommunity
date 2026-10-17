@@ -280,9 +280,10 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
     // Manager-only payout notices (payout after closeout); the operating date is a calendar date, read in UTC.
     const payoutCopy: { title: string; message: string; actionLabel: string; emailMessage?: string;
       facts?: Array<{ label: string; value: string; url?: string }>; actions?: Array<{ label: string; url: string }> } | undefined = kind === 'payout_released' || kind === 'payout_on_hold' ? await kitchenPayoutNotice(kind, person.locale,
-      { lines: metadata.lines as Array<{ kind: string; amountCents: number; minutes?: number }> | undefined, reference: String(metadata.reference || context.referenceCode || `#${bookingId}`), amountCents: Number(metadata.amountCents || 0),
+      { lines: metadata.lines as Array<{ kind: string; amountCents: number; minutes?: number; operatingDate?: string }> | undefined, reference: String(metadata.reference || context.referenceCode || `#${bookingId}`), amountCents: Number(metadata.amountCents || 0),
         chef: nameOf(context.chefId) || null, date: context.bookingDate, timezone: 'UTC', startTime: context.startTime,
         chefPaidCents: typeof metadata.chefPaidCents === 'number' ? metadata.chefPaidCents : undefined, feeCents: Number(metadata.feeCents || 0),
+        remainingNetCents: typeof metadata.remainingNetCents === 'number' ? metadata.remainingNetCents : undefined,
         processingCents: typeof metadata.processingCents === 'number' ? metadata.processingCents : undefined,
         payoutsUrl: `${getAppBaseUrl('kitchen')}/manager/dashboard?view=revenue` })
       : checkoutPayout && !chef && !localCooks ? await kitchenCheckoutPayoutNotice(person.locale, { ...checkoutPayout, chef: nameOf(context.chefId) || null,

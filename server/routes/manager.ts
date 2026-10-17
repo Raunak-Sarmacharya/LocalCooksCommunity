@@ -2105,6 +2105,7 @@ router.get(
           and(
             eq(locations.managerId, managerId),
             eq(kitchenBookings.paymentStatus, "paid"),
+            sql`${paymentTransactions.payoutPartition} IS DISTINCT FROM 'per_day'`,
             sql`DATE(${kitchenBookings.bookingDate}) >= ${periodStart.toISOString().split("T")[0]}::date`,
             sql`DATE(${kitchenBookings.bookingDate}) <= ${payoutDate.toISOString().split("T")[0]}::date`,
           ),
@@ -2236,11 +2237,27 @@ router.get(
           and(
             eq(locations.managerId, managerId),
             eq(kitchenBookings.paymentStatus, "paid"),
+            sql`${paymentTransactions.payoutPartition} IS DISTINCT FROM 'per_day'`,
             sql`DATE(${kitchenBookings.bookingDate}) >= ${periodStart.toISOString().split("T")[0]}::date`,
             sql`DATE(${kitchenBookings.bookingDate}) <= ${payoutDate.toISOString().split("T")[0]}::date`,
           ),
         )
         .orderBy(desc(kitchenBookings.bookingDate));
+
+      const dailyRows = (await db.execute(sql`SELECT kb.id AS "bookingId", kb.id::text || ':' || d.id::text AS id,
+        v.visit_date AS "bookingDate", k.name AS "kitchenName", u.username AS "chefName", d.id AS "installmentId", d.transfer_id AS "transferId",
+        d.transfer_amount_cents AS "managerRevenue", SUM(a.subtotal_cents)::text AS "totalPrice",
+        SUM(a.tax_cents)::text AS "taxAmount", SUM(a.service_fee_cents)::text AS "transactionServiceFee",
+        SUM(a.stripe_fee_cents)::text AS "stripeProcessingFee", SUM(a.subtotal_cents + a.tax_cents)::text AS "baseAmount",
+        SUM(a.subtotal_cents + a.tax_cents + a.service_fee_cents)::text AS "transactionAmount"
+        FROM kitchen_booking_day_payouts d JOIN payment_transactions pt ON pt.id = d.source_id
+        JOIN kitchen_bookings kb ON kb.id = pt.booking_id JOIN kitchens k ON k.id = kb.kitchen_id
+        LEFT JOIN users u ON u.id = kb.chef_id JOIN kitchen_booking_visits v ON v.id = d.visit_id
+        JOIN kitchen_booking_day_allocations a ON a.source_id = d.source_id AND a.visit_id = d.visit_id AND a.allocation_revision = d.allocation_revision
+        WHERE pt.manager_id = ${managerId} AND pt.payout_partition = 'per_day' AND d.transfer_id IS NOT NULL
+          AND (d.evidence->>'sentAt')::timestamptz >= ${periodStart} AND (d.evidence->>'sentAt')::timestamptz <= ${payoutDate}
+        GROUP BY d.id, kb.id, k.name, u.username, v.visit_date ORDER BY d.id`)).rows;
+      bookingRows.push(...dailyRows as any[]);
 
       // Get balance transactions
       const { getBalanceTransactions } = await import(

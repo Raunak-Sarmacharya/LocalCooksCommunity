@@ -160,6 +160,10 @@ export async function transferToManagerForBooking(
     return { transferred: !!result.transferId, transferId: result.transferId, actualStripeFeeCents: params.actualStripeFeeCents,
       platformCommissionCents: 0, feeWithheldCents: 0, transferredCents: result.transferId ? params.chargeAmountCents : 0 };
   }
+  if ((source?.metadata as any)?.sessionExtensionId || (source?.metadata as any)?.kitchenChangeId) {
+    const partitioned = await db.transaction(tx => import('./kitchen-day-payout-sources').then(d => d.partitionDatedSupplement(source!.id, tx)));
+    if (partitioned) return deferredDayTransfer(params);
+  }
   if ((source?.metadata as any)?.kitchenChangeId) return transferKitchenChangeSource(params);
   return db.transaction(async tx => {
     await tx.select({ id: paymentTransactions.id }).from(paymentTransactions)
@@ -185,7 +189,7 @@ async function transferKitchenChangeSource(params: TransferToManagerParams): Pro
   const key = `transfer:${params.paymentIntentId}`;
   const prepared = await db.transaction(async tx => {
     const [source] = await tx.select().from(paymentTransactions).where(eq(paymentTransactions.id, params.paymentTransactionId)).for('update');
-    await assertBookingMoneyWritable({ paymentTransactionId: source.id, operationKey: key }, tx);
+    await assertBookingMoneyWritable({ paymentTransactionId: source.id, payout: true, operationKey: key }, tx);
     const saved = (source.metadata || {}) as Record<string, any>;
     const [change] = await tx.select().from(kitchenBookingChanges).where(eq(kitchenBookingChanges.id, saved.kitchenChangeId)).limit(1);
     if (change?.state !== 'applied') throw new Error('The booking change must finish before its kitchen payout.');

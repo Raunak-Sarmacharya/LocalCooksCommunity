@@ -113,7 +113,7 @@ async function releaseKitchenPayoutInTick(bookingId: number, reason: string, now
     await saveEligibility(source, context, tx, now);
     if (!context.eligibility.ready) return { result: { success: false, deferred: true, overrideRecorded: options.override && !context.eligibility.holdReason,
       reason: context.eligibility.holdReason ? `On hold: ${context.eligibility.holdReason}` : 'The visit has not closed yet' } };
-    await assertBookingMoneyWritable({ bookingId, paymentTransactionId: source.id }, tx);
+    await assertBookingMoneyWritable({ bookingId, paymentTransactionId: source.id, payout: true }, tx);
     if (saved.refundRecovery && saved.refundRecovery.status !== 'succeeded'
       || saved.cancellationRefundOperation && saved.cancellationRefundOperation.status !== 'succeeded'
       || saved.capturedCancellationRace || saved.fullRefundRequest?.status === 'pending'
@@ -165,6 +165,8 @@ export async function recordReleasedPayout(id: number, result: TransferResult, t
 
 /** One release invocation is one tick; all transfer commits finish before its notice is queued. */
 export async function releaseKitchenPayout(bookingId: number, reason: string, now = new Date(), options: { override?: boolean } = {}): Promise<ReleaseResult> {
+  const source = await originalSource(bookingId, db as unknown as Tx);
+  if (source?.payoutPartition === 'per_day') return (await import('./kitchen-day-payouts')).releaseBookingDayPayouts(bookingId, now);
   return payoutNoticeTick.run(now.toISOString(), async () => {
     try { return await releaseKitchenPayoutInTick(bookingId, reason, now, options); }
     finally {
@@ -219,6 +221,10 @@ export async function releasedPayoutStillEligible(bookingId: number, tx: Tx) {
 /** Manager/admin payload. Never throws: a projection problem falls back to the saved columns. */
 export async function readKitchenPayout(bookingId: number, tx: Tx = db as unknown as Tx): Promise<KitchenPayout> {
   const source = await originalSource(bookingId, tx);
+  if (source?.payoutPartition === 'per_day') {
+    const daily = await import('./kitchen-day-payouts');
+    return daily.summarizeDayPayouts(await daily.readDayPayouts([bookingId], tx));
+  }
   // Never throws (manager/admin payload): an unreadable extension list falls back to the booking's own payout.
   const extensions = source ? await extensionSources([bookingId], tx).catch(error => {
     logger.warn('[Payout] Extension charges unavailable for the payout payload', { bookingId, error }); return [] as Source[]; }) : [];
@@ -262,8 +268,11 @@ async function attachWithExtensions<T extends { id: number; status?: string; clo
     const { trailingCents, ...combined } = withExtensionPayouts(payout, extensions.filter(row => row.bookingId === item.id));
     return { ...item, payout: combined, trailingCents };
   };
+  const daily = sources.some(s => s.payoutPartition === 'per_day') ? await import('./kitchen-day-payouts') : null;
+  const days = daily ? await daily.readDayPayouts(ids) : [];
   return items.map(item => {
     const source = sources.find(row => row.bookingId === item.id);
+    if (source?.payoutPartition === 'per_day' && daily) return { ...item, payout: daily.summarizeDayPayouts(days.filter(d => d.bookingId === item.id)), trailingCents: 0 };
     const fact = facts.find(row => Number(row.booking_id) === item.id);
     if (!source || !fact || !item.closeout) return combine(item, kitchenPayout(source));
     const eligibility = payoutEligibility(item.status || item.closeout.status, item.closeout, { openFlag: fact.flag === true,
@@ -277,7 +286,10 @@ export async function upcomingKitchenPayouts(managerId: number) {
   const sources = await db.select({ bookingId: paymentTransactions.bookingId }).from(paymentTransactions).where(and(
     eq(paymentTransactions.managerId, managerId), eq(paymentTransactions.payoutTiming, 'after_closeout'), isNull(paymentTransactions.transferId),
     inArray(paymentTransactions.bookingType, ['kitchen', 'bundle']), inArray(paymentTransactions.status, capturedStatuses as Source['status'][]),
-    sql`COALESCE(${paymentTransactions.metadata}->>'payoutNoEntitlement', 'false') <> 'true'`)).orderBy(asc(paymentTransactions.id)).limit(200);
+    sql`COALESCE(${paymentTransactions.metadata}->>'payoutNoEntitlement', 'false') <> 'true'`,
+    sql`(${paymentTransactions.payoutPartition} IS DISTINCT FROM 'per_day' OR EXISTS (SELECT 1 FROM kitchen_booking_day_payouts d
+      WHERE d.source_id = ${paymentTransactions.id} AND d.transfer_id IS NULL AND NOT d.no_entitlement)
+      OR NOT EXISTS (SELECT 1 FROM kitchen_booking_day_allocations a WHERE a.source_id = ${paymentTransactions.id}))`)).orderBy(asc(paymentTransactions.id)).limit(200);
   const ids = Array.from(new Set(sources.map(source => source.bookingId)));
   if (!ids.length) return { totalCents: 0, payouts: [] };
   const bookings = await db.select({ id: kitchenBookings.id, referenceCode: kitchenBookings.referenceCode }).from(kitchenBookings)
@@ -286,11 +298,13 @@ export async function upcomingKitchenPayouts(managerId: number) {
     status?: string; closeout?: BookingCloseout; timezone?: string }>);
   // One entry per booking: a waiting payout already includes its extension shares; extension money still owed after the
   // booking payout went out is its own scheduled entry. Each kitchen share is counted exactly once.
-  const payouts = items.flatMap(item => item.payout.status === 'scheduled' || item.payout.status === 'on_hold'
+  const payouts = items.filter(item => !item.payout.installments).flatMap(item => item.payout.status === 'scheduled' || item.payout.status === 'on_hold'
     ? [{ bookingId: item.id, referenceCode: reference(item), timezone: item.timezone || null, ...item.payout }]
     : item.trailingCents > 0 ? [{ bookingId: item.id, referenceCode: reference(item), timezone: item.timezone || null, timing: 'after_closeout' as const,
       status: 'scheduled' as const, holdReason: null, expectedAt: null, sentAt: null, amountCents: item.trailingCents }] : [])
     .sort((a, b) => (a.expectedAt || '').localeCompare(b.expectedAt || ''));
+  const daily = await (await import('./kitchen-day-payouts')).readDayPayouts(ids);
+  payouts.push(...daily.filter(d => d.status === 'scheduled' || d.status === 'on_hold').map(d => ({ ...d, referenceCode: reference(bookings.find(b => b.id === d.bookingId)!), timezone: items.find(b => b.id === d.bookingId)?.timezone || null })));
   return { totalCents: payouts.reduce((sum, payout) => sum + payout.amountCents, 0), payouts };
 }
 

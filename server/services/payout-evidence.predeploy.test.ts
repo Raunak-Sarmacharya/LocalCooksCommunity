@@ -47,7 +47,7 @@ describe('predeploy finding 6: refund evidence survives metadata replacement and
   it('recovers the original reversal evidence even when a prior refund succeeded before the local commit', async () => {
     state.transfer.amount_reversed = 2300;
     state.reversals = [{ id: 'trr_original', amount: 2300, metadata: { refund_operation_id: options.idempotencyKey } }];
-    state.refunds = [{ id: 're_original', status: 'succeeded', amount: 2440, metadata: { refund_operation_id: options.idempotencyKey } }];
+    state.refunds = [{ id: 're_original', status: 'succeeded', amount: 2440, charge: 'ch_one', metadata: { refund_operation_id: options.idempotencyKey } }];
     await reverseTransferAndRefund('pi_one', 2440, 'requested_by_customer', options);
     expect(state.evidence[0]).toMatchObject({ originalAmountCents: 11116, reversedCents: 2300,
       refunds: { re_original: { reversalId: 'trr_original', amountCents: 2300 } } });

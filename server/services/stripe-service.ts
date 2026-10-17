@@ -32,6 +32,8 @@ const workerStripe = stripeSecretKey ? new Stripe(stripeSecretKey, {
   }),
 }) : null;
 const decisionStripe = () => inRecurringWorker() ? workerStripe : stripe;
+/** Budget-aware client for daily installment reconciliation. */
+export const getStripeClient = decisionStripe;
 
 export interface CreatePaymentIntentParams {
   captureMethod?: 'manual' | 'automatic';

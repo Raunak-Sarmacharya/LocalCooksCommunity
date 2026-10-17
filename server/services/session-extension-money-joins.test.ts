@@ -118,7 +118,7 @@ it('both revenue readers tax each captured payment once after the booking subtot
   const queries = state.queries.map((text, i) => ({ text, params: state.params[i] }))
     .filter(({ text }) => text.includes('as effective_tax') || text.includes('as calculated_tax_amount') && text.includes('FROM payment_transactions pt'));
   expect(queries).toHaveLength(2);
-  const test = await createTestDatabase([kitchens, kitchenBookings, paymentTransactions]);
+  const test = await createTestDatabase([kitchens, kitchenBookings, paymentTransactions, (await import('@shared/schema')).kitchenBookingDayPayouts, (await import('@shared/schema')).kitchenBookingDayAllocations]);
   try {
     await test.db.insert(kitchens).values({ id: 4, name: 'Test', locationId: 5, taxRatePercent: '15' });
     await test.db.insert(kitchenBookings).values({ id: 197, chefId: 3, kitchenId: 4, bookingDate: new Date(), startTime: '08:00', endTime: '10:00', totalPrice: '5000' });
@@ -146,4 +146,14 @@ describe('manager dashboard pending payments', () => {
     expect(totals).toMatch(/manager_revenue::numeric, 0\) - COALESCE\(pt\.stripe_processing_fee/);
     if (metrics) expect(metrics.pendingPayments).toBe(5494);
   });
+});
+
+it('CP5 bank statement counts each transfer once and keeps day lines separate', () => {
+  const row = (id: string, installmentId: number) => ({ id, bookingId: 197, installmentId, transferId: `tr_day_${installmentId}`,
+    totalPrice: '2000', transactionAmount: '2340', baseAmount: '2300', taxAmount: '300', transactionServiceFee: '40',
+    stripeProcessingFee: '100', managerRevenue: '2200' });
+  const one = row('197:1', 1), two = row('197:2', 2);
+  const report = summarizePayoutStatementBookings([one, one, two]);
+  expect(report.totalBookings).toBe(1); expect(report.bookings).toHaveLength(2);
+  expect(report.totalNetEarnings).toBe(44); expect(report.totalStripeProcessingFees).toBe(2);
 });

@@ -5,7 +5,7 @@ import { emailLocalDateTime, renderTransactionalEmail } from '../email';
 import { createHash } from 'node:crypto';
 import { and, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import { db } from '../db';
-import { commitmentProblems, storageBookings, storageListings, kitchenBookings, kitchenViewings, kitchens, locations, users, emailLogs, bookingLifecycleEvents } from '@shared/schema';
+import { commitmentProblems, kitchenBookingVisits, storageBookings, storageListings, kitchenBookings, kitchenViewings, kitchens, locations, users, emailLogs, bookingLifecycleEvents } from '@shared/schema';
 import { problemCategoryLabel, parseProblemCategory, problemDestination, problemStatusLabel, problemTransition, type ProblemCategory, type ProblemStatus, type ProblemHistory } from '@shared/commitment-problems';
 import { notificationService } from './notification.service';
 import { getAppBaseUrl } from '../config';
@@ -158,12 +158,17 @@ async function queueProblemNotice(tx: Tx, problem: Problem, action: string) {
   }
 }
 
-export async function createProblem(tx: Tx, input: { kind: 'live' | 'schedule'; commitment: 'booking' | 'tour' | 'storage'; id: number; actor: Actor; description: string; sourceKey: string; category?: ProblemCategory | null }) {
+export async function createProblem(tx: Tx, input: { kind: 'live' | 'schedule'; commitment: 'booking' | 'tour' | 'storage'; id: number; actor: Actor; description: string; sourceKey: string; category?: ProblemCategory | null; visitId?: number }) {
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${input.sourceKey}, 0))`);
   const [prior] = await tx.select().from(commitmentProblems).where(eq(commitmentProblems.sourceKey, input.sourceKey)).limit(1);
   if (prior) {
-    if (prior.description !== input.description || prior.reportedBy !== input.actor.id || (prior.category ?? null) !== (input.category ?? null)) reject('This report key already belongs to another submission');
+    if (prior.description !== input.description || prior.reportedBy !== input.actor.id || (prior.category ?? null) !== (input.category ?? null) || (prior.visitId ?? null) !== (input.visitId ?? null)) reject('This report key already belongs to another submission');
     return prior;
+  }
+  if (input.visitId) {
+    const [visit] = await tx.select().from(kitchenBookingVisits).where(eq(kitchenBookingVisits.id, input.visitId));
+    const [booking] = await tx.select().from(kitchenBookings).where(eq(kitchenBookings.id, input.id));
+    if (input.commitment !== 'booking' || !visit || visit.bookingId !== input.id || visit.scheduleRevision !== booking?.scheduleRevision || visit.scheduleState !== 'active') reject('Choose a current visit belonging to this booking');
   }
   const context = await problemContext(tx, input.commitment, input.id);
   if (input.kind === 'live') authorizeProblem(context, input.actor);
@@ -172,13 +177,14 @@ export async function createProblem(tx: Tx, input: { kind: 'live' | 'schedule'; 
   const history: ProblemHistory[] = [{ revision: 1, actorId: input.actor.id, actorRole: input.actor.role || undefined, at: new Date().toISOString(), action: 'report', note: 'Report received' }];
   const [problem] = await tx.insert(commitmentProblems).values({ sourceKey: input.sourceKey, kind: input.kind,
     bookingId: input.commitment === 'booking' ? input.id : null, viewingId: input.commitment === 'tour' ? input.id : null, storageBookingId: input.commitment === 'storage' ? input.id : null,
-    kitchenId: context!.kitchenId, reportedBy: input.actor.id, description: input.description, category: input.category ?? null, history }).returning();
+    visitId: input.visitId ?? null, kitchenId: context!.kitchenId, reportedBy: input.actor.id, description: input.description, category: input.category ?? null, history }).returning();
   if (problem.storageBookingId) await scheduleStorageTermPayout(problem.storageBookingId, tx);
   await queueProblemNotice(tx, problem, 'report');
   return problem;
 }
 
-export async function reportProblem(commitment: 'booking' | 'tour' | 'storage', id: number, actor: Actor, description: string, requestKey: string, rawCategory?: unknown) {
+export async function reportProblem(commitment: 'booking' | 'tour' | 'storage', id: number, actor: Actor, description: string, requestKey: string, rawCategory?: unknown, visitId?: number) {
+  if (visitId !== undefined && (!Number.isSafeInteger(visitId) || visitId <= 0 || commitment !== 'booking')) reject('Choose a valid visit', 400);
   const category = parseProblemCategory(rawCategory);
   if (category === undefined) reject('Choose safety, access, equipment, cleanliness or other as the problem category', 400);
   if (!Number.isSafeInteger(id) || id <= 0 || typeof description !== 'string' || description.trim().length < 10 || description.length > 2000 ||
@@ -186,7 +192,7 @@ export async function reportProblem(commitment: 'booking' | 'tour' | 'storage', 
   return db.transaction(async tx => {
     await tx.execute(commitment === 'storage' ? sql`SELECT id FROM storage_bookings WHERE id = ${id} FOR UPDATE` : commitment === 'booking' ? sql`SELECT id FROM kitchen_bookings WHERE id = ${id} FOR UPDATE` : sql`SELECT id FROM kitchen_viewings WHERE id = ${id} FOR UPDATE`);
     authorizeProblem(await problemContext(tx, commitment, id), actor);
-    return createProblem(tx, { kind: 'live', commitment, id, actor, description: description.trim(), category, sourceKey: `live:${commitment}:${id}:${actor.id}:${requestKey}` });
+    return createProblem(tx, { kind: 'live', commitment, id, actor, description: description.trim(), category, visitId, sourceKey: `live:${commitment}:${id}:${actor.id}:${requestKey}` });
   });
 }
 

@@ -10,13 +10,14 @@ export class BookingMoneyFrozen extends Error {
  * `payout`: a kitchen transfer. A storage chargeback never holds it (Local Cooks absorbs chargebacks in the pilot).
  */
 export async function assertBookingMoneyWritable(target: {
-  bookingId?: number; storageRentalId?: number; paymentIntentId?: string; paymentTransactionId?: number; transferId?: string; operationKey?: string; payout?: boolean;
+  bookingId?: number; storageRentalId?: number; paymentIntentId?: string; paymentTransactionId?: number; transferId?: string; operationKey?: string; payout?: boolean; visitId?: number;
 }, connection: Connection = db) {
   const result = await connection.execute(sql`
     WITH linked_sources AS (
       SELECT p.booking_type, p.booking_id FROM payment_transactions p
         WHERE p.payment_intent_id = ${target.paymentIntentId ?? null}
           OR p.id = ${target.paymentTransactionId ?? null} OR p.transfer_id = ${target.transferId ?? null}
+          OR p.id IN (SELECT source_id FROM kitchen_booking_day_payouts WHERE transfer_id = ${target.transferId ?? null})
     ), linked_bookings AS (
       SELECT ${target.bookingId ?? null}::integer AS booking_id UNION
         SELECT CASE WHEN l.booking_type IN ('kitchen','bundle') THEN l.booking_id
@@ -28,6 +29,8 @@ export async function assertBookingMoneyWritable(target: {
         SELECT booking_id FROM linked_sources WHERE booking_type = 'storage'
     )
     SELECT f.id FROM booking_flags f WHERE f.resolved_at IS NULL AND f.booking_id IN (SELECT booking_id FROM linked_bookings)
+      AND NOT (${target.payout === true} AND f.kind = 'chargeback')
+      AND (NOT ${target.payout === true} OR ${target.visitId ?? null}::integer IS NULL OR f.visit_id IS NULL OR f.visit_id = ${target.visitId ?? null})
     UNION ALL SELECT f.id FROM booking_flags f WHERE f.resolved_at IS NULL AND f.storage_booking_id IN (SELECT storage_booking_id FROM linked_storage)
       AND NOT (${target.payout === true} AND f.kind = 'chargeback')
     UNION ALL SELECT a.id FROM support_actions a WHERE (a.booking_id IN (SELECT booking_id FROM linked_bookings)
@@ -47,6 +50,9 @@ export async function assertBookingMoneyWritable(target: {
       AND COALESCE(${target.operationKey ?? null}, '') NOT LIKE (c.policy->'operation'->>'key') || '%'
     UNION ALL SELECT p.id FROM payment_transactions p WHERE p.booking_id IN (SELECT booking_id FROM linked_bookings)
       AND p.booking_type IN ('kitchen', 'bundle') AND p.metadata->'changeTransferOperation'->>'state' = 'pending'
-      AND p.metadata->'changeTransferOperation'->>'key' <> COALESCE(${target.operationKey ?? null}, '') LIMIT 1`);
+      AND p.metadata->'changeTransferOperation'->>'key' <> COALESCE(${target.operationKey ?? null}, '')
+    UNION ALL SELECT d.id FROM kitchen_booking_day_payouts d JOIN payment_transactions p ON p.id = d.source_id
+      WHERE p.booking_id IN (SELECT booking_id FROM linked_bookings) AND p.booking_type IN ('kitchen','bundle')
+        AND d.evidence->>'state' = 'pending' AND d.transfer_id IS NULL AND NOT ${target.payout === true} LIMIT 1`);
   if (result.rows.length) throw new BookingMoneyFrozen();
 }
