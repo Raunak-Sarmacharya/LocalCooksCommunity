@@ -9,7 +9,7 @@ describe('booking additional charges', () => {
     expect(chargeKind({ type: 'session_extension', sessionExtensionId: 1, extensionKind: 'extend' })).toBe('extension');
     expect(chargeKind({ sessionExtensionId: 1, extensionKind: 'extra_time' })).toBe('extra_time');
     expect(chargeKind({ type: 'damage_claim', damage_claim_id: '9' })).toBe('damage_claim');
-    expect(chargeKind({ kitchenChangeId: 3 })).toBeNull();
+    expect(chargeKind({ kitchenChangeId: 'change-3' })).toBe('kitchen_change');
     expect(chargeKind(null)).toBeNull();
   });
   it('chef sees what they paid, never the kitchen share', () => {
@@ -40,17 +40,27 @@ describe('booking additional charges', () => {
   it('leaves out the parent charge, unpaid rows and unrelated rows; keeps refunds visible', () => {
     expect(toAdditionalCharges([row({ paymentIntentId: 'pi_parent' })], 'chef', 'pi_parent')).toEqual([]);
     expect(toAdditionalCharges([row({ status: 'pending' }), row({ status: 'failed' })], 'chef')).toEqual([]);
-    expect(toAdditionalCharges([row({ metadata: { kitchenChangeId: 4 } })], 'chef')).toEqual([]);
+    expect(toAdditionalCharges([row({ metadata: { unrelated: 4 } })], 'chef')).toEqual([]);
     expect(toAdditionalCharges([row({ status: 'partially_refunded', refundAmount: '500' })], 'chef')[0]).toMatchObject({ refundedCents: 500, status: 'partially_refunded' });
   });
   it('reads only this booking, kitchen rows, paid statuses (read-only select)', async () => {
     const chain: any = {};
-    chain.select = vi.fn(() => chain); chain.from = vi.fn(() => chain); chain.where = vi.fn(() => chain); chain.orderBy = vi.fn(() => chain);
-    chain.limit = vi.fn(async () => [row(), row({ id: 2, paymentIntentId: 'pi_parent' })]);
+    chain.select = vi.fn(() => chain); chain.from = vi.fn(() => chain); chain.where = vi.fn(() => chain);
+    chain.orderBy = vi.fn(async () => [row(), row({ id: 2, paymentIntentId: 'pi_parent' })]);
     chain.insert = vi.fn(); chain.update = vi.fn(); chain.delete = vi.fn();
     const lines = await readAdditionalCharges(chain, 159, 'manager', 'pi_parent');
     expect(lines.map(line => line.id)).toEqual([1]);
     expect(chain.where).toHaveBeenCalledTimes(1);
     expect(chain.insert).not.toHaveBeenCalled(); expect(chain.update).not.toHaveBeenCalled(); expect(chain.delete).not.toHaveBeenCalled();
+  });
+  it('counts captured booking changes and their refunds; kitchen shares deduct only the kitchen refund', () => {
+    const change = row({ id: 197, amount: '3050', baseAmount: '2875', serviceFee: '175', stripeProcessingFee: '118',
+      managerRevenue: '2875', paymentIntentId: 'pi_change', status: 'partially_refunded', refundAmount: '500',
+      metadata: { kitchenChangeId: 'change-197', refunds: [{ managerDebited: 450, platformServiceFeeReturned: 50 }] } });
+    expect(toAdditionalCharges([change], 'chef')[0]).toMatchObject({ kind: 'kitchen_change', minutes: null, amountCents: 3050, refundedCents: 500 });
+    expect(toAdditionalCharges([change], 'chef')[0]).not.toHaveProperty('kitchenShareCents');
+    expect(toAdditionalCharges([change], 'manager')[0].kitchenShareCents).toBe(2307);
+    expect(toAdditionalCharges([row({ ...change, status: 'authorized' })], 'chef')).toEqual([]);
+    expect(toAdditionalCharges([change], 'chef', 'pi_change')).toEqual([]);
   });
 });

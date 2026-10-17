@@ -188,6 +188,7 @@ interface BookingDetails {
     serviceFee: number;
     taxAmount?: number;
     managerRevenue: number;
+    kitchenShareCents?: number;
     status: string;
     stripeProcessingFee?: number;
     /** Pre-capture estimate from platform_settings (when stripeProcessingFee is 0) */
@@ -223,8 +224,8 @@ interface BookingDetails {
   checkoutEnabled?: boolean;
   checkinWindowMinutesBefore?: number;
   noShowGraceMinutes?: number;
-  /** Extra time and claim payments on this booking (their own payment rows). `kitchenShareCents` only in the manager view. */
-  additionalCharges?: Array<{ id: number; kind: 'extension' | 'extra_time' | 'damage_claim'; minutes: number | null; amountCents: number;
+  /** Extra time, changes and claim payments (their own payment rows). `kitchenShareCents` only in the manager view. */
+  additionalCharges?: Array<{ id: number; kind: 'extension' | 'extra_time' | 'damage_claim' | 'kitchen_change'; minutes: number | null; amountCents: number;
     kitchenShareCents?: number; refundedCents: number; paidAt: string | null; status: string }>;
   /** The chef's latest "running late" heads-up to the kitchen. */
   runningLate?: RunningLateState | null;
@@ -606,9 +607,11 @@ export default function BookingDetailsPage() {
       return { summary: t('bnChargedOnlyIfAccepts', { kitchen: booking.kitchen?.name || t('bdKitchenBookingFallback') }), detail: t('bdPaymentHeldChef') };
     if (status === 'authorized') return { summary: isManagerView ? t('bdPaymentHeldSummaryManager') : t('bdPaymentHeldSummary', { defaultValue: 'Your payment is on hold.' }), detail: t(isManagerView ? 'bdPaymentHeldManager' : 'bdPaymentHeldChef') };
     if (status === 'failed' && booking.status === 'cancelled') return { summary: isManagerView ? t('bdAuthVoidedSummaryManager') : t('bdAuthVoidedSummary', { defaultValue: 'Your payment hold was released.' }), detail: t(isManagerView ? 'bdAuthVoidedManager' : 'bdAuthVoidedChef') };
+    const refundedCents = (booking.paymentTransaction?.refundAmount || 0)
+      + (booking.additionalCharges || []).reduce((sum, line) => sum + line.refundedCents, 0);
     const goodwill = booking.paymentTransaction?.goodwillRefundCents || 0;
     if (goodwill > 0 && (status === 'refunded' || status === 'partially_refunded')) {
-      const total = Math.max(booking.paymentTransaction?.refundAmount || 0, goodwill);
+      const total = Math.max(refundedCents, goodwill);
       const other = total - goodwill;
       const chefLabel = booking.chef?.fullName || booking.chef?.username || t('bdhChefFallback');
       return isManagerView ? {
@@ -620,11 +623,11 @@ export default function BookingDetailsPage() {
         detail: other > 0 ? t('bdRefundedYou', { amount: formatCurrency(total) }) : t('bdGoodwillChef', { amount: formatCurrency(goodwill) }),
       };
     }
-    if (status === 'refunded' || status === 'partially_refunded') return {
+    if (status === 'refunded' || status === 'partially_refunded' || refundedCents > 0) return {
       // The kitchen didn't pay: it reads what happened to the chef's payment, never "your payment".
-      summary: isManagerView && booking.paymentTransaction?.refundAmount ? t('bdRefundedToChef', { amount: formatCurrency(booking.paymentTransaction.refundAmount) })
+      summary: refundedCents > 0 ? t('bnChargeRefunded', { amount: formatCurrency(refundedCents) })
         : status === 'refunded' ? t('bdRefundedSummary', { defaultValue: 'Your payment was refunded.' }) : t('bdPartialRefundSummary', { defaultValue: 'Part of your payment was refunded.' }),
-      detail: `${booking.paymentTransaction?.refundAmount ? (isManagerView ? '' : t('bdRefundedYou', { amount: formatCurrency(booking.paymentTransaction.refundAmount) })) : t('bdRefundAmountUnavailable', { defaultValue: 'The refund amount is not yet available.' })}${booking.paymentTransaction?.refundedAt ? ` ${t('bdRefundedOn', { date: formatShortDate(booking.paymentTransaction.refundedAt) })}` : ''}${booking.paymentTransaction?.refundReason && isManagerView ? ` ${t('bdRefundReason', { reason: booking.paymentTransaction.refundReason })}` : ''}`,
+      detail: `${refundedCents ? t(isManagerView ? 'bdRefundedToChef' : 'bdRefundedYou', { amount: formatCurrency(refundedCents) }) : t('bdRefundAmountUnavailable', { defaultValue: 'The refund amount is not yet available.' })}${booking.paymentTransaction?.refundedAt ? ` ${t('bdRefundedOn', { date: formatShortDate(booking.paymentTransaction.refundedAt) })}` : ''}${booking.paymentTransaction?.refundReason && isManagerView ? ` ${t('bdRefundReason', { reason: booking.paymentTransaction.refundReason })}` : ''}`,
     };
     if (status === 'paid' && booking.status === 'cancelled') return { summary: t('bdCancelledPaidSummary', { defaultValue: 'Your booking was cancelled after payment.' }), detail: t(isManagerView ? 'bdBookingCancelledManager' : 'bdBookingCancelledChef') };
     // Payout after closeout: the chef has paid, but the kitchen's share is not the kitchen's money until it is sent.
@@ -1192,7 +1195,7 @@ export default function BookingDetailsPage() {
   // Headline figure reuses the same shared breakdown builders the itemized list renders (display only).
   const paymentCaptured = ['paid', 'partially_refunded', 'refunded'].includes(booking?.paymentStatus || '');
   const bookingEnded = ['cancelled', 'rejected', 'expired', 'declined'].includes(booking?.status || '');
-  // Extra time and claim payments are their own charges; the chef's total includes what they paid, the kitchen's its share.
+  // Extra time, changes and claims are their own charges; the chef's total includes what they paid, the kitchen's its share.
   const extraCharges = paymentCaptured ? (booking?.additionalCharges || []) : [];
   const extraCents = (line: NonNullable<BookingDetails['additionalCharges']>[number]) => isManagerView ? (line.kitchenShareCents ?? 0) : line.amountCents;
   const extraTotalCents = extraCharges.reduce((sum, line) => sum + extraCents(line), 0);
@@ -1201,11 +1204,11 @@ export default function BookingDetailsPage() {
       || (!paymentCaptured && bookingEnded)) return null;
     if (isManagerView) return { label: payoutTitle, struck: false,
       // The booking's own net plus each extra charge's net. (The payout snapshot already includes the extras: never add them to it.)
-      cents: (extraCharges.length ? buildKitchenPayoutStatementBreakdown(pricingBreakdownInput).kitchenNetPayoutCents
-        : booking.payout?.timing === 'after_closeout' ? booking.payout.amountCents : buildKitchenPayoutStatementBreakdown(pricingBreakdownInput).kitchenNetPayoutCents) + extraTotalCents };
+      cents: (booking.paymentTransaction.kitchenShareCents ?? (extraCharges.length ? buildKitchenPayoutStatementBreakdown(pricingBreakdownInput).kitchenNetPayoutCents
+        : booking.payout?.timing === 'after_closeout' ? booking.payout.amountCents : buildKitchenPayoutStatementBreakdown(pricingBreakdownInput).kitchenNetPayoutCents)) + extraTotalCents };
     // Before capture it is only a hold on the card; "Total paid" appears once the money was actually taken.
     if (!paymentCaptured) return { label: t('bnCardHold'), cents: booking.paymentTransaction.amount || buildChefBookingReceiptBreakdown(pricingBreakdownInput).totalPaidCents, struck: false };
-    return { label: t('bdhTotalPaid'), cents: buildChefBookingReceiptBreakdown(pricingBreakdownInput).totalPaidCents + extraTotalCents, struck: false };
+    return { label: t('bdhTotalPaid'), cents: booking.paymentTransaction.amount + extraTotalCents, struck: false };
   })();
   // ── State, times and facts for the Now card (design-booking-consolidation.md §2) ─────────────────────────────
   const hasMultipleVisits = (booking?.visits?.length ?? 0) > 1;
@@ -1798,6 +1801,7 @@ export default function BookingDetailsPage() {
         {extraCharges.map(line => (
           <div key={line.id} className="flex justify-between gap-3 text-sm" data-testid="extra-charge-line">
             <span className="text-muted-foreground">{line.kind === 'damage_claim' ? t('bnChargeDamage')
+              : line.kind === 'kitchen_change' ? t('bnChargeBookingChange')
               : line.kind === 'extra_time' ? t('bnChargeExtraTime')
               : line.minutes ? t('bnChargeExtension', { length: formatBookedDuration(line.minutes, lang) }) : t('bnChargeExtensionNoLength')}
               {line.refundedCents > 0 && <span className="block text-xs">{t('bnChargeRefunded', { amount: formatCurrency(line.refundedCents) })}</span>}</span>

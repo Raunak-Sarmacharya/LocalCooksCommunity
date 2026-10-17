@@ -1410,6 +1410,54 @@ describe('fix round 1 regressions', () => {
     expect(docs[0].snapshot).toEqual(originalSnapshot);
   });
 
+  async function capturedEquipment(removed = true) {
+    await h.db.insert(equipmentListings).values({ id: 40, kitchenId: 4, equipmentType: 'Stand mixer', category: 'food-prep', condition: 'excellent', status: 'active' });
+    await h.db.insert(equipmentBookings).values({ id: 50, equipmentListingId: 40, kitchenBookingId: 10, chefId: 3, paymentIntentId: 'pi_original',
+      startDate: startOf(ORIGINAL_DATE), endDate: startOf(ORIGINAL_DATE, '11:00'), status: removed ? 'cancelled' : 'confirmed',
+      paymentStatus: removed ? 'refunded' : 'paid', totalPrice: '1000', serviceFee: '50', pricingModel: 'hourly' });
+    const [source] = await h.db.select().from(paymentTransactions);
+    await h.db.update(paymentTransactions).set({ amount: '10800', baseAmount: '10350', taxAmount: '1350', serviceFee: '450',
+      status: removed ? 'partially_refunded' : 'succeeded', refundAmount: removed ? '1167' : '0', metadata: { ...source.metadata,
+        approvedSubtotal: 9000, approvedTax: 1350, platformCommission: 450,
+        capturedComponentAllocations: [{ kind: 'kitchen', bookingId: 10, subtotalCents: 8000, taxCents: 1200 },
+          { kind: 'equipment', bookingId: 50, subtotalCents: 1000, taxCents: 150 }],
+        ...(removed ? { addonRemovals: [{ componentId: 'equipment:50:0', refundCents: 1167, kitchenRefundCents: 1117 }],
+          refunds: [{ refundId: 're_addon', amount: 1167, managerDebited: 1117, platformServiceFeeReturned: 50 }] } : {}) } });
+    if (removed) await h.db.update(kitchenBookings).set({ paymentStatus: 'partially_refunded' });
+  }
+
+  it('a change after add-on removal quotes and applies only the remaining kitchen time', async () => {
+    await capturedEquipment();
+    const stripe = fakeStripe(), first = await request(stripe, dest(NEW_DATE, 9, 3));
+    expect(first.change.money).toMatchObject({ oldTotalCents: 9600, newTotalCents: 14400, payCents: 4800, refundCents: 0 });
+    expect((await getChange()).quote).toMatchObject({ equipmentTerms: { kitchenCents: 0, taxCents: 0, feeCents: 0 } });
+    await approve(stripe, first.change);
+    const booking = await getBooking();
+    expect([booking.totalPrice, booking.serviceFee]).toEqual(['12000', '600']);
+    expect((booking.visitDuties as any).reschedulePricing).toEqual({ subtotalCents: 12000, taxCents: 1800, commissionCents: 600 });
+    const [item] = await h.db.select().from(equipmentBookings);
+    expect(item.status).toBe('cancelled');
+    expect(item.startDate.toISOString()).toBe(startOf(ORIGINAL_DATE).toISOString());
+  });
+
+  it('shorter kitchen time after add-on removal refunds only the time difference minus its card fee', async () => {
+    await capturedEquipment();
+    const stripe = fakeStripe(), first = await request(stripe, dest(NEW_DATE, 9, 1));
+    expect(first.change.money).toMatchObject({ oldTotalCents: 9600, newTotalCents: 4800, payCents: 0, refundCents: 4667, feeKeptCents: 133 });
+    await approve(stripe, first.change);
+    expect(h.calls.refundOptions).toHaveLength(1);
+    expect(h.calls.refundOptions[0].amount).toBe(4667);
+    expect((await getBooking()).totalPrice).toBe('4000');
+  });
+
+  it('removing equipment after an applied change rebases the next quote on its remaining items', async () => {
+    await capturedEquipment(false);
+    const stripe = fakeStripe(), first = await request(stripe, dest(NEW_DATE, 9, 3));
+    await approve(stripe, first.change);
+    await h.db.update(equipmentBookings).set({ status: 'cancelled', paymentStatus: 'refunded' });
+    expect((await preview(dest(dayFromNow(14), 9, 2))).money).toMatchObject({ oldTotalCents: 14400, newTotalCents: 9600, refundCents: 4500 });
+  });
+
   it('equipment moves at its per-session price; an unavailable item is named, and storage stays refused', async () => {
     await h.db.insert(equipmentListings).values({ id: 40, kitchenId: 4, equipmentType: 'Stand mixer', category: 'food-prep', condition: 'excellent', status: 'active' });
     await h.db.insert(equipmentBookings).values({ id: 50, equipmentListingId: 40, kitchenBookingId: 10, chefId: 3, startDate: startOf(ORIGINAL_DATE), endDate: startOf(ORIGINAL_DATE, '11:00'),
@@ -1426,6 +1474,9 @@ describe('fix round 1 regressions', () => {
     expect(h.calls.capture).toBe(0);
     await h.db.delete(equipmentBookings).where(eq(equipmentBookings.kitchenBookingId, 999));
     await approve(stripe, first.change);
+    const booking = await getBooking();
+    expect([booking.totalPrice, booking.serviceFee]).toEqual(['13000', '650']);
+    expect((booking.visitDuties as any).reschedulePricing).toEqual({ subtotalCents: 12000, taxCents: 1800, commissionCents: 600 });
     const [item] = await h.db.select().from(equipmentBookings);
     expect(item.startDate.toISOString()).toBe(startOf(NEW_DATE).toISOString());
     expect(item.endDate.toISOString()).toBe(startOf(NEW_DATE, '12:00').toISOString()); expect(item.totalPrice).toBe('1000');

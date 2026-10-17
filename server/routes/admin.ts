@@ -3542,8 +3542,8 @@ router.get("/transactions", requireFirebaseAuthWithUser, requireAdmin, async (re
                     ELSE NULL
                 END as reference_code,
                 -- Booking columns describe the booking's own payment only, not a separate charge on the same booking id.
-                CASE WHEN pt.payment_intent_id <> kb.payment_intent_id THEN NULL ELSE kb.total_price END as kb_total_price,
-                CASE WHEN pt.payment_intent_id <> kb.payment_intent_id THEN NULL ELSE kb.service_fee END as kb_service_fee
+                CASE WHEN pt.payment_intent_id <> kb.payment_intent_id OR pt.metadata ? 'originalBookingSchedule' THEN NULL ELSE kb.total_price END as kb_total_price,
+                CASE WHEN pt.payment_intent_id <> kb.payment_intent_id OR pt.metadata ? 'originalBookingSchedule' THEN NULL ELSE kb.service_fee END as kb_service_fee
             ${joinBlock}
             ${whereClause}
             ORDER BY pt.created_at DESC
