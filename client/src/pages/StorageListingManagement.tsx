@@ -1,8 +1,9 @@
 import { StorageIcon as Package } from "@/components/ui/inventory-icons";
 import { StorageTrackingSetup } from "@/components/manager/settings/StorageTrackingSetup";
-import { logger } from "@/lib/logger";
 import { mt } from "@/i18n/manager";
-import { Plus, Pencil, Trash2, Thermometer, Snowflake, AlertTriangle, ChevronLeft, ClipboardCheck } from "@/components/ui/manager-icons";
+import { useSessionFileUpload } from "@/hooks/useSessionFileUpload";
+import { ACCEPTED_IMAGE_TYPES, GalleryPhotoField } from "@/components/manager/kitchen/KitchenPhotoFields";
+import { Plus, Pencil, Trash2, Thermometer, Snowflake, ChevronLeft, ClipboardCheck } from "@/components/ui/manager-icons";
 import { useState, useEffect, useMemo, useCallback, useRef, useImperativeHandle } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
@@ -30,12 +31,11 @@ import {
 import { ManagerPageLayout } from "@/components/layout/ManagerPageLayout";
 import { KitchenScopeField } from "@/components/manager/listings/KitchenScopeField";
 import { SuggestionList, type AddSuggestion } from "@/components/manager/listings/SuggestionList";
-import { SectionBand } from "@/components/manager/listings/SectionBand";
 import { UndoBar, UNDO_WINDOW_MS } from "@/components/manager/shared/UndoBar";
 import { SettingsRow } from "@/components/manager/settings/SettingsRow";
 import { FormLegend } from "@/components/ui/form-legend";
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
-import { STORAGE_CATEGORIES, StorageTemplate, StorageTypeId, ACCESS_TYPE_LABELS, getDefaultTemperatureRange } from "@/lib/storage-templates";
+import { STORAGE_CATEGORIES, StorageTemplate, StorageTypeId, getDefaultTemperatureRange } from "@/lib/storage-templates";
 import { PLATFORM_MAX_TERM_DAYS } from "@shared/storage-rental";
 import { cn } from "@/lib/utils";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -80,11 +80,12 @@ interface StorageListing {
   name: string;
   description?: string;
   basePrice: number; // Daily rate in dollars (converted from cents)
-  totalVolume?: number; // Cubic feet
+  /** Free text such as "One shelf, 36 in wide" (migration 0095). */
+  sizeLabel?: string | null;
   accessType?: string;
   temperatureRange?: string;
+  photos?: string[] | null;
   isActive?: boolean;
-  minimumBookingDuration?: number;
   /** Identical units of this listing a chef can rent (migration 0093). */
   unitCount?: number;
   /** Effective longest term, clamped to the platform maximum on read. */
@@ -93,11 +94,6 @@ interface StorageListing {
   storedMaxTermDays?: number | null;
   /** The platform maximum, sent with every listing so the form can bound the term. */
   platformMaxTermDays?: number;
-  inheritOverstayDefaults?: boolean;
-  overstayGracePeriodDays?: number | null;
-  overstayPenaltyRate?: string | null;
-  overstayMaxPenaltyDays?: number | null;
-  overstayPolicyText?: string;
 }
 
 /** Exactly the fields the form edits — shared by the create and edit paths. */
@@ -105,24 +101,13 @@ interface StorageFormValues {
   name: string;
   storageType: StorageTypeId;
   accessType: string;
-  minimumBookingDuration: number;
-  totalVolume: number;
+  sizeLabel: string;
   temperatureRange: string;
+  photos: string[];
   basePrice: number;
   unitCount: number;
   maxTermDays: number;
-  inheritOverstayDefaults: boolean;
-  overstayGracePeriodDays: number;
-  overstayPenaltyRate: string;
-  overstayMaxPenaltyDays: number;
   description: string;
-}
-
-interface LocationDefaults {
-  gracePeriodDays: number | null;
-  penaltyRate: number | null;
-  maxPenaltyDays: number | null;
-  policyText: string | null;
 }
 
 /**
@@ -138,8 +123,8 @@ interface StorageMatch {
   listingId: number;
 }
 
-/** Sentinel for the "Other…" entry in the access-type Select. */
-const ACCESS_OTHER = "__other__";
+const STORAGE_ACCESS_VALUES = ['kitchen_hours', 'anytime', 'by_arrangement'];
+const PHOTOS_MAX = 10;
 
 /**
  * The storage form. Declared at module scope on purpose: a component defined
@@ -159,44 +144,49 @@ function StorageFields({
   /** Shown when the platform maximum was lowered below what the kitchen set. */
   maxTermNote?: string;
 }) {
-  /**
-   * `access_type` is a plain text column and is never validated server-side, so a
-   * manager may name their own. Anything not in the common list — including the
-   * empty value "Other…" sets — counts as custom and gets a text field.
-   */
-  const accessIsCustom = !(values.accessType in ACCESS_TYPE_LABELS);
-
-  /**
-   * Set the moment "Other…" is picked, so the focus-restore suppression below
-   * does not depend on a re-render landing before the menu finishes closing.
-   */
-  const keepFocusRef = useRef(false);
+  const { toast } = useToast();
+  const { uploadFile, isUploading } = useSessionFileUpload({
+    allowedTypes: ACCEPTED_IMAGE_TYPES,
+    onError: (message) => toast({ title: mt("uploadFailed2"), description: message, variant: "destructive" }),
+  });
+  // Reads the latest photos through a ref so several files picked at once all land.
+  const photosRef = useRef(values.photos);
+  photosRef.current = values.photos;
+  const setPhotos = (photos: string[]) => { photosRef.current = photos; onChange({ photos }); };
+  const addPhotos = async (files: File[]) => {
+    for (const file of files.slice(0, PHOTOS_MAX - photosRef.current.length)) {
+      const result = await uploadFile(file, "storage-photos");
+      if (result?.url) setPhotos([...photosRef.current, result.url]);
+    }
+  };
 
   /** Mirrors the server's own rule (`name: z.string().min(3)`), surfaced inline. */
   const nameTooShort = values.name.length > 0 && values.name.trim().length < 3;
-
-  /**
-   * React's `autoFocus` only sets the attribute — browsers honour it for elements
-   * present at parse time, not for one mounted later, so the field has to be
-   * focused explicitly. Suppressing Radix's focus restore above is what stops it
-   * being stolen back once this has run.
-   */
-  const customAccessRef = useRef<HTMLInputElement>(null);
-  const wasCustomRef = useRef(accessIsCustom);
-  useEffect(() => {
-    const justBecameCustom = accessIsCustom && !wasCustomRef.current;
-    wasCustomRef.current = accessIsCustom;
-    if (justBecameCustom) customAccessRef.current?.focus();
-  }, [accessIsCustom]);
+  const isCold = values.storageType === 'cold' || values.storageType === 'freezer';
 
   return (
     <div className="overflow-hidden rounded-lg border bg-background">
       {/* Same convention as every other form in the app. */}
       <FormLegend className="mb-0 border-b px-4 py-2" />
       <div className="divide-y">
-        <SectionBand label={mt("groupDetails")} />
+        <SettingsRow id="sf-type" label={mt("slKind")} required>
+          <Select
+            value={values.storageType}
+            onValueChange={(v: StorageTypeId) => onChange({
+              storageType: v,
+              temperatureRange: getDefaultTemperatureRange(v) || '',
+            })}
+          >
+            <SelectTrigger id="sf-type" className="w-44"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="dry">{mt("slKindDry")}</SelectItem>
+              <SelectItem value="cold">{mt("slKindCooler")}</SelectItem>
+              <SelectItem value="freezer">{mt("slKindFreezer")}</SelectItem>
+            </SelectContent>
+          </Select>
+        </SettingsRow>
 
-        <SettingsRow layout="stacked" id="sf-name" label={mt("storageName")} required>
+        <SettingsRow layout="stacked" id="sf-name" label={mt("slName")} required>
           <Input
             id="sf-name"
             value={values.name}
@@ -209,60 +199,6 @@ function StorageFields({
           )}
         </SettingsRow>
 
-        <SettingsRow id="sf-type" label={mt("storageType")} required>
-          <Select
-            value={values.storageType}
-            onValueChange={(v: StorageTypeId) => onChange({
-              storageType: v,
-              temperatureRange: getDefaultTemperatureRange(v) || '',
-            })}
-          >
-            <SelectTrigger id="sf-type" className="w-44"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="dry">{mt("dryStorage")}</SelectItem>
-              <SelectItem value="cold">{mt("coldStorage")}</SelectItem>
-              <SelectItem value="freezer">{mt("freezer")}</SelectItem>
-            </SelectContent>
-          </Select>
-        </SettingsRow>
-
-        <SettingsRow id="sf-access" label={mt("accessType")} help={mt("helpAccessType")}>
-          <div className="flex items-center gap-2">
-            <Select
-              value={accessIsCustom ? ACCESS_OTHER : values.accessType}
-              onValueChange={(v) => {
-                keepFocusRef.current = v === ACCESS_OTHER;
-                onChange({ accessType: v === ACCESS_OTHER ? '' : v });
-              }}
-            >
-              <SelectTrigger id="sf-access" className="w-48">
-                <SelectValue placeholder={mt("selectAccessType")} />
-              </SelectTrigger>
-              {/*
-                Radix restores focus to the trigger as the menu closes, which
-                happens after the close animation and would steal it from the
-                field that "Other…" just revealed. Suppressing the restore only
-                in that case keeps normal keyboard flow intact for real options.
-              */}
-              <SelectContent onCloseAutoFocus={(event) => { if (keepFocusRef.current) event.preventDefault(); }}>
-                {Object.entries(ACCESS_TYPE_LABELS).map(([value, label]) => (
-                  <SelectItem key={value} value={value}>{label}</SelectItem>
-                ))}
-                <SelectItem value={ACCESS_OTHER}>{mt("accessTypeOther")}</SelectItem>
-              </SelectContent>
-            </Select>
-            {accessIsCustom && (
-              <Input
-                ref={customAccessRef}
-                className="w-44"
-                value={values.accessType}
-                onChange={(e) => onChange({ accessType: e.target.value })}
-                placeholder={mt("accessTypeCustomPlaceholder")}
-              />
-            )}
-          </div>
-        </SettingsRow>
-
         <SettingsRow id="sf-units" label={mt("storageUnitCount")} help={mt("storageUnitCountHelp")}>
           <NumericInput
             id="sf-units"
@@ -272,40 +208,6 @@ function StorageFields({
             onValueChange={(v) => onChange({ unitCount: parseInt(v) || 1 })}
           />
         </SettingsRow>
-
-        <SettingsRow id="sf-min" label={mt("minimumBookingDays")} help={mt("helpMinBooking")}>
-          <NumericInput
-            id="sf-min"
-            className="w-28"
-            suffix={mt("daysUnit")}
-            value={String(values.minimumBookingDuration || 1)}
-            onValueChange={(v) => onChange({ minimumBookingDuration: parseInt(v) || 1 })}
-          />
-        </SettingsRow>
-
-        <SettingsRow id="sf-size" label={mt("sizeCubicFeet")} help={mt("helpSize")}>
-          <NumericInput
-            id="sf-size"
-            className="w-28"
-            suffix="cu ft"
-            value={values.totalVolume ? String(values.totalVolume) : ''}
-            onValueChange={(v) => onChange({ totalVolume: parseFloat(v) || 0 })}
-          />
-        </SettingsRow>
-
-        {(values.storageType === 'cold' || values.storageType === 'freezer') && (
-          <SettingsRow id="sf-temp" label={mt("temperatureRange")} help={mt("helpTemperature")}>
-            <Input
-              id="sf-temp"
-              className="w-40"
-              value={values.temperatureRange}
-              onChange={(e) => onChange({ temperatureRange: e.target.value })}
-              placeholder={mt("eG3540F")}
-            />
-          </SettingsRow>
-        )}
-
-        <SectionBand label={mt("groupPricing")} />
 
         <SettingsRow id="sf-rate" label={mt("storagePricePerDay")} hint={mt("currencyCadHint")} required>
           <NumericInput
@@ -318,63 +220,78 @@ function StorageFields({
           />
         </SettingsRow>
 
-        <SettingsRow id="sf-term" label={mt("storageMaxTermDays", { max: platformMaxTermDays })} help={maxTermNote ?? mt("storageMaxTermDaysHelp")}>
-          <NumericInput
-            id="sf-term"
-            className="w-28"
-            suffix={mt("daysUnit")}
-            value={String(values.maxTermDays || platformMaxTermDays)}
-            onValueChange={(v) => onChange({ maxTermDays: Math.min(parseInt(v) || platformMaxTermDays, platformMaxTermDays) })}
+        <SettingsRow layout="stacked" id="sf-photos" label={mt("slPhotos")} help={mt("slPhotosHelp", { max: PHOTOS_MAX })}>
+          <GalleryPhotoField
+            images={values.photos}
+            disabled={isUploading || values.photos.length >= PHOTOS_MAX}
+            onSelectFiles={(files) => void addPhotos(files)}
+            onReplace={(oldUrl, file) => void uploadFile(file, "storage-photos").then((r) => {
+              if (r?.url) setPhotos(photosRef.current.map((u) => (u === oldUrl ? r.url : u)));
+            })}
+            onRemove={(url) => setPhotos(photosRef.current.filter((u) => u !== url))}
+            className="grid grid-cols-2 gap-3 sm:grid-cols-3"
           />
         </SettingsRow>
 
-        <SectionBand label={mt("navOverstayPenalties")} hint={mt("penaltiesHint")} />
-        <SettingsRow id="sf-inherit" label="Use location and platform overstay defaults" help="New bookings use the current defaults. Existing bookings keep their agreed terms.">
-          <Switch id="sf-inherit" checked={values.inheritOverstayDefaults} onCheckedChange={(inheritOverstayDefaults) => onChange({ inheritOverstayDefaults })} />
-        </SettingsRow>
-
-        <SettingsRow id="sf-grace" label={mt("gracePeriodDays2")} help={mt("helpGraceDays")}>
-          <NumericInput
-            id="sf-grace"
-            disabled={values.inheritOverstayDefaults}
-            className="w-24"
-            suffix={mt("daysUnit")}
-            value={String(values.overstayGracePeriodDays)}
-            onValueChange={(v) => onChange({ overstayGracePeriodDays: parseInt(v) || 0 })}
+        <SettingsRow layout="stacked" id="sf-size" label={mt("slSize")}>
+          <Input
+            id="sf-size"
+            value={values.sizeLabel}
+            maxLength={120}
+            onChange={(e) => onChange({ sizeLabel: e.target.value })}
+            placeholder={mt("slSizePlaceholder")}
           />
         </SettingsRow>
 
-        <SettingsRow id="sf-pen" label={mt("penaltyRate2")} help={mt("helpPenaltyRate")}>
-          <NumericInput
-            id="sf-pen"
-            disabled={values.inheritOverstayDefaults}
-            className="w-24"
-            suffix="%"
-            value={String(Math.round(parseFloat(values.overstayPenaltyRate) * 100))}
-            onValueChange={(v) => onChange({ overstayPenaltyRate: ((parseInt(v) || 0) / 100).toString() })}
-          />
+        <SettingsRow layout="stacked" id="sf-access" label={mt("slAccess")}>
+          <Select value={values.accessType} onValueChange={(accessType) => onChange({ accessType })}>
+            <SelectTrigger id="sf-access" className="w-full"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="kitchen_hours">{mt("slAccessKitchenHours")}</SelectItem>
+              <SelectItem value="anytime">{mt("slAccessAnytime")}</SelectItem>
+              <SelectItem value="by_arrangement">{mt("slAccessArrangement")}</SelectItem>
+            </SelectContent>
+          </Select>
         </SettingsRow>
 
-        <SettingsRow id="sf-max" label={mt("maxPenaltyDays")} help={mt("helpMaxPenaltyDays")}>
-          <NumericInput
-            id="sf-max"
-            disabled={values.inheritOverstayDefaults}
-            className="w-24"
-            suffix={mt("daysUnit")}
-            value={String(values.overstayMaxPenaltyDays)}
-            onValueChange={(v) => onChange({ overstayMaxPenaltyDays: parseInt(v) || 1 })}
-          />
-        </SettingsRow>
+        {isCold && (
+          <SettingsRow id="sf-temp" label={mt("slTemperature")} help={mt("helpTemperature")}>
+            <Input
+              id="sf-temp"
+              className="w-40"
+              value={values.temperatureRange}
+              onChange={(e) => onChange({ temperatureRange: e.target.value })}
+              placeholder={mt("eG3540F")}
+            />
+          </SettingsRow>
+        )}
 
-        <SettingsRow layout="stacked" id="sf-desc" label={mt("description")}>
+        <SettingsRow layout="stacked" id="sf-desc" label={mt("slNotes")}>
           <Textarea
             id="sf-desc"
             value={values.description}
             onChange={(e) => onChange({ description: e.target.value })}
-            placeholder={mt("describeTheStorageSpace")}
-            rows={2}
+            placeholder={mt("slNotesPlaceholder")}
+            rows={3}
           />
         </SettingsRow>
+
+        <details className="px-4 py-3">
+          <summary className="cursor-pointer text-sm font-medium">{mt("slMoreOptions")}</summary>
+          <div className="mt-3">
+            <SettingsRow id="sf-term" label={mt("slMaxTerm", { max: platformMaxTermDays })} help={maxTermNote ?? mt("storageMaxTermDaysHelp")}>
+              <NumericInput
+                id="sf-term"
+                className="w-28"
+                suffix={mt("daysUnit")}
+                value={String(values.maxTermDays || platformMaxTermDays)}
+                onValueChange={(v) => onChange({ maxTermDays: Math.min(parseInt(v) || platformMaxTermDays, platformMaxTermDays) })}
+              />
+            </SettingsRow>
+          </div>
+        </details>
+
+        <p className="px-4 py-3 text-sm text-muted-foreground">{mt("slRulesNote")}</p>
       </div>
     </div>
   );
@@ -458,7 +375,6 @@ export function StorageListingContent({
   const [, navigate] = useLocation();
   const [listings, setListings] = useState<StorageListing[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [locationDefaults, setLocationDefaults] = useState<LocationDefaults | null>(null);
 
   /**
    * Storage listings for every kitchen at this location, keyed by kitchen id.
@@ -507,7 +423,6 @@ export function StorageListingContent({
   useEffect(() => {
     if (selectedLocationId) {
       loadKitchens();
-      loadLocationDefaults();
     } else {
       setKitchens([]);
     }
@@ -565,19 +480,6 @@ export function StorageListingContent({
       }),
     );
     setAllKitchenListings(Object.fromEntries(entries));
-  };
-
-  const loadLocationDefaults = async () => {
-    if (!selectedLocationId) return;
-    try {
-      const data = await apiGet(`/manager/locations/${selectedLocationId}/overstay-penalty-defaults`);
-      setLocationDefaults({ ...data.locationDefaults,
-        gracePeriodDays: data.locationDefaults.gracePeriodDays ?? data.platformDefaults?.gracePeriodDays,
-        penaltyRate: data.locationDefaults.penaltyRate ?? data.platformDefaults?.penaltyRate,
-        maxPenaltyDays: data.locationDefaults.maxPenaltyDays ?? data.platformDefaults?.maxPenaltyDays });
-    } catch (error: any) {
-      logger.error('Failed to load location defaults:', error);
-    }
   };
 
   /** Fetch and map the current kitchen's listings. Returns them for callers that need the fresh rows. */
@@ -686,21 +588,17 @@ export function StorageListingContent({
     [listings],
   );
 
-  /** Sensible starting values, seeded from the location's overstay defaults. */
+  /** Sensible starting values. */
   const blankEntry = (overrides: Partial<StorageFormValues> = {}): StorageFormValues => ({
     name: '',
     storageType: 'dry',
-    accessType: 'shelving-unit',
-    minimumBookingDuration: 1,
-    totalVolume: 0,
-    temperatureRange: getDefaultTemperatureRange('dry') || '',
+    accessType: 'kitchen_hours',
+    sizeLabel: '',
+    temperatureRange: '',
+    photos: [],
     basePrice: 0,
     unitCount: 1,
     maxTermDays: platformMaxTermDays,
-    inheritOverstayDefaults: true,
-    overstayGracePeriodDays: locationDefaults?.gracePeriodDays ?? 3,
-    overstayPenaltyRate: (locationDefaults?.penaltyRate ?? 0.10).toString(),
-    overstayMaxPenaltyDays: locationDefaults?.maxPenaltyDays ?? 30,
     description: '',
     ...overrides,
   });
@@ -711,7 +609,6 @@ export function StorageListingContent({
       storageType: template.storageType,
       description: template.description,
       basePrice: template.suggestedDailyRate,
-      accessType: template.accessTypes[0] || 'walk-in',
       temperatureRange: template.temperatureRange || getDefaultTemperatureRange(template.storageType) || '',
     });
 
@@ -719,20 +616,14 @@ export function StorageListingContent({
   const toFormValues = (listing: StorageListing): StorageFormValues => ({
     name: listing.name,
     storageType: listing.storageType,
-    // `??`, not `||`: an empty access type is meaningful — it is what "Other…"
-    // sets while the manager is typing their own label — and `||` would coerce it
-    // straight back to a preset, making the custom field unreachable on edit.
-    accessType: listing.accessType ?? 'shelving-unit',
-    minimumBookingDuration: listing.minimumBookingDuration ?? 1,
-    totalVolume: listing.totalVolume ?? 0,
+    // Legacy values ("walk-in", free text) are not accepted on write, so they show as the default.
+    accessType: STORAGE_ACCESS_VALUES.includes(listing.accessType ?? '') ? listing.accessType! : 'kitchen_hours',
+    sizeLabel: listing.sizeLabel ?? '',
     temperatureRange: listing.temperatureRange || '',
+    photos: Array.isArray(listing.photos) ? listing.photos : [],
     basePrice: listing.basePrice || 0,
     unitCount: listing.unitCount ?? 1,
     maxTermDays: listing.maxTermDays ?? platformMaxTermDays,
-    inheritOverstayDefaults: listing.inheritOverstayDefaults ?? (listing.overstayGracePeriodDays == null && listing.overstayPenaltyRate == null && listing.overstayMaxPenaltyDays == null),
-    overstayGracePeriodDays: listing.overstayGracePeriodDays ?? locationDefaults?.gracePeriodDays ?? 3,
-    overstayPenaltyRate: listing.overstayPenaltyRate ?? String(locationDefaults?.penaltyRate ?? 0.10),
-    overstayMaxPenaltyDays: listing.overstayMaxPenaltyDays ?? locationDefaults?.maxPenaltyDays ?? 30,
     description: listing.description || '',
   });
 
@@ -861,19 +752,14 @@ export function StorageListingContent({
     storageType: storage.storageType,
     description: storage.description || undefined,
     dailyPriceCents: Math.round(storage.basePrice * 100), // Daily price in cents
-    totalVolume: storage.totalVolume || undefined,
-    accessType: storage.accessType || undefined,
-    temperatureRange: storage.temperatureRange || undefined,
+    sizeLabel: storage.sizeLabel.trim() || null,
+    accessType: storage.accessType,
+    temperatureRange: storage.storageType === 'dry' ? undefined : storage.temperatureRange || undefined,
+    photos: storage.photos,
     unitCount: storage.unitCount || 1,
     maxTermDays: storage.maxTermDays || null,
-    pricingModel: 'daily',
-    minimumBookingDuration: storage.minimumBookingDuration || 1,
-    bookingDurationUnit: 'daily',
     currency: 'CAD',
     isActive: true,
-    overstayGracePeriodDays: storage.inheritOverstayDefaults ? null : storage.overstayGracePeriodDays,
-    overstayPenaltyRate: storage.inheritOverstayDefaults ? null : storage.overstayPenaltyRate,
-    overstayMaxPenaltyDays: storage.inheritOverstayDefaults ? null : storage.overstayMaxPenaltyDays,
   });
 
   /**
@@ -933,22 +819,21 @@ export function StorageListingContent({
    * omitted for the same class of reason — the repository applies the body straight
    * to the UPDATE, so forwarding it would move the other kitchen's listing here.
    */
-  const extraKitchenPayload = (listing: StorageListing) => ({
-    name: listing.name,
-    storageType: listing.storageType,
-    description: listing.description || undefined,
-    dailyPriceCents: Math.round((listing.basePrice || 0) * 100), // Daily price in cents
-    totalVolume: listing.totalVolume || undefined,
-    accessType: listing.accessType || undefined,
-    temperatureRange: listing.temperatureRange || undefined,
-    unitCount: listing.unitCount ?? 1,
-    maxTermDays: listing.maxTermDays ?? null,
-    minimumBookingDuration: listing.minimumBookingDuration || 1,
-    overstayGracePeriodDays: listing.inheritOverstayDefaults ? null : listing.overstayGracePeriodDays,
-    overstayPenaltyRate: listing.inheritOverstayDefaults ? null : listing.overstayPenaltyRate,
-    overstayMaxPenaltyDays: listing.inheritOverstayDefaults ? null : listing.overstayMaxPenaltyDays,
-    overstayPolicyText: listing.overstayPolicyText,
-  });
+  const extraKitchenPayload = (listing: StorageListing) => {
+    const f = toFormValues(listing);
+    return {
+      name: f.name,
+      storageType: f.storageType,
+      description: f.description || undefined,
+      dailyPriceCents: Math.round(f.basePrice * 100), // Daily price in cents
+      sizeLabel: f.sizeLabel.trim() || null,
+      accessType: f.accessType,
+      temperatureRange: f.storageType === 'dry' ? undefined : f.temperatureRange || undefined,
+      photos: f.photos,
+      unitCount: f.unitCount,
+      maxTermDays: listing.maxTermDays ?? null,
+    };
+  };
 
   /** Returns true when the listing saved, so the unsaved-changes dialog can stay open on failure. */
   const saveDraft = async (): Promise<boolean> => {
@@ -1332,19 +1217,7 @@ export function StorageListingContent({
                             </span>
                             <span>{mt("storageUnitsCount", { count: listing.unitCount ?? 1 })}</span>
                             <span>{mt("storageMaxTermShort", { max: listing.maxTermDays ?? platformMaxTermDays })}</span>
-                            {listing.totalVolume ? <span>{listing.totalVolume} cu ft</span> : null}
-                            {/* Falls back to the stored value so a manager's own
-                                access-type label still shows in the list. */}
-                            {listing.accessType
-                              ? <span>{ACCESS_TYPE_LABELS[listing.accessType] ?? listing.accessType}</span>
-                              : null}
-                            {listing.minimumBookingDuration && listing.minimumBookingDuration > 1
-                              ? <span>Min {listing.minimumBookingDuration} days</span>
-                              : null}
-                            <span className="flex items-center gap-1">
-                              <AlertTriangle className="h-3 w-3" />
-                              {listing.overstayGracePeriodDays ?? 3}d · {Math.round(parseFloat(listing.overstayPenaltyRate || '0.1') * 100)}%/day
-                            </span>
+                            {listing.sizeLabel ? <span>{listing.sizeLabel}</span> : null}
                           </div>
                           {alsoIn.length > 0 && (
                             <p className="mt-1 text-xs text-muted-foreground">

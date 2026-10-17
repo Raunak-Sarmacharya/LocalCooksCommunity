@@ -1262,5 +1262,8 @@
   "checkoutViewBooking": "View your booking",
   "invChooseDateFirst": "Choose a date first",
   "invClosedDay": "The kitchen is closed this day",
-  "invSlotTaken": "{time} · booked"
+  "invSlotTaken": "{time} · booked",
+  "bssAccess_kitchen_hours": "During kitchen hours",
+  "bssAccess_anytime": "Anytime",
+  "bssAccess_by_arrangement": "By arrangement with the kitchen"
 }

@@ -13,11 +13,14 @@ const router = Router();
 
 const UNIT_COUNT_MIN = 1;
 const UNIT_COUNT_MAX = 200;
+const ACCESS_TYPES = ['kitchen_hours', 'anytime', 'by_arrangement'];
+const PHOTOS_MAX = 10;
 
 /**
  * Storage-v1 listing input: identical units, a daily price, and a term no longer than the platform maximum.
  * `dailyPriceCents` maps onto `base_price` (the daily price in cents) and the pricing model is always daily —
- * per-cubic-foot, hourly and monthly pricing are not offered.
+ * per-cubic-foot, hourly and monthly pricing are not offered. A booking is always at least one day, and the
+ * overstay rules are the platform's (not per listing), so those inputs are dropped rather than stored.
  */
 export function validateStorageListingInput(data: Record<string, unknown>, platformMaxDays: number, partial = false): { error?: string; value?: Record<string, unknown> } {
     const value: Record<string, unknown> = { ...data };
@@ -38,19 +41,24 @@ export function validateStorageListingInput(data: Record<string, unknown>, platf
         value.basePrice = dailyPrice;
     }
     delete value.dailyPriceCents;
-    delete value.pricePerCubicFoot;
     value.pricingModel = 'daily';
-    return { value };
-}
-
-function validateOverstayOverrides(data: Record<string, unknown>): string | undefined {
-    for (const [key, min, max] of [['overstayGracePeriodDays', 0, 14], ['overstayMaxPenaltyDays', 1, 90]] as const) {
-        const value = data[key];
-        if (value != null && (!Number.isSafeInteger(value) || Number(value) < min || Number(value) > max)) return `${key} must be a whole number from ${min} to ${max}, or null to inherit`;
+    value.bookingDurationUnit = 'daily';
+    value.minimumBookingDuration = 1;
+    for (const dropped of ['pricePerCubicFoot', 'totalVolume', 'overstayGracePeriodDays', 'overstayPenaltyRate', 'overstayMaxPenaltyDays', 'overstayPolicyText']) delete value[dropped];
+    // Legacy access values stay readable but cannot be written back.
+    if (value.accessType == null) {
+        if (!partial) value.accessType = ACCESS_TYPES[0];
+    } else if (!ACCESS_TYPES.includes(value.accessType as string)) {
+        return { error: 'Access must be during kitchen hours, anytime, or by arrangement with the kitchen' };
     }
-    const rate = data.overstayPenaltyRate;
-    if (rate != null && ((typeof rate !== 'number' && typeof rate !== 'string') || String(rate).trim() === '' || !Number.isFinite(Number(rate)) || Number(rate) < 0 || Number(rate) > 1)) return 'Overstay penalty rate must be between 0 and 1, or null to inherit';
-    if (data.overstayPolicyText != null && typeof data.overstayPolicyText !== 'string') return 'Overstay policy text must be a string';
+    if (value.sizeLabel != null) {
+        if (typeof value.sizeLabel !== 'string' || value.sizeLabel.length > 120) return { error: 'Size must be text of 120 characters or fewer' };
+        value.sizeLabel = value.sizeLabel.trim() || null;
+    }
+    if (value.photos != null && (!Array.isArray(value.photos) || value.photos.length > PHOTOS_MAX || value.photos.some((url) => typeof url !== 'string'))) {
+        return { error: `Photos must be a list of up to ${PHOTOS_MAX} image links` };
+    }
+    return { value };
 }
 
 // ===================================
@@ -128,9 +136,6 @@ router.post("/manager/storage-listings", requireFirebaseAuthWithUser, requireMan
     try {
         const user = req.neonUser!;
         const { kitchenId, ...listingData } = req.body;
-        const overrideError = validateOverstayOverrides(listingData);
-        if (overrideError) return res.status(400).json({ error: overrideError });
-
         if (!kitchenId || isNaN(parseInt(kitchenId))) {
             return res.status(400).json({ error: "Valid kitchen ID is required" });
         }
@@ -154,29 +159,11 @@ router.post("/manager/storage-listings", requireFirebaseAuthWithUser, requireMan
         const validated = validateStorageListingInput(listingData, platformMaxDays);
         if (validated.error) return res.status(400).json({ error: validated.error });
 
-        // Null overrides inherit live defaults until the booking terms are accepted.
-        const listingDataWithDefaults = {
-            ...validated.value,
-            // Only apply location defaults if listing data doesn't already include these values
-            overstayGracePeriodDays: listingData.overstayGracePeriodDays !== undefined 
-                ? listingData.overstayGracePeriodDays 
-                : null,
-            overstayPenaltyRate: listingData.overstayPenaltyRate !== undefined 
-                ? listingData.overstayPenaltyRate 
-                : null,
-            overstayMaxPenaltyDays: listingData.overstayMaxPenaltyDays !== undefined 
-                ? listingData.overstayMaxPenaltyDays 
-                : null,
-            overstayPolicyText: listingData.overstayPolicyText !== undefined 
-                ? listingData.overstayPolicyText 
-                : null,
-        };
-
         // Manager-created listings are auto-approved and active
         // This enables immediate visibility to chefs without requiring separate admin approval
         const created = await inventoryService.createStorageListing({
             kitchenId: parseInt(kitchenId),
-            ...listingDataWithDefaults,
+            ...validated.value,
             status: 'active', // Auto-activate manager-created listings
             isActive: true,
         });
@@ -214,8 +201,6 @@ router.put("/manager/storage-listings/:listingId", requireFirebaseAuthWithUser, 
             return res.status(403).json({ error: "Access denied to this listing" });
         }
 
-        const overrideError = validateOverstayOverrides(req.body);
-        if (overrideError) return res.status(400).json({ error: overrideError });
         if (req.body.kitchenId !== undefined && Number(req.body.kitchenId) !== existingListing.kitchenId) {
             return res.status(400).json({ error: 'A storage listing cannot be moved to another kitchen' });
         }
@@ -403,6 +388,10 @@ router.get("/public/kitchens/:kitchenId/storage-listings", async (req: Request, 
             dimensionsWidth: s.dimensionsWidth ?? null,
             dimensionsHeight: s.dimensionsHeight ?? null,
             totalVolume: s.totalVolume ?? null,
+            sizeLabel: s.sizeLabel ?? null,
+            accessType: s.accessType ?? null,
+            temperatureRange: s.temperatureRange ?? null,
+            photos: s.photos ?? [],
             climateControl: !!s.climateControl,
             currency: s.currency || "CAD",
             unitCount: s.unitCount ?? 1,
