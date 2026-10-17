@@ -2146,6 +2146,7 @@ export default function KitchenBookingFlow({
             className="w-full rounded-[1.35rem] border bg-white px-3 py-3 shadow-sm sm:px-5"
             aria-label={t("sheetBookingStepsAria", "Booking steps")}
             role="group"
+            aria-orientation={undefined}
           >
             {/* Progress display only (steps aren't clickable); the caption below announces the current step. */}
             <StepperNav aria-hidden className="w-full flex-row items-start">
