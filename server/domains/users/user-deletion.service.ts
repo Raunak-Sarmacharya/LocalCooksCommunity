@@ -54,7 +54,6 @@ export function userDeletionTargets(id: number): Array<{ table: string; where: S
     { table: "kitchen_booking_attendance_events", where: sql`actor_id = ${id} OR booking_id IN (${bookingIds}) OR visit_id IN (SELECT id FROM kitchen_booking_visits WHERE booking_id IN (${bookingIds}))` },
     { table: "booking_lifecycle_events", where: sql`actor_id = ${id} OR booking_id IN (${bookingIds})` },
     { table: "kitchen_booking_changes", where: sql`manager_id = ${id} OR booking_id IN (${bookingIds})` },
-    { table: "storage_overstay_quotes", where: sql`chef_id = ${id} OR storage_listing_id IN (SELECT id FROM storage_listings WHERE kitchen_id IN (${kitchenIds}))` },
     { table: "tour_feedback_responses", where: sql`respondent_id = ${id} OR viewing_id IN (${viewingIds})` },
     { table: "tour_repeat_authorizations", where: sql`granted_by = ${id} OR revoked_by = ${id} OR source_tour_id IN (${viewingIds}) OR used_by_tour_id IN (${viewingIds})` },
     { table: "damage_claims", where: sql`chef_id = ${id} OR manager_id = ${id} OR location_id IN (${locationIds}) OR kitchen_booking_id IN (${bookingIds}) OR storage_booking_id IN (${storageIds}) OR kitchen_booking_visit_id IN (SELECT id FROM kitchen_booking_visits WHERE booking_id IN (${bookingIds}))` },

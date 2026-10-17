@@ -30,7 +30,6 @@ import { eq, and, lt, not, inArray, desc, asc, sql, isNull } from "drizzle-orm";
 import { logger } from "../logger";
 import Stripe from "stripe";
 import { getOverstayPlatformDefaults, getEffectivePenaltyConfig, getOverstayDisputeWindowHours, isOverstayMonetaryEnforcementEnabled } from "./overstay-defaults-service";
-import { isStorageOverstayTerms } from '@shared/storage-overstay-terms';
 import { overstayCollectionError } from '@shared/overstay-collection';
 import { TZDate } from '@date-fns/tz';
 import { DEFAULT_TIMEZONE } from '@shared/timezone-utils';
@@ -418,73 +417,11 @@ export async function processManagerDecision(decision: ManagerPenaltyDecision): 
 // ============================================================================
 
 /**
- * Charge the chef for an approved penalty using their saved payment method
+ * Off-session penalty charging was removed with the legacy storage flow (ST12); holdover is paid by the chef on-session.
  */
 export async function chargeApprovedPenalty(_overstayRecordId: number): Promise<ChargeResult> {
   return { success: false, error: 'Storage holdover is paid by the chef; it is never charged off-session' };
 }
-
-async function sendEscalationPaymentLinkToChef(
-  overstayRecordId: number,
-  record: StorageOverstayRecord,
-  chefId: number | null,
-  failureReason: string
-): Promise<void> {
-  if (!chefId) return;
-
-  try {
-    // Get chef email
-    const [chef] = await db
-      .select({ email: users.username })
-      .from(users)
-      .where(eq(users.id, chefId))
-      .limit(1);
-
-    if (!chef?.email) {
-      logger.warn(`[OverstayService] No email found for chef ${chefId} — cannot send escalation payment link`);
-      return;
-    }
-
-    // Get storage name for email context
-    const [booking] = await db
-      .select({ storageName: storageListings.name })
-      .from(storageBookings)
-      .innerJoin(storageListings, eq(storageBookings.storageListingId, storageListings.id))
-      .where(eq(storageBookings.id, record.storageBookingId))
-      .limit(1);
-
-    const storageName = booking?.storageName || 'Storage';
-    const penaltyAmount = ((record.finalPenaltyCents ?? record.calculatedPenaltyCents ?? 0) / 100).toFixed(2);
-
-    // Create Stripe Checkout session
-    const baseUrl = process.env.FRONTEND_URL || process.env.VITE_API_URL || 'https://localcooks.com';
-    const checkoutResult = await createPenaltyPaymentCheckout(
-      overstayRecordId,
-      chefId,
-      `${baseUrl}/chef/payments/success?overstay=${overstayRecordId}`,
-      `${baseUrl}/chef/payments/cancel?overstay=${overstayRecordId}`
-    );
-
-    if ('checkoutUrl' in checkoutResult) {
-      await createOverstayHistoryEntry(
-        overstayRecordId,
-        'escalated',
-        'escalated',
-        'escalation_checkout_prepared',
-        'system',
-        `Escalation checkout prepared for chef ${chef.email}`,
-        { checkoutUrl: checkoutResult.checkoutUrl, chefEmail: chef.email, failureReason }
-      );
-    }
-  } catch (error) {
-    logger.error(`[OverstayService] Failed to send escalation payment link to chef:`, error);
-  }
-}
-
-/**
- * Notify all admin users when an overstay penalty is escalated.
- * Called immediately when auto-charge fails — no retry system.
- */
 
 export async function resolveOverstay(
   overstayRecordId: number,

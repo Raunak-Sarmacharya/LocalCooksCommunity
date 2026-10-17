@@ -138,7 +138,7 @@ router.post('/chef/invitations/:id/checkout', requireChef, requireNoUnpaidPenalt
       bookingData: {
         kitchenId: row.kitchenId, chefId, bookingDate: new Date(`${row.date}T12:00:00Z`).toISOString(),
         startTime: row.startTime, endTime: row.endTime, selectedSlots: slots, specialNotes: row.note || undefined,
-        selectedStorage: [], selectedEquipmentIds: pricing.equipment.map(item => item.listingId), totalPriceCents: pricing.subtotalCents,
+        selectedEquipmentIds: pricing.equipment.map(item => item.listingId), totalPriceCents: pricing.subtotalCents,
         taxCents: pricing.taxCents, taxRatePercent: pricing.subtotalCents ? pricing.taxCents * 100 / pricing.subtotalCents : 0,
         hourlyRateCents: row.pricingMode === 'daily' ? row.offeredSubtotalCents : Math.round(row.offeredSubtotalCents / slots.length),
         durationHours: slots.length, pricingMode: row.pricingMode as 'hourly' | 'daily',

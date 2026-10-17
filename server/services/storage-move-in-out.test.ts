@@ -35,7 +35,7 @@ import { prepareClaimPayment, settleClaimPayment } from './damage-claim-money';
 const { kitchens, locations, storageListings, storageBookings, storageRentalTerms, paymentTransactions, users, commitmentProblems,
   damageClaims, damageEvidence, damageClaimHistory, bookingFlags, supportActions, platformSettings, emailLogs,
   checkinCheckoutChecklists, kitchenCheckoutIncidents, kitchenBookingChanges, equipmentBookings } = schema;
-const tables = [schema.kitchenBookings, schema.pendingStorageExtensions, schema.storageOverstayRecords, kitchens, locations, storageListings, storageBookings, storageRentalTerms, paymentTransactions, users, commitmentProblems,
+const tables = [schema.kitchenBookings, schema.storageOverstayRecords, kitchens, locations, storageListings, storageBookings, storageRentalTerms, paymentTransactions, users, commitmentProblems,
   damageClaims, damageEvidence, damageClaimHistory, bookingFlags, supportActions, platformSettings, emailLogs,
   checkinCheckoutChecklists, kitchenCheckoutIncidents, kitchenBookingChanges, equipmentBookings];
 let pg: PGlite;

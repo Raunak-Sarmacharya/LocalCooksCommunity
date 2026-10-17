@@ -22,7 +22,7 @@ describe('complete user deletion', () => {
     expect(position('kitchen_booking_attendance_events')).toBeLessThan(position('kitchen_booking_visits'));
     expect(position('tour_repeat_authorizations')).toBeLessThan(position('kitchen_viewings'));
     expect(position('tour_feedback_responses')).toBeLessThan(position('kitchen_viewings'));
-    expect(position('storage_overstay_quotes')).toBeLessThan(position('storage_listings'));
+    expect(position('storage_overstay_quotes')).toBe(-1); // dropped by 0094; its foreign keys cascade until then
     expect(position('kitchen_invitation_events')).toBeLessThan(position('kitchen_invitations'));
     expect(position('kitchen_invitations')).toBeLessThan(position('kitchen_bookings'));
     expect(position('kitchen_invitations')).toBeLessThan(position('kitchens'));

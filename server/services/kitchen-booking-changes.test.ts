@@ -996,7 +996,7 @@ describe('every reason carries a stable, translatable code', () => {
   });
 
   it('a storage or equipment attachment is named by code', async () => {
-    await h.db.insert(storageBookings).values({ kitchenBookingId: 10, storageListingId: 1, chefId: 3, startDate: startOf(NEW_DATE), endDate: startOf(dayFromNow(20)), status: 'confirmed', totalPrice: '1000', pricingModel: 'daily' } as any);
+    await h.db.insert(storageBookings).values({ kitchenBookingId: 10, storageListingId: 1, chefId: 3, startDate: startOf(NEW_DATE), endDate: startOf(dayFromNow(20)), status: 'confirmed', totalPrice: '1000', pricingModel: 'daily', rentalState: 'ended', endReason: 'legacy' } as any);
     expect(await codeOf(preview(dest(NEW_DATE, 9, 2)))).toBe('storageContactSupport');
     await h.db.delete(storageBookings);
     await h.db.insert(equipmentListings).values({ id: 40, kitchenId: 4, equipmentType: 'Stand mixer', category: 'food-prep', condition: 'excellent', status: 'active' });
@@ -1429,7 +1429,7 @@ describe('fix round 1 regressions', () => {
     const [item] = await h.db.select().from(equipmentBookings);
     expect(item.startDate.toISOString()).toBe(startOf(NEW_DATE).toISOString());
     expect(item.endDate.toISOString()).toBe(startOf(NEW_DATE, '12:00').toISOString()); expect(item.totalPrice).toBe('1000');
-    await h.db.insert(storageBookings).values({ kitchenBookingId: 10, storageListingId: 1, chefId: 3, startDate: startOf(NEW_DATE), endDate: startOf(dayFromNow(20)), status: 'confirmed', totalPrice: '1000', pricingModel: 'daily' } as any);
+    await h.db.insert(storageBookings).values({ kitchenBookingId: 10, storageListingId: 1, chefId: 3, startDate: startOf(NEW_DATE), endDate: startOf(dayFromNow(20)), status: 'confirmed', totalPrice: '1000', pricingModel: 'daily', rentalState: 'ended', endReason: 'legacy' } as any);
     await expect(preview(dest(dayFromNow(14), 9, 3))).rejects.toThrow('To change a booking with storage, contact Local Cooks.');
   });
 });

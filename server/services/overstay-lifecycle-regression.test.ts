@@ -18,16 +18,8 @@ vi.mock('../logger', () => ({ logger: { info: vi.fn(), error: vi.fn(), warn: vi.
 vi.mock('./notification.service', () => ({ notificationService: { createForManager: vi.fn(), createForChef: vi.fn() } }));
 vi.mock('./overstay-defaults-service', () => ({ getEffectivePenaltyConfig: async () => ({
   gracePeriodDays: 99, penaltyRate: 9, maxPenaltyDays: 99 }), getOverstayPlatformDefaults: vi.fn() }));
-import { detectOverstays, processManagerDecision, disputeOverstayPenalty, reviewOverstayDispute, resolveOverstay } from './overstay-penalty-service';
+import { processManagerDecision, disputeOverstayPenalty, reviewOverstayDispute, resolveOverstay } from './overstay-penalty-service';
 
-const terms = { version: 1, gracePeriodDays: 3, penaltyRate: 0.1, maxPenaltyDays: 30,
-  dailyRateCents: 2000, pricingModel: 'daily', timezone: 'America/St_Johns',
-  policyText: null, quotedAt: '2026-09-01T00:00:00Z', acceptedAt: '2026-09-01T00:00:00Z' };
-function scenario(overrides: any = {}, recordOverrides: any = {}) {
-  state.rows.push([{ id: 10, chefId: null, status: 'confirmed', endDate: new Date('2026-09-20T02:30:00Z'),
-    checkoutStatus: null, overstayTerms: terms, timezone: 'America/St_Johns', ...overrides }],
-    [{ id: 1, status: 'pending_review', daysOverdue: 1, itemsRemovedAt: null, ...recordOverrides }]);
-}
 describe('real overstay lifecycle with a mocked database', () => {
   beforeEach(() => { state.rows.length = 0; state.writes.length = 0;
     vi.useFakeTimers(); vi.setSystemTime(new Date('2026-09-30T16:00:00Z')); });
@@ -40,28 +32,6 @@ describe('real overstay lifecycle with a mocked database', () => {
     expect(state.writes).toEqual([]);
   });
 
-  it('keeps accruing after a chef requests checkout, using the agreed rates', async () => {
-    scenario({ checkoutStatus: 'checkout_requested' });
-    const [result] = await detectOverstays();
-    expect(result).toMatchObject({ daysOverdue: 10, calculatedPenaltyCents: 15400, dailyRateCents: 2000 });
-    expect(state.writes[0].itemsRemovedAt).toBeNull();
-  });
-  it('freezes accrual at manager-confirmed removal rather than today', async () => {
-    const removedAt = new Date('2026-09-25T16:00:00Z');
-    scenario({ status: 'completed', checkoutStatus: 'completed', checkoutApprovedBy: 5, checkoutApprovedAt: removedAt });
-    const [result] = await detectOverstays();
-    expect(result).toMatchObject({ daysOverdue: 5, calculatedPenaltyCents: 4400 });
-    expect(state.writes.at(-1)).toMatchObject({ itemsRemovedAt: removedAt, calculatedPenaltyCents: 4400 });
-  });
-  it('does not infer manager-confirmed removal from automatic checkout clearance', async () => {
-    scenario({ status: 'completed', checkoutStatus: 'completed', checkoutApprovedAt: new Date() });
-    expect(await detectOverstays()).toEqual([]);
-    expect(state.writes).toEqual([]);
-  });
-  it('caps the amount at the agreed maximum number of days', async () => {
-    scenario({ endDate: new Date('2026-01-01T03:30:00Z') });
-    expect((await detectOverstays())[0].calculatedPenaltyCents).toBe(66000);
-  });
   it('rejects final approval before physical removal is confirmed', async () => {
     state.rows.push([{ id: 1, storageBookingId: 10, status: 'pending_review', itemsRemovedAt: null, idempotencyKey: 'overstay:10:1' }]);
     expect(await processManagerDecision({ overstayRecordId: 1, managerId: 5, action: 'approve' }))

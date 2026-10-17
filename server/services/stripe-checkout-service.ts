@@ -83,7 +83,6 @@ export interface CreatePendingCheckoutSessionParams {
     endTime: string;
     selectedSlots?: Array<{ startTime: string; endTime: string }>;
     specialNotes?: string;
-    selectedStorage?: Array<{ storageListingId: number; startDate: string; endDate: string }>;
     selectedEquipmentIds?: number[];
     totalPriceCents: number;
     taxCents: number;

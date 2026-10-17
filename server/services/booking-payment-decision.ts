@@ -97,6 +97,8 @@ export async function decideAuthorizedBooking(bookingId: number, target: 'confir
         || session.metadata.kitchen_id !== String(booking.kitchenId)) throw new BookingTermsReviewRequired();
       terms = bookingCaptureTerms(session.metadata, intent.amount);
       itemPrices = bookingAddonPrices(session.metadata);
+      // A checkout opened before storage left kitchen booking (ST12) priced storage that no rental now backs.
+      if (itemPrices?.s.length) throw new BookingTermsReviewRequired();
     }
     decision = await db.transaction(async tx => {
       const [current] = await tx.select().from(kitchenBookings).where(eq(kitchenBookings.id, bookingId)).limit(1).for('update');

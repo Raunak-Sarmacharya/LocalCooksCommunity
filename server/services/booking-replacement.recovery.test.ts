@@ -42,7 +42,7 @@ import { workerContext } from './worker-context';
 const session = (date = '2099-01-01'): any => ({ id: 'cs_replacement', currency: 'cad', amount_total: 2440, metadata: {
   kitchen_id: '4', chef_id: '3', booking_date: date, start_time: '10:00', end_time: '12:00', replaces_booking_id: '10',
   total_price_cents: '2000', tax_cents: '300', platform_fee_cents: '140', tax_rate_percent: '15',
-  fee_model: 'separate-charge-commission-v1', addon_prices: '{"s":[],"e":[]}', selected_storage: '[]', hourly_rate_cents: '1000', duration_hours: '2' } });
+  fee_model: 'separate-charge-commission-v1', addon_prices: '{"s":[],"e":[]}', hourly_rate_cents: '1000', duration_hours: '2' } });
 const intent: any = { id: 'pi_new', amount: 2440, status: 'requires_capture' };
 const old = (id = 10) => ({ id, kitchenId: 4, chefId: 3, referenceCode: `KB-OLD${id}`, paymentIntentId: `pi_old${id}`,
   bookingDate: new Date('2099-01-01T12:00:00Z'), startTime: '10:00', endTime: '11:00', paymentStatus: 'authorized' as const });

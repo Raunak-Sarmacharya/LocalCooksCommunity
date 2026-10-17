@@ -81,6 +81,8 @@ async function withdrawExtensionsAfterCheckout(bookingId: number, visitId?: numb
 }
 
 const router = Router();
+// Storage left kitchen booking checkout (ST12); refuse an old client's selection instead of silently dropping it.
+const STORAGE_SEPARATE = "Storage is now rented on its own. Remove storage from this kitchen booking and rent it from the Storage page.";
 router.get('/kitchens/:id/cancellation-policy', async (req, res) => {
     try {
         const { publishedCancellationPolicy, cancellationSettings } = await import('../services/cancellation-policy-settings');
@@ -1800,8 +1802,9 @@ async function sendCancellationNotifications(
 // Create PaymentIntent for booking (custom flow)
 router.post("/payments/create-intent", requireChef, async (req: Request, res: Response) => {
     try {
-        const { kitchenId, bookingDate, startTime, endTime, selectedSlots, selectedStorage, selectedEquipmentIds, expectedAmountCents } = req.body;
+        const { kitchenId, bookingDate, startTime, endTime, selectedSlots, selectedEquipmentIds, expectedAmountCents } = req.body;
         const chefId = req.neonUser!.id;
+        if (req.body.selectedStorage?.length || req.body.selectedStorageIds?.length) return res.status(400).json({ error: STORAGE_SEPARATE, code: "storage_rented_separately" });
 
         if (!kitchenId || !bookingDate || !startTime || !endTime) {
             return res.status(400).json({ error: "Missing required booking fields" });
@@ -1926,7 +1929,7 @@ router.post("/payments/create-intent", requireChef, async (req: Request, res: Re
             bookingDate: String(bookingDate),
             startTime: String(startTime),
             endTime: String(endTime),
-            hasStorage: selectedStorage && selectedStorage.length > 0 ? "true" : "false",
+            hasStorage: "false",
             hasEquipment: selectedEquipmentIds && selectedEquipmentIds.length > 0 ? "true" : "false",
             taxCents: String(taxCents),
             taxRatePercent: String(taxRatePercent)
@@ -1960,7 +1963,7 @@ router.post("/payments/create-intent", requireChef, async (req: Request, res: Re
                 approved_subtotal: String(totalPriceCents),
                 cancellation_policy_hours: String(policySnapshot.noticeHours),
                 approved_tax: String(taxCents),
-                has_storage: selectedStorage && selectedStorage.length > 0 ? "true" : "false",
+                has_storage: "false",
                 has_equipment: selectedEquipmentIds && selectedEquipmentIds.length > 0 ? "true" : "false",
                 kitchen_id: String(kitchenId),
                 chef_id: String(chefId)
@@ -2143,6 +2146,7 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
     try {
         const { kitchenId, bookingDate, startTime, endTime, selectedSlots, pricingMode, specialNotes, selectedEquipmentIds, cancellationPolicyAccepted, cancellationPolicyVersion, cancellationDisclosureVersion } = req.body;
         const chefId = req.neonUser!.id;
+        if (req.body.selectedStorage?.length || req.body.selectedStorageIds?.length) return res.status(400).json({ error: STORAGE_SEPARATE, code: "storage_rented_separately" });
 
         if (!kitchenId || !bookingDate || !startTime || !endTime) {
             return res.status(400).json({ error: "Missing required booking fields" });
@@ -2417,8 +2421,9 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
 // Create a booking
 router.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req: Request, res: Response) => {
     try {
-        const { kitchenId, bookingDate, startTime, endTime, selectedSlots, pricingMode, specialNotes, selectedStorageIds, selectedStorage, selectedEquipmentIds, paymentIntentId } = req.body;
+        const { kitchenId, bookingDate, startTime, endTime, selectedSlots, pricingMode, specialNotes, selectedEquipmentIds, paymentIntentId } = req.body;
         const chefId = req.neonUser!.id;
+        if (req.body.selectedStorage?.length || req.body.selectedStorageIds?.length) return res.status(400).json({ error: STORAGE_SEPARATE, code: "storage_rented_separately" });
         
         logger.info(`[Booking Route] Received booking request with selectedEquipmentIds: ${JSON.stringify(selectedEquipmentIds)}`);
 
@@ -2558,6 +2563,7 @@ router.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req:
             paymentIntentStatus = paymentIntent.status;
         }
 
+        const { withKitchenDayLock } = await import('../services/kitchen-checkout-holds');
         const booking = await withKitchenDayLock(kitchenId, bookingDateStr, () => bookingService.createKitchenBooking({
             kitchenId,
             chefId,
