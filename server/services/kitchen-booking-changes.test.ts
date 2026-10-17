@@ -204,7 +204,7 @@ const codeOf = async (promise: Promise<unknown>) => { try { await promise; retur
 beforeAll(async () => {
   const created = await createTestDatabase([users, locations, kitchens, kitchenBookings, kitchenBookingVisits, kitchenBookingChanges, kitchenCheckoutHolds, paymentTransactions,
     paymentHistory, bookingLifecycleEvents, equipmentBookings, equipmentListings, storageBookings, kitchenViewings, bookingFlags, supportActions,
-    (await import('@shared/schema')).kitchenBookingDayPayouts], [
+    (await import('@shared/schema')).kitchenBookingDayPayouts, (await import('@shared/schema')).kitchenBookingDayAllocations], [
     // The same guarantees the real migration gives: one open change per booking; a request key and a provider id are used once.
     `CREATE UNIQUE INDEX one_open_change ON kitchen_booking_changes (booking_id) WHERE state IN ('requested','awaiting_payment','payment_pending','authorized','capture_pending','refund_pending','release_pending','recovery_required')`,
     `CREATE UNIQUE INDEX change_request_key ON kitchen_booking_changes (booking_id, request_key)`]);

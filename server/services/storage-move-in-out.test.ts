@@ -34,10 +34,10 @@ import { prepareClaimPayment, settleClaimPayment } from './damage-claim-money';
 
 const { kitchens, locations, storageListings, storageBookings, storageRentalTerms, paymentTransactions, users, commitmentProblems,
   damageClaims, damageEvidence, damageClaimHistory, bookingFlags, supportActions, platformSettings, emailLogs,
-  checkinCheckoutChecklists, kitchenCheckoutIncidents, kitchenBookingChanges, equipmentBookings } = schema;
+  checkinCheckoutChecklists, kitchenCheckoutIncidents, kitchenBookingChanges, equipmentBookings, kitchenBookingDayPayouts } = schema;
 const tables = [schema.kitchenBookings, schema.storageOverstayRecords, kitchens, locations, storageListings, storageBookings, storageRentalTerms, paymentTransactions, users, commitmentProblems,
   damageClaims, damageEvidence, damageClaimHistory, bookingFlags, supportActions, platformSettings, emailLogs,
-  checkinCheckoutChecklists, kitchenCheckoutIncidents, kitchenBookingChanges, equipmentBookings];
+  checkinCheckoutChecklists, kitchenCheckoutIncidents, kitchenBookingChanges, equipmentBookings, kitchenBookingDayPayouts];
 let pg: PGlite;
 const now = new Date('2026-10-16T12:00:00Z');
 const chef = { id: 3, role: 'chef' as const }, manager = { id: 2, role: 'manager' as const };

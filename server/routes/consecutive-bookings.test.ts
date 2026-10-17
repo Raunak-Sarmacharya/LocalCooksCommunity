@@ -46,7 +46,8 @@ describe('actual fresh booking boundaries', () => {
   it.each(['/payments/create-intent', '/chef/bookings/checkout', '/chef/bookings'])('%s rejects a manipulated gap before money or booking effects', async path => {
     const res = await call(router, path, gap);
     expect(res.status).toHaveBeenCalledWith(path === '/payments/create-intent' ? 409 : 400);
-    expect(res.json).toHaveBeenCalledWith({ error: expect.stringContaining('consecutive') });
+    // Checkout goes through validateBookingDays (CP3) and returns code/dayErrors; other paths stay { error }.
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.stringContaining('consecutive') }));
     expect(state.payment).not.toHaveBeenCalled(); expect(state.insert).not.toHaveBeenCalled();
   });
   it('portal customer booking rejects slots rather than ignoring them', async () => {
