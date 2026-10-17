@@ -24,6 +24,7 @@ export interface PaymentRow { id: number; amount: string | number; baseAmount: s
   taxAmount: string | number | null; stripeProcessingFee: string | number | null; managerRevenue: string | number | null; refundAmount: string | number | null;
   paymentIntentId: string | null; chargeId: string | null; refundId?: string | null; transferId: string | null; status: string;
   paidAt: Date | string | null; refundedAt?: Date | string | null; metadata: unknown;
+  dayPayouts?: Array<{ visitId: number; date: string; amountCents: number | null; transferId: string | null; noEntitlement: boolean; evidence: any; subtotalCents: number; taxCents: number; stripeFeeCents: number | null }>;
   payoutTransfers?: Record<string, { originalAmountCents: number; reversedCents: number; refunds?: Record<string, { amountCents: number }> }> }
 export interface ExtensionRow { id: number; kind: string; minutes: number; free: boolean; status: string; originalEndTime: string; endTime: string;
   appliedAt: Date | string | null; paidAt: Date | string | null; paymentIntentId: string | null;
@@ -172,7 +173,13 @@ export function deriveBookingMoney(rows: MoneyRows): BookingMoney {
       : evidence ? evidence.originalAmountCents
       : m.payoutSent?.amountCents != null ? cents(m.payoutSent.amountCents)
       : transferId ? cents(row.managerRevenue) : null;
-    return { bookingSchedule: paymentBooking, paymentIntentId: row.paymentIntentId!, chargeId: row.chargeId, purpose, paidAt: iso(row.paidAt), items, ...(kitchenItems ? { kitchenItems } : {}),
+    const installments: PaymentFact[] | undefined = row.dayPayouts?.map(day => ({ paymentIntentId: row.paymentIntentId!, chargeId: row.chargeId, purpose,
+      paidAt: iso(row.paidAt), bookingSchedule: { ...(paymentBooking || booking), bookingDate: day.date },
+      items: [{ label: `Kitchen visit ? ${day.date}`, subtotalCents: day.subtotalCents }], taxCents: day.taxCents, taxRatePercent: null,
+      serviceFeeCents: 0, amountCents: day.subtotalCents + day.taxCents, refunds: [],
+      kitchen: { noShare: day.noEntitlement, processingAbsorbed: false, processingFeeCents: day.stripeFeeCents || 0, transferId: day.transferId,
+        transferredCents: day.transferId ? day.amountCents : null, transferredAt: day.evidence.sentAt || null, reversedCents: day.evidence.reversedCents || 0 } }));
+    return { ...(installments ? { installments } : {}), bookingSchedule: paymentBooking, paymentIntentId: row.paymentIntentId!, chargeId: row.chargeId, purpose, paidAt: iso(row.paidAt), items, ...(kitchenItems ? { kitchenItems } : {}),
       taxCents: tax, taxRatePercent: m.taxRatePercent != null ? Number(m.taxRatePercent) : subtotal && tax ? Math.round(tax * 1000 / subtotal) / 10 : null,
       serviceFeeCents: Math.max(0, serviceFee), amountCents: amount, refunds: refundsOf(row, booking, rows.changes).map(refund => ({ ...refund,
         ...(evidence?.refunds && Object.keys(evidence.refunds).length ? { reversedCents: evidence.refunds[refund.refundId]?.amountCents || 0 } : {}) })), ...(problem ? { problem } : {}),
@@ -215,6 +222,7 @@ export function claimOpen(claim: ClaimRow) {
 }
 export function settlementState(rows: MoneyRows, money: BookingMoney, facts: { visitsClosed: boolean; moneyFrozen: boolean }): SettlementState {
   const owed = (payment: PaymentFact) => {
+    if (payment.installments) return payment.installments.reduce((sum, day) => sum + owed(day), 0);
     if (payment.kitchen.noShare || payment.kitchen.transferId) return 0;
     const gross = payment.items.reduce((total, item) => total + item.subtotalCents, 0) + payment.taxCents;
     const fee = payment.kitchen.processingAbsorbed ? 0 : payment.kitchen.processingFeeCents;
@@ -269,7 +277,7 @@ export function planBookingDocuments(money: BookingMoney, settled: boolean): Pla
       stripe: { paymentIntentId: payment.paymentIntentId, chargeId: payment.chargeId, refundId: refund.refundId }, referencesSourceKey: receiptKey,
       build: ctx => buildRefundReceipt(refund.bookingSchedule || payment.bookingSchedule || booking, payment, refund, { number: ctx.referenced!.number }, { ...ctx, card: ctx.card }) });
   }
-  for (const payment of money.payments) {
+  for (const payment of money.payments.flatMap(p => p.installments || [p])) {
     if (payment.kitchen.noShare || !payment.kitchen.transferId || payment.kitchen.transferredCents == null) continue;
     const remittanceKey = sourceKeys.remittance(payment.kitchen.transferId);
     plan.push({ sourceKey: remittanceKey, kind: 'remittance', audience: 'manager', chargeId: null,
@@ -362,6 +370,21 @@ export async function loadMoneyRows(bookingId: number, reader: Conn = db): Promi
     paidAt: paymentTransactions.paidAt, refundedAt: paymentTransactions.refundedAt, metadata: paymentTransactions.metadata })
     .from(paymentTransactions).where(and(eq(paymentTransactions.bookingId, bookingId), inArray(paymentTransactions.bookingType, ['kitchen', 'bundle'])))
     .orderBy(asc(paymentTransactions.id)).limit(100);
+  const dayRows = (await reader.execute(sql`SELECT d.source_id, d.visit_id, v.visit_date::text AS date,
+    d.transfer_amount_cents AS amount, d.transfer_id, d.no_entitlement, d.evidence,
+    SUM(a.subtotal_cents)::integer AS subtotal, SUM(a.tax_cents)::integer AS tax,
+    CASE WHEN COUNT(a.stripe_fee_cents) = COUNT(*) THEN SUM(a.stripe_fee_cents)::integer END AS fee
+    FROM kitchen_booking_day_payouts d JOIN kitchen_booking_day_allocations a
+      ON a.source_id = d.source_id AND a.visit_id = d.visit_id AND a.allocation_revision = d.allocation_revision
+    JOIN kitchen_booking_visits v ON v.id = d.visit_id JOIN payment_transactions pt ON pt.id = d.source_id
+    WHERE pt.booking_id = ${bookingId} AND pt.payout_partition = 'per_day'
+    GROUP BY d.id, v.visit_date ORDER BY d.id`)).rows as any[];
+  for (const day of dayRows) {
+    const source = payments.find(p => p.id === day.source_id) as PaymentRow | undefined;
+    if (source) (source.dayPayouts ??= []).push({ visitId: day.visit_id, date: day.date, amountCents: day.amount,
+      transferId: day.transfer_id, noEntitlement: day.no_entitlement, evidence: day.evidence,
+      subtotalCents: day.subtotal, taxCents: day.tax, stripeFeeCents: day.fee });
+  }
   // Migration 0085 supplies the verified late-charge refund fields.
   const extensions = (await reader.execute(sql`SELECT id, kind, minutes, free, status, original_end_time AS "originalEndTime", end_time AS "endTime",
     applied_at AS "appliedAt", paid_at AS "paidAt", payment_intent_id AS "paymentIntentId", amount_cents AS "amountCents", quote,

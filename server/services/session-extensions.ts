@@ -595,7 +595,8 @@ async function recordPaid(tx: Tx, row: Context, extension: Extension, intent: St
       paymentIntentId: intent.id, chargeId: typeof intent.latest_charge === 'string' ? intent.latest_charge : intent.latest_charge?.id,
       paymentMethodId: row.booking.stripePaymentMethodId, status: 'succeeded', stripeStatus: intent.status, paidAt: now,
       // The kitchen share follows the parent's saved timing (session-extension-payout).
-      payoutTiming: parent.payoutTiming === 'after_closeout' ? 'after_closeout' : 'at_capture', payoutEligibleAt: parent.payoutEligibleAt,
+      payoutPartition: parent.payoutPartition === 'per_day' ? 'per_day' : null,
+      payoutTiming: parent.payoutPartition === 'per_day' || parent.payoutTiming === 'after_closeout' ? 'after_closeout' : 'at_capture', payoutEligibleAt: parent.payoutEligibleAt,
       metadata: { type: 'session_extension', sessionExtensionId: extension.id, extensionKind: extension.kind, minutes: extension.minutes,
         parentPaymentIntentId: parent.paymentIntentId, approvedSubtotal: q.subtotalCents, approvedTax: q.taxCents, platformCommission: q.commissionCents,
         capturedAmount: q.amountCents, nonRefundable: true } }).returning();

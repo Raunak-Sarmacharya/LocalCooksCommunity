@@ -61,6 +61,7 @@ function ActionDialogContent({ action, supportCase: c, getFirebaseToken, onClose
   const spec = ACTION_SPECS[type];
   // One key per dialog open. A retry of the same request reuses it, so the server never does the work twice.
   const operationKey = useRef(newOperationKey(c.bookingId)).current;
+  const [installmentId, setInstallmentId] = useState('');
   const [form, setForm] = useState<ActionForm>(() => initialForm(type, c));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [stage, setStage] = useState<"form" | "exception" | "result">("form");
@@ -97,6 +98,7 @@ function ActionDialogContent({ action, supportCase: c, getFirebaseToken, onClose
     setSubmitting(true);
     setServerError(null);
     try {
+      if (type === 'release_payout' && c.money.dayPayouts?.length && installmentId) built.body.details = { installmentId: Number(installmentId) };
       const data = await postAction(getFirebaseToken, c.bookingId, built.body);
       // The returned case is always the truth, whatever the action's status.
       onCaseUpdated(data.case);
@@ -183,6 +185,12 @@ function ActionDialogContent({ action, supportCase: c, getFirebaseToken, onClose
       {header}
       <form onSubmit={(e) => { e.preventDefault(); void send(false); }} className="flex min-h-0 flex-1 flex-col">
         <AppDialogBody className="space-y-5">
+          {type === 'release_payout' && c.money.dayPayouts?.length ? <Field label="Day installment">
+            <NativeSelect value={installmentId} onChange={e => setInstallmentId(e.target.value)}>
+              <option value="">All eligible day installments</option>
+              {c.money.dayPayouts.filter(d => !d.transferId).map(d => <option key={d.installmentId} value={String(d.installmentId)}>{d.operatingDate} ? {fmtMoney(d.amountCents, c.money.currency)} ? {d.status}</option>)}
+            </NativeSelect>
+          </Field> : null}
           {type === 'release_payout' && <p className="rounded-lg border bg-muted/30 p-3 text-sm">{t('bsReleasePayoutHelp')}</p>}
           {type === 'finish_kitchen_refund' && (
             <div className="space-y-2 rounded-lg border bg-muted/30 p-3 text-sm">

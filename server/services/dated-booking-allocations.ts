@@ -80,6 +80,7 @@ export async function writeDatedCaptureAllocations(tx: Tx, sourceId: number, evi
       subtotalCents: row.subtotalCents, taxCents: row.taxCents, serviceFeeCents: row.serviceFeeCents, stripeFeeCents: row.stripeFeeCents, evidence: allocationEvidence });
   }
   if (existing.length && existing.length !== allocations.length) throw Error('Unexpected dated allocation rows');
+  await (await import('./kitchen-day-payouts')).ensureDayPayoutRows(tx, sourceId);
   // Do not downgrade verified fee evidence on a delayed event lacking a balance transaction.
   if (evidence.feeCents !== null) await tx.update(paymentTransactions).set({ stripeProcessingFee: String(evidence.feeCents), chargeId: evidence.chargeId,
     managerRevenue: String(m.totalCents - m.serviceFeeCents - evidence.feeCents),

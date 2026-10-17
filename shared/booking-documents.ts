@@ -125,6 +125,8 @@ export interface RefundFact {
   bookingSchedule?: BookingFacts;
 }
 export interface PaymentFact {
+  /** Daily transfer facts; the parent remains the one real chef payment. */
+  installments?: PaymentFact[];
   bookingSchedule?: BookingFacts;
   paymentIntentId: string;
   chargeId: string | null;

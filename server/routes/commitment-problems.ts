@@ -29,7 +29,7 @@ router.get('/:kind/:id', async (req, res) => {
 router.post('/:kind/:id', async (req, res) => {
   if (!['booking', 'tour', 'storage'].includes(req.params.kind)) return res.status(400).json({ error: 'Choose booking, tour or storage' });
   try {
-    const result = await reportProblem(req.params.kind as 'booking' | 'tour' | 'storage', Number(req.params.id), req.neonUser!, req.body.description, req.body.requestKey, req.body.category);
+    const result = await reportProblem(req.params.kind as 'booking' | 'tour' | 'storage', Number(req.params.id), req.neonUser!, req.body.description, req.body.requestKey, req.body.category, req.body.visitId);
     await attemptOutcomeDelivery();
     res.json(result);
   } catch (error) { return errorResponse(res, error); }

@@ -195,6 +195,8 @@ export class BookingRepository {
                 transactionServiceFee: paymentTransactions.serviceFee,
                 transactionTaxAmount: paymentTransactions.taxAmount,
                 transactionMetadata: paymentTransactions.metadata,
+                transactionPayoutPartition: paymentTransactions.payoutPartition,
+                transactionDayPaid: sql<number>`(SELECT COALESCE(SUM(d.transfer_amount_cents - COALESCE((d.evidence->>'reversedCents')::integer, 0)), 0) FROM kitchen_booking_day_payouts d WHERE d.source_id = ${paymentTransactions.id} AND d.transfer_id IS NOT NULL)`,
                 transactionManagerRevenue: paymentTransactions.managerRevenue,
                 transactionStatus: paymentTransactions.status,
                 transactionRefundAmount: paymentTransactions.refundAmount,
@@ -327,7 +329,7 @@ export class BookingRepository {
             }
             
             // Prefer Stripe-synced manager_revenue; reconstruct when stale gross remains.
-            const netRevenue = isVoidedAuthorization ? 0 : resolveDisplayedKitchenNetPayoutCents({
+            const netRevenue = isVoidedAuthorization ? 0 : row.transactionPayoutPartition === 'per_day' ? Number(row.transactionDayPaid || 0) : resolveDisplayedKitchenNetPayoutCents({
                 kitchenNetPayoutCents: isAuthorizedHold && estimatedStripeProcessingFee > 0
                     ? null
                     : managerRevenue,

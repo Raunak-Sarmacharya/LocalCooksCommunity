@@ -831,7 +831,8 @@ async function recordCharge(tx: Tx, row: Context, change: Change, intent: Stripe
     managerRevenue: String(deltaKitchen + deltaTax), netAmount: String(quote.payCents), currency: row.booking.currency, paymentIntentId: intent.id, chargeId: chargeIdOf(intent),
     paymentMethodId: row.booking.stripePaymentMethodId, status: 'succeeded', stripeStatus: intent.status, paidAt: now,
     // The kitchen share follows the original booking's saved timing (kitchen-change-payout).
-    payoutTiming: parent?.payoutTiming === 'after_closeout' ? 'after_closeout' : 'at_capture', payoutEligibleAt: parent?.payoutEligibleAt ?? null,
+    payoutPartition: parent?.payoutPartition === 'per_day' ? 'per_day' : null,
+    payoutTiming: parent?.payoutPartition === 'per_day' || parent?.payoutTiming === 'after_closeout' ? 'after_closeout' : 'at_capture', payoutEligibleAt: parent?.payoutEligibleAt ?? null,
     metadata: { type: 'kitchen_booking_change', kitchenChangeId: change.id, originalBookingPaymentIntentId: row.booking.paymentIntentId, parentPaymentIntentId: row.booking.paymentIntentId,
       approvedSubtotal: deltaKitchen, approvedTax: deltaTax, platformCommission: deltaFee, capturedAmount: quote.payCents, changeQuote: publicChangeMoney(quote), bookingSchedule: change.destination } }).returning();
   await tx.insert(paymentHistory).values({ transactionId: source.id, newStatus: 'succeeded', eventType: 'kitchen_change_paid', eventSource: 'kitchen_booking_change',

@@ -155,7 +155,7 @@ function money(ctx: Pick<Context, 'booking' | 'payments'>) {
     refundedCents: captured.reduce((sum, row) => sum + cents(row.refundAmount), 0),
     platformFeeCents: captured.reduce((sum, row) => sum + cents(row.serviceFee), 0),
     processingFeeCents: captured.reduce((sum, row) => sum + cents(row.stripeProcessingFee), 0), currency: ctx.booking.currency,
-    providerVerified: false as const, transfers: ctx.payments.map(supportTransferLine) };
+    providerVerified: false as const, transfers: ctx.payments.filter(p => p.payoutPartition !== 'per_day').map(supportTransferLine) };
 }
 const AUTOMATIC_REFUND_ACTIONS = ['retry_refund', 'mark_refunded'];
 /** Separately charged add-ons are included; selectors never fall back to the parent payment. */
@@ -253,8 +253,8 @@ export function availableSupportActions(ctx: Pick<Context, 'booking' | 'payments
   // provider and either completes it from the original receipt or closes it as never executed, so it can never stay stuck.
   if (ctx.actions.some(row => row.status === 'recovery_required' && MONEY_ATTEMPT_TYPES.includes(row.actionType)) && !ctx.actions.some(row => row.status === 'executing'))
     result.push('resolve_money_attempt');
-  if (!busy && !recovering && !flags && !moneyNeedsReview && original?.payoutTiming === 'after_closeout'
-    && !original.transferId && original.payoutHoldReason === 'reported_issue') result.push('release_payout');
+  if (!busy && !recovering && ctx.flags.every(f => f.kind === 'chargeback') && !moneyNeedsReview && original?.payoutTiming === 'after_closeout'
+    && !original.transferId && (original.payoutHoldReason === 'reported_issue' || original.payoutPartition === 'per_day')) result.push('release_payout');
   if (!busy && !recovering && !flags && !moneyNeedsReview && original && ['succeeded', 'partially_refunded'].includes(original.status)
     && cents(original.amount) > cents(original.refundAmount)) result.push('goodwill_refund');
   const summary = money(ctx), goodwill = ctx.actions.filter(row => row.actionType === 'goodwill_refund' && row.status !== 'failed').reduce((sum, row) => sum + (row.amountCents || 0), 0);
@@ -275,6 +275,7 @@ function snapshot(booking: Booking) {
 /** Only selected fields cross the staff API; never return challenge rows, email bodies or arbitrary metadata. */
 export async function readBookingSupport(id: number) {
   const ctx = await loadContext(id), timezone = ctx.location.timezone || DEFAULT_TIMEZONE;
+  const dayPayouts = ctx.booking.scheduleRevision ? await (await import('./kitchen-day-payouts')).readDayPayouts([id]) : [];
   const codes = await chefVisitCodes(id);
   const closeout = await projectBookingCloseout(ctx.booking, timezone, ctx.visits);
   let paymentEvidence: { id: string; status: string; authorizedCents: number; capturedCents: number; refundedCents: number | null; processingFeeCents: number | null; termsVerified: boolean;
@@ -367,7 +368,7 @@ export async function readBookingSupport(id: number) {
       acceptedAt: operation.acceptedAt || source.updatedAt?.toISOString?.() || new Date(0).toISOString(), hasReceipt: hasReservedReceipt(source, operation, refundEvidence) })),
     kitchenRefundDebts: ctx.payments.flatMap(source => ((source.metadata as Record<string, any> | null)?.kitchenRefundDebts || []).map((debt: any) => ({ ...debt, transactionId: source.id }))),
     payout: await (await import('./kitchen-payout-service')).readKitchenPayout(id),
-    money: money(ctx), paymentEvidence, evidenceUnavailable, cancellationQuote: cancellationQuote && 'quoteHash' in cancellationQuote ? {
+    money: { ...money(ctx), dayPayouts }, paymentEvidence, evidenceUnavailable, cancellationQuote: cancellationQuote && 'quoteHash' in cancellationQuote ? {
       quoteHash: cancellationQuote.quoteHash, chefReceivesCents: cancellationQuote.sources.reduce((sum, row) => sum + row.managerRefund, 0),
       parentVersion: cancellationQuote.parentVersion } : null,
     flags: ctx.flags.map(flag => ({ id: flag.id, kind: flag.kind, providerRef: flag.providerRef, openedAt: flag.openedAt })),
@@ -420,7 +421,9 @@ async function dispatch(ctx: Context, actorId: number, input: SupportActionInput
     case 'goodwill_refund': return refundSupportGoodwill(id, managerId!, actorId, input.amountCents!, input.operationKey);
     case 'release_payout': {
       // Verified once the payout is sent (or nothing is owed), or support's release is saved for when the visits close.
-      const release = await (await import('./kitchen-payout-service')).releaseKitchenPayout(id, `support:${input.operationKey}`, new Date(), { override: true });
+      const release = ctx.booking.scheduleRevision
+        ? await (await import('./kitchen-day-payouts')).releaseBookingDayPayouts(id, new Date(), undefined, input.details?.installmentId)
+        : await (await import('./kitchen-payout-service')).releaseKitchenPayout(id, `support:${input.operationKey}`, new Date(), { override: true });
       return { ...release, success: release.success || release.overrideRecorded === true };
     }
     case 'issue_visit_code': {
@@ -545,7 +548,9 @@ export async function executeBookingSupportAction(id: number, actorId: number, r
         }
       } else if (input.type === 'release_payout') {
         // The release is idempotent: a retry finds the committed decision and recovers the same transfer.
-        const release = await (await import('./kitchen-payout-service')).releaseKitchenPayout(id, `support:${input.operationKey}`, new Date(), { override: true });
+        const release = reserved.ctx.booking.scheduleRevision
+        ? await (await import('./kitchen-day-payouts')).releaseBookingDayPayouts(id, new Date(), undefined, input.details?.installmentId)
+        : await (await import('./kitchen-payout-service')).releaseKitchenPayout(id, `support:${input.operationKey}`, new Date(), { override: true });
         verified = release.success || release.overrideRecorded === true;
       } else if (input.type === 'accept_cancellation_for_manager') {
         const operations = reserved.ctx.payments.flatMap(source => {

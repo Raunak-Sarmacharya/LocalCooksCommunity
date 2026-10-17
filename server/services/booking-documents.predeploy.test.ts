@@ -132,3 +132,28 @@ describe('predeploy finding 8: late extension charge accounting without entitlem
     expect(plan.map(doc => doc.kind)).toEqual(['payment']);
   });
 });
+
+describe('CP5 installment documents', () => {
+  const daily = () => {
+    const rows = booking175(); rows.extensions = []; rows.payments = [rows.payments[0]];
+    rows.payments[0].transferId = null;
+    rows.payments[0].metadata = { approvedSubtotal: 2500, approvedTax: 375, platformCommission: 175 };
+    rows.payments[0].dayPayouts = [0, 1].map(i => ({ visitId: i + 1, date: i ? '2026-10-17' : '2026-10-15', amountCents: 1366,
+      transferId: `tr_day_${i + 1}`, noEntitlement: false, evidence: { sentAt: '2026-10-18T12:00:00Z' }, subtotalCents: 1250,
+      taxCents: i ? 188 : 187, stripeFeeCents: i ? 72 : 71 }));
+    return rows;
+  };
+  it('issues one real chef receipt and a separate exact remittance for each daily transfer', () => {
+    const money = deriveBookingMoney(daily()), plan = planBookingDocuments(money, false);
+    expect(money.payments).toHaveLength(1);
+    expect(plan.filter(d => d.kind === 'payment')).toHaveLength(1);
+    expect(plan.filter(d => d.kind === 'remittance').map(d => d.sourceKey)).toEqual(['remittance:manager:tr_day_1', 'remittance:manager:tr_day_2']);
+    expect(money.payments[0].installments!.reduce((sum, d) => sum + d.kitchen.transferredCents!, 0)).toBe(2732);
+  });
+  it('waits for the remaining installment before settling the final statement', () => {
+    const rows = daily(); rows.payments[0].dayPayouts![1].transferId = null;
+    expect(settlementState(rows, deriveBookingMoney(rows), { visitsClosed: true, moneyFrozen: false }).untransferredPayouts).toBe(1);
+    rows.payments[0].dayPayouts![1].transferId = 'tr_day_2';
+    expect(settlementState(rows, deriveBookingMoney(rows), { visitsClosed: true, moneyFrozen: false }).untransferredPayouts).toBe(0);
+  });
+});

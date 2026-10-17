@@ -7,7 +7,7 @@ export type PayoutStatus = 'scheduled' | 'on_hold' | 'sent' | 'not_applicable';
 /** support_flag: an open booking_flags row; reported_issue: an unresolved CHEF-reported kitchen problem. */
 export type PayoutHoldReason = 'support_flag' | 'reported_issue';
 export type KitchenPayout = { timing: PayoutTiming; status: PayoutStatus; holdReason: PayoutHoldReason | null;
-  expectedAt: string | null; sentAt: string | null; amountCents: number };
+  expectedAt: string | null; sentAt: string | null; amountCents: number; installments?: Array<{ installmentId: number; sourceId: number; visitId: number; operatingDate: string | null; status: PayoutStatus; amountCents: number; feePending: boolean; transferId: string | null }> };
 export type PayoutSource = { payoutTiming?: string | null; payoutEligibleAt?: Date | string | null;
   payoutReleasedAt?: Date | string | null; payoutHoldReason?: string | null; transferId?: string | null;
   amount: string | number; baseAmount: string | number; serviceFee: string | number;

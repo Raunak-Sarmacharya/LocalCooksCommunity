@@ -9,6 +9,15 @@ import { logger } from "../logger";
 import { sql } from "drizzle-orm";
 import type { RevenueMetrics, RevenueByLocation, RevenueByDate } from './revenue-service';
 
+/** Correlated sums preserve one real charge row; installments never multiply gross/fees/refunds. */
+export const dayPaidSql = sql`(SELECT COALESCE(SUM(d.transfer_amount_cents - COALESCE((d.evidence->>'reversedCents')::integer, 0)), 0)
+  FROM kitchen_booking_day_payouts d WHERE d.source_id = pt.id AND d.transfer_id IS NOT NULL)`;
+export const dayPendingSql = sql`(SELECT COALESCE(SUM(GREATEST(0, a.subtotal_cents + a.tax_cents - a.stripe_fee_cents
+    - COALESCE((a.evidence->>'managerDebitedCents')::integer, 0))), 0)
+  FROM kitchen_booking_day_allocations a WHERE a.source_id = pt.id AND a.stripe_fee_cents IS NOT NULL
+    AND NOT EXISTS(SELECT 1 FROM kitchen_booking_day_payouts d WHERE d.source_id = a.source_id AND d.visit_id = a.visit_id
+      AND d.allocation_revision = a.allocation_revision AND (d.transfer_id IS NOT NULL OR d.no_entitlement)))`;
+
 /**
  * Get revenue metrics for a manager using payment_transactions
  * This is the preferred method as it uses the centralized payment data
@@ -197,15 +206,15 @@ export async function getRevenueMetricsFromTransactions(
           ), 
           0
         )::bigint as platform_fee,
-        COALESCE(SUM(CASE WHEN pt.payout_timing = 'after_closeout' AND pt.transfer_id IS NULL THEN 0 ELSE pt.manager_revenue::numeric END), 0)::bigint as manager_revenue,
+        COALESCE(SUM(CASE WHEN pt.payout_partition = 'per_day' THEN ${dayPaidSql} WHEN pt.payout_timing = 'after_closeout' AND pt.transfer_id IS NULL THEN 0 ELSE pt.manager_revenue::numeric END), 0)::bigint as manager_revenue,
         -- Payout after closeout: an unreleased kitchen share is "upcoming", never paid earnings.
-        COALESCE(SUM(CASE WHEN (pt.status = 'succeeded' OR pt.metadata->>'kitchenRetainsTransfer' = 'true') AND NOT (pt.payout_timing = 'after_closeout' AND pt.transfer_id IS NULL)
+        COALESCE(SUM(CASE WHEN pt.payout_partition = 'per_day' THEN ${dayPaidSql} WHEN (pt.status = 'succeeded' OR pt.metadata->>'kitchenRetainsTransfer' = 'true') AND NOT (pt.payout_timing = 'after_closeout' AND pt.transfer_id IS NULL)
           THEN pt.manager_revenue::numeric ELSE 0 END), 0)::bigint as deposited_manager_revenue,
         COUNT(DISTINCT CONCAT(pt.booking_id, '-', pt.booking_type)) as booking_count,
         COUNT(DISTINCT CASE WHEN pt.status = 'succeeded' THEN CONCAT(pt.booking_id, '-', pt.booking_type) END) as paid_booking_count,
         COUNT(DISTINCT CASE WHEN pt.status = 'processing' THEN CONCAT(pt.booking_id, '-', pt.booking_type) END) as processing_booking_count,
         COALESCE(SUM(CASE WHEN pt.status = 'succeeded' THEN pt.amount::numeric ELSE 0 END), 0)::bigint as completed_payments,
-        COALESCE(SUM(CASE WHEN pt.status = 'processing' THEN pt.amount::numeric ELSE 0 END), 0)::bigint as processing_payments,
+        COALESCE(SUM(CASE WHEN pt.payout_partition = 'per_day' THEN ${dayPendingSql} WHEN pt.status = 'processing' THEN pt.amount::numeric ELSE 0 END), 0)::bigint as processing_payments,
         -- Pending payments: payments still processing, plus captured payouts held until after closeout (the kitchen's
         -- net share, i.e. manager revenue minus processing fee and refund debits, not yet transferred).
         COALESCE(SUM(
@@ -257,7 +266,7 @@ export async function getRevenueMetricsFromTransactions(
         -- Manager payout: keep tax; platform keeps service_fee; Stripe fee from manager.
         -- Prefer manager_revenue (Connect transfer). Fallback: amount − service_fee − stripe − refunds.
         COALESCE(SUM(
-          CASE WHEN pt.metadata->>'kitchenRetainsTransfer' = 'true' THEN COALESCE(pt.manager_revenue::numeric, 0)
+          CASE WHEN pt.payout_partition = 'per_day' THEN ${dayPaidSql} WHEN pt.metadata->>'kitchenRetainsTransfer' = 'true' THEN COALESCE(pt.manager_revenue::numeric, 0)
             WHEN pt.status IN ('succeeded', 'partially_refunded') THEN
             CASE
               WHEN pt.payout_timing = 'after_closeout' AND pt.transfer_id IS NULL THEN 0
@@ -521,7 +530,7 @@ export async function getRevenueByLocationFromTransactions(
           ), 
           0
         )::bigint as platform_fee,
-        COALESCE(SUM(CASE WHEN pt.payout_timing = 'after_closeout' AND pt.transfer_id IS NULL THEN 0 ELSE pt.manager_revenue::numeric END), 0)::bigint as manager_revenue,
+        COALESCE(SUM(CASE WHEN pt.payout_partition = 'per_day' THEN ${dayPaidSql} WHEN pt.payout_timing = 'after_closeout' AND pt.transfer_id IS NULL THEN 0 ELSE pt.manager_revenue::numeric END), 0)::bigint as manager_revenue,
         COUNT(DISTINCT pt.booking_id) as booking_count,
         COUNT(DISTINCT CASE WHEN pt.status = 'succeeded' THEN pt.booking_id END) as paid_count
       FROM payment_transactions pt
@@ -639,6 +648,11 @@ export async function getRevenueByDateFromTransactions(
         SELECT DATE((pt.metadata->'payoutSent'->>'sentAt')::timestamptz AT TIME ZONE ${managerTimezone}),
           0, 0, (pt.metadata->'payoutSent'->>'amountCents')::numeric, 0, 0
         FROM scoped pt WHERE pt.payout_timing = 'after_closeout' AND pt.transfer_id IS NOT NULL AND pt.metadata->'payoutSent' IS NOT NULL
+        UNION ALL
+        SELECT DATE((d.evidence->>'sentAt')::timestamptz AT TIME ZONE ${managerTimezone}),
+          0, 0, d.transfer_amount_cents - COALESCE((d.evidence->>'reversedCents')::integer, 0), 0, 0
+        FROM scoped pt JOIN kitchen_booking_day_payouts d ON d.source_id = pt.id
+        WHERE pt.payout_partition = 'per_day' AND d.transfer_id IS NOT NULL
         UNION ALL
         SELECT DATE(item.occurred_at AT TIME ZONE ${managerTimezone}),
           0, item.customer_amount, 0, item.manager_debit, 0

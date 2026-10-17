@@ -34,6 +34,7 @@ vi.mock('./storage-checkout-service', () => ({ processExpiredCheckoutReviews: ()
 vi.mock('./kitchen-checkout-service', () => ({ processExpiredKitchenCheckoutReviews: () => task('kitchenCheckout'), getCheckinSettings: async () => ({ checkoutReviewWindowMinutes: 0 }) }));
 vi.mock('./clock-closeout', () => ({ sweepClockCloseout: () => task('clockCloseout') }));
 vi.mock('./booking-feedback-service', () => ({ sweepBookingFeedback: () => task('bookingFeedback') }));
+vi.mock('./kitchen-day-payouts', () => ({ sweepDayPayouts: () => task('dayPayouts') }));
 vi.mock('./kitchen-payout-service', () => ({ releaseDuePayouts: () => task('closeoutPayouts'), recoverCaptureTransfers: () => task('captureTransfers') }));
 vi.mock('./booking-cancellation-refund', () => ({ recoverChefAddonRefunds: () => task('addonRefundRecovery') }));
 vi.mock('./chef-document-expiry', () => ({ sweepChefDocumentExpiry: () => task('chefDocumentExpiry') }));

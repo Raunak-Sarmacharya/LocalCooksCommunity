@@ -968,7 +968,9 @@ export async function getTransactionHistory(
         -- Service fee from payment_transactions
         COALESCE(pt.service_fee, 0)::bigint as pt_service_fee,
         -- Manager revenue from payment_transactions (actual Stripe net amount)
-        pt.manager_revenue as pt_manager_revenue,
+        CASE WHEN pt.payout_partition = 'per_day' THEN (SELECT COALESCE(SUM(d.transfer_amount_cents - COALESCE((d.evidence->>'reversedCents')::integer, 0)), 0)
+          FROM kitchen_booking_day_payouts d WHERE d.source_id = pt.id AND d.transfer_id IS NOT NULL) ELSE pt.manager_revenue END as pt_manager_revenue,
+        pt.payout_partition,
         pt.id as transaction_id,
         pt.status as transaction_status,
         pt.payment_intent_id as pt_payment_intent_id,
@@ -1048,7 +1050,7 @@ export async function getTransactionHistory(
       }
       
       // Manager revenue - prefer Stripe transfer; reconstruct when stale gross remains
-      const managerRevenue = claimAccounting?.managerRevenueCents ?? resolveDisplayedKitchenNetPayoutCents({
+      const managerRevenue = row.payout_partition === 'per_day' ? ptManagerRevenue : claimAccounting?.managerRevenueCents ?? resolveDisplayedKitchenNetPayoutCents({
         kitchenNetPayoutCents: ptManagerRevenue > 0 ? ptManagerRevenue : null,
         kitchenBaseSubtotalCents: totalPriceCents,
         kitchenHstAmountCents: taxCents,
@@ -1137,7 +1139,9 @@ export async function getTransactionHistory(
         pt.base_amount as pt_base_amount,
         COALESCE(pt.tax_amount, 0)::bigint as pt_tax_amount,
         pt.service_fee as pt_service_fee,
-        pt.manager_revenue as pt_manager_revenue,
+        CASE WHEN pt.payout_partition = 'per_day' THEN (SELECT COALESCE(SUM(d.transfer_amount_cents - COALESCE((d.evidence->>'reversedCents')::integer, 0)), 0)
+          FROM kitchen_booking_day_payouts d WHERE d.source_id = pt.id AND d.transfer_id IS NOT NULL) ELSE pt.manager_revenue END as pt_manager_revenue,
+        pt.payout_partition,
         pt.refund_amount as pt_refund_amount,
         pt.status as transaction_status,
         pt.payment_intent_id as pt_payment_intent_id,

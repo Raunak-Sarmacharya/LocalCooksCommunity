@@ -160,6 +160,10 @@ export async function transferToManagerForBooking(
     return { transferred: !!result.transferId, transferId: result.transferId, actualStripeFeeCents: params.actualStripeFeeCents,
       platformCommissionCents: 0, feeWithheldCents: 0, transferredCents: result.transferId ? params.chargeAmountCents : 0 };
   }
+  if ((source?.metadata as any)?.sessionExtensionId || (source?.metadata as any)?.kitchenChangeId) {
+    const partitioned = await db.transaction(tx => import('./kitchen-day-payout-sources').then(d => d.partitionDatedSupplement(source!.id, tx)));
+    if (partitioned) return deferredDayTransfer(params);
+  }
   if ((source?.metadata as any)?.kitchenChangeId) return transferKitchenChangeSource(params);
   return db.transaction(async tx => {
     await tx.select({ id: paymentTransactions.id }).from(paymentTransactions)

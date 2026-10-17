@@ -52,7 +52,7 @@ beforeAll(async () => {
   const body = legacy.slice(legacy.indexOf('CREATE OR REPLACE FUNCTION'), legacy.indexOf('DROP TRIGGER'));
   // Execute the actual 0099 allocation DDL, including its CHECKs, FK constraints and uniqueness.
   const cp1 = readFileSync('migrations/0099_multiday_and_kitchen_controls.sql', 'utf8');
-  const allocations = cp1.slice(cp1.indexOf('CREATE TABLE IF NOT EXISTS kitchen_booking_day_allocations'), cp1.indexOf('CREATE TABLE IF NOT EXISTS kitchen_booking_day_payouts'));
+  const allocations = cp1.slice(cp1.indexOf('CREATE TABLE IF NOT EXISTS kitchen_booking_day_allocations'), cp1.indexOf('DROP TRIGGER'));
   const db = await createTestDatabase([s.users, s.locations, s.kitchens, s.equipmentListings, s.kitchenBookings, s.kitchenBookingVisits,
     s.equipmentBookings, s.storageBookings, s.paymentTransactions, s.kitchenCheckoutHolds, s.kitchenCheckoutIncidents, s.kitchenCancellationPolicies,
     s.platformSettings, s.bookingLifecycleEvents, s.emailLogs], [body, allocations,

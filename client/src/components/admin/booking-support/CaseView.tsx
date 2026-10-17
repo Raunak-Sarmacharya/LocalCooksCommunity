@@ -150,6 +150,15 @@ export function MoneyCard({ c }: { c: SupportCase }) {
           {c.payout.status !== 'not_applicable' && <p className="mt-3 text-sm font-medium">{t("bsKitchenPayout")} {fmtMoney(c.payout.amountCents, m.currency)}</p>}
           <KitchenPayoutStatus payout={c.payout} timezone={c.schedule.timezone} currency={m.currency} showAmount={false} audience="admin" />
         </div>}
+        {!!m.dayPayouts?.length && <div className="border-t pt-2">
+          <p className="text-sm font-medium">Daily payout installments</p>
+          <ul>{m.dayPayouts.map(day => <li key={day.installmentId} className="py-1 text-sm">
+            {day.operatingDate} ? {day.feePending ? 'Waiting for actual processing fee' : fmtMoney(day.amountCents, m.currency)} ? {humanize(day.status)}
+            {day.transferId && <span className="ml-2 text-muted-foreground">{day.transferId}</span>}
+            {day.retryReason && <p className="text-muted-foreground">{humanize(day.retryReason)}</p>}
+          </li>)}</ul>
+          <p className="text-xs text-muted-foreground">Use Release payout to retry an installment. Resolve open problems before it can be paid.</p>
+        </div>}
         <div className="border-t pt-2">
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("bsTransfers")}</p>
           {m.transfers.length === 0 ? <p className="text-sm text-muted-foreground">{t("bsNoTransfers")}</p> : (
