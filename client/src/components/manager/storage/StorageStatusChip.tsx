@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import type { UnitChip } from "@/lib/storage-board";
 
 const CHIP_KEY: Record<UnitChip, string> = {
+  outOfService: "stChipOutOfService",
   free: "stChipFree",
   reserved: "stChipReserved",
   occupied: "stChipOccupied",
@@ -17,6 +18,7 @@ const CHIP_KEY: Record<UnitChip, string> = {
 
 /** AA-contrast chip colours on white and on the muted card. */
 const CHIP_CLASS: Record<UnitChip, string> = {
+  outOfService: "border-slate-400 bg-slate-100 text-slate-900",
   free: "border-border bg-muted text-muted-foreground",
   reserved: "border-sky-300 bg-sky-50 text-sky-900",
   occupied: "border-emerald-300 bg-emerald-50 text-emerald-900",

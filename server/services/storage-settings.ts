@@ -11,7 +11,7 @@ export const STORAGE_DISPOSAL_KEY = 'storage_kitchen_disposal_enabled';
 export type StorageSettings = { maxTermDays: number; kitchenDisposalEnabled: boolean };
 
 /** Platform storage settings: the longest term a chef can pay for, and whether kitchens may record disposal. */
-export async function storageSettings(reader: Tx | typeof db = db): Promise<StorageSettings> {
+export async function storageSettings(reader: Pick<typeof db, 'select'> = db): Promise<StorageSettings> {
   const rows = await reader.select().from(platformSettings).where(inArray(platformSettings.key, [STORAGE_MAX_TERM_KEY, STORAGE_DISPOSAL_KEY]));
   const values = Object.fromEntries(rows.map(row => [row.key, row.value]));
   return validateStorageSettings({

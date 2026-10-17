@@ -28,6 +28,7 @@ function fieldLabelKey(field: StorageActionField): string {
     case "byDate": return "stDateLabel";
     case "days": return "stDaysLabel";
     case "amountCents": return "stAmountLabel";
+    case "photoUrls": return "stPhotosLabel";
     default: return "stNoteLabel";
   }
 }
@@ -55,9 +56,27 @@ export function StorageMoreActions({ rental, onDone }: { rental: StorageRental; 
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [preview, setPreview] = useState<{ amountCents: number; date?: string; byDate?: string } | null>(null);
+  const [operationKey, setOperationKey] = useState('');
 
   const reset = () => { setActive(null); setValues({}); setReason(""); setError(null); };
-  const amountCents = active ? actionAmountCents(rental, active, numericValues(values)) : null;
+  const needsPreview = active && ['move-out-by', 'refund', 'offer-extension'].includes(active.action);
+  const amountCents = needsPreview ? preview?.amountCents ?? null : active ? actionAmountCents(rental, active, numericValues(values)) : null;
+  async function loadPreview() {
+    if (!active) return;
+    setSaving(true); setError(null);
+    try {
+      const params = new URLSearchParams();
+      if (values.byDate) params.set('date', String(values.byDate));
+      if (values.days) params.set('days', String(values.days));
+      if (values.amountCents !== undefined) params.set('amountCents', String(values.amountCents));
+      const response = await fetch(`/api/manager/storage-rentals/${rental.id}/${active.action}/preview?${params}`, { headers: await getAuthHeaders(), credentials: 'include' });
+      if (!response.ok) throw Error();
+      const result = await response.json();
+      setPreview(result);
+      if (active.action === 'refund' && !values.amountCents) setValues(prev => ({ ...prev, amountCents: result.amountCents }));
+    } catch { setError(t('stActionFailed')); } finally { setSaving(false); }
+  }
 
   function numericValues(input: Values): Partial<Record<StorageActionField, number>> {
     const out: Partial<Record<StorageActionField, number>> = {};
@@ -77,9 +96,12 @@ export function StorageMoreActions({ rental, onDone }: { rental: StorageRental; 
         method: "POST",
         headers: { ...(await getAuthHeaders()), "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify(actionBody(active, values, reason)),
+        body: JSON.stringify({ ...actionBody(active, values, reason), operationKey,
+          ...(active.action === 'removal/record' ? { itemIndexes: rental.removalItemIndexes, note: reason } : {}) }),
       });
       if (!response.ok) throw new Error(t("stActionFailed"));
+      const result = await response.json();
+      if (result?.recoveryRequired) throw new Error(t('stActionFailed'));
       setOpen(false);
       reset();
       onDone();
@@ -106,15 +128,16 @@ export function StorageMoreActions({ rental, onDone }: { rental: StorageRental; 
               {active.fields.map((field) => (
                 <div key={field} className="space-y-1.5">
                   <Label htmlFor={`action-${field}`}>{t(fieldLabelKey(field) as never)}</Label>
-                  {field === "note" ? (
+                  {field === 'photoUrls' ? <Textarea id={`action-${field}`} aria-label={t('stPhotosLabel')} value={values.photoUrls ?? ''} onChange={event => setValues(prev => ({ ...prev, photoUrls: event.target.value }))} /> : field === "note" ? (
                     <Textarea id={`action-${field}`} value={reason} onChange={(event) => setReason(event.target.value)} />
                   ) : field === "byDate" ? (
                     <Input id={`action-${field}`} type="date" value={typeof values.byDate === "string" ? values.byDate : ""}
-                      onChange={(event) => setValues((prev) => ({ ...prev, byDate: event.target.value }))} />
+                      onChange={(event) => { setPreview(null); setValues((prev) => ({ ...prev, byDate: event.target.value })); }} />
                   ) : (
                     <Input id={`action-${field}`} type="number" inputMode="numeric" min={field === "amountCents" ? 0 : 1} step={field === "amountCents" ? 0.01 : 1}
-                      value={values[field] == null ? "" : String(values[field])}
+                      value={values[field] == null ? "" : String(field === 'amountCents' ? Number(values[field]) / 100 : values[field])}
                       onChange={(event) => {
+                        setPreview(null);
                         const raw = event.target.value;
                         const parsed = raw === "" ? undefined : Number(raw);
                         setValues((prev) => ({ ...prev, [field]: field === "amountCents" && parsed != null ? Math.round(parsed * 100) : parsed }));
@@ -128,8 +151,10 @@ export function StorageMoreActions({ rental, onDone }: { rental: StorageRental; 
                   <Textarea id="action-reason" value={reason} placeholder={t("stReasonPlaceholder")} onChange={(event) => setReason(event.target.value)} />
                 </div>
               )}
-              <p className="rounded-lg bg-muted/50 p-3 text-sm text-muted-foreground">{t(active.consequenceKey as never, consequenceParams(rental, active, values, amountCents))}</p>
+              <p className="rounded-lg bg-muted/50 p-3 text-sm text-muted-foreground">{needsPreview && !preview ? t('stPreviewPrompt') : t(active.consequenceKey as never, consequenceParams(rental, active, values, amountCents))}</p>
               <dl className="space-y-1 text-sm">
+                <div>{t('stDatePaidThrough', { date: formatBookingDate(rental.paidThrough) })}</div>
+                {preview?.date && <div>{formatBookingDate(preview.date)}</div>}
                 {amountCents != null && (
                   <div className="flex items-center justify-between gap-3">
                     <dt className="text-muted-foreground">{t("stAmountLabel")}</dt>
@@ -146,7 +171,8 @@ export function StorageMoreActions({ rental, onDone }: { rental: StorageRental; 
               {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
               <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                 <Button variant="ghost" onClick={() => setActive(null)}>{t("stBack")}</Button>
-                <Button onClick={() => void submit()} disabled={saving}>{t("stConfirm")}</Button>
+                {needsPreview && !preview ? <Button onClick={() => void loadPreview()} disabled={saving}>{t('stPreview')}</Button>
+                  : <Button onClick={() => void submit()} disabled={saving}>{t("stConfirm")}</Button>}
               </div>
             </div>
           ) : (
@@ -160,7 +186,7 @@ export function StorageMoreActions({ rental, onDone }: { rental: StorageRental; 
               ) : (
                 <div className="flex flex-col gap-2">
                   {actions.map((def) => (
-                    <Button key={def.action} variant="outline" className="justify-start" onClick={() => { setActive(def); setValues({}); setReason(""); setError(null); }}>
+                    <Button key={def.action} variant="outline" className="justify-start" onClick={() => { setActive(def); setValues({ ...def.defaults, ...(def.action === 'holdover-charge' ? { amountCents: rental.holdoverChargeCents ?? rental.accruedCents } : {}) }); setReason(""); setError(null); setPreview(null); setOperationKey(crypto.randomUUID()); }}>
                       {t(def.labelKey as never)}
                     </Button>
                   ))}

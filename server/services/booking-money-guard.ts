@@ -35,6 +35,11 @@ export async function assertBookingMoneyWritable(target: {
       AND a.status IN ('executing','recovery_required') AND a.action_type IN ('goodwill_refund','cancel_kitchen_caused','refund_captured_request','accept_cancellation_for_manager','claim_compensate','claim_withdraw','retry_refund','mark_refunded','end_rental')
       AND (a.action_type NOT IN ('retry_refund','mark_refunded') OR a.status = 'executing')
       AND a.operation_key <> COALESCE(${target.operationKey ?? null}, '')
+      -- A storage recovery is tied to the original reserved refund, never an unrelated support action.
+      AND NOT EXISTS (SELECT 1 FROM support_actions recovery WHERE recovery.storage_booking_id = a.storage_booking_id
+        AND recovery.action_type IN ('retry_refund','mark_refunded') AND recovery.status = 'executing'
+        AND ((recovery.operation_key = ${target.operationKey ?? null} AND recovery.before_state->'recoveryFor' ? a.operation_key)
+          OR (a.id = recovery.id AND recovery.before_state->'recoveryFor' ? ${target.operationKey ?? ''})))
     UNION ALL SELECT c.booking_id FROM kitchen_booking_changes c
       WHERE c.booking_id IN (SELECT booking_id FROM linked_bookings)
       AND c.policy->'operation'->>'state' = 'pending'

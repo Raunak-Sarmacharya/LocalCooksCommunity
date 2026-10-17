@@ -37,8 +37,8 @@ vi.mock('./stripe-service', () => ({
     return { refundId: refund.id };
   } }));
 
-import { releaseDueStoragePayouts, releaseStorageTermPayout, scheduleStorageTermPayout, storageTermPayout } from './storage-payouts';
-import { refundRentalUnused, storageRefundShares } from './storage-rental-money';
+import { releaseDueStoragePayouts, releaseStorageTermPayout, scheduleStorageTermPayout, storageTermPayout, storageTermStillEligible } from './storage-payouts';
+import { recoverStorageRefund, refundRentalUnused, storageRefundShares } from './storage-rental-money';
 import { assertBookingMoneyWritable } from './booking-money-guard';
 import { changeStorageFlag, handleBookingSupportWebhook } from './booking-support-flags';
 
@@ -278,5 +278,30 @@ describe('storage refunds', () => {
     expect(h.notices.mock.calls.filter(call => call[2] === 'refund_issued').map(call => call[3].only)).toEqual([['chef', 'admins']]);
     await releaseStorageTermPayout(1, 'test', endOfTerm);
     expect(h.createTransfer.mock.calls[0][0].amount).toBe(3450 - 133);
+  });
+  it('Local Cooks goodwill after payout leaves the sent transfer untouched', async () => {
+    await releaseStorageTermPayout(1, 'test', endOfTerm);
+    const transfer = { ...h.transfer };
+    await refundRentalUnused(7, { cause: 'goodwill_lc', amountCents: 500, actorId: 9, operationKey: 'after-payout-goodwill' });
+    expect(h.reverse).toHaveBeenCalledWith(0);
+    expect(h.transfer).toEqual(transfer);
+    expect(h.createTransfer).toHaveBeenCalledTimes(1);
+    const [source] = await h.db.select().from(paymentTransactions);
+    expect(source.transferId).toBe(transfer.id);
+    expect((source.metadata as any).refunds[0].managerDebited).toBe(0);
+  });
+  it('keeps payouts paused while a reclaim refund is pending', async () => {
+    await h.db.update(storageBookings).set({ reclaimEndOn: '2026-10-18', reclaim: { pending: true } }).where(eq(storageBookings.id, 7));
+    expect(await storageTermStillEligible(7, h.db)).toBe(false);
+    expect(await releaseStorageTermPayout(1, 'test', endOfTerm)).toMatchObject({ deferred: true });
+    expect(h.createTransfer).not.toHaveBeenCalled();
+  });
+  it('receipt-only recovery verifies a lost refund response without sending another refund', async () => {
+    h.lostRefundResponse = true;
+    expect(await refundRentalUnused(7, { cause: 'goodwill_lc', amountCents: 500, actorId: 9, operationKey: 'lost-receipt' })).toMatchObject({ refunds: [{ status: 'recovery_required' }] });
+    h.lostRefundResponse = false;
+    expect(await recoverStorageRefund(7, 'receipt-review', false)).toMatchObject({ success: true, verifiedOperationKeys: ['lost-receipt'] });
+    expect(h.refunds).toHaveLength(1);
+    expect(h.reverse).toHaveBeenCalledTimes(1);
   });
 });

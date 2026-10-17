@@ -29,6 +29,19 @@ const CAPTURED = ['succeeded', 'partially_refunded'] as Source['status'][];
 const meta = (row: { metadata: unknown }) => (row.metadata || {}) as Record<string, any>;
 export class StorageRefundError extends Error { constructor(public code: string, public status = 409) { super(code); } }
 
+/** Provider reads precede the rental lock, using the same receipt-aware ceilings as the refund reservation. */
+export async function previewStorageRefund(rentalId: number) {
+  const rows = await db.select().from(paymentTransactions).where(and(eq(paymentTransactions.bookingType, 'storage'), eq(paymentTransactions.bookingId, rentalId), inArray(paymentTransactions.status, CAPTURED)));
+  let kitchenCents = 0, customerCents = 0;
+  for (const source of rows) {
+    const facts = await getCancellationPaymentFacts(source.paymentIntentId!);
+    const money = cancellationSourceQuote({ ...facts, serviceFee: Number(source.serviceFee), localReceipts: (meta(source).refunds || []).map((item: any) => ({ ...item, id: item.id || item.refundId })) });
+    kitchenCents += money.managerRefund;
+    customerCents += money.captured - money.alreadyRefunded;
+  }
+  return { kitchenCents, customerCents };
+}
+
 /** Pure: what each paid term's payment row refunds and who funds it, before the per-source ceilings. */
 export function storageRefundShares(terms: Array<{ id: number; startsOn: string; endsOn: string; days: number; subtotalCents: number; taxCents: number;
   serviceFeeCents: number; totalCents: number; paidAt: Date | null; processingFeeCents: number | null; refundedCents: number; remainingKitchenCents: number; kitchenDebitedCents?: number; platformReturnedCents?: number }>,
@@ -127,7 +140,7 @@ export async function refundRentalUnused(rentalId: number, input: StorageRefundI
         const goodwill = Math.min(share.goodwill, customer - managerDebited - feeReturned);
         const processing = customer - managerDebited - feeReturned - goodwill;
         if (customer <= 0) continue;
-        const operation = { id: opId(source.id), requestFingerprint: fingerprint, storageRentalId: rentalId, cause: input.cause, actorId: input.actorId, managerId: source.managerId,
+        const operation = { id: opId(source.id), supportOperationKey: input.operationKey, requestFingerprint: fingerprint, storageRentalId: rentalId, cause: input.cause, actorId: input.actorId, managerId: source.managerId,
           intentId: source.paymentIntentId, termId: term.id, customerRefund: customer, managerRefund: managerDebited, platformRefund: feeReturned,
           platformGoodwillCents: goodwill, platformProcessingCostCents: processing, status: 'pending', acceptedAt: (input.now ?? new Date()).toISOString() };
         await tx.update(paymentTransactions).set({ stripeProcessingFee: String(m.processingCost), updatedAt: new Date(), metadata: { ...saved, refunds: m.receipts,
@@ -149,6 +162,7 @@ async function sendReservedStorageRefund(sourceId: number, operationId: string, 
   let operation = [meta(source).cancellationRefundOperation, ...(meta(source).cancellationRefundOperations || [])].find(item => item?.id === operationId);
   if (!operation) return [];
   if (operation.status === 'succeeded') return [{ sourceId, status: 'succeeded', customerRefund: operation.customerRefund, kitchenDebtCents: operation.kitchenDebtCents || 0 }];
+  await assertBookingMoneyWritable({ storageRentalId: source.bookingId, operationKey: supportOperationKey });
   try {
     const send = (reverseTransferAmount: number) => reverseTransferAndRefund(operation.intentId, operation.customerRefund, 'requested_by_customer', {
       reservedOperation: true, idempotencyKey: operation.id, supportOperationKey, reverseTransferAmount, refundApplicationFee: false,
@@ -188,6 +202,34 @@ async function sendReservedStorageRefund(sourceId: number, operationId: string, 
     });
     return [{ sourceId, status: 'recovery_required', customerRefund: operation.customerRefund, kitchenDebtCents: operation.kitchenDebtCents || 0 }];
   }
+}
+
+/** Recovery only uses reserved amounts or verified provider receipts; "mark refunded" cannot invent a receipt. */
+export async function recoverStorageRefund(rentalId: number, operationKey: string, retry: boolean) {
+  const sources = await db.select().from(paymentTransactions).where(and(eq(paymentTransactions.bookingType, 'storage'), eq(paymentTransactions.bookingId, rentalId)));
+  let found = false;
+  for (const source of sources) {
+    const operation = meta(source).cancellationRefundOperation;
+    if (!operation) continue;
+    found = true;
+    if (operation.status === 'succeeded') continue;
+    if (retry) {
+      const results = await sendReservedStorageRefund(source.id, operation.id, operationKey);
+      if (results.some(result => result.status !== 'succeeded')) throw new StorageRefundError('refund_pending');
+    } else {
+      const result = await (await import('./payment-refund-reconciliation')).reconcilePaymentRefundReceipts(source.paymentIntentId!);
+      if (result.operation?.id !== operation.id || result.operation?.status !== 'succeeded') throw new StorageRefundError('refund_pending');
+    }
+  }
+  if (!found) {
+    const [rental] = await db.select().from(storageBookings).where(eq(storageBookings.id, rentalId));
+    const pending = (rental?.assistanceHistory as any[] | undefined)?.some(entry => !entry.complete && ['refund', 'move-out-by'].includes(entry.action));
+    if (!retry || !pending) throw new StorageRefundError('nothing_to_refund');
+  }
+  const verified = await db.select().from(paymentTransactions).where(and(eq(paymentTransactions.bookingType, 'storage'), eq(paymentTransactions.bookingId, rentalId)));
+  const verifiedOperationKeys = verified.flatMap(source => [meta(source).cancellationRefundOperation, ...(meta(source).cancellationRefundOperations || [])]
+    .filter(operation => operation?.status === 'succeeded' && operation.supportOperationKey).map(operation => operation.supportOperationKey as string));
+  return { success: true, verifiedOperationKeys };
 }
 
 /** Storage branch of finalizeCancellationRefund: runs once, in the reconciliation transaction that verified the receipt. */

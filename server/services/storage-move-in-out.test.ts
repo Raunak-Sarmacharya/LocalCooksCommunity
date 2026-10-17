@@ -100,15 +100,15 @@ describe('storage move-in and move-out', () => {
     expect(await requestStorageCheckout(7, 3, 'All items removed')).toMatchObject({ success: true });
     expect(await rental()).toMatchObject({ rentalState: 'move_out_requested', rentalTerms: { noBaseline: true } });
     expect(h.notices.mock.calls.find(call => call[2] === 'move_out_requested')?.[3]).toMatchObject({ date: now, deadline: new Date('2026-10-16T14:00:00Z') });
-    expect((await readRental(7, manager)).actions).toEqual(['clear-move-out', 'report_problem']);
+    expect((await readRental(7, manager)).actions).toEqual(['clear-move-out', 'release', 'refund']);
   });
   it('advertises exactly the allowed kitchen route names and both chef action spellings', async () => {
-    expect((await readRental(7, manager)).actions).toEqual(['handover', 'report_problem']);
-    expect((await readRental(7, chef)).actions).toEqual(['move-in', 'move_in', 'move-out', 'move_out', 'report_problem']);
+    expect((await readRental(7, manager)).actions).toEqual(['handover', 'move-out-by', 'refund', 'offer-extension']);
+    expect((await readRental(7, chef)).actions).toEqual(['move-in', 'move_in', 'move-out', 'move_out', 'report_problem', 'extend']);
     await storageRentalVisitAction(7, manager, 'handover', { photoUrls: ['https://example.invalid/handover.jpg'], note: 'Ready for you' });
     expect((await rental()).rentalState).toBe('active');
     expect((await payment()).payoutEligibleAt.toISOString()).toBe('2026-10-19T02:30:00.000Z');
-    expect((await readRental(7, manager)).actions).toEqual(['report_problem']);
+    expect((await readRental(7, manager)).actions).toEqual(['move-out-by', 'refund', 'offer-extension']);
     await requestStorageCheckout(7, 3);
     expect((await rental()).rentalTerms.noBaseline).toBe(true);
   });

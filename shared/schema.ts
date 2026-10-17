@@ -1368,6 +1368,8 @@ export type InsertPortalUserLocationAccess = z.infer<typeof insertPortalUserLoca
 
 // Define storage_listings table
 export const storageListings = pgTable("storage_listings", {
+  outOfServiceUnits: jsonb('out_of_service_units').$type<Record<string, { reason: string; actorId: number; at: string }>>().default({}).notNull(),
+  unitServiceHistory: jsonb('unit_service_history').default([]).notNull(),
   id: serial("id").primaryKey(),
   kitchenId: integer("kitchen_id").references(() => kitchens.id, { onDelete: "cascade" }).notNull(),
   storageType: storageTypeEnum("storage_type").notNull(),

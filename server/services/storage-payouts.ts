@@ -33,7 +33,8 @@ const meta = (row: { metadata: unknown }) => (row.metadata || {}) as Record<stri
 export async function storageTermPayoutFacts(rentalId: number, reader: Reader = db): Promise<StoragePayoutFacts> {
   const result = await reader.execute(sql`SELECT
     EXISTS(SELECT 1 FROM commitment_problems p JOIN storage_bookings s ON s.id = p.storage_booking_id
-      WHERE p.storage_booking_id = ${rentalId} AND p.reported_by = s.chef_id AND p.status <> 'resolved') AS problem,
+      WHERE p.storage_booking_id = ${rentalId} AND p.reported_by = s.chef_id AND p.status <> 'resolved'
+        AND COALESCE(s.rental_terms->'payoutProblemOverrides'->>p.id::text, '') <> p.revision::text) AS problem,
     EXISTS(SELECT 1 FROM damage_claims c WHERE c.storage_booking_id = ${rentalId}
       AND c.status NOT IN ('draft', 'rejected', 'resolved', 'expired', 'charge_succeeded')) AS claim,
     -- Pilot policy (Oct 16): Local Cooks absorbs chargebacks, so a dispute never holds the kitchen's payout.
@@ -107,7 +108,7 @@ export async function scheduleStorageTermPayout(rentalId: number, tx: Tx, now = 
 /** Re-checked by the transfer engine under its source lock (signature kept from the WP-ST4 stub). */
 export async function storageTermStillEligible(rentalId: number, reader: Reader): Promise<boolean> {
   const [rental] = await reader.select().from(storageBookings).where(eq(storageBookings.id, rentalId));
-  if (!rental?.rentalState || UNAPPROVED.includes(rental.rentalState)) return false;
+  if (!rental?.rentalState || UNAPPROVED.includes(rental.rentalState) || (rental.reclaim as any)?.pending) return false;
   if (rental.endReason !== 'cleared' && rental.checkoutRequestedAt && Date.now() < rental.checkoutRequestedAt.getTime() + CLAIM_WINDOW_MS) return false;
   const facts = await storageTermPayoutFacts(rentalId, reader);
   return !facts.openFlag && !facts.openClaim && !facts.openProblem;
@@ -128,6 +129,7 @@ export async function releaseStorageTermPayout(paymentTransactionId: number, rea
     if (source.transferId) return { result: { success: true, transferred: true, transferId: source.transferId, reason: 'Already sent' } };
     if (meta(source).payoutNoEntitlement) return { result: { success: true, notApplicable: true, reason: 'No kitchen share is owed' } };
     if (!rental.rentalState || UNAPPROVED.includes(rental.rentalState)) return { result: { success: false, deferred: true, reason: 'The rental is not approved' } };
+    if ((rental.reclaim as any)?.pending) return { result: { success: false, deferred: true, reason: 'The reclaim refund is still being verified' } };
     if (!CAPTURED.includes(source.status) || !term.paidAt) return { result: { success: false, deferred: true, reason: 'Payment is not captured' } };
     const { eligibleAt, holdReason } = await saveTermEligibility(tx, rental, source, term, await storageTermPayoutFacts(rental.id, tx), now);
     if (holdReason) return { result: { success: false, deferred: true, reason: `On hold: ${holdReason}` } };

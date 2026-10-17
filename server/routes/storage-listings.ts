@@ -24,6 +24,8 @@ const PHOTOS_MAX = 10;
  */
 export function validateStorageListingInput(data: Record<string, unknown>, platformMaxDays: number, partial = false): { error?: string; value?: Record<string, unknown> } {
     const value: Record<string, unknown> = { ...data };
+    delete value.outOfServiceUnits; // Unit service state is changed only by the audited, reason-required tool.
+    delete value.unitServiceHistory;
     if (value.unitCount == null) {
         if (!partial) value.unitCount = 1;
     } else if (!Number.isSafeInteger(value.unitCount) || Number(value.unitCount) < UNIT_COUNT_MIN || Number(value.unitCount) > UNIT_COUNT_MAX) {
@@ -289,7 +291,7 @@ router.get("/chef/kitchens/:kitchenId/storage-listings", requireChef, async (req
 
         logger.info(`[API] /api/chef/kitchens/${kitchenId}/storage-listings - Returning ${visibleListings.length} visible listings (out of ${allListings.length} total)`);
 
-        res.json(visibleListings.map((listing: any) => ({
+        res.json(visibleListings.map(({ outOfServiceUnits: _units, unitServiceHistory: _history, ...listing }: any) => ({
             ...listing,
             maxTermDays: listingMaxTermDays(settings.maxTermDays, listing.maxTermDays),
             availability: listingAvailability(listing.unitCount ?? 1, occupied.get(listing.id) ?? [], today),

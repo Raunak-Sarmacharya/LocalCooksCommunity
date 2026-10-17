@@ -4,11 +4,14 @@ import { requireAdmin, requireFirebaseAuthWithUser, requireManager } from '../fi
 import { requireChef } from './middleware';
 import { ensureServerI18n, tLocale } from '../i18n';
 import { logger } from '../logger';
-import { openRemovalReview, raiseHoldoverCharge, recordRemoval, sendFinalNotice, waiveHoldover } from '../services/storage-rental-lifecycle';
+import { raiseHoldoverCharge, recordRemoval, waiveHoldover } from '../services/storage-rental-lifecycle';
 import { createRentalCheckout, decideRental, listRentals, quoteRental, readRental, StorageRentalError, withdrawRental } from '../services/storage-rentals';
 import { payExtension, quoteExtension, syncStorageTerm } from '../services/storage-extensions';
 
 import { storageRentalVisitAction } from '../services/storage-checkout-service';
+import { previewStorageTool, runStorageTool, setStorageUnitService, storageToolInput } from '../services/storage-rental-actions';
+import { StorageRefundError } from '../services/storage-rental-money';
+import { BookingMoneyFrozen } from '../services/booking-money-guard';
 
 const router = Router();
 const id = z.coerce.number().int().positive().safe();
@@ -22,18 +25,17 @@ const decline = z.object({ reason: z.string().trim().min(1).max(500) });
 const holdoverCharge = z.object({ amountCents: z.number().int().positive().safe(), note: z.string().trim().max(500).optional() });
 const holdoverWaive = z.object({ reason: z.string().trim().min(1).max(500) });
 const removal = z.object({ itemIndexes: z.array(z.number().int().min(0).max(99)).max(100).optional(), all: z.boolean().optional(), note: z.string().trim().max(500).optional() });
-const finalNotice = z.object({ photos: z.array(z.string().url().max(2000)).min(1).max(20),
-  items: z.array(z.object({ name: z.string().trim().min(1).max(200), qty: z.number().int().min(1).max(9999), perishable: z.boolean() })).min(1).max(100) });
 const extensionQuote = z.object({ days: z.number().int().min(1).max(30) });
 const extensionPayment = extensionQuote.extend({ expectedTotalCents: z.number().int().nonnegative().safe(),
   requestKey: z.string().min(8).max(100).regex(/^[a-zA-Z0-9_-]+$/), useSavedCard: z.boolean() });
 
-function endpoint(run: (req: Request) => Promise<unknown>) {
+export function endpoint(run: (req: Request) => Promise<unknown>) {
   return async (req: Request, res: Response) => {
     try { res.json(await run(req)); }
     catch (error) {
-      const code = error instanceof z.ZodError ? 'invalid_details' : error instanceof StorageRentalError ? error.code : 'unavailable';
-      const status = error instanceof z.ZodError ? 400 : error instanceof StorageRentalError ? error.status : 500;
+      const known = error instanceof StorageRentalError || error instanceof StorageRefundError;
+      const code = error instanceof z.ZodError ? 'invalid_details' : known ? error.code : error instanceof BookingMoneyFrozen ? 'payment_review' : 'unavailable';
+      const status = error instanceof z.ZodError ? 400 : known ? error.status : error instanceof BookingMoneyFrozen ? 409 : 500;
       // Provider exceptions may contain request details; keep them out of API responses and logs.
       if (status === 500) logger.error('[StorageRental] Operation failed', { path: req.path });
       await ensureServerI18n();
@@ -64,6 +66,15 @@ for (const action of ['move-in', 'move-out'] as const) router.post(`/chef/storag
 }));
 
 router.use('/manager/storage-rentals', requireFirebaseAuthWithUser, requireManager);
+router.post('/manager/storage-listings/:listingId/units/:unitIndex/service', requireFirebaseAuthWithUser, requireManager, endpoint(req => {
+  const input = z.object({ outOfService: z.boolean(), reason: z.string().trim().min(1).max(2000) }).parse(req.body);
+  return setStorageUnitService(id.parse(req.params.listingId), req.neonUser!.id, id.parse(req.params.unitIndex), input.outOfService, input.reason);
+}));
+for (const action of ['move-out-by', 'refund', 'offer-extension'] as const) router.get(`/manager/storage-rentals/:id/${action}/preview`, endpoint(req =>
+  previewStorageTool(id.parse(req.params.id), { id: req.neonUser!.id, role: 'manager' }, action, storageToolInput.parse({
+    byDate: req.query.date, days: req.query.days == null ? undefined : Number(req.query.days), amountCents: req.query.amountCents == null ? undefined : Number(req.query.amountCents) }))));
+for (const action of ['change-unit', 'move-out-by', 'offer-extension', 'release', 'refund'] as const) router.post(`/manager/storage-rentals/:id/${action}`, endpoint(req =>
+  runStorageTool(id.parse(req.params.id), { id: req.neonUser!.id, role: 'manager' }, action, storageToolInput.parse(req.body))));
 router.get('/manager/storage-rentals', endpoint(req => listRentals({ id: req.neonUser!.id, role: 'manager' })));
 router.get('/manager/storage-rentals/:id', endpoint(req => readRental(id.parse(req.params.id), { id: req.neonUser!.id, role: 'manager' })));
 router.post('/manager/storage-rentals/:id/approve', endpoint(async req => {
@@ -104,7 +115,9 @@ router.post('/manager/storage-rentals/:id/removal/record', endpoint(async req =>
 }));
 
 router.use('/admin/storage-rentals', requireFirebaseAuthWithUser, requireAdmin);
-router.post('/admin/storage-rentals/:id/open-removal-review', endpoint(req => openRemovalReview(id.parse(req.params.id))));
-router.post('/admin/storage-rentals/:id/final-notice', endpoint(req => sendFinalNotice(id.parse(req.params.id), req.neonUser!.id, finalNotice.parse(req.body))));
-router.post('/admin/storage-rentals/:id/removal/record', endpoint(req => recordRemoval(id.parse(req.params.id), { id: req.neonUser!.id, role: 'admin' }, removal.parse(req.body ?? {}))));
+for (const [path, type] of [['open-removal-review', 'open_removal_review'], ['final-notice', 'send_final_notice'], ['removal/record', 'record_removal_for_kitchen']] as const)
+  router.post(`/admin/storage-rentals/:id/${path}`, endpoint(async req => {
+    const { adminStorageInput, runAdminStorageAction } = await import('../services/admin-storage');
+    return runAdminStorageAction(id.parse(req.params.id), req.neonUser!.id, adminStorageInput.parse({ ...req.body, type, fundedBy: 'none' }));
+  }));
 export default router;
