@@ -791,6 +791,7 @@ export async function getChefAllPenalties(chefId: number) {
       kitchenName: kitchens.name,
       kitchenTaxRatePercent: kitchens.taxRatePercent,
       bookingEndDate: storageBookings.endDate,
+      paidThrough: storageBookings.paidThrough,
     })
     .from(storageOverstayRecords)
     .innerJoin(storageBookings, eq(storageOverstayRecords.storageBookingId, storageBookings.id))

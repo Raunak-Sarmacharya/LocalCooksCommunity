@@ -41,6 +41,8 @@ interface PendingPenalty {
   storageType: string;
   kitchenName: string;
   bookingEndDate: string;
+  paidThrough?: string | null;
+  penaltyTotalCents?: number;
   penaltyAmountCents: number;
   isResolved?: boolean;
   isPaid?: boolean;
@@ -187,7 +189,8 @@ export function PendingOverstayPenalties({ title }: { title?: string } = {}) {
         {pendingPenalties.map((penalty) => {
           const holdover = isHoldover(penalty);
           const ruleKey = RULE_KEYS[overstayCollectionError(penalty) ?? ''];
-          const amount = formatCad(penalty.penaltyAmountCents, { locale: loc });
+          // The chef sees what Stripe will charge: the amount plus the kitchen's tax.
+          const amount = formatCad(penalty.penaltyTotalCents ?? penalty.penaltyAmountCents, { locale: loc });
           return (
           <div
             key={penalty.overstayId}
@@ -205,7 +208,7 @@ export function PendingOverstayPenalties({ title }: { title?: string } = {}) {
 
                 {holdover ? (
                   <p className="text-sm text-muted-foreground">
-                    {t("ovhBody", { kitchen: penalty.kitchenName, amount, days: penalty.daysOverdue, paidThrough: storageDay(penalty.bookingEndDate.slice(0, 10), loc) })}
+                    {t("ovhBody", { kitchen: penalty.kitchenName, amount, days: penalty.daysOverdue, paidThrough: storageDay((penalty.paidThrough ?? penalty.bookingEndDate).slice(0, 10), loc) })}
                   </p>
                 ) : <>
                 <div className="flex items-center gap-4 text-sm text-muted-foreground">
