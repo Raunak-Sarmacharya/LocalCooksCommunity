@@ -8,33 +8,44 @@ vi.mock('../kitchens/kitchen.service', () => ({ kitchenService: { getKitchenDate
 vi.mock('../../services/kitchen-checkout-holds', () => ({ getActiveKitchenHolds: capacity.holds }));
 vi.mock('../../services/booking-policy-settings', () => ({ kitchenBookingPolicies: async () => policy }));
 const policy = { maxAdvanceBookingDays: 100000, turnoverBufferEnabled: false, timezone: 'America/St_Johns' };
-import { bookingService, hasBookingConflict } from './booking.service';
+import { bookingService, slotConflict } from './booking.service';
+import { datedOccupiedSlots } from '@shared/booking-occupancy';
 import { addHour } from '@shared/operating-hours';
 
-describe('hasBookingConflict', () => {
-    const existing = [{ startTime: '10:00', endTime: '11:00' }];
-
-    it('blocks a full-day booking when any slot is already allotted', () => {
-        expect(hasBookingConflict(existing, [{ startTime: '09:00', endTime: '17:00' }], true)).toBe(true);
-    });
+// Replaces the date-blind hasBookingConflict: every occupied slot is dated and anchored (later days included).
+describe('slotConflict', () => {
+    const context = { current: 0, candidate: 0, ignoreBuffer: false, timezone: 'America/St_Johns' };
+    const entries = (booking: { startTime: string; endTime: string; selectedSlots?: unknown; operatingWindowStartTime?: string }) =>
+        datedOccupiedSlots({ bookingDate: '2099-10-04', ...booking }).map(slot => ({ slot, buffer: null, kind: 'booked' as const }));
+    const at = (startTime: string, endTime: string, windowStartTime = '08:00') => ({ date: '2099-10-04', windowStartTime, startTime, endTime });
 
     it('blocks overlapping slots but allows adjacent hourly slots', () => {
-        expect(hasBookingConflict(existing, [{ startTime: '10:00', endTime: '11:00' }])).toBe(true);
-        expect(hasBookingConflict(existing, [{ startTime: '11:00', endTime: '12:00' }])).toBe(false);
+        const existing = entries({ startTime: '10:00', endTime: '11:00', operatingWindowStartTime: '08:00' });
+        expect(slotConflict(existing, at('10:00', '11:00'), context)).toEqual({ source: 'booked', buffer: false });
+        expect(slotConflict(existing, at('11:00', '12:00'), context)).toBeNull();
     });
 
     it('blocks hourly slots inside an overnight booking on the operating-day timeline', () => {
-        const overnight = [{ startTime: '08:00', endTime: '01:00' }];
-        expect(hasBookingConflict(overnight, [{ startTime: '10:00', endTime: '11:00' }], false, '08:00')).toBe(true);
-        expect(hasBookingConflict(overnight, [{ startTime: '00:00', endTime: '01:00' }], false, '08:00')).toBe(true);
-        expect(hasBookingConflict(overnight, [{ startTime: '01:00', endTime: '02:00' }], false, '08:00')).toBe(false);
+        const overnight = entries({ startTime: '08:00', endTime: '01:00', operatingWindowStartTime: '08:00' });
+        expect(slotConflict(overnight, at('10:00', '11:00'), context)).not.toBeNull();
+        expect(slotConflict(overnight, at('00:00', '01:00'), context)).not.toBeNull();
+        expect(slotConflict(overnight, at('01:00', '02:00'), context)).toBeNull();
     });
 
     it('leaves gaps between separately selected hours available', () => {
         const selectedSlots = [{ startTime: '09:00', endTime: '10:00' }, { startTime: '14:00', endTime: '15:00' }];
-        const booking = [{ startTime: '09:00', endTime: '15:00', selectedSlots }];
-        expect(hasBookingConflict(booking, [{ startTime: '11:00', endTime: '12:00' }], false, '08:00')).toBe(false);
-        expect(hasBookingConflict(booking, [{ startTime: '14:00', endTime: '15:00' }], false, '08:00')).toBe(true);
+        const booking = entries({ startTime: '09:00', endTime: '15:00', selectedSlots, operatingWindowStartTime: '08:00' });
+        expect(slotConflict(booking, at('11:00', '12:00'), context)).toBeNull();
+        expect(slotConflict(booking, at('14:00', '15:00'), context)).not.toBeNull();
+    });
+
+    it('reads a later dated day from its own slot, not the booking\'s first date', () => {
+        const dated = datedOccupiedSlots({ bookingDate: '2099-10-01', startTime: '10:00', endTime: '12:00', operatingWindowStartTime: '08:00',
+            selectedSlots: [{ date: '2099-10-01', windowStartTime: '08:00', startTime: '10:00', endTime: '11:00' },
+                { date: '2099-10-04', windowStartTime: '09:00', startTime: '11:00', endTime: '12:00' }] })
+            .map(slot => ({ slot, buffer: null, kind: 'booked' as const }));
+        expect(slotConflict(dated, at('11:00', '12:00'), context)).not.toBeNull();
+        expect(slotConflict(dated, at('10:00', '11:00'), context)).toBeNull();
     });
 });
 

@@ -358,6 +358,29 @@ router.get("/chef/kitchens/:kitchenId/month-availability", requireChef, async (r
     }
 });
 
+/** Parses `year` and `month` (0-11) query values for month views. */
+function monthQuery(req: Request): { kitchenId: number; year: number; month: number } | { error: string } {
+    const kitchenId = parseInt(req.params.kitchenId);
+    const year = parseInt(String(req.query.year)), month = parseInt(String(req.query.month));
+    if (isNaN(kitchenId) || kitchenId <= 0) return { error: "Invalid kitchen ID" };
+    if (isNaN(year) || isNaN(month) || month < 0 || month > 11) return { error: "Invalid year or month (month must be 0-11)" };
+    return { kitchenId, year, month };
+}
+
+// Per-date picker status: hourly vs full-day eligibility and the reason a date can't be booked
+// (closed, booked, held, buffer, notice, beyond_advance_window, clock_change, not_open_to_you, weekly_limit).
+router.get("/chef/kitchens/:kitchenId/date-status", requireChef, async (req: Request, res: Response) => {
+    try {
+        const query = monthQuery(req);
+        if ('error' in query) return res.status(400).json(query);
+        res.json(await bookingService.getMonthDateStatus(query.kitchenId, query.year, query.month,
+            { excludeBookingId: await replacedRequestId(req, query.kitchenId), chefId: req.neonUser!.id }));
+    } catch (error: any) {
+        logger.error("Error fetching date status:", error);
+        res.status(500).json({ error: "Failed to fetch date status", message: error.message });
+    }
+});
+
 // Get available time slots for a kitchen on a specific date (legacy endpoint, returns only available slots)
 router.get("/chef/kitchens/:kitchenId/availability", requireChef, async (req: Request, res: Response) => {
     try {
@@ -647,6 +670,22 @@ router.get("/public/kitchens/:kitchenId/month-availability", async (req: Request
 });
 
 // Public time slots for kitchen preview (no auth — browse before sign-up)
+// Public per-date status: never includes a chef's access or remaining weekly hours.
+router.get("/public/kitchens/:kitchenId/date-status", async (req: Request, res: Response) => {
+    try {
+        const query = monthQuery(req);
+        if ('error' in query) return res.status(400).json(query);
+        // Same public gate as the month map: published, not hidden by the admin, valid licence.
+        const kitchen = await kitchenService.getKitchenById(query.kitchenId).catch(() => null);
+        const gateLocation = kitchen ? await locationService.getLocationById(kitchen.locationId) : null;
+        if (!kitchen || !kitchenIsVisibleToChefs(kitchen, gateLocation)) return res.status(404).json({ error: "Kitchen not found" });
+        res.json(await bookingService.getMonthDateStatus(query.kitchenId, query.year, query.month));
+    } catch (error: any) {
+        logger.error("Error fetching public date status:", error);
+        res.status(500).json({ error: "Failed to fetch date status", message: error.message });
+    }
+});
+
 router.get("/public/kitchens/:kitchenId/slots", async (req: Request, res: Response) => {
     try {
         const kitchenId = parseInt(req.params.kitchenId);

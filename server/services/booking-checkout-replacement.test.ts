@@ -9,14 +9,14 @@ vi.mock('./booking-response-deadline', () => ({ getBookingResponseDeadline: asyn
 vi.mock('./booking-replacement', async importOriginal => ({ ...(await importOriginal<typeof import('./booking-replacement')>()),
   replacedRequestForFulfillment: state.replaced, completeReplacementSafely: state.complete }));
 vi.mock('./kitchen-checkout-incidents', () => ({ registerKitchenCheckout: vi.fn(), checkoutIncident: async () => ({ chefId: 3, kitchenId: 4 }), updateCheckoutIncident: vi.fn(), resolveCheckoutConflict: vi.fn() }));
-vi.mock('./kitchen-checkout-holds', () => ({ fulfillKitchenCheckout: vi.fn(async (...args: any[]) => args[6]()), hasInventoryConflict: state.conflict,
+vi.mock('./kitchen-checkout-holds', () => ({ fulfillKitchenCheckout: vi.fn(async (...args: any[]) => args[6]({ bufferMinutesSnapshot: 0 })), hasInventoryConflict: state.conflict,
   KitchenHoldMissingError: class extends Error {}, KitchenSlotUnavailableError: class extends Error {} }));
 vi.mock('../db', () => {
   const database = (rows: Record<string, any[]>) => {
     const name = (table: any) => table[Symbol.for('drizzle:Name')];
     return {
       select: () => ({ from: (table: any) => {
-        const chain: any = { innerJoin: () => chain, where: () => chain, limit: () => chain,
+        const chain: any = { innerJoin: () => chain, where: () => chain, limit: () => chain, orderBy: () => chain, for: () => chain,
           then: (resolve: any) => resolve(name(table) === 'kitchen_bookings' && state.existing ? [state.existing] : rows[name(table)] || []) }; return chain;
       } }),
       insert: (table: any) => ({ values: (data: any) => {
@@ -25,6 +25,7 @@ vi.mock('../db', () => {
       } }),
       update: (table: any) => ({ set: (data: any) => ({ where: async () => { for (const row of rows[name(table)] || []) Object.assign(row, data); } }) }),
       transaction: async (work: any) => { const draft = structuredClone(state.rows), result = await work(database(draft)); Object.assign(state.rows, draft); return result; },
+      execute: async () => ({ rows: [] }), // advisory locks taken by the dated-visit builder
     };
   }; return { db: database(state.rows) };
 });

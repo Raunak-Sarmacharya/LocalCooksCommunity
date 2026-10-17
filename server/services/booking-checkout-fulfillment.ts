@@ -10,6 +10,8 @@ import { capturedComponentAllocations } from '@shared/captured-component-allocat
 import { parseCheckoutCancellationPolicy, parseCheckoutSlots } from './checkout-metadata';
 import { cancellationSnapshotFromMetadata } from './cancellation-policy-settings';
 import { fulfillKitchenCheckout, hasInventoryConflict, KitchenHoldMissingError, KitchenSlotUnavailableError } from './kitchen-checkout-holds';
+import { WeeklyChefHoursLimitError } from './kitchen-booking-quota';
+import { savedInvitationOverride } from './booking-rule-overrides';
 import { queueBookingLifecycleEvent } from './booking-lifecycle-delivery';
 import { generateReferenceCode } from '../reference-code';
 import { kitchenPayoutTiming } from '@shared/kitchen-payout';
@@ -103,7 +105,7 @@ export async function fulfillQuotedKitchenBooking(session: Stripe.Checkout.Sessi
   try {
     const booking = await fulfillKitchenCheckout(metadata.hold_id, session.id, kitchenId, metadata.booking_date.slice(0, 10),
       parseCheckoutSlots(metadata.selected_slots, metadata.start_time, metadata.end_time), metadata.window_start_time || metadata.start_time,
-      () => db.transaction(async tx => {
+      saved => db.transaction(async tx => {
         // Another fulfillment may have recorded a conflict while this caller waited for inventory.
         if ((await checkoutIncident(session.id))?.inventoryConflict) throw new KitchenSlotUnavailableError();
         // Acceptance uses this same row lock. Recheck inventory if it won after the exclusion read.
@@ -123,7 +125,8 @@ export async function fulfillQuotedKitchenBooking(session: Stripe.Checkout.Sessi
           hourlyRate: metadata.hourly_rate_cents, durationHours: metadata.duration_hours,
           cancellationPolicyHours: parseCheckoutCancellationPolicy(metadata.cancellation_policy_hours),
           cancellationPolicySnapshot: cancellationSnapshotFromMetadata(metadata),
-          specialNotes: metadata.special_notes || null, stripeCustomerId: customerId, stripePaymentMethodId: paymentMethodId }).returning();
+          specialNotes: metadata.special_notes || null, stripeCustomerId: customerId, stripePaymentMethodId: paymentMethodId,
+          bufferMinutesSnapshot: saved.bufferMinutesSnapshot, bookingRuleOverrides: invitation?.bookingRuleOverrides ?? null }).returning();
         await ensureKitchenBookingVisits(parent.id, tx);
         const equipmentItems: Record<string, unknown>[] = [];
         for (const [listingId, price] of prices.e) {
@@ -173,11 +176,11 @@ export async function fulfillQuotedKitchenBooking(session: Stripe.Checkout.Sessi
       }), async () => {
         const [existing] = await db.select().from(kitchenBookings).where(eq(kitchenBookings.paymentIntentId, intent.id)).limit(1);
         return existing;
-      }, replacesId);
+      }, replacesId, chefId, invitation ? savedInvitationOverride(invitation) : undefined);
     await updateCheckoutIncident(session.id, { outcome: 'booking_created', bookingId: booking.id, paymentIntentId: intent.id, amountCents: intent.amount, currency: session.currency, lastCheckedAt: new Date() });
     createdBookingId = booking.id;
   } catch (error) {
-    if (error instanceof KitchenHoldMissingError || error instanceof KitchenSlotUnavailableError) {
+    if (error instanceof KitchenHoldMissingError || error instanceof KitchenSlotUnavailableError || error instanceof WeeklyChefHoursLimitError) {
       await markInvitationUnavailable(invitation);
       return resolveCheckoutConflict(session, intent, stripe);
     }

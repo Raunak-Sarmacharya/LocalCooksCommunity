@@ -298,7 +298,8 @@ function checkTourVersion(tour: typeof kitchenViewings.$inferSelect, expected: u
 
 async function tourBookingContext(connection: TourConnection, tour: typeof kitchenViewings.$inferSelect, scheduledAt: Date) {
   if (!tour.targetedKitchenId) throw new DomainError('TOUR_KITCHEN_MISSING', 'This tour no longer has an available kitchen', 409);
-  const firstDay = Date.parse(`${tourDateKey(scheduledAt)}T00:00:00Z`) - 86400000;
+  // A dated booking's later days can be up to 14 days after its first date (the row's booking_date).
+  const firstDay = Date.parse(`${tourDateKey(scheduledAt)}T00:00:00Z`) - 15 * 86400000;
   const lastDay = Date.parse(`${tourDateKey(new Date(scheduledAt.getTime() + tour.durationMinutes * 60_000))}T00:00:00Z`) + 86400000;
   const bookings = await connection.select({ id: kitchenBookings.id, kitchenId: kitchenBookings.kitchenId,
     referenceCode: kitchenBookings.referenceCode, status: kitchenBookings.status, bookingDate: kitchenBookings.bookingDate,
@@ -1088,7 +1089,7 @@ router.post(
           const [weekly, overrides, bookings] = await Promise.all([
             tx.select().from(kitchenAvailability).where(eq(kitchenAvailability.kitchenId, id)),
             tx.select().from(kitchenDateOverrides).where(eq(kitchenDateOverrides.kitchenId, id)),
-            tx.select({ id: kitchenBookings.id, bookingDate: kitchenBookings.bookingDate, status: kitchenBookings.status })
+            tx.select({ id: kitchenBookings.id, bookingDate: kitchenBookings.bookingDate, status: kitchenBookings.status, selectedSlots: kitchenBookings.selectedSlots })
               .from(kitchenBookings).where(eq(kitchenBookings.kitchenId, id)),
           ]);
           for (const date of dates) {
@@ -1212,7 +1213,7 @@ router.delete(
         for (const row of matching) await tx.delete(kitchenViewingBlackouts).where(eq(kitchenViewingBlackouts.id, row.id));
         for (const id of targetIds) {
           if (!matching.some(row => row.kitchenId === id) && !bookingRows.some(row => row.kitchenId === id)) continue;
-          const bookings = scope === 'tour-kitchen' ? [] : await tx.select({ id: kitchenBookings.id, bookingDate: kitchenBookings.bookingDate, status: kitchenBookings.status })
+          const bookings = scope === 'tour-kitchen' ? [] : await tx.select({ id: kitchenBookings.id, bookingDate: kitchenBookings.bookingDate, status: kitchenBookings.status, selectedSlots: kitchenBookings.selectedSlots })
             .from(kitchenBookings).where(eq(kitchenBookings.kitchenId, id));
           await queueScheduleProblems(tx, { kitchenId: id, actorId: managerId,
             bookingIds: dates.flatMap(date => activeBookingIdsOnOperatingDate(bookings, date)), tourIds: await affectedTours(tx, id, dates),
@@ -1283,7 +1284,7 @@ router.get(
           startTime: kitchenBookings.startTime, endTime: kitchenBookings.endTime, selectedSlots: kitchenBookings.selectedSlots,
           operatingWindowStartTime: kitchenBookings.operatingWindowStartTime }).from(kitchenBookings).where(and(
           eq(kitchenBookings.kitchenId, kitchenId), inArray(kitchenBookings.status, ['pending', 'confirmed', 'cancellation_requested']),
-          gte(kitchenBookings.bookingDate, new Date(day - 86400000)), lte(kitchenBookings.bookingDate, new Date(day + 86400000))));
+          gte(kitchenBookings.bookingDate, new Date(day - 15 * 86400000)), lte(kitchenBookings.bookingDate, new Date(day + 86400000))));
         try {
           slots = slots.filter(slot => new Date(slot.scheduledAt).getTime() !== tour.scheduledAt.getTime()
             && !tourBookingOverlaps(bookings, kitchenId, new Date(slot.scheduledAt), tour.durationMinutes).length);

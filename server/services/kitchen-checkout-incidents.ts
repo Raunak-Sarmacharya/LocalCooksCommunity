@@ -16,8 +16,8 @@ export function checkoutRecoveryStripe() {
   return new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2026-02-25.clover', maxNetworkRetries: 0, timeout: 1500 });
 }
 
-export async function registerKitchenCheckout(sessionId: string, chefId: number, kitchenId: number, operatingDate: string) {
-  await db.insert(kitchenCheckoutIncidents).values({ sessionId, chefId, kitchenId, operatingDate })
+export async function registerKitchenCheckout(sessionId: string, chefId: number, kitchenId: number, operatingDate: string, quoteSnapshot?: unknown) {
+  await db.insert(kitchenCheckoutIncidents).values({ sessionId, chefId, kitchenId, operatingDate, ...(quoteSnapshot != null ? { quoteSnapshot } : {}) })
     .onConflictDoNothing({ target: kitchenCheckoutIncidents.sessionId });
 }
 export async function checkoutIncident(sessionId: string) {

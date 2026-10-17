@@ -192,7 +192,7 @@ export function SessionExtensionRequest({ bookingId, kitchenName, timezone, clas
   if (view.kind === "booked") return (
     <div className="space-y-2 rounded-lg border p-3" role="status" data-testid="extension-booked">
       <p className="text-sm">{t(view.state.noTimeReason === "closing" ? "sxNoTimeClosing" : view.state.noTimeReason === "max_length" ? "sxNoTimeMaxLength"
-        : view.state.noTimeReason === "turnover" ? "sxNoTimeTurnover" : "sxBookedAfter", { defaultValue: "The kitchen is booked right after you. Message {kitchen}.", kitchen: kitchenName })}</p>
+        : view.state.noTimeReason === "turnover" ? "sxNoTimeTurnover" : view.state.noTimeReason === "weekly_limit" ? "sxNoTimeWeeklyLimit" : "sxBookedAfter", { defaultValue: "The kitchen is booked right after you. Message {kitchen}.", kitchen: kitchenName })}</p>
       {messageInstead}
     </div>
   )

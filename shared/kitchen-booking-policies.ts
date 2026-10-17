@@ -50,6 +50,10 @@ export function effectiveBookingBufferMinutes(kitchen: KitchenPolicies, location
   return 0;
 }
 
+/** The current buffer from a resolved policy (older readers only carry the legacy boolean). */
+export const policyBufferMinutes = (policy: { bookingBufferMinutes?: number | null; turnoverBufferEnabled?: boolean | null }) =>
+  policy.bookingBufferMinutes ?? (policy.turnoverBufferEnabled ? 60 : 0);
+
 export function isBookingBufferMinutes(value: unknown): value is BookingBufferMinutes {
   return value === 0 || value === 60 || value === 120;
 }

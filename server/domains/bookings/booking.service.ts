@@ -21,7 +21,7 @@ import { db } from "../../db";
 import { eq, and, ne, gt } from "drizzle-orm";
 import { sendEmail, generateBookingConfirmationEmail, generateBookingCancellationEmail, generateBookingCancellationNotificationEmail } from "../../email";
 import { kitchenService } from "../kitchens/kitchen.service";
-import { addHour, calendarDateForOperatingTime, getHourlySlotStarts, intervalsOverlapOnOperatingDay, isRangeWithinOperatingWindow, normalizeBookingSlots, occupiedIntervals, operatingSlotsOverlapAcrossDates } from "@shared/operating-hours";
+import { addHour, calendarDateForOperatingTime, getHourlySlotStarts, isRangeWithinOperatingWindow, normalizeBookingSlots } from "@shared/operating-hours";
 import { assertConsecutiveBookingSlots } from '@shared/consecutive-booking-slots';
 import { getActiveKitchenHolds } from "../../services/kitchen-checkout-holds";
 import { isUnambiguousBookingSlot, matchingLocalInstants } from '@shared/booking-dst';
@@ -29,37 +29,62 @@ import { isUnambiguousBookingSlot, matchingLocalInstants } from '@shared/booking
 import { chefService } from "../users/chef.service";
 
 import { kitchenBookingPolicies } from '../../services/booking-policy-settings';
-import { bookingWindowLastDate } from '@shared/kitchen-booking-policies';
-import { bookingIntervalsConflict, operatingSlotInstants } from '@shared/booking-occupancy';
+import { bookingWindowLastDate, policyBufferMinutes } from '@shared/kitchen-booking-policies';
+import { datedOccupiedSlots, occupiedOperatingDates, pairBufferMinutes, slotBlock, type DatedSlot, type SlotBlock } from '@shared/booking-occupancy';
+import { weekStartDate, weeklyQuotaMessage } from '@shared/kitchen-booking-quota';
+import { waivesBuffer, type BookingRuleOverride } from '../../services/booking-rule-overrides';
+import { chefWeeklyMinutes, holdExcluded, weeklyQuotaShortfallsFor, WeeklyChefHoursLimitError } from '../../services/kitchen-booking-quota';
 
 type BookingInterval = { startTime: string; endTime: string };
 
-export function hasBookingConflict(
-    existingBookings: Array<BookingInterval & { selectedSlots?: unknown }>,
-    requestedIntervals: BookingInterval[],
-    fullDay = false,
-    windowStartTime = "00:00",
-): boolean {
-    if (fullDay) return existingBookings.length > 0;
-    return requestedIntervals.some((requested) =>
-        existingBookings.some((existing) =>
-            occupiedIntervals(existing).some(interval => intervalsOverlapOnOperatingDay(interval, requested, windowStartTime))
-        )
-    );
+/** Why a date, day or slot cannot be booked; the picker shows these (spec decision #3). */
+export type BookingDayReason = 'closed' | 'booked' | 'held' | 'buffer' | 'notice' | 'beyond_advance_window' | 'clock_change'
+    | 'not_open_to_you' | 'weekly_limit' | 'invalid_hours' | 'length' | 'equipment_unavailable' | 'unavailable';
+
+export type BookingDateStatus = {
+    /** Some hourly slot can still be requested (open, free, outside the notice period, unambiguous clock). */
+    hourly: boolean;
+    /** The whole operating day is free for a full-day booking. */
+    fullDay: boolean;
+    reason: BookingDayReason | null;
+    fullDayReason: BookingDayReason | null;
+};
+
+type OccupancyEntry = { slot: DatedSlot; buffer: number | null; kind: 'booked' | 'held' };
+type BufferContext = { current: number; candidate: number; ignoreBuffer: boolean; timezone: string };
+
+const blockMessages = {
+    booked: "One or more selected time slots are no longer available",
+    held: 'One or more selected time slots are temporarily reserved',
+};
+
+/**
+ * Bookings first, then holds (today's order and messages): a slot conflicts with a source when it overlaps it or sits
+ * inside the pair buffer (the larger of the two saved buffers). `buffer` marks a conflict that is spacing only.
+ */
+export function slotConflict(entries: OccupancyEntry[], candidate: DatedSlot, context: BufferContext): { source: 'booked' | 'held'; buffer: boolean } | null {
+    for (const source of ['booked', 'held'] as const) {
+        let buffered = false;
+        for (const entry of entries) {
+            if (entry.kind !== source) continue;
+            const gap = context.ignoreBuffer ? 0 : pairBufferMinutes(entry.buffer, context.candidate, context.current);
+            const block = slotBlock(entry.slot, candidate, gap, context.timezone);
+            if (block === 'overlap') return { source, buffer: false };
+            if (block === 'buffer') buffered = true;
+        }
+        if (buffered) return { source, buffer: true };
+    }
+    return null;
 }
 
-function occupiesOperatingSlot(
-    existing: BookingInterval & { selectedSlots?: unknown }, existingDate: string, existingWindowStart: string,
-    requested: BookingInterval, requestedDate: string, requestedWindowStart: string,
-    bufferMinutes = 0, timezone = "America/St_Johns",
-): boolean {
-    return occupiedIntervals(existing).some(slot => bufferMinutes ? bookingIntervalsConflict(
-        operatingSlotInstants((slot as { date?: string }).date || existingDate, slot, existingWindowStart, timezone),
-        operatingSlotInstants(requestedDate, requested, requestedWindowStart, timezone), bufferMinutes,
-    ) : operatingSlotsOverlapAcrossDates(
-        (slot as { date?: string }).date || existingDate, slot, existingWindowStart, requestedDate, requested, requestedWindowStart,
-    ));
+/** The picker's reason for one slot. */
+export function slotBlockReason(entries: OccupancyEntry[], candidate: DatedSlot, context: BufferContext): SlotBlock | null {
+    const conflict = slotConflict(entries, candidate, context);
+    return conflict ? conflict.buffer ? 'buffer' : conflict.source : null;
 }
+
+const firstReason = (reasons: Array<BookingDayReason | null>) =>
+    (['booked', 'held', 'buffer', 'clock_change', 'notice'] as const).find(reason => reasons.includes(reason)) ?? null;
 
 export class BookingService {
     private repo: BookingRepository;
@@ -85,6 +110,12 @@ export class BookingService {
         });
         if (!availability.valid || !availability.slots) throw new Error(availability.error || 'Booking unavailable');
         const selectedSlots = availability.slots;
+        // Callers hold the kitchen day lock, so this weekly-hours check and the insert cannot interleave with another request.
+        const policy = await kitchenBookingPolicies(data.kitchenId);
+        const operatingDate = data.bookingDate.toISOString().split('T')[0];
+        const weeks = await weeklyQuotaShortfallsFor({ kitchenId: data.kitchenId, chefId: data.chefId, limitHours: policy.weeklyChefHoursLimit,
+            proposed: selectedSlots.map(slot => ({ date: operatingDate, windowStartTime: availability.windowStartTime!, ...slot })) });
+        if (weeks.length) throw new WeeklyChefHoursLimitError(weeklyQuotaMessage(weeks[0]), weeks, policy.timezone);
         const hourlyRateCents = Number(kitchen.hourlyRate || 0);
         const dailyRateCents = Number(kitchen.dailyRate || 0);
         const minimumHours = Number(kitchen.minimumBookingHours || 0);
@@ -316,6 +347,44 @@ export class BookingService {
 
     // ===== AVAILABILITY LOGIC =====
 
+    /** The kitchen's hours on one operating date: a date override wins over the weekly schedule. */
+    async operatingWindow(kitchenId: number, date: Date): Promise<{ startTime: string; endTime: string } | { error: string }> {
+        const dateOverride = await kitchenService.getKitchenDateOverrideForDate(kitchenId, date);
+        if (dateOverride) {
+            if (!dateOverride.isAvailable) return { error: "Kitchen is closed on this date" };
+            if (dateOverride.startTime && dateOverride.endTime) return { startTime: dateOverride.startTime, endTime: dateOverride.endTime };
+            return { error: "Kitchen availability not properly configured for this date" };
+        }
+        // Use getUTCDay() since dates are passed as UTC noon to avoid timezone shifts
+        const dayAvailability = (await kitchenService.getKitchenAvailability(kitchenId)).find(a => a.dayOfWeek === date.getUTCDay());
+        if (!dayAvailability || !dayAvailability.isAvailable) return { error: "Kitchen is not available on this day" };
+        return { startTime: dayAvailability.startTime, endTime: dayAvailability.endTime };
+    }
+
+    /** Every noncancelled booking and active hold, one dated entry per occupied slot (later days included), with its saved buffer. */
+    private async occupancy(kitchenId: number, options: { excludeBookingId?: number; excludeHoldId?: string } = {}) {
+        const [bookings, holds] = await Promise.all([this.getBookingsByKitchen(kitchenId), getActiveKitchenHolds(kitchenId)]);
+        const live = bookings.filter(booking => booking.status !== 'cancelled'
+            && (options.excludeBookingId === undefined || booking.id !== options.excludeBookingId));
+        const entries: OccupancyEntry[] = [
+            ...live.flatMap(booking => datedOccupiedSlots(booking)
+                .map(slot => ({ slot, buffer: booking.bufferMinutesSnapshot ?? null, kind: 'booked' as const }))),
+            ...holds.filter(hold => !holdExcluded(hold, options.excludeHoldId)).flatMap(hold => datedOccupiedSlots({
+                bookingDate: hold.operatingDate, startTime: '', endTime: '', selectedSlots: hold.selectedSlots, operatingWindowStartTime: hold.windowStartTime,
+            }).map(slot => ({ slot, buffer: hold.bufferMinutesSnapshot ?? null, kind: 'held' as const }))),
+        ];
+        // A full day needs the whole date free: any booking with a slot on it blocks, not only one whose first date it is.
+        const occupiedDates = new Set(live.flatMap(booking => Array.from(occupiedOperatingDates(booking))));
+        return { entries, occupiedDates };
+    }
+
+    private bufferContext(policy: { bookingBufferMinutes?: number; turnoverBufferEnabled?: boolean; timezone: string },
+        options: { bufferMinutes?: number | null; override?: unknown } = {}): BufferContext {
+        const current = policyBufferMinutes(policy);
+        const ignoreBuffer = waivesBuffer(options.override);
+        return { current, candidate: ignoreBuffer ? 0 : options.bufferMinutes ?? current, ignoreBuffer, timezone: policy.timezone };
+    }
+
     async validateBookingAvailability(
         kitchenId: number,
         bookingDate: Date,
@@ -326,169 +395,68 @@ export class BookingService {
             fullDay?: boolean;
             // Server-owned post-confirmation change context; never forwarded from client input.
             excludeBookingId?: number;
+            /** A hold id, or a hold group's id (the head), whose own rows do not block. */
             excludeHoldId?: string;
             // With excludeBookingId: still enforce the kitchen's advance-booking window (a chef replacing their own request).
             keepAdvanceWindow?: boolean;
+            /** The saved buffer of the booking/hold/invitation being validated; defaults to the kitchen's current buffer. */
+            bufferMinutes?: number | null;
+            /** Trusted kitchen override (server-built only): may waive spacing, never actual overlap. */
+            override?: BookingRuleOverride;
         } = {}
-    ): Promise<{ valid: boolean; error?: string; slots?: BookingInterval[]; windowStartTime?: string }> {
+    ): Promise<{ valid: boolean; error?: string; code?: BookingDayReason; slots?: BookingInterval[]; windowStartTime?: string; windowEndTime?: string }> {
         try {
             const policy = await kitchenBookingPolicies(kitchenId);
-            // First check if there's a date-specific override
-            const dateOverride = await kitchenService.getKitchenDateOverrideForDate(kitchenId, bookingDate);
+            const window = await this.operatingWindow(kitchenId, bookingDate);
+            if ('error' in window) return { valid: false, error: window.error, code: 'closed' };
 
-            let availabilityStartTime: string;
-            let availabilityEndTime: string;
-
-            if (dateOverride) {
-                // If there's an override and it's closed, can't book
-                if (!dateOverride.isAvailable) {
-                    return { valid: false, error: "Kitchen is closed on this date" };
-                }
-                // If override has custom hours, use those
-                if (dateOverride.startTime && dateOverride.endTime) {
-                    availabilityStartTime = dateOverride.startTime;
-                    availabilityEndTime = dateOverride.endTime;
-                } else {
-                    return { valid: false, error: "Kitchen availability not properly configured for this date" };
-                }
-            } else {
-                // No override, use regular weekly schedule
-                // Use getUTCDay() since dates are passed as UTC noon to avoid timezone shifts
-                const dayOfWeek = bookingDate.getUTCDay();
-                const availability = await kitchenService.getKitchenAvailability(kitchenId);
-
-                const dayAvailability = availability.find(a => a.dayOfWeek === dayOfWeek);
-
-                // Check if day is available
-                if (!dayAvailability || !dayAvailability.isAvailable) {
-                    return { valid: false, error: "Kitchen is not available on this day" };
-                }
-
-                availabilityStartTime = dayAvailability.startTime;
-                availabilityEndTime = dayAvailability.endTime;
-            }
-
-            if (!isRangeWithinOperatingWindow(startTime, endTime, availabilityStartTime, availabilityEndTime)) {
-                return { valid: false, error: "Booking time must be within manager-set available hours" };
+            if (!isRangeWithinOperatingWindow(startTime, endTime, window.startTime, window.endTime)) {
+                return { valid: false, error: "Booking time must be within manager-set available hours", code: 'invalid_hours' };
             }
 
             let requestedIntervals: BookingInterval[];
             try {
                 requestedIntervals = normalizeBookingSlots(
                     options.selectedSlots === undefined ? [] : options.selectedSlots, startTime, endTime,
-                    availabilityStartTime, availabilityEndTime, !!options.fullDay,
+                    window.startTime, window.endTime, !!options.fullDay,
                 );
-                assertConsecutiveBookingSlots(requestedIntervals, availabilityStartTime);
+                assertConsecutiveBookingSlots(requestedIntervals, window.startTime);
             } catch (error) {
-                return { valid: false, error: error instanceof Error ? error.message : 'Invalid selected slots' };
+                return { valid: false, error: error instanceof Error ? error.message : 'Invalid selected slots', code: 'invalid_hours' };
             }
 
             const dateStr = bookingDate.toISOString().split('T')[0];
             // Kitchen-initiated confirmed changes use excludeBookingId and bypass only the advance window.
             if ((!options.excludeBookingId || options.keepAdvanceWindow) && dateStr > bookingWindowLastDate(policy.maxAdvanceBookingDays, policy.timezone)) {
-                return { valid: false, error: `This kitchen takes bookings up to ${policy.maxAdvanceBookingDays} days ahead.` };
+                return { valid: false, error: `This kitchen takes bookings up to ${policy.maxAdvanceBookingDays} days ahead.`, code: 'beyond_advance_window' };
             }
-            const timezone = policy.timezone;
-            if (requestedIntervals.some(slot => !isUnambiguousBookingSlot(dateStr, slot, availabilityStartTime, timezone))) {
-                return { valid: false, error: 'This hour is affected by a daylight saving clock change and is unavailable for self-service booking' };
+            if (requestedIntervals.some(slot => !isUnambiguousBookingSlot(dateStr, slot, window.startTime, policy.timezone))) {
+                return { valid: false, error: 'This hour is affected by a daylight saving clock change and is unavailable for self-service booking', code: 'clock_change' };
             }
-            const bookings = (await this.getBookingsByKitchen(kitchenId)).filter(booking => booking.status !== 'cancelled' && (options.excludeBookingId === undefined || booking.id !== options.excludeBookingId));
+            const { entries, occupiedDates } = await this.occupancy(kitchenId, options);
 
             // A full-day booking requires the entire day to be free. Hourly bookings only
             // conflict with the discrete slots submitted by the client.
-            if (options.fullDay && bookings.some(booking => new Date(booking.bookingDate).toISOString().slice(0, 10) === dateStr)) {
-                return { valid: false, error: "Full-day booking is unavailable because this date already has a booking" };
+            if (options.fullDay && occupiedDates.has(dateStr)) {
+                return { valid: false, error: "Full-day booking is unavailable because this date already has a booking", code: 'booked' };
+            }
+            const context = this.bufferContext(policy, options);
+            const conflicts = requestedIntervals.map(slot => slotConflict(entries, { date: dateStr, windowStartTime: window.startTime, ...slot }, context));
+            for (const source of ['booked', 'held'] as const) {
+                const conflict = conflicts.find(item => item?.source === source);
+                if (conflict) return { valid: false, error: blockMessages[source], code: conflict.buffer ? 'buffer' : source };
             }
 
-            if (bookings.some(booking => requestedIntervals.some(slot => occupiesOperatingSlot(
-                booking, new Date(booking.bookingDate).toISOString().slice(0, 10),
-                booking.operatingWindowStartTime || booking.startTime, slot, dateStr, availabilityStartTime, policy.turnoverBufferEnabled ? 60 : 0, policy.timezone,
-            )))) {
-                return { valid: false, error: "One or more selected time slots are no longer available" };
-            }
-            const holds = await getActiveKitchenHolds(kitchenId);
-            if (holds.filter(hold => (options.excludeHoldId === undefined || hold.id !== options.excludeHoldId)).some(hold => requestedIntervals.some(slot => occupiesOperatingSlot(
-                { startTime: '', endTime: '', selectedSlots: hold.selectedSlots },
-                hold.operatingDate, hold.windowStartTime, slot, dateStr, availabilityStartTime, policy.turnoverBufferEnabled ? 60 : 0, policy.timezone,
-            )))) {
-                return { valid: false, error: 'One or more selected time slots are temporarily reserved' };
-            }
-
-            return { valid: true, slots: requestedIntervals, windowStartTime: availabilityStartTime };
+            return { valid: true, slots: requestedIntervals, windowStartTime: window.startTime, windowEndTime: window.endTime };
         } catch (error) {
             logger.error('Error validating booking availability:', error);
-            return { valid: false, error: "Error validating booking availability" };
+            return { valid: false, error: "Error validating booking availability", code: 'unavailable' };
         }
     }
 
     async getAvailableTimeSlots(kitchenId: number, date: Date): Promise<string[]> {
         try {
-            const policy = await kitchenBookingPolicies(kitchenId);
-            if (date.toISOString().slice(0, 10) > bookingWindowLastDate(policy.maxAdvanceBookingDays, policy.timezone)) return [];
-            // First check if there's a date-specific override
-            const dateOverride = await kitchenService.getKitchenDateOverrideForDate(kitchenId, date);
-
-            let availabilityStartTime: string;
-            let availabilityEndTime: string;
-
-            if (dateOverride) {
-                // If there's an override and it's closed, return empty slots
-                if (!dateOverride.isAvailable) {
-                    return [];
-                }
-                // If override is available with custom hours, use those
-                if (dateOverride.startTime && dateOverride.endTime) {
-                    availabilityStartTime = dateOverride.startTime;
-                    availabilityEndTime = dateOverride.endTime;
-                } else {
-                    return [];
-                }
-            } else {
-                // No override, use regular weekly schedule
-                // Use getUTCDay() since dates are passed as UTC noon to avoid timezone shifts
-                const dayOfWeek = date.getUTCDay();
-                const availability = await kitchenService.getKitchenAvailability(kitchenId);
-
-                const dayAvailability = availability.find(a => a.dayOfWeek === dayOfWeek);
-
-                if (!dayAvailability || !dayAvailability.isAvailable) {
-                    return [];
-                }
-
-                availabilityStartTime = dayAvailability.startTime;
-                availabilityEndTime = dayAvailability.endTime;
-            }
-
-            const slots = getHourlySlotStarts(availabilityStartTime, availabilityEndTime);
-
-            // Filter out already booked slots
-            const bookings = await this.getBookingsByKitchen(kitchenId);
-            const dateStr = date.toISOString().split('T')[0];
-
-            const bookedSlots = new Set<string>();
-            bookings.filter(booking => booking.status !== 'cancelled').forEach(booking => {
-                for (const slot of slots) {
-                    if (occupiesOperatingSlot(booking, new Date(booking.bookingDate).toISOString().slice(0, 10),
-                        booking.operatingWindowStartTime || booking.startTime,
-                        { startTime: slot, endTime: addHour(slot) }, dateStr, availabilityStartTime, policy.turnoverBufferEnabled ? 60 : 0, policy.timezone)) {
-                        bookedSlots.add(slot);
-                    }
-                }
-            });
-            const holds = await getActiveKitchenHolds(kitchenId);
-            holds.forEach(hold => {
-                slots.forEach(slot => {
-                    if (occupiesOperatingSlot({ startTime: '', endTime: '', selectedSlots: hold.selectedSlots },
-                        hold.operatingDate, hold.windowStartTime,
-                        { startTime: slot, endTime: addHour(slot) }, dateStr, availabilityStartTime, policy.turnoverBufferEnabled ? 60 : 0, policy.timezone)) {
-                        bookedSlots.add(slot);
-                    }
-                });
-            });
-
-            return slots.filter(slot => !bookedSlots.has(slot) && isUnambiguousBookingSlot(
-                dateStr, { startTime: slot, endTime: addHour(slot) }, availabilityStartTime,
-                policy.timezone));
+            return (await this.getAllTimeSlotsWithBookingInfo(kitchenId, date)).filter(slot => !slot.isFullyBooked).map(slot => slot.time);
         } catch (error) {
             logger.error('Error getting available time slots:', error);
             throw error;
@@ -512,80 +480,30 @@ export class BookingService {
         available: number;
         capacity: number;
         isFullyBooked: boolean;
+        /** Why a fully booked slot is unavailable; 'buffer' marks time kept free between bookings. */
+        reason?: SlotBlock | 'clock_change';
     }>> {
         try {
             const policy = await kitchenBookingPolicies(kitchenId);
             if (date.toISOString().slice(0, 10) > bookingWindowLastDate(policy.maxAdvanceBookingDays, policy.timezone)) return [];
-            const dateOverride = await kitchenService.getKitchenDateOverrideForDate(kitchenId, date);
-
-            let availabilityStartTime: string;
-            let availabilityEndTime: string;
-            let capacity: number;
-
-            if (dateOverride) {
-                if (!dateOverride.isAvailable) {
-                    return [];
-                }
-                if (dateOverride.startTime && dateOverride.endTime) {
-                    availabilityStartTime = dateOverride.startTime;
-                    availabilityEndTime = dateOverride.endTime;
-                    capacity = 1;
-                } else {
-                    return [];
-                }
-            } else {
-                // Use getUTCDay() since dates are passed as UTC noon to avoid timezone shifts
-                const dayOfWeek = date.getUTCDay();
-                const availability = await kitchenService.getKitchenAvailability(kitchenId);
-                const dayAvailability = availability.find(a => a.dayOfWeek === dayOfWeek);
-
-                if (!dayAvailability || !dayAvailability.isAvailable) {
-                    return [];
-                }
-
-                availabilityStartTime = dayAvailability.startTime;
-                availabilityEndTime = dayAvailability.endTime;
-                capacity = 1;
-            }
-
-            const allSlots = getHourlySlotStarts(availabilityStartTime, availabilityEndTime);
-
-            const bookings = (await this.getBookingsByKitchen(kitchenId)).filter(booking => booking.id !== excludeBookingId);
+            const window = await this.operatingWindow(kitchenId, date);
+            if ('error' in window) return [];
+            const capacity = 1;
             const dateStr = date.toISOString().split('T')[0];
+            const { entries } = await this.occupancy(kitchenId, { excludeBookingId });
+            const context = this.bufferContext(policy);
 
-            const slotBookingCounts = new Map<string, number>();
-            allSlots.forEach(slot => slotBookingCounts.set(slot, 0));
-
-            bookings.filter(booking => booking.status !== 'cancelled').forEach(booking => {
-                allSlots.forEach(slot => {
-                    if (occupiesOperatingSlot(booking, new Date(booking.bookingDate).toISOString().slice(0, 10),
-                        booking.operatingWindowStartTime || booking.startTime,
-                        { startTime: slot, endTime: addHour(slot) }, dateStr, availabilityStartTime, policy.turnoverBufferEnabled ? 60 : 0, policy.timezone)) {
-                        slotBookingCounts.set(slot, (slotBookingCounts.get(slot) || 0) + 1);
-                    }
-                });
-            });
-            const holds = await getActiveKitchenHolds(kitchenId);
-            holds.forEach(hold => {
-                allSlots.forEach(slot => {
-                    if (occupiesOperatingSlot({ startTime: '', endTime: '', selectedSlots: hold.selectedSlots },
-                        hold.operatingDate, hold.windowStartTime,
-                        { startTime: slot, endTime: addHour(slot) }, dateStr, availabilityStartTime, policy.turnoverBufferEnabled ? 60 : 0, policy.timezone)) {
-                        slotBookingCounts.set(slot, (slotBookingCounts.get(slot) || 0) + 1);
-                    }
-                });
-            });
-
-            return allSlots.map(slot => {
-                const bookedCount = slotBookingCounts.get(slot) || 0;
-                const clockSafe = isUnambiguousBookingSlot(dateStr,
-                    { startTime: slot, endTime: addHour(slot) }, availabilityStartTime,
-                    policy.timezone);
+            return getHourlySlotStarts(window.startTime, window.endTime).map(slot => {
+                const interval = { startTime: slot, endTime: addHour(slot) };
+                const block = slotBlockReason(entries, { date: dateStr, windowStartTime: window.startTime, ...interval }, context);
+                const clockSafe = isUnambiguousBookingSlot(dateStr, interval, window.startTime, policy.timezone);
+                const reason = block ?? (clockSafe ? undefined : 'clock_change' as const);
                 return {
                     time: slot,
-                    available: clockSafe ? Math.max(0, capacity - bookedCount) : 0,
+                    available: reason ? 0 : capacity,
                     capacity,
-                    isFullyBooked: !clockSafe || bookedCount >= capacity
+                    isFullyBooked: !!reason,
+                    ...(reason ? { reason } : {}),
                 };
             });
         } catch (error) {
@@ -599,118 +517,96 @@ export class BookingService {
     }
 
     /**
-     * Month availability where a day is true only if at least one bookable slot remains
-     * (not fully booked, and not in the past for today).
-     * ponytail: 3 DB round-trips total regardless of month length (schedule + bookings reused per day).
+     * Per date of a month. `legacyBookable` keeps the original boolean map exactly (a free, unambiguous, future slot);
+     * `status` adds the notice period, full-day eligibility and the reason a date can't be booked.
+     * ponytail: a fixed number of DB round-trips regardless of month length (schedule + occupancy reused per day).
      */
-    async getMonthBookableAvailability(
-        kitchenId: number,
-        year: number,
-        month: number,
-        excludeBookingId?: number
-    ): Promise<Record<string, boolean>> {
+    private async monthDates(kitchenId: number, year: number, month: number, options: { excludeBookingId?: number; chefId?: number } = {}) {
         const policy = await kitchenBookingPolicies(kitchenId);
         const scheduleMap = await kitchenService.getMonthAvailability(kitchenId, year, month);
         const monthStart = new Date(Date.UTC(year, month, 1, 0, 0, 0));
         const monthEnd = new Date(Date.UTC(year, month + 1, 0, 23, 59, 59, 999));
 
-        const [weeklyAvailability, overrides, bookings, holds] = await Promise.all([
+        const [weeklyAvailability, overrides, { entries, occupiedDates }] = await Promise.all([
             kitchenService.getKitchenAvailability(kitchenId),
             kitchenService.getKitchenDateOverrides(kitchenId, monthStart, monthEnd),
-            this.getBookingsByKitchen(kitchenId).then(rows => rows.filter(booking => booking.id !== excludeBookingId)),
-            db.select().from(kitchenCheckoutHolds).where(and(
-                eq(kitchenCheckoutHolds.kitchenId, kitchenId), gt(kitchenCheckoutHolds.expiresAt, new Date()),
-            )),
+            this.occupancy(kitchenId, { excludeBookingId: options.excludeBookingId }),
         ]);
+        const chef = options.chefId ? await this.chefDateLimits(kitchenId, options.chefId, policy.weeklyChefHoursLimit, options.excludeBookingId) : null;
         const timezone = policy.timezone;
+        const context = this.bufferContext(policy);
+        const lastDate = bookingWindowLastDate(policy.maxAdvanceBookingDays, policy.timezone);
+        const noticeMs = Math.max(0, Number(policy.minimumBookingWindowHours ?? 1)) * 3_600_000;
 
         const weeklyMap = new Map<number, { isAvailable: boolean; startTime: string; endTime: string }>();
         weeklyAvailability.forEach((a: any) => {
-            weeklyMap.set(a.dayOfWeek, {
-                isAvailable: !!a.isAvailable,
-                startTime: a.startTime,
-                endTime: a.endTime,
-            });
+            weeklyMap.set(a.dayOfWeek, { isAvailable: !!a.isAvailable, startTime: a.startTime, endTime: a.endTime });
         });
-
         const overrideMap = new Map<string, typeof overrides[number]>();
-        overrides.forEach((o) => {
-            const dateStr = new Date(o.specificDate).toISOString().split('T')[0];
-            overrideMap.set(dateStr, o);
-        });
+        overrides.forEach((o) => overrideMap.set(new Date(o.specificDate).toISOString().split('T')[0], o));
 
-        const now = new Date();
-        const result: Record<string, boolean> = {};
+        const now = Date.now();
+        const closed = (reason: BookingDayReason): { legacyBookable: boolean; status: BookingDateStatus } =>
+            ({ legacyBookable: false, status: { hourly: false, fullDay: false, reason, fullDayReason: reason } });
         const daysInMonth = new Date(year, month + 1, 0).getDate();
+        const result: Array<{ date: string; legacyBookable: boolean; status: BookingDateStatus }> = [];
 
         for (let day = 1; day <= daysInMonth; day++) {
             const date = new Date(Date.UTC(year, month, day, 12, 0, 0));
             const dateStr = date.toISOString().split('T')[0];
-
-            if (!scheduleMap[dateStr] || dateStr > bookingWindowLastDate(policy.maxAdvanceBookingDays, policy.timezone)) {
-                result[dateStr] = false;
-                continue;
-            }
-
+            if (dateStr > lastDate) { result.push({ date: dateStr, ...closed('beyond_advance_window') }); continue; }
             const override = overrideMap.get(dateStr);
-            let availabilityStartTime: string;
-            let availabilityEndTime: string;
-            let capacity: number;
+            const weekly = weeklyMap.get(date.getUTCDay());
+            const window = override
+                ? (override.isAvailable && override.startTime && override.endTime ? { startTime: override.startTime, endTime: override.endTime } : null)
+                : (weekly?.isAvailable && weekly.startTime && weekly.endTime ? { startTime: weekly.startTime, endTime: weekly.endTime } : null);
+            if (!scheduleMap[dateStr] || !window) { result.push({ date: dateStr, ...closed('closed') }); continue; }
 
-            if (override) {
-                if (!override.isAvailable || !override.startTime || !override.endTime) {
-                    result[dateStr] = false;
-                    continue;
-                }
-                availabilityStartTime = override.startTime;
-                availabilityEndTime = override.endTime;
-                capacity = 1;
-            } else {
-                const dayOfWeek = date.getUTCDay();
-                const dayAvail = weeklyMap.get(dayOfWeek);
-                if (!dayAvail?.isAvailable || !dayAvail.startTime || !dayAvail.endTime) {
-                    result[dateStr] = false;
-                    continue;
-                }
-                availabilityStartTime = dayAvail.startTime;
-                availabilityEndTime = dayAvail.endTime;
-                capacity = 1;
-            }
-
-            const allSlots = getHourlySlotStarts(availabilityStartTime, availabilityEndTime);
-
-            const slotBookingCounts = new Map<string, number>();
-            allSlots.forEach((slot) => slotBookingCounts.set(slot, 0));
-
-            bookings.filter(booking => booking.status !== 'cancelled').forEach((booking) => {
-                allSlots.forEach((slot) => {
-                    if (occupiesOperatingSlot(booking, new Date(booking.bookingDate).toISOString().slice(0, 10),
-                        booking.operatingWindowStartTime || booking.startTime,
-                        { startTime: slot, endTime: addHour(slot) }, dateStr, availabilityStartTime, policy.turnoverBufferEnabled ? 60 : 0, policy.timezone)) {
-                        slotBookingCounts.set(slot, (slotBookingCounts.get(slot) || 0) + 1);
-                    }
-                });
-            });
-            holds.forEach(hold => {
-                allSlots.forEach(slot => {
-                    if (occupiesOperatingSlot({ startTime: '', endTime: '', selectedSlots: hold.selectedSlots },
-                        hold.operatingDate, hold.windowStartTime,
-                        { startTime: slot, endTime: addHour(slot) }, dateStr, availabilityStartTime, policy.turnoverBufferEnabled ? 60 : 0, policy.timezone)) {
-                        slotBookingCounts.set(slot, (slotBookingCounts.get(slot) || 0) + 1);
-                    }
-                });
-            });
-
-            result[dateStr] = allSlots.some((slot) => {
-                if ((slotBookingCounts.get(slot) || 0) >= capacity) return false;
+            const slots = getHourlySlotStarts(window.startTime, window.endTime).map(slot => {
                 const interval = { startTime: slot, endTime: addHour(slot) };
-                if (!isUnambiguousBookingSlot(dateStr, interval, availabilityStartTime, timezone)) return false;
-                const calendarDate = calendarDateForOperatingTime(dateStr, slot, availabilityStartTime);
-                return matchingLocalInstants(calendarDate, slot, timezone)[0] > now.getTime();
+                const block = slotBlockReason(entries, { date: dateStr, windowStartTime: window.startTime, ...interval }, context);
+                if (!isUnambiguousBookingSlot(dateStr, interval, window.startTime, timezone)) return { reason: block ?? 'clock_change' as const, past: true };
+                const start = matchingLocalInstants(calendarDateForOperatingTime(dateStr, slot, window.startTime), slot, timezone)[0];
+                return { reason: block ?? (start < now + noticeMs ? 'notice' as const : null), past: !(start > now) };
             });
+            let hourly = slots.some(slot => !slot.reason);
+            let fullDay = slots.length > 0 && !occupiedDates.has(dateStr) && slots.every(slot => !slot.reason);
+            let reason: BookingDayReason | null = hourly ? null : firstReason(slots.map(slot => slot.reason));
+            let fullDayReason: BookingDayReason | null = fullDay ? null : occupiedDates.has(dateStr) ? 'booked' : firstReason(slots.map(slot => slot.reason));
+            if (chef && !chef.canBook) {
+                hourly = fullDay = false;
+                reason = fullDayReason = 'not_open_to_you';
+            } else if (chef?.remainingMinutes) {
+                const remaining = chef.remainingMinutes(dateStr);
+                if (hourly && remaining < 60) { hourly = fullDay = false; reason = fullDayReason = 'weekly_limit'; }
+                else if (fullDay && remaining < slots.length * 60) { fullDay = false; fullDayReason = 'weekly_limit'; }
+            }
+            result.push({ date: dateStr, legacyBookable: slots.some(slot => !slot.past && (!slot.reason || slot.reason === 'notice')),
+                status: { hourly, fullDay, reason, fullDayReason } });
         }
-
         return result;
+    }
+
+    /** Chef-only facts for the picker: never served by public month maps (a chef's remaining hours stay private). */
+    private async chefDateLimits(kitchenId: number, chefId: number, weeklyLimitHours: number | null, excludeBookingId?: number) {
+        const kitchen = await kitchenService.getKitchenById(kitchenId);
+        const access = await chefService.getApplicationStatusForBooking(chefId, kitchen.locationId, kitchenId);
+        if (weeklyLimitHours == null) return { canBook: access.canBook, remainingMinutes: null };
+        const counted = await chefWeeklyMinutes({ kitchenId, chefId, excludeBookingId });
+        return { canBook: access.canBook,
+            remainingMinutes: (date: string) => weeklyLimitHours * 60 - (counted.get(weekStartDate(date)) ?? 0) };
+    }
+
+    /** Month availability where a day is true only if at least one bookable slot remains (kept for current clients). */
+    async getMonthBookableAvailability(kitchenId: number, year: number, month: number, excludeBookingId?: number): Promise<Record<string, boolean>> {
+        const dates = await this.monthDates(kitchenId, year, month, { excludeBookingId });
+        return Object.fromEntries(dates.map(day => [day.date, day.legacyBookable]));
+    }
+
+    /** Per-date picker status with reasons; `chefId` adds that chef's access and weekly limit (chef routes only). */
+    async getMonthDateStatus(kitchenId: number, year: number, month: number, options: { excludeBookingId?: number; chefId?: number } = {}): Promise<Record<string, BookingDateStatus>> {
+        const dates = await this.monthDates(kitchenId, year, month, options);
+        return Object.fromEntries(dates.map(day => [day.date, day.status]));
     }
 }
 

@@ -9,7 +9,7 @@ vi.mock('../domains/users/chef.service', () => ({ chefService: { getApplicationS
 vi.mock('../domains/bookings/booking.service', () => ({ bookingService: {} }));
 vi.mock('./kitchen-invitations', async importOriginal => ({ ...await importOriginal<typeof import('./kitchen-invitations')>(), wakeInvitationDelivery: vi.fn() }));
 vi.mock('./notification.service', () => ({ notificationService: { create: vi.fn() } }));
-vi.mock('./kitchen-checkout-holds', () => ({ fulfillKitchenCheckout: async (...args: any[]) => args[6](),
+vi.mock('./kitchen-checkout-holds', () => ({ fulfillKitchenCheckout: async (...args: any[]) => args[6]({ bufferMinutesSnapshot: 0 }),
   KitchenHoldMissingError: class extends Error {}, KitchenSlotUnavailableError: class extends Error {} }));
 vi.mock('stripe', () => ({ default: class { checkout = { sessions: { retrieve: h.session } }; } }));
 vi.mock('../db', () => {

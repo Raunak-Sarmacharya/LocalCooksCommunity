@@ -1,6 +1,8 @@
-import { effectiveTurnoverBuffer } from '@shared/kitchen-booking-policies';
+import { effectiveBookingBufferMinutes } from '@shared/kitchen-booking-policies';
 import { randomInt, randomUUID } from 'node:crypto';
-import { operatingSlotInstants } from '@shared/booking-occupancy';
+import { datedOccupiedSlots, operatingSlotInstants, pairBufferMinutes } from '@shared/booking-occupancy';
+import { minutesByWeek } from '@shared/kitchen-booking-quota';
+import { chefWeeklyMinutes } from './kitchen-booking-quota';
 /**
  * Session extensions and extra-time charges (docs/architecture/phase0/build-session-extensions.md).
  *
@@ -51,7 +53,7 @@ export const extensionOperation = (id: number, action: ExtensionOperation['actio
 async function context(tx: Tx, bookingId: number, actor?: ExtensionActor) {
   const [row] = await tx.select({
     booking: kitchenBookings, kitchen: kitchens, managerId: locations.managerId, timezone: locations.timezone,
-    locationBuffer: locations.turnoverBufferEnabled, locationDailyLimit: locations.defaultDailyBookingLimit,
+    locationBuffer: locations.turnoverBufferEnabled, locationBufferMinutes: locations.bookingBufferMinutes, locationDailyLimit: locations.defaultDailyBookingLimit,
   })
     .from(kitchenBookings).innerJoin(kitchens, eq(kitchens.id, kitchenBookings.kitchenId))
     .innerJoin(locations, eq(locations.id, kitchens.locationId)).where(eq(kitchenBookings.id, bookingId)).limit(1);
@@ -100,7 +102,13 @@ function operatingDateFor(row: Context, visit: VisitCloseout) {
   if (timeToMinutes(visit.startTime) < timeToMinutes(row.booking.operatingWindowStartTime || row.booking.startTime)) day.setUTCDate(day.getUTCDate() - 1);
   return day.toISOString().slice(0, 10);
 }
-/** Options for this visit: the kitchen's hours that day, max hours, and every other booking or hold (bounded to ±1 day). */
+/** A dated visit's own operating-window anchor (each day carries it on its slots); legacy rows use the parent's. */
+function anchorFor(row: Context, operatingDate: string) {
+  const slots = Array.isArray(row.booking.selectedSlots) ? row.booking.selectedSlots as Array<{ date?: string; windowStartTime?: string }> : [];
+  return slots.find(slot => slot?.date === operatingDate && slot.windowStartTime)?.windowStartTime
+    || row.booking.operatingWindowStartTime || row.booking.startTime;
+}
+/** Options for this visit: the kitchen's hours that day, max hours, and every other booking or hold (bounded around the day). */
 async function scheduleFacts(tx: Tx, row: Context, visit: VisitCloseout, now: Date, excludeHoldId?: string | null) {
   const operatingDate = operatingDateFor(row, visit);
   const overrides = await tx.select().from(kitchenDateOverrides).where(and(eq(kitchenDateOverrides.kitchenId, row.kitchen.id),
@@ -109,49 +117,72 @@ async function scheduleFacts(tx: Tx, row: Context, visit: VisitCloseout, now: Da
     eq(kitchenAvailability.dayOfWeek, new Date(`${operatingDate}T12:00:00Z`).getUTCDay())));
   const window = overrides[0] || weekly[0];
   if (!window?.isAvailable || !window.startTime || !window.endTime || !row.kitchen.isActive) return null;
-  const from = new Date(`${operatingDate}T00:00:00Z`); from.setUTCDate(from.getUTCDate() - 1);
+  // A dated booking's later day can be up to 14 days after its first date, so its parent row starts that much earlier.
+  const from = new Date(`${operatingDate}T00:00:00Z`); from.setUTCDate(from.getUTCDate() - 15);
   const to = new Date(`${operatingDate}T00:00:00Z`); to.setUTCDate(to.getUTCDate() + 2);
   const bookings = await tx.select().from(kitchenBookings).where(and(eq(kitchenBookings.kitchenId, row.kitchen.id),
     sql`${kitchenBookings.status} <> 'cancelled'`, gte(kitchenBookings.bookingDate, from), lte(kitchenBookings.bookingDate, to)));
   const holds = await tx.select().from(kitchenCheckoutHolds).where(and(eq(kitchenCheckoutHolds.kitchenId, row.kitchen.id), gt(kitchenCheckoutHolds.expiresAt, now)));
-  const occupied = bookings.flatMap(booking => occupiedIntervals(booking).map(slot => absoluteOperatingSlotInterval(
-    (slot as { date?: string }).date || booking.bookingDate.toISOString().slice(0, 10), slot, booking.operatingWindowStartTime || booking.startTime)));
-  occupied.push(...holds.filter(hold => hold.id !== excludeHoldId).flatMap(hold => occupiedIntervals({ startTime: '', endTime: '', selectedSlots: hold.selectedSlots })
-    .map(slot => absoluteOperatingSlotInterval(hold.operatingDate, slot, hold.windowStartTime))));
-  const turnoverOccupied = effectiveTurnoverBuffer(row.kitchen, { turnoverBufferEnabled: row.locationBuffer })
-    ? [
-      ...bookings.filter(booking => booking.id !== row.booking.id).flatMap(booking => occupiedIntervals(booking).map(slot => operatingSlotInstants(
-        (slot as { date?: string }).date || booking.bookingDate.toISOString().slice(0, 10), slot, booking.operatingWindowStartTime || booking.startTime, row.timezone!))),
-      ...holds.filter(hold => hold.id !== excludeHoldId).flatMap(hold => occupiedIntervals({ startTime: '', endTime: '', selectedSlots: hold.selectedSlots })
-        .map(slot => operatingSlotInstants(hold.operatingDate, slot, hold.windowStartTime, row.timezone!))),
-    ] : undefined;
+  const otherHolds = holds.filter(hold => hold.id !== excludeHoldId);
+  const holdSlots = (hold: typeof holds[number]) => datedOccupiedSlots({ bookingDate: hold.operatingDate, startTime: '', endTime: '',
+    selectedSlots: hold.selectedSlots, operatingWindowStartTime: hold.windowStartTime });
+  const occupied = [...bookings.flatMap(datedOccupiedSlots), ...otherHolds.flatMap(holdSlots)]
+    .map(slot => absoluteOperatingSlotInterval(slot.date, slot, slot.windowStartTime));
+  // Spacing to every other booking/hold: the larger of the two saved buffers (this booking keeps its own).
+  const current = effectiveBookingBufferMinutes(row.kitchen, { turnoverBufferEnabled: row.locationBuffer, bookingBufferMinutes: row.locationBufferMinutes });
+  const own = row.booking.bufferMinutesSnapshot;
+  const turnoverOccupied = [
+    ...bookings.filter(booking => booking.id !== row.booking.id).flatMap(booking => datedOccupiedSlots(booking)
+      .map(slot => ({ slot, bufferMinutes: pairBufferMinutes(booking.bufferMinutesSnapshot, own, current) }))),
+    ...otherHolds.flatMap(hold => holdSlots(hold).map(slot => ({ slot, bufferMinutes: pairBufferMinutes(hold.bufferMinutesSnapshot, own, current) }))),
+  ].filter(entry => entry.bufferMinutes > 0)
+    .map(({ slot, bufferMinutes }) => ({ ...operatingSlotInstants(slot.date, slot, slot.windowStartTime, row.timezone!), bufferMinutes }));
   const dailyLimit = row.kitchen.defaultDailyBookingLimit ?? row.locationDailyLimit ?? null;
-  return { operatingDate, window: { startTime: window.startTime, endTime: window.endTime }, occupied, turnoverOccupied,
-    durationMinutes: Math.round(Number(row.booking.durationHours) * 60),
+  // Weekly hours: added time counts like booked time (there is no kitchen override for added time).
+  const weeklyLimitHours = row.kitchen.weeklyChefHoursLimit ?? null;
+  const counted = weeklyLimitHours != null && row.booking.chefId
+    ? await chefWeeklyMinutes({ kitchenId: row.kitchen.id, chefId: row.booking.chefId, excludeHoldId: excludeHoldId ?? undefined }, tx, now) : null;
+  const weeklyFits = (added: { startTime: string; endTime: string }, windowStartTime: string) => !counted
+    || Array.from(minutesByWeek([{ date: operatingDate, windowStartTime, ...added }])).every(([week, minutes]) =>
+      (counted.get(week) ?? 0) + minutes <= weeklyLimitHours! * 60);
+  return { operatingDate, window: { startTime: window.startTime, endTime: window.endTime }, occupied, turnoverOccupied, weeklyFits,
+    // A dated visit is limited by its own day's hours, never the whole booking's total.
+    durationMinutes: row.booking.scheduleRevision
+      ? Math.round((Date.parse(visit.scheduledEndAt) - Date.parse(visit.scheduledStartAt)) / 60_000)
+      : Math.round(Number(row.booking.durationHours) * 60),
     // null = no longest-booking cap (opening hours only).
     maxMinutes: dailyLimit == null ? null : dailyLimit * 60 };
 }
 async function available(tx: Tx, row: Context, visit: VisitCloseout, now: Date, excludeHoldId?: string | null): Promise<ExtensionOption[]> {
   const facts = await scheduleFacts(tx, row, visit, now, excludeHoldId);
   if (!facts) return [];
-  return sessionExtensionOptions({ ...facts, windowStartTime: row.booking.operatingWindowStartTime || facts.window.startTime,
-    windowEndTime: facts.window.endTime, endTime: visit.endTime, endAt: visit.scheduledEndAt, timezone: row.timezone!, ...await priceTerms(tx, row) });
+  const windowStartTime = anchorFor(row, facts.operatingDate) || facts.window.startTime;
+  // Options are contiguous and weekly use only grows with length, so this keeps a prefix.
+  return sessionExtensionOptions({ ...facts, windowStartTime,
+    windowEndTime: facts.window.endTime, endTime: visit.endTime, endAt: visit.scheduledEndAt, timezone: row.timezone!, ...await priceTerms(tx, row) })
+    .filter(option => facts.weeklyFits({ startTime: visit.endTime, endTime: option.endTime }, windowStartTime));
 }
 /** When no option fits: the first blocker, for the chef's "no time free" sentence. */
 async function noTimeReason(tx: Tx, row: Context, visit: VisitCloseout, now: Date, excludeHoldId?: string | null) {
   const facts = await scheduleFacts(tx, row, visit, now, excludeHoldId);
   if (!facts) return null;
-  return sessionExtensionBlocker({ ...facts, windowStartTime: row.booking.operatingWindowStartTime || facts.window.startTime,
+  const windowStartTime = anchorFor(row, facts.operatingDate) || facts.window.startTime;
+  const blocker = sessionExtensionBlocker({ ...facts, windowStartTime,
     windowEndTime: facts.window.endTime, endTime: visit.endTime, endAt: visit.scheduledEndAt, timezone: row.timezone!, ...await priceTerms(tx, row) });
+  if (blocker) return blocker;
+  const end = timeToMinutes(visit.endTime) + 15;
+  const firstEnd = `${String(Math.floor(end % 1440 / 60)).padStart(2, '0')}:${String(end % 60).padStart(2, '0')}`;
+  return facts.weeklyFits({ startTime: visit.endTime, endTime: firstEnd }, windowStartTime) ? null : 'weekly_limit';
 }
 /** Earlier starts (15-minute steps) for a visit that has not started; the same availability rules in reverse. */
 async function availableEarly(tx: Tx, row: Context, visit: VisitCloseout, now: Date, excludeHoldId?: string | null): Promise<EarlyStartOption[]> {
   const facts = await scheduleFacts(tx, row, visit, now, excludeHoldId);
   if (!facts) return [];
   // Never before the kitchen opens nor before the booking's own operating-window anchor (overnight resolution).
-  const anchor = row.booking.operatingWindowStartTime || facts.window.startTime;
+  const anchor = anchorFor(row, facts.operatingDate) || facts.window.startTime;
   const windowStartTime = timeToMinutes(facts.window.startTime) > timeToMinutes(anchor) ? facts.window.startTime : anchor;
-  return earlyStartOptions({ ...facts, windowStartTime, startTime: visit.startTime, startAt: visit.scheduledStartAt, timezone: row.timezone!, now, ...await priceTerms(tx, row) });
+  return earlyStartOptions({ ...facts, windowStartTime, startTime: visit.startTime, startAt: visit.scheduledStartAt, timezone: row.timezone!, now, ...await priceTerms(tx, row) })
+    .filter(option => facts.weeklyFits({ startTime: option.startTime, endTime: visit.startTime }, windowStartTime));
 }
 /** The closeout clock's service-end grace saved with the booking (platform default 15 min): no extra-time charge inside it. */
 const overstayGraceMinutes = (row: Context) =>
@@ -272,7 +303,7 @@ export async function pendingSessionExtensionRequests(managerId: number, now = n
 async function reserve(tx: Tx, row: Context, extension: Extension, operatingDate: string) {
   const holdId = extension.holdId || `session-extension:${extension.id}`;
   await tx.insert(kitchenCheckoutHolds).values({ id: holdId, kitchenId: row.kitchen.id, chefId: row.booking.chefId!, operatingDate,
-    windowStartTime: row.booking.operatingWindowStartTime || row.booking.startTime,
+    windowStartTime: anchorFor(row, operatingDate), bufferMinutesSnapshot: row.booking.bufferMinutesSnapshot,
     selectedSlots: [extension.kind === 'early_start' ? { startTime: extension.endTime, endTime: extension.originalEndTime }
       : { startTime: extension.originalEndTime, endTime: extension.endTime }], expiresAt: retainedHoldUntil })
     .onConflictDoNothing({ target: kitchenCheckoutHolds.id });

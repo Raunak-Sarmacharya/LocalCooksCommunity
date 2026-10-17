@@ -26,6 +26,11 @@ import { sendEmail } from '../email';
 import { friendlyTimezoneName } from '@shared/timezone-utils';
 import { operationalEmailAllowed } from './admin-email-preferences';
 import { isE2eOutboundSuppressed } from '../e2e-outbound-guard';
+import { kitchenBookingPolicies } from './booking-policy-settings';
+import { BookingRuleOverrideError, invitationOverrideScope, kitchenRuleOverride, overrideRecord, savedInvitationOverride, type BookingRuleOverride } from './booking-rule-overrides';
+import { weeklyQuotaShortfallsFor } from './kitchen-booking-quota';
+import { weeklyQuotaMessage } from '@shared/kitchen-booking-quota';
+import { policyBufferMinutes } from '@shared/kitchen-booking-policies';
 
 export const invitationStatuses = [
   'sent', 'accepted_pending_payment', 'accepted', 'declined', 'withdrawn', 'expired', 'superseded', 'unavailable',
@@ -35,7 +40,12 @@ export type InvitationDiscount = { type: 'amount' | 'percent'; value: number };
 export type InvitationInput = {
   kitchenId: number; chefId: number; date: string; startTime: string; endTime: string;
   discount?: InvitationDiscount; expiresInHours: 24 | 48 | 168; note?: string;
+  /** The kitchen's explicit, reasoned override of its own buffer and/or this chef's weekly limit (audited). */
+  ruleOverride?: { ignoreBuffer?: boolean; ignoreWeeklyLimit?: boolean; reason?: string };
 };
+
+const scopedRecord = (override: BookingRuleOverride | undefined, row: { id: string; kitchenId: number; chefId: number }) =>
+  override ? { ...overrideRecord(override)!, scope: invitationOverrideScope(row) } : null;
 
 export class InvitationError extends Error {
   constructor(message: string, public status = 400, public code = 'invalid_invitation') { super(message); }
@@ -108,11 +118,21 @@ export async function previewKitchenInvitation(managerId: number, input: Invitat
   const locale = reader?.locale || 'en-CA';
   const ctx = await context(input.kitchenId);
   if (ctx.managerId !== managerId) throw new InvitationError('Kitchen not found.', 404);
+  let override: BookingRuleOverride | undefined;
+  try {
+    override = kitchenRuleOverride({ actorId: managerId, actorRole: 'manager', scope: 'invitation-preview', ...(input.ruleOverride ?? {}) });
+  } catch (error) {
+    if (error instanceof BookingRuleOverrideError) throw new InvitationError(error.message);
+    throw error;
+  }
+  const rules = await kitchenBookingPolicies(input.kitchenId);
+  // Frozen with the invitation and used through checkout; an explicit kitchen waiver saves Off.
+  const bufferMinutes = override?.ignoreBuffer ? 0 : policyBufferMinutes(rules);
   const eligibility = await chefService.getApplicationStatusForBooking(input.chefId, ctx.locationId, input.kitchenId);
   const date = new Date(`${input.date}T12:00:00.000Z`);
-  const hourlyAvailability = await bookingService.validateBookingAvailability(input.kitchenId, date, input.startTime, input.endTime);
+  const hourlyAvailability = await bookingService.validateBookingAvailability(input.kitchenId, date, input.startTime, input.endTime, { bufferMinutes, override });
   const dailyAvailability = Number(ctx.dailyRate || 0) > 0
-    ? await bookingService.validateBookingAvailability(input.kitchenId, date, input.startTime, input.endTime, { fullDay: true })
+    ? await bookingService.validateBookingAvailability(input.kitchenId, date, input.startTime, input.endTime, { fullDay: true, bufferMinutes, override })
     : { valid: false as const };
   const useDaily = dailyAvailability.valid && dailyAvailability.slots?.[0]?.startTime === input.startTime
     && dailyAvailability.slots?.at(-1)?.endTime === input.endTime;
@@ -144,7 +164,11 @@ export async function previewKitchenInvitation(managerId: number, input: Invitat
       inArray(kitchenInvitations.status, ['sent', 'accepted_pending_payment'])));
   const warnings = activeInvitations.some(row => overlaps(input, row))
     ? [tLocale(locale, 'booking:invOverlapWarning')] : [];
-  const available = eligibility.canBook && availability.valid && !conflict && !exceedsDailyLimit;
+  // Weekly hours are only reserved when the chef checks out; the kitchen sees the shortfall now and may override it.
+  const weeklyLimit = availability.valid && availability.windowStartTime ? await weeklyQuotaShortfallsFor({ kitchenId: input.kitchenId,
+    chefId: input.chefId, limitHours: rules.weeklyChefHoursLimit, override,
+    proposed: slots.map(slot => ({ date: input.date, windowStartTime: availability.windowStartTime!, ...slot })) }) : [];
+  const available = eligibility.canBook && availability.valid && !conflict && !exceedsDailyLimit && !weeklyLimit.length;
   return {
     pricing: {
       listSubtotalCents, offeredSubtotalCents, discount: input.discount || null,
@@ -158,9 +182,11 @@ export async function previewKitchenInvitation(managerId: number, input: Invitat
       ? tLocale(locale, 'booking:invUnavailable')
       : conflict ? tLocale(locale, 'booking:invPendingConflict')
         : exceedsDailyLimit ? tLocale(locale, 'booking:invUnavailable')
-          : tLocale(locale, 'booking:invUnavailable') } : {}),
+          : weeklyLimit.length ? weeklyQuotaMessage(weeklyLimit[0])
+            : tLocale(locale, 'booking:invUnavailable') } : {}),
+    ...(weeklyLimit.length ? { weeklyLimit: { code: 'WEEKLY_CHEF_HOURS_LIMIT', weeks: weeklyLimit, timezone: rules.timezone } } : {}),
     warnings,
-    internal: { ctx, slots, pricingMode, policy, windowStartTime: availability.windowStartTime || input.startTime },
+    internal: { ctx, slots, pricingMode, policy, windowStartTime: availability.windowStartTime || input.startTime, bufferMinutes, override },
   };
 }
 
@@ -205,8 +231,11 @@ export async function createKitchenInvitation(managerId: number, input: Invitati
       cancellationPolicyHours: preview.internal.policy.noticeHours,
       cancellationChargePercent: preview.internal.policy.lateChargePercent,
       note: input.note?.trim() || null, expiresInHours: input.expiresInHours, expiresAt: new Date(preview.expiresAt),
+      bufferMinutesSnapshot: preview.internal.bufferMinutes,
+      bookingRuleOverrides: scopedRecord(preview.internal.override, { id, kitchenId: input.kitchenId, chefId: input.chefId }),
     }).returning();
-    await event(tx, created, 'created', managerId, 'manager');
+    await event(tx, created, 'created', managerId, 'manager', undefined,
+      created.bookingRuleOverrides ? { ruleOverride: created.bookingRuleOverrides } : {});
     await event(tx, created, 'sent', managerId, 'manager');
     return created;
   }); } catch (error) {
@@ -231,6 +260,7 @@ export async function invitationDto(row: typeof kitchenInvitations.$inferSelect,
     const [availability, eligibility] = await Promise.all([
       bookingService.validateBookingAvailability(row.kitchenId, new Date(`${row.date}T12:00:00Z`), row.startTime, row.endTime, {
         selectedSlots: row.selectedSlots as Array<{ startTime: string; endTime: string }>, fullDay: row.pricingMode === 'daily',
+        bufferMinutes: row.bufferMinutesSnapshot, override: savedInvitationOverride(row),
       }),
       chefService.getApplicationStatusForBooking(row.chefId, row.locationId, row.kitchenId),
     ]);
@@ -352,12 +382,15 @@ export async function replaceKitchenInvitation(id: string, managerId: number, ve
       cancellationPolicyHours: preview.internal.policy.noticeHours,
       cancellationChargePercent: preview.internal.policy.lateChargePercent,
       expiresInHours: input.expiresInHours, expiresAt: new Date(preview.expiresAt),
+      bufferMinutesSnapshot: preview.internal.bufferMinutes,
+      bookingRuleOverrides: scopedRecord(preview.internal.override, { id: replacementId, kitchenId: input.kitchenId, chefId: input.chefId }),
     }).returning();
     const [changed] = await tx.update(kitchenInvitations).set({ status: 'superseded', version: version + 1, updatedAt: new Date() })
       .where(and(eq(kitchenInvitations.id, id), eq(kitchenInvitations.version, version), eq(kitchenInvitations.status, 'sent'))).returning();
     if (!changed) throw new InvitationError('Invitation changed; refresh and try again.', 409);
     await event(tx, changed, 'superseded', managerId, 'manager', undefined, { replacementId });
-    await event(tx, replacement, 'created', managerId, 'manager', undefined, { replacesId: id });
+    await event(tx, replacement, 'created', managerId, 'manager', undefined,
+      { replacesId: id, ...(replacement.bookingRuleOverrides ? { ruleOverride: replacement.bookingRuleOverrides } : {}) });
     await event(tx, replacement, 'sent', managerId, 'manager');
     return replacement;
   });

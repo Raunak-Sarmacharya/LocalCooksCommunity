@@ -28,6 +28,8 @@ import { bookingFreeCancelHours, RESPONSE_WINDOW_HOURS } from '@shared/booking-r
 import { makeCloseoutSnapshot, savedCloseout, snapshotBookedHours, type ClockBooking } from '@shared/clock-closeout';
 import type { CancellationPolicySnapshot } from '@shared/cancellation-policy';
 import { tourBookingOverlaps } from '@shared/tour-booking-overlap';
+import { weeklyQuotaMessage } from '@shared/kitchen-booking-quota';
+import { weeklyQuotaShortfallsFor } from './kitchen-booking-quota';
 import { changeQuoteFingerprint, changeResponseDeadline, freeCancelDeadline, movedPolicySessions, publicChangeMoney, RESCHEDULE_MESSAGES,
   rescheduleEligibility, rescheduleMoney, type ChangeMoney, type ChangeMoneyFull, type PriceTerms } from '@shared/kitchen-booking-reschedule';
 import { bookingService } from '../domains/bookings/booking.service';
@@ -198,6 +200,14 @@ function changeLengthLimits(row: Context) {
   return { minHours: maxHours == null ? minHours : Math.min(maxHours, minHours), maxHours };
 }
 
+/** Weekly hours at this kitchen: the move may use only what the original frees in each week (original excluded, its hold too). */
+async function assertWeeklyHours(tx: Tx, row: Context, destination: ChangeSchedule, holdId?: string | null) {
+  const weeks = await weeklyQuotaShortfallsFor({ kitchenId: row.booking.kitchenId, chefId: row.booking.chefId,
+    limitHours: row.kitchen.weeklyChefHoursLimit, excludeBookingId: row.booking.id, excludeHoldId: holdId || undefined,
+    proposed: destination.slots.map(slot => ({ date: destination.date, windowStartTime: destination.windowStart, ...slot })) }, tx);
+  if (weeks.length) throw new KitchenChangeError(weeklyQuotaMessage(weeks[0]), 409, 'WEEKLY_CHEF_HOURS_LIMIT', { weeks, timezone: row.timezone });
+}
+
 async function validateDestination(tx: Tx, row: Context, destination: ChangeSchedule, now: Date, holdId?: string | null) {
   const booking = row.booking, daily = booking.pricingMode === 'daily';
   if (!destination.slots?.length) throw new KitchenChangeError('Choose the new date and hours.', 409, 'chooseDateHours');
@@ -205,7 +215,8 @@ async function validateDestination(tx: Tx, row: Context, destination: ChangeSche
   const result = await bookingService.validateBookingAvailability(booking.kitchenId, new Date(`${destination.date}T12:00:00Z`),
     destination.slots[0].startTime, destination.slots.at(-1)!.endTime, { selectedSlots: destination.slots, fullDay: daily,
       // The booking's own current time never blocks its own move; the chef is still bound by the kitchen's advance-booking window.
-      excludeBookingId: booking.id, excludeHoldId: holdId || undefined, keepAdvanceWindow: true });
+      // The moved booking keeps the buffer it was made with.
+      excludeBookingId: booking.id, excludeHoldId: holdId || undefined, keepAdvanceWindow: true, bufferMinutes: booking.bufferMinutesSnapshot });
   if (!result.valid || !result.windowStartTime) throw new KitchenChangeError(result.error || 'That time is no longer available. Pick another.', 409, 'timeUnavailable');
   const normalized: ChangeSchedule = { date: destination.date, slots: result.slots!, windowStart: result.windowStartTime, ...(daily ? { pricingMode: 'daily' as const } : { pricingMode: 'hourly' as const }) };
   // The kitchen's own length limits apply to a change exactly as to a new booking.
@@ -218,6 +229,7 @@ async function validateDestination(tx: Tx, row: Context, destination: ChangeSche
         ? new KitchenChangeError(`${row.kitchen.name} takes bookings of up to ${limits.maxHours} hours. Choose a shorter length.`, 409, 'lengthMax', { kitchen: row.kitchen.name, max: limits.maxHours })
         : new KitchenChangeError(`${row.kitchen.name} takes bookings of at least ${limits.minHours} hours. Choose a longer length.`, 409, 'lengthMin', { kitchen: row.kitchen.name, min: limits.minHours });
   await validateEquipment(tx, row, normalized);
+  await assertWeeklyHours(tx, row, normalized, holdId);
   if (!row.kitchen.isActive || row.kitchen.listingStatus !== 'active') throw new KitchenChangeError('This kitchen is unavailable for a new schedule.', 409, 'kitchenUnavailable');
   const original = bookingChangeSchedule(booking);
   if (original.date === normalized.date && original.slots.length === normalized.slots.length
@@ -227,7 +239,7 @@ async function validateDestination(tx: Tx, row: Context, destination: ChangeSche
     inArray(kitchenViewings.status, ['confirmed', 'pending', 'pending_local_cooks'])));
   const candidate = { ...booking, bookingDate: `${normalized.date}T12:00:00Z`, selectedSlots: normalized.slots,
     startTime: normalized.slots[0].startTime, endTime: normalized.slots.at(-1)!.endTime, operatingWindowStartTime: normalized.windowStart };
-  const overlaps = tours.filter(tour => tourBookingOverlaps([candidate as never], booking.kitchenId, tour.scheduledAt, tour.durationMinutes).length)
+  const overlaps = tours.filter(tour => tourBookingOverlaps([candidate as never], booking.kitchenId, tour.scheduledAt, tour.durationMinutes, row.timezone).length)
     .map(tour => ({ id: tour.id, scheduledAt: tour.scheduledAt.toISOString(), durationMinutes: tour.durationMinutes, status: tour.status }));
   void now;
   return { destination: normalized, overlaps };
@@ -457,7 +469,7 @@ const patchMeta = async (tx: Tx, change: Change, patch: Partial<ChangeMeta>) => 
 async function holdTime(tx: Tx, row: Context, change: Pick<Change, 'id' | 'destination'>, expiresAt: Date) {
   const destination = scheduleOf(change.destination), holdId = holdIdFor(change.id);
   await tx.insert(kitchenCheckoutHolds).values({ id: holdId, kitchenId: row.kitchen.id, chefId: row.booking.chefId!, operatingDate: destination.date,
-    windowStartTime: destination.windowStart, selectedSlots: destination.slots, expiresAt })
+    windowStartTime: destination.windowStart, selectedSlots: destination.slots, expiresAt, bufferMinutesSnapshot: row.booking.bufferMinutesSnapshot })
     .onConflictDoUpdate({ target: kitchenCheckoutHolds.id, set: { expiresAt } });
   await tx.update(kitchenBookingChanges).set({ holdId }).where(eq(kitchenBookingChanges.id, change.id));
   return holdId;
@@ -657,9 +669,10 @@ async function assertStillValid(tx: Tx, row: Context, change: Change, now: Date)
   if (!hold || hold.expiresAt.getTime() <= now.getTime()) throw new KitchenChangeError('That time isn’t held any more, so it can’t be confirmed. Decline the request; the chef can ask again.', 409, 'holdGone');
   const result = await bookingService.validateBookingAvailability(booking.kitchenId, new Date(`${destination.date}T12:00:00Z`),
     destination.slots[0].startTime, destination.slots.at(-1)!.endTime, { selectedSlots: destination.slots, fullDay: booking.pricingMode === 'daily',
-      excludeBookingId: booking.id, excludeHoldId: hold.id, keepAdvanceWindow: false });
+      excludeBookingId: booking.id, excludeHoldId: hold.id, keepAdvanceWindow: false, bufferMinutes: booking.bufferMinutesSnapshot });
   if (!result.valid) throw new KitchenChangeError(result.error || 'That time is no longer available.', 409, 'timeUnavailable');
   await validateEquipment(tx, row, destination);
+  await assertWeeklyHours(tx, row, destination, hold.id);
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
