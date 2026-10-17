@@ -11,7 +11,7 @@ const CTA_FEEDBACK = "transition-[background-color,color,border-color,box-shadow
 /** Chef primary CTA — same surface as kitchen preview Apply / Book. */
 export function chefPrimaryCtaClass(className?: string) {
   return cn(
-    "rounded-full border-transparent bg-[#F51042] text-white hover:bg-[#E00A38] hover:text-white disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:bg-[#F51042]",
+    "rounded-full border-transparent bg-[#E10939] text-white hover:bg-[#C90832] hover:text-white disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:bg-[#E10939]",
     PREMIUM_PRIMARY_SHADOW,
     PREMIUM_PRIMARY_HOVER_SHADOW,
     CTA_FEEDBACK,

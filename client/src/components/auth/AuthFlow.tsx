@@ -502,7 +502,7 @@ export default function AuthFlow({
                 // index.css forces min-height/min-width 44px on EVERY button,
                 // which would blow this inline link out of its line. `!` prefix
                 // (Tailwind v3) beats the unlayered rule.
-                className="!min-h-0 !min-w-0 font-medium text-[#E00A38] underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none"
+                className="!min-h-0 !min-w-0 font-medium text-[#C90832] underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none"
               >
                 {t("loginLink", "Log in")}
               </button>

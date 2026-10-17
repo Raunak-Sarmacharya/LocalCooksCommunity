@@ -159,7 +159,7 @@ export function AppSidebar({
                                 <Logo variant="white" className="size-5" />
                             </div>
                             <div className="grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
-                                <span className="truncate font-semibold text-[#F51042] font-logo text-lg tracking-tight">LocalCooks</span>
+                                <span className="truncate font-semibold text-[#E10939] font-logo text-lg tracking-tight">LocalCooks</span>
                                 <span className="truncate text-[10px] font-medium text-muted-foreground uppercase tracking-wider leading-none">{mt("shellForKitchens")}</span>
                             </div>
                         </SidebarMenuButton>

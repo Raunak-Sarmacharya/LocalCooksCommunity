@@ -21,11 +21,11 @@ export const GradientColorPicker: React.FC<GradientColorPickerProps> = ({
 }) => {
   // State for gradient configuration
   const [isGradient, setIsGradient] = useState(value.includes('gradient'));
-  const [color1, setColor1] = useState('#F51042');
+  const [color1, setColor1] = useState('#E10939');
   const [color2, setColor2] = useState('#FF5470');
   const [color3, setColor3] = useState('#FF8A9B');
   const [direction, setDirection] = useState('135deg');
-  const [solidColor, setSolidColor] = useState('#F51042');
+  const [solidColor, setSolidColor] = useState('#E10939');
 
   // Parse existing gradient or solid color
   React.useEffect(() => {
@@ -34,7 +34,7 @@ export const GradientColorPicker: React.FC<GradientColorPickerProps> = ({
       // Try to extract colors from existing gradient
       const colorMatches = value.match(/#[0-9A-Fa-f]{6}/g);
       if (colorMatches) {
-        setColor1(colorMatches[0] || '#F51042');
+        setColor1(colorMatches[0] || '#E10939');
         setColor2(colorMatches[1] || '#FF5470');
         setColor3(colorMatches[2] || '#FF8A9B');
       }
@@ -96,7 +96,7 @@ export const GradientColorPicker: React.FC<GradientColorPickerProps> = ({
 
   // Preset gradients
   const presetGradients = [
-    { name: 'Local Cooks', gradient: generateGradient('#F51042', '#FF5470', '#FF8A9B', '135deg') },
+    { name: 'Local Cooks', gradient: generateGradient('#E10939', '#FF5470', '#FF8A9B', '135deg') },
     { name: 'Ocean', gradient: generateGradient('#0066CC', '#0099FF', '#66CCFF', '135deg') },
     { name: 'Sunset', gradient: generateGradient('#FF6B35', '#FF8E35', '#FFB135', '135deg') },
     { name: 'Forest', gradient: generateGradient('#228B22', '#32CD32', '#90EE90', '135deg') },

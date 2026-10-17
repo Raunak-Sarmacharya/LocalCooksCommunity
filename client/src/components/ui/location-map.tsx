@@ -79,7 +79,7 @@ export function LocationMap({ address, name, latitude, longitude, heightClassNam
     </div>
     <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-border/50 p-3">
       <p className="flex min-w-0 flex-1 items-start gap-2 text-xs leading-relaxed text-muted-foreground"><MapPin className="mt-0.5 h-4 w-4 shrink-0" /><span>{address}</span></p>
-      <a href={directionsUrl} target="_blank" rel="noopener noreferrer" className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-gray-900 underline underline-offset-4 hover:text-[#F51042]">{t("getDirections", "Get directions")}<ArrowUpRight size={14} /></a>
+      <a href={directionsUrl} target="_blank" rel="noopener noreferrer" className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-gray-900 underline underline-offset-4 hover:text-[#E10939]">{t("getDirections", "Get directions")}<ArrowUpRight size={14} /></a>
     </div>
   </div>;
 }

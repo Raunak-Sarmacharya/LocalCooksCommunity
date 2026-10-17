@@ -109,7 +109,7 @@ export default function KitchenAuthShowcase() {
                 className="absolute right-[4%] top-0 z-10 w-[86%] overflow-hidden rounded-[16px] bg-white ring-1 ring-black/[0.06] shadow-[0_20px_46px_-26px_rgba(60,8,24,0.5)]"
               >
                 <div className="flex items-center gap-2 border-b border-slate-100 px-3.5 py-2.5">
-                  <Icon icon="mdi:inbox-arrow-down-outline" className="h-3.5 w-3.5 text-[#F51042]" aria-hidden />
+                  <Icon icon="mdi:inbox-arrow-down-outline" className="h-3.5 w-3.5 text-[#E10939]" aria-hidden />
                   <span className="text-[10px] font-bold text-slate-800">Booking requests</span>
                   {/* The closing beat: after the cards settle and the day fills in, the new-demand
                       count pops once. `inline-block` is required or the transform is ignored on a
@@ -122,7 +122,7 @@ export default function KitchenAuthShowcase() {
                       delay: reduceMotion ? 0 : 1.35,
                       ease: [0.22, 1, 0.36, 1],
                     }}
-                    className="inline-block rounded-full bg-[#F51042]/10 px-2 py-0.5 text-[9px] font-semibold text-[#F51042]"
+                    className="inline-block rounded-full bg-[#E10939]/10 px-2 py-0.5 text-[9px] font-semibold text-[#E10939]"
                   >
                     4 new
                   </motion.span>
@@ -181,7 +181,7 @@ export default function KitchenAuthShowcase() {
                         key={icon}
                         className={
                           i === 0
-                            ? "flex h-6 w-6 items-center justify-center rounded-[7px] bg-[#F51042] text-white"
+                            ? "flex h-6 w-6 items-center justify-center rounded-[7px] bg-[#E10939] text-white"
                             : "flex h-6 w-6 items-center justify-center rounded-[7px] text-slate-400"
                         }
                       >
@@ -199,7 +199,7 @@ export default function KitchenAuthShowcase() {
                           key={tab}
                           className={
                             i === 0
-                              ? "-mb-px border-b-2 border-[#F51042] pb-2 text-[10px] font-bold text-slate-900"
+                              ? "-mb-px border-b-2 border-[#E10939] pb-2 text-[10px] font-bold text-slate-900"
                               : "-mb-px border-b-2 border-transparent pb-2 text-[10px] font-medium text-slate-400"
                           }
                         >
@@ -227,21 +227,21 @@ export default function KitchenAuthShowcase() {
                           <svg viewBox="0 0 100 28" preserveAspectRatio="none" className="h-9 w-full" aria-hidden>
                             <defs>
                               <linearGradient id="lc-spark" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="0%" stopColor="#F51042" stopOpacity="0.28" />
-                                <stop offset="100%" stopColor="#F51042" stopOpacity="0.02" />
+                                <stop offset="0%" stopColor="#E10939" stopOpacity="0.28" />
+                                <stop offset="100%" stopColor="#E10939" stopOpacity="0.02" />
                               </linearGradient>
                             </defs>
                             <path d={sparkArea} fill="url(#lc-spark)" />
                             <path
                               d={sparkLine}
                               fill="none"
-                              stroke="#F51042"
+                              stroke="#E10939"
                               strokeWidth="1.75"
                               strokeLinecap="round"
                               strokeLinejoin="round"
                               vectorEffect="non-scaling-stroke"
                             />
-                            <circle cx={lastX} cy={lastY} r="1.6" fill="#F51042" vectorEffect="non-scaling-stroke" />
+                            <circle cx={lastX} cy={lastY} r="1.6" fill="#E10939" vectorEffect="non-scaling-stroke" />
                           </svg>
                           <div className="mt-1 flex items-center justify-between text-[8px] font-medium text-slate-300">
                             {["M", "T", "W", "T", "F", "S", "S"].map((d, i) => (
@@ -264,7 +264,7 @@ export default function KitchenAuthShowcase() {
                             <span className="text-[13px] font-bold text-slate-950">82%</span>
                           </div>
                           <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100 ring-1 ring-inset ring-slate-900/[0.04]">
-                            <div className="h-full w-[82%] rounded-full bg-gradient-to-r from-[#e00f3c] to-[#ff5c7a]" />
+                            <div className="h-full w-[82%] rounded-full bg-gradient-to-r from-[#c90832] to-[#ff5c7a]" />
                           </div>
                         </div>
 

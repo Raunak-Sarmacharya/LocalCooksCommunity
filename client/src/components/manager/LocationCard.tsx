@@ -109,7 +109,7 @@ export default function LocationCard({
                   "w-14 h-14 rounded-lg flex items-center justify-center",
                   "bg-gradient-to-br from-[#FFE8DD] to-[#FFD4C4]"
                 )}>
-                  <Building2 className="w-7 h-7 text-[#F51042]" />
+                  <Building2 className="w-7 h-7 text-[#E10939]" />
                 </div>
               )}
             </div>

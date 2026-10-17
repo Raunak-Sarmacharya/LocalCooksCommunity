@@ -120,13 +120,13 @@
   --card-foreground: 224 71.4% 4.1%;
   --border: 220 13% 91%;
   --input: 220 13% 91%;
-  --primary: 348 85% 59%;
+  --primary: 347 92% 46%;
   --primary-foreground: 0 0% 100%;
   --secondary: 0 0% 0%;
   --secondary-foreground: 0 0% 100%;
   --accent: 0 0% 100%;
   --accent-foreground: 348 85% 59%;
-  --destructive: 0 84.2% 60.2%;
+  --destructive: 0 72.2% 50.6%;
   --destructive-foreground: 60 9.1% 97.8%;
   --success: 142 71% 35%;
   --success-foreground: 0 0% 100%;
@@ -134,7 +134,7 @@
   --warning-foreground: 0 0% 100%;
   --info: 217 91% 60%;
   --info-foreground: 0 0% 100%;
-  --ring: 348 85% 59%;
+  --ring: 347 92% 46%;
   --radius: 0.375rem;
 
   /* Layout Variables */
@@ -193,7 +193,7 @@
   --card-foreground: 210 20% 98%;
   --border: 215 27.9% 16.9%;
   --input: 215 27.9% 16.9%;
-  --primary: 348 85% 59%;
+  --primary: 347 92% 46%;
   --primary-foreground: 0 0% 100%;
   --secondary: 0 0% 0%;
   --secondary-foreground: 0 0% 100%;
@@ -201,7 +201,7 @@
   --accent-foreground: 348 85% 59%;
   --destructive: 0 62.8% 30.6%;
   --destructive-foreground: 210 20% 98%;
-  --ring: 348 85% 59%;
+  --ring: 347 92% 46%;
 
   --sidebar-background: 224 71.4% 4.1%;
   --sidebar-foreground: 210 20% 98%;
@@ -589,7 +589,7 @@
 
   /* Modern Gradient Text */
   .gradient-text {
-    background: linear-gradient(135deg, #F51042 0%, #FF5470 100%);
+    background: linear-gradient(135deg, #E10939 0%, #FF5470 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -615,12 +615,12 @@
 
   /* Progress Indicator with Glow */
   .progress-glow {
-    box-shadow: 0 0 15px #F51042;
+    box-shadow: 0 0 15px #E10939;
   }
 
   /* Progress bar gradient */
   .progress-bar-gradient {
-    background: linear-gradient(90deg, #F51042 0%, #FF5470 100%);
+    background: linear-gradient(90deg, #E10939 0%, #FF5470 100%);
   }
 
   /* Display Font for Headings - matching landing page */
@@ -629,7 +629,7 @@
     font-size: 3.2rem;
     line-height: 1.1;
     font-weight: 400;
-    color: #F51042;
+    color: #E10939;
   }
 
   @media (min-width: 768px) {
@@ -658,7 +658,7 @@
     font-family: 'Lobster', cursive;
     font-size: 3.2rem;
     line-height: 1.1;
-    color: #F51042;
+    color: #E10939;
   }
 
   @media (min-width: 768px) {
@@ -1122,14 +1122,14 @@ input[type="number"] {
 
 /* Email Design Studio - Brand Header */
 .email-header-brand {
-  background: linear-gradient(135deg, #F51042 0%, #FF5470 100%) !important;
-  background-color: #F51042 !important;
+  background: linear-gradient(135deg, #E10939 0%, #FF5470 100%) !important;
+  background-color: #E10939 !important;
 }
 
 /* ===== Kitchens discovery map (Compare Kitchens split view) =====
    Leaflet renders markers and popups OUTSIDE the React tree, so these styles
    are plain scoped CSS rather than Tailwind utilities. Brand tokens match the
-   landing page: ink #1A1A1A/#2C2C2C, muted #6B6B6B, brand red #F51042, cream #FFF8F5. */
+   landing page: ink #1A1A1A/#2C2C2C, muted #6B6B6B, brand red #E10939, cream #FFF8F5. */
 .kc-map {
   width: 100%;
   height: 100%;
@@ -1166,7 +1166,7 @@ input[type="number"] {
 }
 .kc-map .leaflet-bar a:hover {
   background: #FFF8F5;
-  color: #F51042;
+  color: #E10939;
 }
 
 /* Price pill marker. The wrap is zero-size; the pill centres itself over the point. */
@@ -1195,7 +1195,7 @@ input[type="number"] {
   font-weight: 500;
 }
 .kc-map-pill-rate {
-  color: #F51042;
+  color: #E10939;
 }
 .kc-map-pill-name {
   max-width: 160px;
@@ -1204,8 +1204,8 @@ input[type="number"] {
 }
 .kc-map-pill:hover,
 .kc-map-pill.kc-map-pill--active {
-  background: #F51042;
-  border-color: #F51042;
+  background: #E10939;
+  border-color: #E10939;
   color: #fff;
   transform: translate(-50%, -100%) scale(1.06);
   box-shadow: 0 8px 22px rgba(245, 16, 66, 0.35);
@@ -1237,12 +1237,12 @@ input[type="number"] {
   height: 8px;
   transform: translateX(-50%);
   border-radius: 50%;
-  background: #F51042;
+  background: #E10939;
   border: 2px solid white;
   box-shadow: 0 1px 4px rgba(44, 44, 44, 0.2);
 }
 .kc-map-pill.kc-location-pill:hover .kc-map-pill-rate {
-  color: #F51042;
+  color: #E10939;
 }
 .kc-location-popup .leaflet-popup-content-wrapper {
   border-radius: 12px;
@@ -1304,7 +1304,7 @@ input[type="number"] {
 }
 .kc-popup-close:hover {
   background: #fff;
-  color: #F51042;
+  color: #E10939;
 }
 .kc-popup-img {
   width: 100%;
@@ -1331,7 +1331,7 @@ input[type="number"] {
   width: 100%;
   border: 0;
   border-radius: 9999px;
-  background: #F51042;
+  background: #E10939;
   color: #fff;
   font-size: 13px;
   font-weight: 600;
@@ -1341,7 +1341,7 @@ input[type="number"] {
   transition: background 0.15s ease;
 }
 .kc-popup-view:hover {
-  background: #D90E3A;
+  background: #C90832;
 }
 .kc-popup-title {
   margin: 0;
@@ -1396,7 +1396,7 @@ input[type="number"] {
 .kc-popup-row-rate {
   font-size: 11px;
   font-weight: 600;
-  color: #F51042;
+  color: #E10939;
 }
 .kc-popup-chevron {
   color: #9A9A9A;

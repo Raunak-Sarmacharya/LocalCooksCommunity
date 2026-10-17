@@ -280,13 +280,13 @@ const PromoCodeSender: React.FC = () => {
         }
       },
       colors: {
-        primary: { main: '#F51042', light: '#FF5470', dark: '#C20D35', contrast: '#ffffff' },
+        primary: { main: '#E10939', light: '#FF5470', dark: '#C20D35', contrast: '#ffffff' },
         secondary: { main: '#000000', light: '#404040', dark: '#000000', contrast: '#ffffff' },
         accent: { main: '#f59e0b', light: '#fbbf24', dark: '#d97706', contrast: '#ffffff' },
         neutral: { main: '#6b7280', light: '#d1d5db', dark: '#374151', contrast: '#ffffff' },
         semantic: { success: '#16a34a', warning: '#f59e0b', error: '#dc2626', info: '#2563eb' },
         gradients: {
-          primary: 'linear-gradient(135deg, #F51042 0%, #FF5470 100%)',
+          primary: 'linear-gradient(135deg, #E10939 0%, #FF5470 100%)',
           secondary: 'linear-gradient(135deg, #000000 0%, #404040 100%)',
           accent: 'linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%)'
         }
@@ -300,7 +300,7 @@ const PromoCodeSender: React.FC = () => {
       },
       branding: {
         logoUrl: emailBrandLogo,
-        brandColors: ['#F51042', '#000000'],
+        brandColors: ['#E10939', '#000000'],
         fontFamily: 'Inter',
         tone: 'professional'
       }
@@ -333,7 +333,7 @@ const PromoCodeSender: React.FC = () => {
         text: '🌟 Get Started',
         url: 'https://localcooks.ca',
         styling: {
-          backgroundColor: '#F51042',
+          backgroundColor: '#E10939',
           color: '#ffffff',
           fontSize: '16px',
           fontWeight: '600',
@@ -346,7 +346,7 @@ const PromoCodeSender: React.FC = () => {
         title: 'Local Cooks',
         subtitle: 'Premium Quality Food',
         styling: {
-          backgroundColor: 'linear-gradient(135deg, #F51042 0%, #FF5470 100%)',
+          backgroundColor: 'linear-gradient(135deg, #E10939 0%, #FF5470 100%)',
           titleColor: '#ffffff',
           subtitleColor: '#ffffff',
           titleFontSize: '32px',
@@ -365,7 +365,7 @@ const PromoCodeSender: React.FC = () => {
         styling: {
           backgroundColor: '#f8fafc',
           textColor: '#64748b',
-          linkColor: '#F51042',
+          linkColor: '#E10939',
           fontSize: '14px',
           padding: '24px 32px',
           textAlign: 'center',
@@ -426,7 +426,7 @@ const PromoCodeSender: React.FC = () => {
           ...updatedDesign.content.header,
           styling: {
             ...updatedDesign.content.header?.styling,
-            backgroundColor: 'linear-gradient(135deg, #F51042 0%, #FF5470 100%)' // Always enforce brand color
+            backgroundColor: 'linear-gradient(135deg, #E10939 0%, #FF5470 100%)' // Always enforce brand color
           }
         }
       }

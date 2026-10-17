@@ -74,14 +74,14 @@ function ConfirmKitchenThumbnail({
   const [failed, setFailed] = useState(false);
   if (!src || failed) {
     return (
-      <div className="flex h-14 w-14 sm:h-16 sm:w-16 shrink-0 items-center justify-center rounded-lg border border-[#F51042]/15 bg-white/80">
-        <Icon icon="mdi:chef-hat" className="h-5 w-5 text-[#F51042]" aria-hidden />
+      <div className="flex h-14 w-14 sm:h-16 sm:w-16 shrink-0 items-center justify-center rounded-lg border border-[#E10939]/15 bg-white/80">
+        <Icon icon="mdi:chef-hat" className="h-5 w-5 text-[#E10939]" aria-hidden />
         <span className="sr-only">{alt}</span>
       </div>
     );
   }
   return (
-    <div className="h-14 w-14 sm:h-16 sm:w-16 shrink-0 overflow-hidden rounded-lg border border-[#F51042]/15 bg-white/80">
+    <div className="h-14 w-14 sm:h-16 sm:w-16 shrink-0 overflow-hidden rounded-lg border border-[#E10939]/15 bg-white/80">
       <SmartImage
         src={src}
         alt={alt}
@@ -133,7 +133,7 @@ function InventoryPreviewList({
       >
         {items.map((equipment) => (
           <li key={equipment.id} className="flex min-w-0 items-center gap-2.5 border-b border-gray-100 py-3">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#FFF3F5] text-[#F51042]">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#FFF3F5] text-[#E10939]">
               <Icon
                 icon={resolveEquipmentIcon(equipment.equipmentType, equipment.category)}
                 width={18}
@@ -189,7 +189,7 @@ function BookingPlaceContext({
         <div className="flex min-w-0 items-center gap-3">
           <ConfirmKitchenThumbnail src={kitchenCoverUrl(kitchen)} alt={imageAlt} />
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold uppercase tracking-[0.12em] text-[#F51042]">
+            <p className="truncate text-sm font-semibold uppercase tracking-[0.12em] text-[#E10939]">
               {t("sheetBookingAtLabel", "Booking at")}
             </p>
             <h1 className="truncate text-base font-semibold text-gray-900">{kitchen.name}</h1>
@@ -199,12 +199,12 @@ function BookingPlaceContext({
         <button
           type="button"
           onClick={onPolicyOpen}
-          className="flex w-full items-center gap-2 border-t border-gray-200/80 pt-2.5 text-left text-sm font-medium text-muted-foreground transition-colors hover:text-[#F51042]"
+          className="flex w-full items-center gap-2 border-t border-gray-200/80 pt-2.5 text-left text-sm font-medium text-muted-foreground transition-colors hover:text-[#E10939]"
         >
           <span className="flex min-w-0 flex-1 items-center gap-2">
             <Icon
               icon="mdi:shield-check-outline"
-              className="h-3.5 w-3.5 shrink-0 text-[#F51042]"
+              className="h-3.5 w-3.5 shrink-0 text-[#E10939]"
               aria-hidden
             />
             <span className="truncate">{t("sheetCancellationPolicyTitle", "Cancellation policy")}</span>
@@ -222,8 +222,8 @@ function BookingPlaceContext({
     >
       <div className="grid gap-2 p-2">
         <div className="relative h-24 w-full overflow-hidden rounded-xl bg-gray-100">
-            <div className="flex h-full w-full items-center justify-center bg-[#F51042]/5">
-              <Icon icon="mdi:chef-hat" className="h-8 w-8 text-[#F51042]" aria-hidden />
+            <div className="flex h-full w-full items-center justify-center bg-[#E10939]/5">
+              <Icon icon="mdi:chef-hat" className="h-8 w-8 text-[#E10939]" aria-hidden />
             </div>
             <SmartImage
               src={kitchenCoverUrl(kitchen) || ""}
@@ -234,7 +234,7 @@ function BookingPlaceContext({
         </div>
         <div className="rounded-xl bg-gray-50/80 p-2.5">
           <div className="min-w-0">
-            <p className="text-sm font-semibold uppercase tracking-[0.14em] text-[#F51042]">
+            <p className="text-sm font-semibold uppercase tracking-[0.14em] text-[#E10939]">
               {t("sheetBookingAtLabel", "Booking at")}
             </p>
             <h2 className="mt-1 truncate text-base font-semibold leading-tight text-gray-900">
@@ -259,7 +259,7 @@ function BookingPlaceContext({
             <p className="flex items-center gap-2 text-sm font-semibold text-gray-900">
               <Icon
                 icon="mdi:shield-check-outline"
-                className="h-4 w-4 shrink-0 text-[#F51042]"
+                className="h-4 w-4 shrink-0 text-[#E10939]"
                 aria-hidden
               />
               {t("sheetCancellationPolicyTitle", "Cancellation policy")}
@@ -318,7 +318,7 @@ const BOOKING_CALENDAR_CLASS_NAMES = {
   row: "mt-0.5",
   cell: cn(
     "relative z-0 h-8 p-0 text-center text-sm",
-    "[&:has([aria-selected])]:before:absolute [&:has([aria-selected])]:before:left-1/2 [&:has([aria-selected])]:before:top-1/2 [&:has([aria-selected])]:before:h-8 [&:has([aria-selected])]:before:w-8 [&:has([aria-selected])]:before:-translate-x-1/2 [&:has([aria-selected])]:before:-translate-y-1/2 [&:has([aria-selected])]:before:-z-10 [&:has([aria-selected])]:before:rounded-full [&:has([aria-selected])]:before:border-2 [&:has([aria-selected])]:before:border-[#F51042]"
+    "[&:has([aria-selected])]:before:absolute [&:has([aria-selected])]:before:left-1/2 [&:has([aria-selected])]:before:top-1/2 [&:has([aria-selected])]:before:h-8 [&:has([aria-selected])]:before:w-8 [&:has([aria-selected])]:before:-translate-x-1/2 [&:has([aria-selected])]:before:-translate-y-1/2 [&:has([aria-selected])]:before:-z-10 [&:has([aria-selected])]:before:rounded-full [&:has([aria-selected])]:before:border-2 [&:has([aria-selected])]:before:border-[#E10939]"
   ),
   day: "mx-auto flex h-8 w-8 max-w-[32px] items-center justify-center rounded-full bg-transparent p-0 text-sm font-normal text-gray-900 transition-colors hover:bg-gray-100 aria-selected:opacity-100",
   day_selected:
@@ -1356,7 +1356,7 @@ export default function KitchenBookingFlow({
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
-                <Icon icon="mdi:calendar-month-outline" className="h-4 w-4 text-[#F51042]" aria-hidden />
+                <Icon icon="mdi:calendar-month-outline" className="h-4 w-4 text-[#E10939]" aria-hidden />
                 {t("sheetSelectDateTitle", "Select Date")}
               </h3>
               <p className="text-sm text-muted-foreground mt-1">
@@ -1366,7 +1366,7 @@ export default function KitchenBookingFlow({
             {selectedDate && (
               <button
                 type="button"
-                className="shrink-0 text-sm font-medium text-muted-foreground hover:text-[#F51042]"
+                className="shrink-0 text-sm font-medium text-muted-foreground hover:text-[#E10939]"
                 onClick={() => {
                   setSelectedDate(null);
                   setSelectedSlots([]);
@@ -1380,7 +1380,7 @@ export default function KitchenBookingFlow({
           <div className="relative mx-auto w-full max-w-[640px] rounded-[1.35rem] border border-gray-100 bg-gray-50/40 p-2 sm:p-3">
             {isLoadingAvailability && (
               <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-white/60">
-                <Icon icon="mdi:loading" className="h-5 w-5 animate-spin text-[#F51042]" aria-hidden />
+                <Icon icon="mdi:loading" className="h-5 w-5 animate-spin text-[#E10939]" aria-hidden />
               </div>
             )}
             {bookableThrough && <p className="text-sm text-muted-foreground">{t("bookingBookableThrough", { defaultValue: "Bookable up to {date}", date: new Intl.DateTimeFormat(i18n.resolvedLanguage || i18n.language || "en-CA", { dateStyle: "medium" }).format(new Date(`${bookableThrough}T12:00:00`)) })}</p>}
@@ -1401,7 +1401,7 @@ export default function KitchenBookingFlow({
           </div>
 
           {selectedDate && (
-            <div className="mx-auto w-full max-w-[640px] rounded-[1.35rem] border border-[#F51042]/20 bg-[#F51042]/5 px-3 py-2.5">
+            <div className="mx-auto w-full max-w-[640px] rounded-[1.35rem] border border-[#E10939]/20 bg-[#E10939]/5 px-3 py-2.5">
               <p className="text-sm font-semibold text-gray-900">
                 {formatDate(selectedDate)}
               </p>
@@ -1429,7 +1429,7 @@ export default function KitchenBookingFlow({
           <div className="flex shrink-0 items-start justify-between gap-3">
             <div className="min-w-0">
               <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
-                <Icon icon="mdi:clock-outline" className="h-4 w-4 text-[#F51042]" aria-hidden />
+                <Icon icon="mdi:clock-outline" className="h-4 w-4 text-[#E10939]" aria-hidden />
                 {t("sheetSelectTimeTitle", "Select Time")}
               </h3>
               <p className="text-sm text-muted-foreground mt-1">
@@ -1443,7 +1443,7 @@ export default function KitchenBookingFlow({
             </div>
             <button
               type="button"
-              className="shrink-0 text-sm font-medium text-muted-foreground hover:text-[#F51042]"
+              className="shrink-0 text-sm font-medium text-muted-foreground hover:text-[#E10939]"
               onClick={() => {
                 setHideDateStep(false);
                 setCurrentStep("calendar");
@@ -1474,8 +1474,8 @@ export default function KitchenBookingFlow({
                     className={cn(
                       "rounded-xl border px-3 py-2.5 text-left transition-colors",
                       selected
-                        ? "border-[#F51042] bg-[#FFF3F5] text-[#F51042]"
-                        : "border-gray-200 bg-white text-gray-700 hover:border-[#F51042]/40",
+                        ? "border-[#E10939] bg-[#FFF3F5] text-[#E10939]"
+                        : "border-gray-200 bg-white text-gray-700 hover:border-[#E10939]/40",
                       disabled && "cursor-not-allowed opacity-50"
                     )}
                   >
@@ -1492,7 +1492,7 @@ export default function KitchenBookingFlow({
           ) : null}
 
           {bookingRateMode === "daily" ? (
-            <div className="rounded-xl border border-[#F51042]/20 bg-[#FFF8F9] px-3 py-3">
+            <div className="rounded-xl border border-[#E10939]/20 bg-[#FFF8F9] px-3 py-3">
               <p className="text-sm font-semibold text-gray-900">{t("sheetFullDaySelected", "Full-day booking")}</p>
               <p className="mt-0.5 text-sm text-muted-foreground">
                 {t("sheetFullDaySelectedDesc", "All available operating hours for this date are included.")}
@@ -1541,8 +1541,8 @@ export default function KitchenBookingFlow({
                       disabled={isFullyBooked}
                       className={cn(
                         "flex min-h-[44px] w-full items-center justify-center rounded-xl border px-3 py-2.5 text-center text-sm font-medium transition-colors",
-                        isSelected && "bg-[#F51042] text-white border-[#F51042]",
-                        !isSelected && !isFullyBooked && "bg-white text-gray-700 border-gray-200 hover:border-[#F51042]/40",
+                        isSelected && "bg-[#E10939] text-white border-[#E10939]",
+                        !isSelected && !isFullyBooked && "bg-white text-gray-700 border-gray-200 hover:border-[#E10939]/40",
                         isFullyBooked && "bg-muted/50 text-muted-foreground cursor-not-allowed border-transparent"
                       )}
                     >
@@ -1602,7 +1602,7 @@ export default function KitchenBookingFlow({
 
           {isLoadingAddons ? (
             <div className="flex justify-center py-12">
-              <Icon icon="mdi:loading" className="h-5 w-5 animate-spin text-[#F51042]" aria-hidden />
+              <Icon icon="mdi:loading" className="h-5 w-5 animate-spin text-[#E10939]" aria-hidden />
             </div>
           ) : (
             <div
@@ -1623,7 +1623,7 @@ export default function KitchenBookingFlow({
                   {includedRemaining > 0 ? (
                     <button
                       type="button"
-                      className="mt-1 inline-flex items-center pb-1 text-sm font-semibold text-[#F51042] hover:text-[#D40E38]"
+                      className="mt-1 inline-flex items-center pb-1 text-sm font-semibold text-[#E10939] hover:text-[#D40E38]"
                       onClick={() => {
                         setEquipmentModalOpen(false);
                         setEquipmentInventoryModal("included");
@@ -1650,7 +1650,7 @@ export default function KitchenBookingFlow({
                   {rentalRemaining > 0 ? (
                     <button
                       type="button"
-                      className="mt-1 inline-flex items-center pb-1 text-sm font-semibold text-[#F51042] hover:text-[#D40E38]"
+                      className="mt-1 inline-flex items-center pb-1 text-sm font-semibold text-[#E10939] hover:text-[#D40E38]"
                       onClick={() => {
                         setEquipmentModalOpen(false);
                         setEquipmentInventoryModal("rental");
@@ -1672,7 +1672,7 @@ export default function KitchenBookingFlow({
     // Step: Confirm — editable choices only (kitchen + price live in the left rail)
     if (currentStep === 'confirm' && selectedKitchen && selectedDate && selectedSlots.length > 0) {
       const editLinkClass =
-        "inline-flex items-center gap-1 text-sm font-medium text-[#F51042] hover:text-[#d10e39] shrink-0";
+        "inline-flex items-center gap-1 text-sm font-medium text-[#E10939] hover:text-[#c90832] shrink-0";
 
       return (
         <div className="space-y-5">
@@ -1688,7 +1688,7 @@ export default function KitchenBookingFlow({
           <div className="overflow-hidden rounded-[1.35rem] border divide-y bg-white">
             <div className="flex items-start justify-between gap-3 px-4 py-3.5">
               <div className="flex min-w-0 items-start gap-2.5">
-                <Icon icon="mdi:calendar-month-outline" className="mt-0.5 h-4 w-4 shrink-0 text-[#F51042]" aria-hidden />
+                <Icon icon="mdi:calendar-month-outline" className="mt-0.5 h-4 w-4 shrink-0 text-[#E10939]" aria-hidden />
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-muted-foreground">
                     {t("sheetDateLabel", "Date")}
@@ -1717,7 +1717,7 @@ export default function KitchenBookingFlow({
                   <div className="relative w-[300px] p-2">
                     {isLoadingAvailability && (
                       <div className="absolute inset-0 z-10 flex items-center justify-center rounded-md bg-white/60">
-                        <Icon icon="mdi:loading" className="h-5 w-5 animate-spin text-[#F51042]" aria-hidden />
+                        <Icon icon="mdi:loading" className="h-5 w-5 animate-spin text-[#E10939]" aria-hidden />
                       </div>
                     )}
                     {bookableThrough && <p className="text-sm text-muted-foreground">{t("bookingBookableThrough", { defaultValue: "Bookable up to {date}", date: new Intl.DateTimeFormat(i18n.resolvedLanguage || i18n.language || "en-CA", { dateStyle: "medium" }).format(new Date(`${bookableThrough}T12:00:00`)) })}</p>}
@@ -1752,7 +1752,7 @@ export default function KitchenBookingFlow({
 
             <div className="flex items-start justify-between gap-3 px-4 py-3.5">
               <div className="flex min-w-0 items-start gap-2.5">
-                <Icon icon="mdi:clock-outline" className="mt-0.5 h-4 w-4 shrink-0 text-[#F51042]" aria-hidden />
+                <Icon icon="mdi:clock-outline" className="mt-0.5 h-4 w-4 shrink-0 text-[#E10939]" aria-hidden />
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-muted-foreground">
                     {t("sheetBookingTimeLabel", "Booking Time")}
@@ -1812,7 +1812,7 @@ export default function KitchenBookingFlow({
               rows={3}
               maxLength={500}
               placeholder={t("sheetSpecialNotesPlaceholder", "Any special requirements...")}
-              className="w-full resize-none rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm focus:border-[#F51042] focus:ring-2 focus:ring-[#F51042]/30"
+              className="w-full resize-none rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm focus:border-[#E10939] focus:ring-2 focus:ring-[#E10939]/30"
             />
           </div>
 
@@ -1845,7 +1845,7 @@ export default function KitchenBookingFlow({
         if (!selectedKitchen) return null;
         return (
           <div className="mb-3 flex items-center gap-2 text-sm text-muted-foreground">
-            <Icon icon="mdi:clock-outline" className="size-4 text-[#F51042]" aria-hidden />
+            <Icon icon="mdi:clock-outline" className="size-4 text-[#E10939]" aria-hidden />
             <span>{t("sheetPriceHint", "Select time to see your total")}</span>
           </div>
         );
@@ -1869,7 +1869,7 @@ export default function KitchenBookingFlow({
       <div className="rounded-[1.35rem] border bg-white p-3 shadow-sm">
         <div className="mb-2 flex items-center justify-between gap-2">
           <span className="flex items-center gap-2 text-base font-semibold text-muted-foreground">
-            <Icon icon="mdi:receipt-text-outline" className="h-4 w-4 text-[#F51042]" aria-hidden />
+            <Icon icon="mdi:receipt-text-outline" className="h-4 w-4 text-[#E10939]" aria-hidden />
             {t("sheetOrderSummaryLabel", "Booking Summary")}
           </span>
           {selectedKitchen && (bookingRateMode === "daily" ? kitchenPricing?.dailyRate : kitchenPricing?.hourlyRate) != null ? (
@@ -1882,7 +1882,7 @@ export default function KitchenBookingFlow({
 
         {!showDetails ? (
           <div className="rounded-xl border border-dashed bg-muted/25 px-3 py-4 text-center">
-            <span className="mx-auto flex size-8 items-center justify-center rounded-full bg-white text-[#F51042] shadow-sm">
+            <span className="mx-auto flex size-8 items-center justify-center rounded-full bg-white text-[#E10939] shadow-sm">
               <Icon icon={selectedDate ? "mdi:clock-outline" : "mdi:calendar-month-outline"} className="size-4" aria-hidden />
             </span>
             <p className="mt-2 text-sm font-medium text-gray-900">
@@ -1897,7 +1897,7 @@ export default function KitchenBookingFlow({
             {selectedDate && currentStep !== "confirm" && (
               <div className="mb-2 grid grid-cols-[0.78fr_1.22fr] gap-2 border-b pb-2">
                 <div className="flex items-start gap-2.5">
-                  <Icon icon="mdi:calendar-month-outline" className="mt-0.5 h-4 w-4 shrink-0 text-[#F51042]" aria-hidden />
+                  <Icon icon="mdi:calendar-month-outline" className="mt-0.5 h-4 w-4 shrink-0 text-[#E10939]" aria-hidden />
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-muted-foreground">
                       {t("sheetDateLabel", "Date")}
@@ -1907,7 +1907,7 @@ export default function KitchenBookingFlow({
                 </div>
                 {selectedSlots.length > 0 && (
                   <div className="flex items-start gap-2.5">
-                    <Icon icon="mdi:clock-outline" className="mt-0.5 h-4 w-4 shrink-0 text-[#F51042]" aria-hidden />
+                    <Icon icon="mdi:clock-outline" className="mt-0.5 h-4 w-4 shrink-0 text-[#E10939]" aria-hidden />
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-muted-foreground">
                         {t("sheetTimeLabel", "Time")}
@@ -1917,7 +1917,7 @@ export default function KitchenBookingFlow({
                         {bookingTimeBlocks.length > 2 && (
                           <Popover>
                             <PopoverTrigger asChild>
-                              <button type="button" className="ml-1 font-semibold text-[#F51042] underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042]" aria-label={t("sheetShowAllTimeSlots", "Show all selected time slots")}>…</button>
+                              <button type="button" className="ml-1 font-semibold text-[#E10939] underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E10939]" aria-label={t("sheetShowAllTimeSlots", "Show all selected time slots")}>…</button>
                             </PopoverTrigger>
                             <PopoverContent align="start" className="w-64 max-w-[calc(100vw-2rem)]">
                               <p className="mb-2 text-sm font-semibold">{t("sheetBookingTimeLabel", "Booking Time")}</p>
@@ -2259,8 +2259,8 @@ export default function KitchenBookingFlow({
                     onClick={() => updateSlotSelection(setPendingTimeSlots, slot)}
                     className={cn(
                       "flex min-h-[44px] w-full items-center justify-center rounded-xl border px-3 py-2.5 text-center text-sm font-medium transition-colors",
-                      selected && "border-[#F51042] bg-[#F51042] text-white",
-                      !selected && !slot.isFullyBooked && "border-gray-200 bg-white text-gray-700 hover:border-[#F51042]/40",
+                      selected && "border-[#E10939] bg-[#E10939] text-white",
+                      !selected && !slot.isFullyBooked && "border-gray-200 bg-white text-gray-700 hover:border-[#E10939]/40",
                       slot.isFullyBooked && "cursor-not-allowed border-transparent bg-muted/50 text-muted-foreground"
                     )}
                   >
@@ -2374,11 +2374,11 @@ export default function KitchenBookingFlow({
                       className={cn(
                         "flex items-center gap-3 rounded-[1.35rem] border p-3 text-left transition-all",
                         selected
-                          ? "border-[#F51042] bg-[#F51042]/[0.04] ring-1 ring-[#F51042]/20"
-                          : "border-gray-200 hover:border-[#F51042]/40"
+                          ? "border-[#E10939] bg-[#E10939]/[0.04] ring-1 ring-[#E10939]/20"
+                          : "border-gray-200 hover:border-[#E10939]/40"
                       )}
                     >
-                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#FFF3F5] text-[#F51042]">
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#FFF3F5] text-[#E10939]">
                         <Icon icon={resolveEquipmentIcon(equipment.equipmentType, equipment.category)} width={20} height={20} aria-hidden />
                       </span>
                       <span className="min-w-0 flex-1">
@@ -2387,7 +2387,7 @@ export default function KitchenBookingFlow({
                       </span>
                       <span className={cn(
                         "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border",
-                        selected ? "border-[#F51042] bg-[#F51042] text-white" : "border-gray-300"
+                        selected ? "border-[#E10939] bg-[#E10939] text-white" : "border-gray-300"
                       )}>
                         {selected ? <Icon icon="mdi:check" className="h-3 w-3" aria-hidden /> : null}
                       </span>
@@ -2441,7 +2441,7 @@ export default function KitchenBookingFlow({
             <DialogTitle className="flex items-center gap-2">
               <Icon
                 icon="mdi:shield-check-outline"
-                className="h-4 w-4 shrink-0 text-[#F51042]"
+                className="h-4 w-4 shrink-0 text-[#E10939]"
                 aria-hidden
               />
               {t("sheetCancellationPolicyTitle", "Cancellation policy")}

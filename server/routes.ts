@@ -1086,7 +1086,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         subject: `🚫 Unsubscribe Request - ${email}`,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f9fafb;">
-            <div style="background: linear-gradient(135deg, #F51042 0%, #FF5470 100%); padding: 20px; border-radius: 8px 8px 0 0; text-align: center;">
+            <div style="background: linear-gradient(135deg, #E10939 0%, #FF5470 100%); padding: 20px; border-radius: 8px 8px 0 0; text-align: center;">
               <h1 style="color: white; margin: 0; font-size: 24px;">Local Cooks - Unsubscribe Request</h1>
             </div>
             
@@ -1156,7 +1156,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         subject: 'Local Cooks - Unsubscribe Request Received',
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f9fafb;">
-            <div style="background: linear-gradient(135deg, #F51042 0%, #FF5470 100%); padding: 20px; border-radius: 8px 8px 0 0; text-align: center;">
+            <div style="background: linear-gradient(135deg, #E10939 0%, #FF5470 100%); padding: 20px; border-radius: 8px 8px 0 0; text-align: center;">
               <h1 style="color: white; margin: 0; font-size: 24px;">Local Cooks</h1>
               <p style="color: white; margin: 5px 0 0 0; opacity: 0.9;">Unsubscribe Confirmation</p>
             </div>
@@ -1181,7 +1181,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               
               <p style="color: #374151; line-height: 1.6;">
                 If you have any questions or if this was done in error, please don't hesitate to contact us at 
-                <a href="mailto:support@localcooks.ca" style="color: #F51042; text-decoration: none;">support@localcooks.ca</a>.
+                <a href="mailto:support@localcooks.ca" style="color: #E10939; text-decoration: none;">support@localcooks.ca</a>.
               </p>
               
               <p style="color: #374151; line-height: 1.6;">
@@ -1191,7 +1191,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; text-align: center;">
                 <p style="color: #6b7280; font-size: 12px; margin: 0;">
                   Local Cooks Team<br>
-                  <a href="mailto:support@localcooks.ca" style="color: #F51042; text-decoration: none;">support@localcooks.ca</a>
+                  <a href="mailto:support@localcooks.ca" style="color: #E10939; text-decoration: none;">support@localcooks.ca</a>
                 </p>
               </div>
             </div>

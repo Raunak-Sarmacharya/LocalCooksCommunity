@@ -100,7 +100,7 @@ function ExpandableInventory({
         <button
           type="button"
           onClick={() => setExpanded((open) => !open)}
-          className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-[#F51042]"
+          className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-[#E10939]"
         >
           <PreviewIcon icon="mdi:chevron-down" size={14} className={cn("transition-transform", expanded && "rotate-180")} />
           {expanded ? t("showLess", "Show less") : t("viewAllAndMore", { itemCount, hiddenCount, defaultValue: `View all ${itemCount} · ${hiddenCount} more` })}
@@ -112,8 +112,8 @@ function ExpandableInventory({
 
 function InventoryTypeIcon({ icon }: { icon: string }) {
   return (
-    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#FFF8F5] text-[#F51042]">
-      <Icon icon={icon} width={16} height={16} className="text-[#F51042]" aria-hidden />
+    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#FFF8F5] text-[#E10939]">
+      <Icon icon={icon} width={16} height={16} className="text-[#E10939]" aria-hidden />
     </span>
   );
 }
@@ -495,7 +495,7 @@ export function InventoryShowAllButton({
   return (
     <button
       type="button"
-      className="inline-flex min-h-8 items-center gap-1 text-sm font-semibold text-[#F51042] hover:text-[#d10e39] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042]"
+      className="inline-flex min-h-8 items-center gap-1 text-sm font-semibold text-[#E10939] hover:text-[#c90832] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E10939]"
       onClick={onClick}
     >
       {t("showAllCount", { count, label: t(label, { defaultValue: label }), defaultValue: `Show all ${count} ${label}` })}
@@ -649,14 +649,14 @@ export function KitchenInventoryModals({ kitchen, openModal, setOpenModal }: {
             <TabsList className="mb-3 h-auto w-full justify-start gap-0 rounded-none border-b border-gray-200 bg-transparent p-0">
               <TabsTrigger
                 value="included"
-                className="rounded-none border-b-2 border-transparent px-3 py-2 text-sm shadow-none data-[state=active]:border-[#F51042] data-[state=active]:bg-transparent data-[state=active]:text-gray-900 data-[state=active]:shadow-none"
+                className="rounded-none border-b-2 border-transparent px-3 py-2 text-sm shadow-none data-[state=active]:border-[#E10939] data-[state=active]:bg-transparent data-[state=active]:text-gray-900 data-[state=active]:shadow-none"
               >
                 {t("comesWithBooking", "Included")}
                 <span className="ml-1.5 text-xs text-gray-400">{included.length}</span>
               </TabsTrigger>
               <TabsTrigger
                 value="rental"
-                className="rounded-none border-b-2 border-transparent px-3 py-2 text-sm shadow-none data-[state=active]:border-[#F51042] data-[state=active]:bg-transparent data-[state=active]:text-gray-900 data-[state=active]:shadow-none"
+                className="rounded-none border-b-2 border-transparent px-3 py-2 text-sm shadow-none data-[state=active]:border-[#E10939] data-[state=active]:bg-transparent data-[state=active]:text-gray-900 data-[state=active]:shadow-none"
               >
                 {t("optionalRentals", "Optional Rentals")}
                 <span className="ml-1.5 text-xs text-gray-400">{rental.length}</span>

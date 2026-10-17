@@ -22,8 +22,8 @@ export default function KitchenEarningControl({ onStart }: { onStart: () => void
     <section id="revenue-streams" aria-labelledby={`${id}-heading`} className="scroll-mt-24 bg-[#F8F9FA] px-4 py-16 sm:px-6 sm:py-20 lg:px-8 lg:py-24">
       <div className="mx-auto max-w-[1120px]">
         <div className="mx-auto max-w-[45rem] text-center">
-          <p className="text-xs font-semibold tracking-[0.08em] text-[#D90E3A]">{t("earnEyebrow")}</p>
-          <h2 id={`${id}-heading`} className="mt-4 text-balance text-[1.9rem] font-bold leading-[1.12] tracking-[-0.025em] text-[#1F1F1F] sm:text-[2.5rem] lg:text-[3rem]"><span className="block">{t("earnHeadlineOne")}</span><span className="block text-[#D90E3A]">{t("earnHeadlineTwo")}</span></h2>
+          <p className="text-xs font-semibold tracking-[0.08em] text-[#C90832]">{t("earnEyebrow")}</p>
+          <h2 id={`${id}-heading`} className="mt-4 text-balance text-[1.9rem] font-bold leading-[1.12] tracking-[-0.025em] text-[#1F1F1F] sm:text-[2.5rem] lg:text-[3rem]"><span className="block">{t("earnHeadlineOne")}</span><span className="block text-[#C90832]">{t("earnHeadlineTwo")}</span></h2>
           <p className="mx-auto mt-5 max-w-[39rem] text-balance text-[1rem] leading-relaxed text-[#5F5F5F] sm:text-[1.1rem]">{t("earnIntro")}</p>
         </div>
 
@@ -40,7 +40,7 @@ export default function KitchenEarningControl({ onStart }: { onStart: () => void
                   {(["heroMonday", "heroTuesday", "heroWednesday"] as const).map((day, index) => <div key={day} className={`${index === 2 ? "hidden sm:grid" : "grid"} grid-cols-[24px_minmax(0,1fr)_minmax(0,1fr)] items-center gap-1.5 sm:grid-cols-[36px_minmax(0,1fr)_minmax(0,1fr)] sm:gap-2.5`}>
                     <span className="text-[10px] font-medium text-[#737373]">{t(day)}</span>
                     <div className="flex min-h-[60px] min-w-0 flex-col justify-center rounded-lg border-l-2 border-[#B9BCBF] bg-[#F1F2F4] px-1.5 py-2 text-[9px] leading-relaxed text-[#666] sm:px-3 sm:text-[10px]"><span className="font-medium">{t("heroHostYourHours")}</span><span className="mt-0.5">{t("heroHostOwnTime")}</span></div>
-                    <div className="flex min-h-[60px] min-w-0 flex-col justify-center rounded-lg border-l-2 border-[#F51042]/60 bg-[#FFF1F4] px-1.5 py-2 text-[9px] leading-relaxed text-[#D90E3A] sm:px-3 sm:text-[10px]"><span className="font-medium">{t("startOpenToBookings")}</span><span className="mt-0.5">{t("heroHostSessionTime")}</span></div>
+                    <div className="flex min-h-[60px] min-w-0 flex-col justify-center rounded-lg border-l-2 border-[#E10939]/60 bg-[#FFF1F4] px-1.5 py-2 text-[9px] leading-relaxed text-[#C90832] sm:px-3 sm:text-[10px]"><span className="font-medium">{t("startOpenToBookings")}</span><span className="mt-0.5">{t("heroHostSessionTime")}</span></div>
                   </div>)}
                 </div>
                 <p className="flex items-center gap-1.5 border-t border-[#2C2C2C]/[0.06] px-3.5 py-3 text-[10px] leading-relaxed text-[#666] sm:px-5"><LockKeyhole className="h-3 w-3 shrink-0" />{t("heroHostHoursNote")}</p>
@@ -64,7 +64,7 @@ export default function KitchenEarningControl({ onStart }: { onStart: () => void
               <h3 className="mt-2.5 text-balance text-[1.35rem] font-bold leading-[1.25] tracking-[-0.02em] text-[#1F1F1F]">{t("earnEquipmentTitle")}</h3>
               <p className="mt-2.5 text-pretty text-[13px] leading-[1.75] text-[#5F5F5F]">{t("earnEquipmentBody")}</p>
               <div aria-hidden="true" className="mt-5 divide-y divide-[#2C2C2C]/[0.06] rounded-[14px] border border-[#2C2C2C]/[0.06] bg-[#F8F9FA] px-3">
-                {([{ type: "prep table", label: "earnPrepTable", status: "earnIncluded", paid: false }, { type: "mixer", label: "earnMixer", status: "earnPaidAddon", paid: true }] as const).map(equipment => <div key={equipment.type} className="flex items-center gap-2 py-3"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[#2C2C2C]/[0.07] bg-white"><Icon icon={resolveEquipmentIcon(equipment.type)} className="h-4 w-4 text-[#666]" /></span><p className="min-w-0 flex-1 text-[11px] font-medium leading-relaxed text-[#444]">{t(equipment.label)}</p><span className={`max-w-[45%] rounded-full px-2 py-1 text-center text-[9px] font-medium leading-relaxed ${equipment.paid ? "border border-[#F51042]/10 bg-[#FFF1F4] text-[#D90E3A]" : "bg-white text-[#737373]"}`}>{t(equipment.status)}</span></div>)}
+                {([{ type: "prep table", label: "earnPrepTable", status: "earnIncluded", paid: false }, { type: "mixer", label: "earnMixer", status: "earnPaidAddon", paid: true }] as const).map(equipment => <div key={equipment.type} className="flex items-center gap-2 py-3"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[#2C2C2C]/[0.07] bg-white"><Icon icon={resolveEquipmentIcon(equipment.type)} className="h-4 w-4 text-[#666]" /></span><p className="min-w-0 flex-1 text-[11px] font-medium leading-relaxed text-[#444]">{t(equipment.label)}</p><span className={`max-w-[45%] rounded-full px-2 py-1 text-center text-[9px] font-medium leading-relaxed ${equipment.paid ? "border border-[#E10939]/10 bg-[#FFF1F4] text-[#C90832]" : "bg-white text-[#737373]"}`}>{t(equipment.status)}</span></div>)}
               </div>
               <p className="mt-3 flex items-center gap-1.5 text-[10px] font-medium text-[#737373]"><Check className="h-3 w-3 shrink-0 text-emerald-600" aria-hidden="true" />{t("earnEquipmentControl")}</p>
             </article>
@@ -77,13 +77,13 @@ export default function KitchenEarningControl({ onStart }: { onStart: () => void
             <p className="max-w-[23rem] text-pretty text-sm leading-relaxed text-[#5F5F5F]">{t("earnControlIntro")}</p>
           </div>
           <ul className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-4 lg:gap-7">
-            {controls.map(({ icon: ControlIcon, title, body }) => <li key={title} className="min-w-0"><ControlIcon className="h-5 w-5 text-[#D90E3A]" strokeWidth={1.6} aria-hidden="true" /><h4 className="mt-3 text-sm font-semibold text-[#1F1F1F]">{t(title)}</h4><p className="mt-2 text-pretty text-[13px] leading-[1.75] text-[#666]">{t(body)}</p></li>)}
+            {controls.map(({ icon: ControlIcon, title, body }) => <li key={title} className="min-w-0"><ControlIcon className="h-5 w-5 text-[#C90832]" strokeWidth={1.6} aria-hidden="true" /><h4 className="mt-3 text-sm font-semibold text-[#1F1F1F]">{t(title)}</h4><p className="mt-2 text-pretty text-[13px] leading-[1.75] text-[#666]">{t(body)}</p></li>)}
           </ul>
         </div>
 
         <div className="mt-8 flex flex-col items-center justify-center gap-4 text-center sm:mt-9 sm:flex-row sm:gap-6 sm:text-left">
           <p className="text-sm font-medium text-[#5F5F5F]">{t("earnStartNote")}</p>
-          <button type="button" onClick={onStart} className="group inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-[#F51042] px-6 py-3 text-sm font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_10px_22px_-12px_rgba(245,16,66,0.5)] transition-colors hover:bg-[#D90E3A] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042] focus-visible:ring-offset-4 sm:w-auto">{t("heroHostStart")}<ArrowRight className="h-4 w-4 shrink-0 motion-safe:transition-transform motion-safe:group-hover:translate-x-0.5" aria-hidden="true" /></button>
+          <button type="button" onClick={onStart} className="group inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-[#E10939] px-6 py-3 text-sm font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_10px_22px_-12px_rgba(245,16,66,0.5)] transition-colors hover:bg-[#C90832] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E10939] focus-visible:ring-offset-4 sm:w-auto">{t("heroHostStart")}<ArrowRight className="h-4 w-4 shrink-0 motion-safe:transition-transform motion-safe:group-hover:translate-x-0.5" aria-hidden="true" /></button>
         </div>
       </div>
     </section>

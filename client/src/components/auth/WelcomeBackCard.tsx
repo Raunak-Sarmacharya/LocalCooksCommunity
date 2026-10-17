@@ -56,7 +56,7 @@ export default function WelcomeBackCard({
   return (
     <div className="flex flex-col items-center justify-center space-y-6 py-6 text-center">
       <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#FCE3E9]">
-        <span className="text-2xl font-semibold leading-none text-[#F51042]">{initial}</span>
+        <span className="text-2xl font-semibold leading-none text-[#E10939]">{initial}</span>
       </div>
 
       <div className="space-y-2">
@@ -76,7 +76,7 @@ export default function WelcomeBackCard({
           type="button"
           onClick={continueWithAccount}
           disabled={busy}
-          className="w-full bg-[#E00A38] text-white hover:bg-[#C00930]"
+          className="w-full bg-[#C90832] text-white hover:bg-[#C00930]"
         >
           {busy ? (
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />

@@ -252,7 +252,7 @@ export default function SellerJourneyDialog({ open, onOpenChange }: { open: bool
   const submittedActions = (
     <>
       <Button
-        className="w-full rounded-full bg-[#F51042] font-bold text-white hover:bg-[#d90e3a]"
+        className="w-full rounded-full bg-[#E10939] font-bold text-white hover:bg-[#c90832]"
         onClick={() => leaveFor("/dashboard?view=applications&journey=submitted", "Opening your application…", "We’re loading your seller application and the next steps.", true)}
       >
         View my application
@@ -284,7 +284,7 @@ export default function SellerJourneyDialog({ open, onOpenChange }: { open: bool
             <div className="space-y-4">
               <h2 className="text-2xl font-semibold text-[#211d1b]">Choose the account for this application</h2>
               <p className="text-sm leading-6 text-[#6b625e]">Your plans were started with {email}, but you signed in as {user.email}. We’ll use the name and phone number saved on the account you choose.</p>
-              <Button className="w-full rounded-full bg-[#F51042] text-white hover:bg-[#d90e3a]" onClick={() => {
+              <Button className="w-full rounded-full bg-[#E10939] text-white hover:bg-[#c90832]" onClick={() => {
                 const draft = getSellerJourneyDraft();
                 if (!draft || !user.email) return;
                 saveSellerJourneyDraft({ ...draft, fullName: user.displayName?.trim() || draft.fullName, email: user.email, phone: user.phoneNumber || "" });
@@ -328,7 +328,7 @@ export default function SellerJourneyDialog({ open, onOpenChange }: { open: bool
                         <button
                           type="button"
                           onClick={() => { setShowPhoneForm(true); setPhoneError(""); }}
-                          className="text-xs font-semibold text-[#d90e3a] underline-offset-2 hover:underline"
+                          className="text-xs font-semibold text-[#c90832] underline-offset-2 hover:underline"
                         >
                           {user?.phoneNumber ? "Verify number" : "Add a phone number"}
                         </button>
@@ -343,7 +343,7 @@ export default function SellerJourneyDialog({ open, onOpenChange }: { open: bool
                   {!PHONE_AUTH_ENABLED && !user?.phoneNumber ? (
                     <p className="text-xs leading-relaxed text-[#8a7f79]">
                       Add a phone number in your{" "}
-                      <a href="/dashboard?view=profile" className="font-semibold text-[#d90e3a] underline-offset-2 hover:underline">account profile</a>
+                      <a href="/dashboard?view=profile" className="font-semibold text-[#c90832] underline-offset-2 hover:underline">account profile</a>
                       {" "}to submit your application.
                     </p>
                   ) : null}
@@ -358,7 +358,7 @@ export default function SellerJourneyDialog({ open, onOpenChange }: { open: bool
                       setKitchenPreference(value);
                       const draft = getSellerJourneyDraft();
                       if (draft) saveSellerJourneyDraft({ ...draft, kitchenPreference: value });
-                    }} className={`flex min-h-24 flex-col items-center justify-center gap-2 rounded-2xl border px-3 py-4 text-center text-xs font-semibold transition-all ${kitchenPreference === value ? "border-[#F51042] bg-[#F51042]/5 text-[#F51042] ring-1 ring-[#F51042]" : "border-[#ded7d1] bg-white text-[#4f4844] hover:border-[#F51042]/50"}`}>
+                    }} className={`flex min-h-24 flex-col items-center justify-center gap-2 rounded-2xl border px-3 py-4 text-center text-xs font-semibold transition-all ${kitchenPreference === value ? "border-[#E10939] bg-[#E10939]/5 text-[#E10939] ring-1 ring-[#E10939]" : "border-[#ded7d1] bg-white text-[#4f4844] hover:border-[#E10939]/50"}`}>
                       <Icon icon={icon} className="h-5 w-5" aria-hidden="true" />
                       {label}
                     </button>
@@ -369,17 +369,17 @@ export default function SellerJourneyDialog({ open, onOpenChange }: { open: bool
               {activeApplicationExists ? (
                 <div role="status" className="space-y-3">
                   <p className="text-sm text-[#6b625e]">You already have an active application. You can review it in My Applications.</p>
-                  <Button className="w-full rounded-full bg-[#F51042] text-white" onClick={() => leaveFor("/dashboard?view=applications", "Opening your applications…", "We’re loading your applications.")}>Open My Applications</Button>
+                  <Button className="w-full rounded-full bg-[#E10939] text-white" onClick={() => leaveFor("/dashboard?view=applications", "Opening your applications…", "We’re loading your applications.")}>Open My Applications</Button>
                 </div>
               ) : (
-                <Button className="h-12 w-full rounded-full bg-[#F51042] font-bold text-white hover:bg-[#d90e3a]" disabled={busy} onClick={() => void submitApplication()}>
+                <Button className="h-12 w-full rounded-full bg-[#E10939] font-bold text-white hover:bg-[#c90832]" disabled={busy} onClick={() => void submitApplication()}>
                   Submit application
                 </Button>
               )}
             </div>
           ) : stage === "account" ? (
             <>
-              <button type="button" onClick={() => setStage("form")} className="mb-5 text-sm text-[#6b625e] hover:text-[#d90e3a]">← Edit your plans</button>
+              <button type="button" onClick={() => setStage("form")} className="mb-5 text-sm text-[#6b625e] hover:text-[#c90832]">← Edit your plans</button>
               <KitchenJourneyAuth title="Continue your seller journey" description="Sign in or create your Local Cooks account. Once your email is verified, you’ll review and submit your seller application here." initialEmail={email} initialTermsAccepted={acceptedTerms} subject="seller application" />
             </>
           ) : (
@@ -393,7 +393,7 @@ export default function SellerJourneyDialog({ open, onOpenChange }: { open: bool
             <legend className="text-sm font-semibold text-[#332d2a]">Where do you plan to prepare food?</legend>
             <div className="mt-3 grid gap-2 sm:grid-cols-3">
               {preferences.map(({ value, label, icon }) => (
-                <button key={value} type="button" aria-pressed={kitchenPreference === value} onClick={() => setKitchenPreference(value)} className={`flex min-h-24 flex-col items-center justify-center gap-2 rounded-2xl border px-3 py-4 text-center text-xs font-semibold transition-all ${kitchenPreference === value ? "border-[#F51042] bg-[#F51042]/5 text-[#F51042] ring-1 ring-[#F51042]" : "border-[#ded7d1] bg-white text-[#4f4844] hover:border-[#F51042]/50"}`}>
+                <button key={value} type="button" aria-pressed={kitchenPreference === value} onClick={() => setKitchenPreference(value)} className={`flex min-h-24 flex-col items-center justify-center gap-2 rounded-2xl border px-3 py-4 text-center text-xs font-semibold transition-all ${kitchenPreference === value ? "border-[#E10939] bg-[#E10939]/5 text-[#E10939] ring-1 ring-[#E10939]" : "border-[#ded7d1] bg-white text-[#4f4844] hover:border-[#E10939]/50"}`}>
                   <Icon icon={icon} className="h-5 w-5" aria-hidden="true" />
                   {label}
                 </button>
@@ -409,17 +409,17 @@ export default function SellerJourneyDialog({ open, onOpenChange }: { open: bool
                 setAcceptedTerms(checked === true);
                 if (checked === true) setFormError("");
               }}
-              className="mt-0.5 border-[#b8ada7] data-[state=checked]:border-[#F51042] data-[state=checked]:bg-[#F51042]"
+              className="mt-0.5 border-[#b8ada7] data-[state=checked]:border-[#E10939] data-[state=checked]:bg-[#E10939]"
             />
             <Label htmlFor="journey-terms" className="cursor-pointer text-xs font-normal leading-relaxed text-[#5f5651]">
               I agree to the{" "}
-              <a href="/terms" target="_blank" rel="noopener noreferrer" className="font-semibold text-[#d90e3a] underline-offset-2 hover:underline">Terms &amp; Conditions</a>
+              <a href="/terms" target="_blank" rel="noopener noreferrer" className="font-semibold text-[#c90832] underline-offset-2 hover:underline">Terms &amp; Conditions</a>
               {" "}and{" "}
-              <a href="/privacy" target="_blank" rel="noopener noreferrer" className="font-semibold text-[#d90e3a] underline-offset-2 hover:underline">Privacy Policy</a>.
+              <a href="/privacy" target="_blank" rel="noopener noreferrer" className="font-semibold text-[#c90832] underline-offset-2 hover:underline">Privacy Policy</a>.
             </Label>
           </div>
           {formError && <p role="alert" className="mt-3 text-sm font-medium text-red-600">{formError}</p>}
-          <Button onClick={continueToAccount} className="mt-5 h-12 w-full rounded-full bg-[#F51042] font-bold text-white hover:bg-[#d90e3a]">
+          <Button onClick={continueToAccount} className="mt-5 h-12 w-full rounded-full bg-[#E10939] font-bold text-white hover:bg-[#c90832]">
             Continue to secure account <Icon icon="mdi:arrow-right" className="ml-2 h-4 w-4" />
           </Button>
           </>

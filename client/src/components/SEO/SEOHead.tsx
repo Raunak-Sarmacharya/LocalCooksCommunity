@@ -154,7 +154,7 @@ export default function SEOHead({
         href={`${baseUrl}${withLocalePrefix(pathForAlternates, DEFAULT_LOCALE)}`}
       />
 
-      <meta name="theme-color" content="#f51042" />
+      <meta name="theme-color" content="#e10939" />
       <meta name="apple-mobile-web-app-title" content="LocalCooks" />
       <meta name="application-name" content="LocalCooks" />
 

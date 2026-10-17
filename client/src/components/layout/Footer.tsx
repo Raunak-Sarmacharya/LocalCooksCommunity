@@ -67,7 +67,7 @@ const Footer = forwardRef<HTMLElement>((props, ref) => {
   return (
     <footer ref={ref} className="relative overflow-hidden bg-[#0A0A0A] px-4 pb-20 pt-0 text-white sm:pb-8">
       {/* Elegant gradient accent line */}
-      <div className="h-px w-full bg-gradient-to-r from-transparent via-[#F51042]/60 to-transparent" />
+      <div className="h-px w-full bg-gradient-to-r from-transparent via-[#E10939]/60 to-transparent" />
 
       <div className="container mx-auto max-w-6xl relative z-10 px-4 sm:px-6 lg:px-8 pt-10 lg:pt-12">
         {/* Main grid */}
@@ -217,7 +217,7 @@ const Footer = forwardRef<HTMLElement>((props, ref) => {
                       href="/manager/login"
                       className="text-white/50 hover:text-white/90 transition-colors duration-200 text-[13px] flex items-center gap-1.5 py-1.5"
                     >
-                      <Building2 className="h-3.5 w-3.5 text-[#F51042]/60 flex-shrink-0" />{t("partnerLogin")}
+                      <Building2 className="h-3.5 w-3.5 text-[#E10939]/60 flex-shrink-0" />{t("partnerLogin")}
                     </Link>
                   </li>
                 </>
@@ -234,7 +234,7 @@ const Footer = forwardRef<HTMLElement>((props, ref) => {
                   href="mailto:support@localcooks.ca"
                   className="flex items-center gap-2 text-white/50 hover:text-white/90 transition-colors duration-200 py-0.5"
                 >
-                  <Mail className="h-3.5 w-3.5 text-[#F51042]/50 flex-shrink-0" />
+                  <Mail className="h-3.5 w-3.5 text-[#E10939]/50 flex-shrink-0" />
                   <span className="text-[13px] break-all">support@localcooks.ca</span>
                 </a>
               </li>
@@ -243,13 +243,13 @@ const Footer = forwardRef<HTMLElement>((props, ref) => {
                   href="tel:+17096318480"
                   className="flex items-center gap-2 text-white/50 hover:text-white/90 transition-colors duration-200 py-0.5"
                 >
-                  <Phone className="h-3.5 w-3.5 text-[#F51042]/50 flex-shrink-0" />
+                  <Phone className="h-3.5 w-3.5 text-[#E10939]/50 flex-shrink-0" />
                   <span className="text-[13px]">+1 (709) 631-8480</span>
                 </a>
               </li>
               <li>
                 <div className="flex items-center gap-2 text-white/50 py-0.5">
-                  <MapPin className="h-3.5 w-3.5 text-[#F51042]/50 flex-shrink-0" />
+                  <MapPin className="h-3.5 w-3.5 text-[#E10939]/50 flex-shrink-0" />
                   <span className="text-[13px]">{t("stJohns")}</span>
                 </div>
               </li>

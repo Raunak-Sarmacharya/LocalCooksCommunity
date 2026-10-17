@@ -905,10 +905,10 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
                     type="checkbox"
                     checked={acceptedTerms}
                     onChange={(event) => setAcceptedTerms(event.target.checked)}
-                    className="mt-1 size-4 accent-[#F51042]"
+                    className="mt-1 size-4 accent-[#E10939]"
                   />
                   <span>
-                    I agree to the <a href="/terms" target="_blank" rel="noopener noreferrer" className="font-medium text-[#E00A38] underline">Terms</a> and <a href="/privacy" target="_blank" rel="noopener noreferrer" className="font-medium text-[#E00A38] underline">Privacy Policy</a>.
+                    I agree to the <a href="/terms" target="_blank" rel="noopener noreferrer" className="font-medium text-[#C90832] underline">Terms</a> and <a href="/privacy" target="_blank" rel="noopener noreferrer" className="font-medium text-[#C90832] underline">Privacy Policy</a>.
                   </span>
                 </label>
               )}
@@ -930,7 +930,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
                   href="/terms"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="font-medium text-[#E00A38] underline-offset-4 hover:underline"
+                  className="font-medium text-[#C90832] underline-offset-4 hover:underline"
                 >
                   {/* "Terms" rather than "Terms & Conditions": the full name pushes the
                       sentence to 78 characters, which wraps "Policy" onto a second line
@@ -946,7 +946,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
                   href="/privacy"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="font-medium text-[#E00A38] underline-offset-4 hover:underline"
+                  className="font-medium text-[#C90832] underline-offset-4 hover:underline"
                 >
                   {t("termsNoticePrivacy", "Privacy Policy")}
                 </a>.
@@ -1144,10 +1144,10 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
                     type="checkbox"
                     checked={acceptedTerms}
                     onChange={(event) => setAcceptedTerms(event.target.checked)}
-                    className="mt-1 size-4 accent-[#F51042]"
+                    className="mt-1 size-4 accent-[#E10939]"
                   />
                   <span>
-                    I agree to the <a href="/terms" target="_blank" rel="noopener noreferrer" className="font-medium text-[#E00A38] underline">Terms</a> and <a href="/privacy" target="_blank" rel="noopener noreferrer" className="font-medium text-[#E00A38] underline">Privacy Policy</a>.
+                    I agree to the <a href="/terms" target="_blank" rel="noopener noreferrer" className="font-medium text-[#C90832] underline">Terms</a> and <a href="/privacy" target="_blank" rel="noopener noreferrer" className="font-medium text-[#C90832] underline">Privacy Policy</a>.
                   </span>
                 </label>
               )}

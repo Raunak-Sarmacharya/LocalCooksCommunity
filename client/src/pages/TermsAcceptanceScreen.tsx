@@ -377,7 +377,7 @@ function TermsAcceptanceScreen() {
           {/* Same lockup as the login and welcome screens — one brand lockup, one word. */}
           <div className="flex min-w-0 items-center gap-2.5">
             <Logo variant="brand" className="h-8 w-auto shrink-0" />
-            <span className="font-logo text-lg leading-none tracking-tight text-[#F51042]">
+            <span className="font-logo text-lg leading-none tracking-tight text-[#E10939]">
               LocalCooks
             </span>
           </div>

@@ -67,8 +67,8 @@ export default function KitchenHero({ onStart, onHowItWorks }: KitchenHeroProps)
       <div className="mx-auto max-w-7xl px-4 pb-16 pt-[calc(var(--header-total)_+_2.5rem)] sm:px-6 sm:pb-20 sm:pt-[calc(var(--header-total)_+_3rem)] lg:px-8 lg:pb-24">
         <div className="mx-auto max-w-3xl text-center">
           <motion.p {...reveal(0)} className="mb-6 inline-flex items-center gap-2 rounded-full border border-[#2C2C2C]/[0.08] bg-white/80 py-1 pl-1 pr-3.5 text-xs font-medium text-[#5F5F5F] sm:text-[0.82rem]">
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#F51042]/[0.08]">
-              <Icon icon={kitchenIcon} className="h-3.5 w-3.5 text-[#F51042]" aria-hidden="true" />
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#E10939]/[0.08]">
+              <Icon icon={kitchenIcon} className="h-3.5 w-3.5 text-[#E10939]" aria-hidden="true" />
             </span>
             {t("heroHostEyebrow")}
           </motion.p>
@@ -80,11 +80,11 @@ export default function KitchenHero({ onStart, onHowItWorks }: KitchenHeroProps)
             {t("heroHostBody")}
           </motion.p>
           <motion.div {...reveal(0.24)} className="mt-7 flex flex-col items-center justify-center gap-3 sm:flex-row sm:gap-5">
-            <button type="button" onClick={onStart} className="group inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-[#F51042] px-7 py-3 text-[0.95rem] font-semibold text-white shadow-[0_8px_20px_-10px_rgba(245,16,66,0.55)] transition-colors hover:bg-[#D90E3A] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042] focus-visible:ring-offset-4 sm:w-auto">
+            <button type="button" onClick={onStart} className="group inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-[#E10939] px-7 py-3 text-[0.95rem] font-semibold text-white shadow-[0_8px_20px_-10px_rgba(245,16,66,0.55)] transition-colors hover:bg-[#C90832] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E10939] focus-visible:ring-offset-4 sm:w-auto">
               {t("heroHostStart")}
               <ArrowRight className="h-4 w-4 shrink-0 motion-safe:transition-transform motion-safe:group-hover:translate-x-0.5" aria-hidden="true" />
             </button>
-            <button type="button" onClick={onHowItWorks} className="inline-flex min-h-12 items-center justify-center gap-1.5 rounded-full px-4 py-3 text-[0.95rem] font-semibold text-[#4A4A4A] transition-colors hover:text-[#F51042] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042] focus-visible:ring-offset-2">
+            <button type="button" onClick={onHowItWorks} className="inline-flex min-h-12 items-center justify-center gap-1.5 rounded-full px-4 py-3 text-[0.95rem] font-semibold text-[#4A4A4A] transition-colors hover:text-[#E10939] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E10939] focus-visible:ring-offset-2">
               {t("heroHostHow")}
               <ChevronRight className="h-4 w-4 shrink-0" aria-hidden="true" />
             </button>
@@ -92,7 +92,7 @@ export default function KitchenHero({ onStart, onHowItWorks }: KitchenHeroProps)
         </div>
 
         <motion.ul {...reveal(0.3)} aria-label={t("heroHostAudienceLabel")} className="mx-auto mt-8 flex max-w-4xl flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs font-medium text-[#737373] sm:mt-9 sm:text-[0.8rem]">
-          {audiences.map((key) => <li key={key} className="inline-flex items-center gap-2"><span className="h-1 w-1 shrink-0 rounded-full bg-[#F51042]/50" aria-hidden="true" />{t(key)}</li>)}
+          {audiences.map((key) => <li key={key} className="inline-flex items-center gap-2"><span className="h-1 w-1 shrink-0 rounded-full bg-[#E10939]/50" aria-hidden="true" />{t(key)}</li>)}
         </motion.ul>
 
         <motion.figure {...reveal(0.38)} aria-labelledby="host-preview-caption" className="relative mx-auto mt-9 max-w-[1120px] sm:mt-11">
@@ -100,7 +100,7 @@ export default function KitchenHero({ onStart, onHowItWorks }: KitchenHeroProps)
           <div className="rounded-[24px] border border-[#DCDAD7]/80 bg-gradient-to-b from-[#F0EEEB] to-[#FAF9F7] p-1.5 shadow-[0_32px_80px_-40px_rgba(40,30,35,0.3),0_2px_8px_rgba(40,30,35,0.04)] sm:rounded-[28px] sm:p-2">
             <div className="overflow-hidden rounded-[19px] border border-black/[0.07] bg-white sm:rounded-[21px]">
               <div className="flex min-h-14 items-center gap-3 border-b border-black/[0.06] px-4 sm:px-5">
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-[#F51042] text-white shadow-sm"><Icon icon={kitchenIcon} className="h-4 w-4" aria-hidden="true" /></span>
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-[#E10939] text-white shadow-sm"><Icon icon={kitchenIcon} className="h-4 w-4" aria-hidden="true" /></span>
                 <span className="text-xs font-semibold tracking-tight text-[#343434]">{t("heroHostYourKitchen")}</span>
                 <ChevronRight className="hidden h-3 w-3 text-[#BBB] sm:block" aria-hidden="true" />
                 <span className="hidden text-xs text-[#737373] sm:block">{t("heroHostOverview")}</span>
@@ -110,7 +110,7 @@ export default function KitchenHero({ onStart, onHowItWorks }: KitchenHeroProps)
                 <div aria-hidden="true" className="hidden w-14 shrink-0 flex-col border-r border-black/[0.05] bg-[#FCFCFB] px-2 py-5 sm:flex lg:w-44 lg:px-3">
                   <p className="mb-3 hidden px-2 text-[9px] font-semibold uppercase tracking-[0.12em] text-[#A1A1A1] lg:block">LocalCooks</p>
                   <div className="space-y-1.5">
-                    {navigation.map(({key, icon: NavIcon}, index) => <div key={key} className={`flex min-h-9 items-center justify-center gap-2.5 rounded-lg px-2 lg:justify-start ${index === 0 ? "bg-[#F51042]/[0.07] font-semibold text-[#BD173A]" : "text-[#8A8A8A]"}`}><NavIcon className="h-3.5 w-3.5 shrink-0" /><span className="hidden text-[11px] lg:block">{t(key)}</span>{index === 2 && <span className="ml-auto hidden rounded bg-[#EFEEEC] px-1.5 py-0.5 text-[9px] text-[#737373] lg:block">1</span>}</div>)}
+                    {navigation.map(({key, icon: NavIcon}, index) => <div key={key} className={`flex min-h-9 items-center justify-center gap-2.5 rounded-lg px-2 lg:justify-start ${index === 0 ? "bg-[#E10939]/[0.07] font-semibold text-[#BD173A]" : "text-[#8A8A8A]"}`}><NavIcon className="h-3.5 w-3.5 shrink-0" /><span className="hidden text-[11px] lg:block">{t(key)}</span>{index === 2 && <span className="ml-auto hidden rounded bg-[#EFEEEC] px-1.5 py-0.5 text-[9px] text-[#737373] lg:block">1</span>}</div>)}
                   </div>
                   <div className="mt-auto flex items-center justify-center gap-2.5 px-2 pt-8 text-[#737373] lg:justify-start"><Settings2 className="h-3.5 w-3.5 shrink-0" /><span className="hidden text-[11px] lg:block">{t("heroHostSettings")}</span></div>
                 </div>
@@ -125,7 +125,7 @@ export default function KitchenHero({ onStart, onHowItWorks }: KitchenHeroProps)
                       <p className="mt-2 text-[2.2rem] font-semibold leading-none tracking-[-0.045em] text-[#232323] tabular-nums sm:text-[2.5rem]">{money(totalRevenue)}</p>
                       <div aria-hidden="true" className="relative mt-4 h-[94px] sm:h-[102px]">
                         <svg viewBox="0 0 420 104" preserveAspectRatio="none" className="h-full w-full overflow-visible">
-                          <defs><linearGradient id={chartFill} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#F51042" stopOpacity="0.13" /><stop offset="100%" stopColor="#F51042" stopOpacity="0" /></linearGradient></defs>
+                          <defs><linearGradient id={chartFill} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#E10939" stopOpacity="0.13" /><stop offset="100%" stopColor="#E10939" stopOpacity="0" /></linearGradient></defs>
                           {[12, 52, 92].map(y => <line key={y} x1="0" y1={y} x2="420" y2={y} stroke="#F0F0F1" strokeDasharray="3 4" />)}
                           <path d="M0 92 C24 92 40 81 70 81 S110 81 140 63 S180 54 210 43 S250 34 280 27 S320 21 350 13 S394 4 420 3 L420 104 L0 104 Z" fill={`url(#${chartFill})`} />
                           <path d="M0 92 C24 92 40 81 70 81 S110 81 140 63 S180 54 210 43 S250 34 280 27 S320 21 350 13 S394 4 420 3" fill="none" stroke="#E73B5D" strokeWidth="2.5" vectorEffect="non-scaling-stroke" strokeLinecap="round" />
@@ -161,13 +161,13 @@ export default function KitchenHero({ onStart, onHowItWorks }: KitchenHeroProps)
                         <div><p className="text-xs font-semibold text-[#343434]">{t("heroHostActivityCentre")}</p><p className="mt-1 text-[10px] leading-relaxed text-[#737373]">{t("heroHostActivityNote")}</p></div>
                         <span aria-hidden="true" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-black/[0.05] bg-[#FAFAFB]"><Bell className="h-3.5 w-3.5 text-[#737373]" /></span>
                       </div>
-                      <div className="mx-3 mt-3 rounded-[10px] border border-[#F51042]/[0.09] bg-gradient-to-b from-[#FFF8FA] to-white p-3.5 sm:mx-4 sm:mt-4 sm:p-4">
-                        <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-[11px] font-semibold text-[#444]">{t("heroHostApplication")}</p><span className="inline-flex items-center gap-1.5 rounded-full bg-[#F51042]/[0.06] px-2 py-1 text-[9px] font-medium text-[#BD173A]"><span className="h-1 w-1 rounded-full bg-[#E64B68]" aria-hidden="true" />{t("heroHostForReview")}</span></div>
-                        <div className="mt-3.5 flex items-center gap-2.5"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] border border-[#F51042]/[0.08] bg-white text-[#B9546A]"><CookingPot className="h-4 w-4" aria-hidden="true" /></span><div className="min-w-0"><p className="text-[11px] font-semibold leading-relaxed text-[#333]">{t("heroHostApplicant")}</p><p className="mt-0.5 text-[10px] text-[#737373]">{t("heroHostApplicantType")}</p></div></div>
+                      <div className="mx-3 mt-3 rounded-[10px] border border-[#E10939]/[0.09] bg-gradient-to-b from-[#FFF8FA] to-white p-3.5 sm:mx-4 sm:mt-4 sm:p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-[11px] font-semibold text-[#444]">{t("heroHostApplication")}</p><span className="inline-flex items-center gap-1.5 rounded-full bg-[#E10939]/[0.06] px-2 py-1 text-[9px] font-medium text-[#BD173A]"><span className="h-1 w-1 rounded-full bg-[#E64B68]" aria-hidden="true" />{t("heroHostForReview")}</span></div>
+                        <div className="mt-3.5 flex items-center gap-2.5"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] border border-[#E10939]/[0.08] bg-white text-[#B9546A]"><CookingPot className="h-4 w-4" aria-hidden="true" /></span><div className="min-w-0"><p className="text-[11px] font-semibold leading-relaxed text-[#333]">{t("heroHostApplicant")}</p><p className="mt-0.5 text-[10px] text-[#737373]">{t("heroHostApplicantType")}</p></div></div>
                         <ul className="my-3.5 space-y-2 text-[10px] text-[#737373]">
                           {(["heroHostBusinessDetails", "heroHostDocuments"] as const).map(key => <li key={key} className="flex items-center gap-2"><span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full bg-[#EDF3EF]"><Check className="h-2.5 w-2.5 text-[#679377]" aria-hidden="true" /></span>{t(key)}</li>)}
                         </ul>
-                        <div className="flex items-center justify-between gap-3 border-t border-[#F51042]/[0.07] pt-3"><p className="min-w-0 flex-1 text-[10px] leading-relaxed text-[#737373]">{t("heroHostApprovalNote")}</p><span className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[#F51042]/[0.1] bg-[#F51042]/[0.05] px-2.5 py-2 text-[10px] font-medium text-[#BD173A]">{t("heroHostReview")}<ArrowRight className="h-3 w-3" aria-hidden="true" /></span></div>
+                        <div className="flex items-center justify-between gap-3 border-t border-[#E10939]/[0.07] pt-3"><p className="min-w-0 flex-1 text-[10px] leading-relaxed text-[#737373]">{t("heroHostApprovalNote")}</p><span className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[#E10939]/[0.1] bg-[#E10939]/[0.05] px-2.5 py-2 text-[10px] font-medium text-[#BD173A]">{t("heroHostReview")}<ArrowRight className="h-3 w-3" aria-hidden="true" /></span></div>
                       </div>
                       <ul className="flex flex-1 flex-col divide-y divide-black/[0.05] px-4 py-2 sm:px-5 sm:py-3">
                         {activity.map(({ title, detail, status, icon: ActivityIcon, confirmed }) => <li key={title} className="flex flex-1 items-center gap-3 py-3.5">

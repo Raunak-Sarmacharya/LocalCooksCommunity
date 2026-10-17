@@ -14,7 +14,7 @@ export type CalendarProps = React.ComponentProps<typeof DayPicker>
  */
 export const calendarRangeCellClass = cn(
   "relative z-0 h-9 p-0 text-center text-sm",
-  "[&:has([aria-selected])]:before:absolute [&:has([aria-selected])]:before:inset-y-0 [&:has([aria-selected])]:before:inset-x-0 [&:has([aria-selected])]:before:-z-10 [&:has([aria-selected])]:before:border-y-2 [&:has([aria-selected])]:before:border-[#F51042] [&:has([aria-selected])]:before:bg-[#FFF0F3]",
+  "[&:has([aria-selected])]:before:absolute [&:has([aria-selected])]:before:inset-y-0 [&:has([aria-selected])]:before:inset-x-0 [&:has([aria-selected])]:before:-z-10 [&:has([aria-selected])]:before:border-y-2 [&:has([aria-selected])]:before:border-[#E10939] [&:has([aria-selected])]:before:bg-[#FFF0F3]",
   // Start of range or start of week row
   "first:[&:has([aria-selected])]:before:rounded-l-full first:[&:has([aria-selected])]:before:border-l-2",
   "[&:has([aria-selected].day-range-start)]:before:rounded-l-full [&:has([aria-selected].day-range-start)]:before:border-l-2",
@@ -74,10 +74,10 @@ function Calendar({
         // Transparent by default so callers that draw selection via cell ::before
         // (booking step 1 outline circle) are not overridden by a solid fill.
         day_selected:
-          "bg-transparent text-[#F51042] hover:bg-transparent focus:bg-transparent",
+          "bg-transparent text-[#E10939] hover:bg-transparent focus:bg-transparent",
         day_today: "font-semibold text-gray-900",
         day_outside:
-          "day-outside text-muted-foreground aria-selected:text-[#F51042] opacity-50",
+          "day-outside text-muted-foreground aria-selected:text-[#E10939] opacity-50",
         day_disabled: "text-gray-300 opacity-40 font-normal line-through decoration-gray-300/80",
         day_range_middle:
           "aria-selected:bg-transparent aria-selected:text-gray-900",

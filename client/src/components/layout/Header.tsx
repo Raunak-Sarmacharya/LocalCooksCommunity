@@ -53,7 +53,7 @@ addCollection(navIcons);
 const NAV_ITEM =
   "inline-flex h-11 items-center rounded-full px-3.5 text-[13.5px] font-medium text-[#4A4A4A] " +
   "transition-colors duration-200 hover:bg-[#F6F4F2] hover:text-[#1F1F1F] " +
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042]/40 focus-visible:ring-offset-1";
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E10939]/40 focus-visible:ring-offset-1";
 
 /**
  * Panel shell. Width is set by the longest service description needing one line, not by taste:
@@ -103,9 +103,9 @@ function ServiceRow({
         <span
           className={cn(
             "flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full",
-            "bg-gradient-to-b from-[#F51042]/[0.12] to-[#F51042]/[0.05] text-[#F51042]",
-            "ring-1 ring-inset ring-[#F51042]/[0.10]",
-            "transition-colors duration-150 group-hover/row:from-[#F51042]/[0.18] group-hover/row:to-[#F51042]/[0.08]",
+            "bg-gradient-to-b from-[#E10939]/[0.12] to-[#E10939]/[0.05] text-[#E10939]",
+            "ring-1 ring-inset ring-[#E10939]/[0.10]",
+            "transition-colors duration-150 group-hover/row:from-[#E10939]/[0.18] group-hover/row:to-[#E10939]/[0.08]",
           )}
         >
           <Icon icon={icon} className="h-[22px] w-[22px]" aria-hidden />
@@ -123,7 +123,7 @@ function ServiceRow({
         </span>
         <span
           aria-hidden="true"
-          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-[#B8B8B8] opacity-0 transition-all duration-200 group-hover/row:bg-[#F51042]/[0.08] group-hover/row:text-[#F51042] group-hover/row:opacity-100"
+          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-[#B8B8B8] opacity-0 transition-all duration-200 group-hover/row:bg-[#E10939]/[0.08] group-hover/row:text-[#E10939] group-hover/row:opacity-100"
         >
           <Icon icon="mdi:arrow-right" className="h-4 w-4" />
         </span>
@@ -161,12 +161,12 @@ function KitchenPartnerCard({
         onClick={onSelect}
         className={cn(
           "group/partner mt-2 flex cursor-pointer items-center gap-3.5 px-3 py-3 outline-none",
-          "border border-[#F51042]/[0.10] bg-gradient-to-r from-[#FFF4F6] via-white to-[#FFF4F6]",
-          "transition-colors duration-200 hover:border-[#F51042]/[0.20] focus-visible:border-[#F51042]/[0.20] data-[highlighted]:border-[#F51042]/[0.20]",
+          "border border-[#E10939]/[0.10] bg-gradient-to-r from-[#FFF4F6] via-white to-[#FFF4F6]",
+          "transition-colors duration-200 hover:border-[#E10939]/[0.20] focus-visible:border-[#E10939]/[0.20] data-[highlighted]:border-[#E10939]/[0.20]",
           ROW_RADIUS,
         )}
       >
-        <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-white text-[#F51042] shadow-[0_6px_16px_-8px_rgba(245,16,66,0.55)] ring-1 ring-[#F51042]/[0.14]">
+        <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-white text-[#E10939] shadow-[0_6px_16px_-8px_rgba(245,16,66,0.55)] ring-1 ring-[#E10939]/[0.14]">
           <Icon icon={icon} className="h-[22px] w-[22px]" aria-hidden />
         </span>
         <span className="min-w-0 flex-1">
@@ -182,7 +182,7 @@ function KitchenPartnerCard({
         </span>
         <span
           aria-hidden="true"
-          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-white text-[#F51042] ring-1 ring-[#F51042]/[0.12] transition-colors duration-200 group-hover/partner:bg-[#F51042] group-hover/partner:text-white group-hover/partner:ring-[#F51042]"
+          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-white text-[#E10939] ring-1 ring-[#E10939]/[0.12] transition-colors duration-200 group-hover/partner:bg-[#E10939] group-hover/partner:text-white group-hover/partner:ring-[#E10939]"
         >
           <Icon icon="mdi:arrow-right" className="h-4 w-4" />
         </span>
@@ -230,7 +230,7 @@ function AccountIdentity({
 }) {
   return (
     <div className="flex items-center gap-3 px-2.5 py-2">
-      <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#F51042]/[0.10] text-[15px] font-semibold text-[#F51042] ring-1 ring-inset ring-[#F51042]/[0.14]">
+      <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#E10939]/[0.10] text-[15px] font-semibold text-[#E10939] ring-1 ring-inset ring-[#E10939]/[0.14]">
         {photoURL ? <img src={photoURL} alt="" className="h-full w-full object-cover" /> : initial}
       </span>
       <span className="min-w-0 flex-1">
@@ -708,7 +708,7 @@ export default function Header({
             className="h-[30px] w-auto flex-shrink-0 transition-transform duration-300 group-hover:scale-[1.04] sm:h-[34px]"
           />
           <span className="flex min-w-0 flex-col justify-center">
-            <span className="font-logo text-[1.3rem] leading-[0.95] tracking-[-0.005em] text-[#F51042] sm:text-[1.45rem]">
+            <span className="font-logo text-[1.3rem] leading-[0.95] tracking-[-0.005em] text-[#E10939] sm:text-[1.45rem]">
               LocalCooks
             </span>
             {currentSubdomain === 'chef' && (
@@ -869,10 +869,10 @@ export default function Header({
                   data-nav-cta
                   className={cn(
                     "inline-flex h-9 items-center justify-center rounded-full px-4",
-                    "bg-[#F51042] text-[13px] font-medium leading-none tracking-[-0.01em] text-white",
+                    "bg-[#E10939] text-[13px] font-medium leading-none tracking-[-0.01em] text-white",
                     "shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_1px_2px_rgba(44,44,44,0.08)]",
                     "transition-[background-color,box-shadow] duration-200",
-                    "hover:bg-[#E00A38] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_2px_5px_rgba(44,44,44,0.14)]",
+                    "hover:bg-[#C90832] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_2px_5px_rgba(44,44,44,0.14)]",
                     "active:bg-[#CC0932]",
                     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1F1F1F]/40 focus-visible:ring-offset-2",
                   )}
@@ -917,7 +917,7 @@ export default function Header({
                           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1F1F1F]/40 focus-visible:ring-offset-2",
                         )}
                       >
-                        <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#F51042]/[0.10] text-[12px] font-semibold text-[#F51042] ring-1 ring-inset ring-[#F51042]/[0.14]">
+                        <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#E10939]/[0.10] text-[12px] font-semibold text-[#E10939] ring-1 ring-inset ring-[#E10939]/[0.14]">
                           {account.photoURL ? (
                             <img src={account.photoURL} alt="" className="h-full w-full object-cover" />
                           ) : (
@@ -982,7 +982,7 @@ export default function Header({
             <Link
               href={getDashboardInfo().href}
               aria-label={getDashboardInfo().text}
-              className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-[#F51042]/[0.10] text-[13px] font-semibold text-[#F51042] ring-1 ring-inset ring-[#F51042]/[0.14]"
+              className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-[#E10939]/[0.10] text-[13px] font-semibold text-[#E10939] ring-1 ring-inset ring-[#E10939]/[0.14]"
             >
               {account.photoURL ? (
                 <img src={account.photoURL} alt="" className="h-full w-full object-cover" />
@@ -1032,7 +1032,7 @@ export default function Header({
                         className="flex items-center gap-3.5 rounded-[18px] px-3 py-3 transition-colors hover:bg-[#F6F4F2] mobile-touch-target mobile-no-tap-highlight"
                         onClick={(e) => scrollToSection(section, e)}
                       >
-                        <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-b from-[#F51042]/[0.12] to-[#F51042]/[0.05] text-[#F51042] ring-1 ring-inset ring-[#F51042]/[0.10]">
+                        <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-b from-[#E10939]/[0.12] to-[#E10939]/[0.05] text-[#E10939] ring-1 ring-inset ring-[#E10939]/[0.10]">
                           <Icon icon={icon} className="h-[22px] w-[22px]" aria-hidden />
                         </span>
                         <span className="min-w-0 flex-1">
@@ -1055,7 +1055,7 @@ export default function Header({
                         className="flex items-center gap-3.5 rounded-[18px] px-3 py-3 transition-colors hover:bg-[#F6F4F2] mobile-touch-target mobile-no-tap-highlight"
                         onClick={(e) => scrollToSection(section, e)}
                       >
-                        <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-b from-[#F51042]/[0.12] to-[#F51042]/[0.05] text-[#F51042] ring-1 ring-inset ring-[#F51042]/[0.10]">
+                        <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-b from-[#E10939]/[0.12] to-[#E10939]/[0.05] text-[#E10939] ring-1 ring-inset ring-[#E10939]/[0.10]">
                           <Icon icon={icon} className="h-[22px] w-[22px]" aria-hidden />
                         </span>
                         <span className="min-w-0 flex-1">
@@ -1072,10 +1072,10 @@ export default function Header({
                 <a
                   href={currentSubdomain === 'kitchen' ? serviceUrls.chef : serviceUrls.kitchen}
                   data-kitchen-partner
-                  className="mt-2 flex items-center gap-3.5 rounded-[18px] border border-[#F51042]/[0.10] bg-gradient-to-r from-[#FFF4F6] via-white to-[#FFF4F6] px-3 py-3 mobile-touch-target mobile-no-tap-highlight"
+                  className="mt-2 flex items-center gap-3.5 rounded-[18px] border border-[#E10939]/[0.10] bg-gradient-to-r from-[#FFF4F6] via-white to-[#FFF4F6] px-3 py-3 mobile-touch-target mobile-no-tap-highlight"
                   onClick={closeMenu}
                 >
-                  <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-white text-[#F51042] shadow-[0_6px_16px_-8px_rgba(245,16,66,0.55)] ring-1 ring-[#F51042]/[0.14]">
+                  <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-white text-[#E10939] shadow-[0_6px_16px_-8px_rgba(245,16,66,0.55)] ring-1 ring-[#E10939]/[0.14]">
                     <Icon
                       icon={currentSubdomain === 'kitchen' ? "mdi:chef-hat" : KITCHEN_ICON_NAME}
                       className="h-[22px] w-[22px]"
@@ -1092,7 +1092,7 @@ export default function Header({
                   </span>
                   <span
                     aria-hidden="true"
-                    className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-white text-[#F51042] ring-1 ring-[#F51042]/[0.12]"
+                    className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-white text-[#E10939] ring-1 ring-[#E10939]/[0.12]"
                   >
                     <Icon icon="mdi:arrow-right" className="h-4 w-4" />
                   </span>

@@ -41,7 +41,7 @@ async function open(slots: string[] = []) {
   await waitFor(() => expect(screen.getByRole('button', { name: new RegExp(`${first % 12 || 12}:00.*${(first + 1) % 12 || 12}:00`) })).toBeEnabled(), { timeout: 3000 });
 }
 const hour = (start: number) => screen.getByRole('button', { name: new RegExp(`${start}:00.*${start === 12 ? 1 : start + 1}:00`) });
-const selected = (start: number) => expect(hour(start).className).toContain('bg-[#F51042]');
+const selected = (start: number) => expect(hour(start).className).toContain('bg-[#E10939]');
 
 describe('actual kitchen picker consecutive selection', () => {
   it('adds and removes an optional rental inline without opening a dialog', async () => {
@@ -69,15 +69,15 @@ describe('actual kitchen picker consecutive selection', () => {
   it('adds adjacent hours, rejects a distant click and middle deselection, allows end removal', async () => {
     await open();
     fireEvent.click(hour(9)); fireEvent.click(hour(11));
-    selected(9); expect(hour(11).className).not.toContain('bg-[#F51042]');
+    selected(9); expect(hour(11).className).not.toContain('bg-[#E10939]');
     fireEvent.click(hour(10)); fireEvent.click(hour(11)); fireEvent.click(hour(10));
     selected(10); expect(fixture.toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Choose consecutive hours' }));
-    fireEvent.click(hour(11)); expect(hour(11).className).not.toContain('bg-[#F51042]');
+    fireEvent.click(hour(11)); expect(hour(11).className).not.toContain('bg-[#E10939]');
     fireEvent.click(screen.getByRole('button', { name: /^Continue$/ }));
     expect(screen.getByText(/Confirm/, { selector: 'p[aria-live="polite"]' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /^Edit$/ }));
     fireEvent.click(hour(12));
-    expect(hour(12).className).not.toContain('bg-[#F51042]');
+    expect(hour(12).className).not.toContain('bg-[#E10939]');
     fireEvent.click(hour(11)); selected(11);
     fireEvent.click(hour(10)); selected(10);
     fireEvent.click(screen.getByRole('button', { name: /Save visit time/ }));
@@ -87,7 +87,7 @@ describe('actual kitchen picker consecutive selection', () => {
     fixture.minimum = 2;
     await open(['09:00', '11:00']);
     await waitFor(() => expect(fixture.toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Choose your visit hours' })));
-    expect(hour(9).className).not.toContain('bg-[#F51042]');
+    expect(hour(9).className).not.toContain('bg-[#E10939]');
     fireEvent.click(hour(9)); fireEvent.click(screen.getByRole('button', { name: /^Continue$/ }));
     expect(fixture.toast).toHaveBeenCalledWith(expect.objectContaining({ description: expect.stringContaining('at least 2') }));
     expect(fixture.mutate).not.toHaveBeenCalled();
@@ -98,13 +98,13 @@ describe('actual kitchen picker consecutive selection', () => {
     expect(hour(10)).toBeDisabled();
     expect(hour(10)).toHaveTextContent('wfbBooked');
     fireEvent.click(hour(9)); fireEvent.click(hour(11));
-    expect(hour(11).className).not.toContain('bg-[#F51042]');
+    expect(hour(11).className).not.toContain('bg-[#E10939]');
   });
   it('renders and continues an overnight adjacent restored selection in operating order', async () => {
     fixture.times = ['22:00', '23:00', '00:00'];
     await open(['23:00', '00:00']);
-    expect(screen.getByRole('button', { name: /11:00.*12:00/ }).className).toContain('bg-[#F51042]');
-    expect(screen.getByRole('button', { name: /12:00.*1:00/ }).className).toContain('bg-[#F51042]');
+    expect(screen.getByRole('button', { name: /11:00.*12:00/ }).className).toContain('bg-[#E10939]');
+    expect(screen.getByRole('button', { name: /12:00.*1:00/ }).className).toContain('bg-[#E10939]');
     fireEvent.click(screen.getByRole('button', { name: /^Continue$/ }));
     expect(screen.getByText(/Confirm/, { selector: 'p[aria-live="polite"]' })).toBeInTheDocument();
   });
@@ -119,6 +119,6 @@ describe('actual kitchen picker consecutive selection', () => {
     cleanup(); fixture.rateMode = 'hourly'; fixture.toast.mockClear();
     await open(['25:00']);
     expect(fixture.toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Choose your visit hours' }));
-    expect(hour(9).className).not.toContain('bg-[#F51042]');
+    expect(hour(9).className).not.toContain('bg-[#E10939]');
   });
 });

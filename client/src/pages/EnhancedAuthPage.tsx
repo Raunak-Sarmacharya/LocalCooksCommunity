@@ -727,7 +727,7 @@ export default function EnhancedAuthPage() {
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-        className="relative flex min-h-screen overflow-x-clip bg-gradient-to-br from-[#F51042] via-[#df123e] to-[#a90c31] lg:h-screen lg:min-h-0 lg:overflow-hidden"
+        className="relative flex min-h-screen overflow-x-clip bg-gradient-to-br from-[#E10939] via-[#df123e] to-[#a90c31] lg:h-screen lg:min-h-0 lg:overflow-hidden"
       >
         <ChefAuthShowcase />
         {/* Form Section */}
@@ -756,7 +756,7 @@ export default function EnhancedAuthPage() {
               <a href="/" className="inline-flex items-center gap-2.5 transition-transform duration-300 hover:scale-[1.02]">
                 <Logo variant="brand" className="h-9 w-auto flex-shrink-0" />
                 <span className="flex flex-col justify-center">
-                  <span className="font-logo text-xl font-normal leading-none tracking-tight text-[#F51042]">LocalCooks</span>
+                  <span className="font-logo text-xl font-normal leading-none tracking-tight text-[#E10939]">LocalCooks</span>
                   <span className="mt-0.5 text-[9px] font-medium uppercase leading-none tracking-wider text-gray-500/70">For chefs</span>
                 </span>
               </a>

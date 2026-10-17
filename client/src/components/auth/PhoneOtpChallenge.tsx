@@ -246,7 +246,7 @@ export default function PhoneOtpChallenge({
       )}
       <div>
         <div className="flex items-center gap-2 text-xl font-semibold text-gray-900">
-          <MessageSquareText className="h-5 w-5 text-[#F51042]" />
+          <MessageSquareText className="h-5 w-5 text-[#E10939]" />
           {confirmation || verificationId ? "Enter your verification code" : autoSend && busy ? "Sending your code" : purpose === "link" ? "Verify your phone" : "Continue with your phone"}
         </div>
         <p className="mt-2 text-sm text-gray-600">
@@ -333,7 +333,7 @@ export default function PhoneOtpChallenge({
           type="button"
           onClick={onTryAnotherWay || (() => onGoogleSignIn?.())}
           disabled={busy}
-          className="w-full text-sm font-medium text-[#E00A38] underline underline-offset-4 disabled:opacity-50"
+          className="w-full text-sm font-medium text-[#C90832] underline underline-offset-4 disabled:opacity-50"
         >
           Try another way
         </button>

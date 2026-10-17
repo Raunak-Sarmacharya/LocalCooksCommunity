@@ -176,7 +176,7 @@ function ExpandableDescription({
         {open ? (
           <>
             <span className="whitespace-pre-wrap">{text}</span>{" "}
-            <button type="button" onClick={() => setOpen(false)} className="font-medium text-[#F51042] hover:underline">
+            <button type="button" onClick={() => setOpen(false)} className="font-medium text-[#E10939] hover:underline">
               {t("showLess", "Show less")}
             </button>
           </>
@@ -186,7 +186,7 @@ function ExpandableDescription({
             <button
               type="button"
               onClick={() => setOpen(true)}
-              className="inline font-medium text-[#F51042] hover:underline"
+              className="inline font-medium text-[#E10939] hover:underline"
             >
               {showAllLabel}
             </button>
@@ -262,7 +262,7 @@ function PhotoTile({
       type="button"
       onClick={onClick}
       className={cn(
-        "relative min-h-0 overflow-hidden bg-gray-100 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042] focus-visible:ring-inset",
+        "relative min-h-0 overflow-hidden bg-gray-100 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[#E10939] focus-visible:ring-inset",
         className
       )}
     >
@@ -648,7 +648,7 @@ function AvailabilityDisplay({ availability }: { availability: PublicKitchen['av
             className={`
               w-7 h-7 flex items-center justify-center rounded-[20%] text-[11px] font-semibold transition-all duration-200
               ${isAvailable
-                ? 'bg-[#F51042] bg-gradient-to-br from-[#F51042] to-[#d40d38] text-white shadow-sm scale-110'
+                ? 'bg-[#E10939] bg-gradient-to-br from-[#E10939] to-[#d40d38] text-white shadow-sm scale-110'
                 : 'bg-transparent border-2 border-gray-200 text-gray-300'
               }
             `}
@@ -777,7 +777,7 @@ function KitchenPhotoCollage({
           <button
             type="button"
             onClick={() => openAt(0)}
-            className="relative h-full min-h-0 overflow-hidden bg-gray-900 text-white text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042] focus-visible:ring-inset"
+            className="relative h-full min-h-0 overflow-hidden bg-gray-900 text-white text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[#E10939] focus-visible:ring-inset"
             aria-label={t("viewAllPhotos", {
               count: images.length,
               defaultValue: `View all ${images.length} photos`,
@@ -807,7 +807,7 @@ function KitchenPhotoCollage({
           <button
             type="button"
             onClick={() => openAt(0)}
-            className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-800 hover:text-[#F51042]"
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-800 hover:text-[#E10939]"
           >
             <PreviewIcon icon="mdi:image-multiple" size={16} />
             {t("viewAllPhotos", { count: images.length, defaultValue: `View all ${images.length} photos` })}
@@ -879,7 +879,7 @@ function KitchenInventoryPair({
             data-preview-tour="equipment"
           >
             <h3 className="mb-3 flex shrink-0 flex-wrap items-center gap-2 border-b border-gray-100 pb-3 text-base font-semibold text-gray-900">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FFF1F3] text-[#F51042]"><Icon icon="mdi:pot-steam" className="h-4 w-4" /></span>
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FFF1F3] text-[#E10939]"><Icon icon="mdi:pot-steam" className="h-4 w-4" /></span>
               {t("equipment", "Equipment")}
               <span className="ml-auto flex items-center gap-1 text-xs font-medium text-gray-500">
                 {included.length > 0 ? (
@@ -936,7 +936,7 @@ function KitchenInventoryPair({
             data-preview-tour="storage"
           >
             <h3 className="mb-3 flex shrink-0 flex-wrap items-center gap-2 border-b border-gray-100 pb-3 text-base font-semibold text-gray-900">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FFF1F3] text-[#F51042]"><Icon icon="mdi:warehouse" className="h-4 w-4" /></span>
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FFF1F3] text-[#E10939]"><Icon icon="mdi:warehouse" className="h-4 w-4" /></span>
               {t("storage", "Storage")}
               <span className="ml-auto flex items-center gap-1 text-xs font-medium text-gray-500">
                 <span>{storage.length}</span>
@@ -1030,7 +1030,7 @@ function KitchenInventoryPair({
             <DialogTitle className="flex items-center gap-2">
               <Icon
                 icon="mdi:pot-steam"
-                className="h-4 w-4 shrink-0 text-[#F51042]"
+                className="h-4 w-4 shrink-0 text-[#E10939]"
                 aria-hidden
               />
               {t("equipmentTypesTitle", "Equipment")}
@@ -1061,7 +1061,7 @@ function KitchenInventoryPair({
               {included.length > 0 ? (
                 <button
                   type="button"
-                  className="mt-0 inline-flex items-center gap-0.5 text-sm font-medium text-[#F51042] hover:text-[#d10e39]"
+                  className="mt-0 inline-flex items-center gap-0.5 text-sm font-medium text-[#E10939] hover:text-[#c90832]"
                   onClick={() => setEquipmentSectionModal("included")}
                 >
                   {t("showAllDescription", "Show all")}
@@ -1087,7 +1087,7 @@ function KitchenInventoryPair({
               {rental.length > 0 ? (
                 <button
                   type="button"
-                  className="mt-0 inline-flex items-center gap-0.5 text-sm font-medium text-[#F51042] hover:text-[#d10e39]"
+                  className="mt-0 inline-flex items-center gap-0.5 text-sm font-medium text-[#E10939] hover:text-[#c90832]"
                   onClick={() => setEquipmentSectionModal("rental")}
                 >
                   {t("showAllDescription", "Show all")}
@@ -1118,7 +1118,7 @@ function KitchenInventoryPair({
             <DialogTitle className="flex items-center gap-2">
               <Icon
                 icon="mdi:warehouse"
-                className="h-4 w-4 shrink-0 text-[#F51042]"
+                className="h-4 w-4 shrink-0 text-[#E10939]"
                 aria-hidden
               />
               {t("storageExplainTitle", "Storage options")}
@@ -1133,7 +1133,7 @@ function KitchenInventoryPair({
           <div className="flex flex-col gap-2 text-sm">
             <button
               type="button"
-              className="self-start font-medium text-foreground underline underline-offset-2 hover:text-[#F51042]"
+              className="self-start font-medium text-foreground underline underline-offset-2 hover:text-[#E10939]"
               onClick={() => {
                 setExplainOpen(null);
                 setTermsOpen(true);
@@ -1247,12 +1247,12 @@ function previewDockTourCtaClass(  kind: "request" | "pending" | "confirmed" | "
   }
   if (pairedWithApply) {
     return cn(
-      "border-[#F51042]/45 bg-white text-[#F51042] hover:bg-[#FFF8F5] hover:text-[#F51042]",
+      "border-[#E10939]/45 bg-white text-[#E10939] hover:bg-[#FFF8F5] hover:text-[#E10939]",
       PREMIUM_CTA_SHADOW
     );
   }
   return cn(
-    "border-transparent bg-[#F51042] text-white hover:bg-[#E00A38] hover:text-white",
+    "border-transparent bg-[#E10939] text-white hover:bg-[#C90832] hover:text-white",
     PREMIUM_PRIMARY_SHADOW
   );
 }
@@ -1346,7 +1346,7 @@ function RateHoursFacts({ kitchenId }: { kitchenId: number }) {
             {isLoading ? t("scheduleLoading", "Loading hours…") : isError ? t("scheduleUnavailable", "Hours unavailable") : statusDetail}
           </span>
         </div>
-        {schedule && <button type="button" onClick={() => setModalOpen(true)} className="inline-flex min-h-8 shrink-0 items-center gap-1 text-sm font-semibold text-[#F51042] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042]">
+        {schedule && <button type="button" onClick={() => setModalOpen(true)} className="inline-flex min-h-8 shrink-0 items-center gap-1 text-sm font-semibold text-[#E10939] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E10939]">
           {t("viewFullSchedule", "View full schedule")} <PreviewIcon icon="mdi:chevron-right" size={16} />
         </button>}
       </div>
@@ -1365,8 +1365,8 @@ function RateHoursFacts({ kitchenId }: { kitchenId: number }) {
               const date = scheduleDateKey(today, offset);
               const day = byDate.get(date);
               const weekday = scheduleDate(date, 0).getUTCDay();
-              return <div key={date} aria-current={offset === 0 ? "date" : undefined} aria-label={`${t(DAY_LABELS[weekday])}, ${shortDate(date)}: ${day?.isOpen ? t("scheduleOpen", "Open") : t("scheduleClosed", "Closed")}`} className={cn("flex min-w-0 flex-col items-center rounded-lg border bg-white px-0.5 py-2 text-center sm:px-2", offset === 0 ? "border-[#F51042] bg-[#FFF8F5]" : "border-gray-200")}>
-                <span className={cn("w-full truncate text-[11px] font-medium sm:text-xs", offset === 0 ? "text-[#F51042]" : "text-gray-600")}>{t(DAY_SHORT[weekday])}</span>
+              return <div key={date} aria-current={offset === 0 ? "date" : undefined} aria-label={`${t(DAY_LABELS[weekday])}, ${shortDate(date)}: ${day?.isOpen ? t("scheduleOpen", "Open") : t("scheduleClosed", "Closed")}`} className={cn("flex min-w-0 flex-col items-center rounded-lg border bg-white px-0.5 py-2 text-center sm:px-2", offset === 0 ? "border-[#E10939] bg-[#FFF8F5]" : "border-gray-200")}>
+                <span className={cn("w-full truncate text-[11px] font-medium sm:text-xs", offset === 0 ? "text-[#E10939]" : "text-gray-600")}>{t(DAY_SHORT[weekday])}</span>
                 <span className="mt-0.5 text-sm font-semibold tabular-nums text-gray-900 sm:text-base">{scheduleDate(date, 0).getUTCDate()}</span>
                 <span className={cn("mt-0.5 w-full truncate text-[11px] sm:text-xs", day?.isOpen ? "font-medium text-gray-700" : "text-gray-500")}>{day?.isOpen ? t("scheduleOpen", "Open") : t("scheduleClosed", "Closed")}</span>
               </div>;
@@ -1386,7 +1386,7 @@ function RateHoursFacts({ kitchenId }: { kitchenId: number }) {
                 const day = byDate.get(date);
                 const weekday = scheduleDate(date, 0).getUTCDay();
                 return <div key={date} className={cn("flex items-center justify-between gap-4 py-2.5 text-sm", date === today && "font-semibold")}>
-                  <span className="flex items-center gap-2 text-gray-900">{t(DAY_LABELS[weekday])} <span className="text-xs font-normal text-gray-500">{shortDate(date)}</span>{date === today && <span className="rounded-full bg-[#FFF1F3] px-2 py-0.5 text-xs font-semibold text-[#F51042]">{t("scheduleToday", "Today")}</span>}</span>
+                  <span className="flex items-center gap-2 text-gray-900">{t(DAY_LABELS[weekday])} <span className="text-xs font-normal text-gray-500">{shortDate(date)}</span>{date === today && <span className="rounded-full bg-[#FFF1F3] px-2 py-0.5 text-xs font-semibold text-[#E10939]">{t("scheduleToday", "Today")}</span>}</span>
                   <span className={cn("text-right tabular-nums", day?.isOpen ? "text-gray-900" : "text-gray-500")}>{day?.isOpen ? <>{formatHourLabel(day.startTime!)} – {formatHourLabel(day.endTime!)}{scheduleMinutes(day.endTime!) <= scheduleMinutes(day.startTime!) ? <span className="block text-xs font-normal text-gray-500">{t("scheduleNextDay", "Next day")}</span> : null}</> : t("scheduleClosed", "Closed")}</span>
                 </div>;
               })}
@@ -1465,7 +1465,7 @@ function ThingsToKnowSection({
             className="flex flex-col py-4 first:pt-0 last:pb-0 sm:px-5 sm:py-0 first:sm:pl-0 last:sm:pr-0"
           >
             <div className="flex items-center gap-2">
-              <PreviewIcon icon={col.icon} size={16} className="text-[#F51042]" />
+              <PreviewIcon icon={col.icon} size={16} className="text-[#E10939]" />
               <h3 className="text-sm font-semibold text-gray-900">{col.title}</h3>
             </div>
             <div className="mt-1.5 flex-1 text-sm leading-relaxed text-gray-600">{col.id === 'cancellation' && kitchenId ? <PublishedCancellationPolicySummary kitchenId={kitchenId} /> : col.body}</div>
@@ -1473,7 +1473,7 @@ function ThingsToKnowSection({
               <button
                 type="button"
                 onClick={() => setPolicyOpen(true)}
-                className="mt-2 self-start text-sm font-medium text-gray-900 underline underline-offset-2 hover:text-[#F51042]"
+                className="mt-2 self-start text-sm font-medium text-gray-900 underline underline-offset-2 hover:text-[#E10939]"
               >
                 {col.linkLabel}
               </button>
@@ -1481,14 +1481,14 @@ function ThingsToKnowSection({
               <button
                 type="button"
                 onClick={() => setTermsOpen(true)}
-                className="mt-2 self-start text-sm font-medium text-gray-900 underline underline-offset-2 hover:text-[#F51042]"
+                className="mt-2 self-start text-sm font-medium text-gray-900 underline underline-offset-2 hover:text-[#E10939]"
               >
                 {col.linkLabel}
               </button>
             ) : (
               <a
                 href={"href" in col ? col.href : "#"}
-                className="mt-2 text-sm font-medium text-gray-900 underline underline-offset-2 hover:text-[#F51042]"
+                className="mt-2 text-sm font-medium text-gray-900 underline underline-offset-2 hover:text-[#E10939]"
               >
                 {col.linkLabel}
               </a>
@@ -2011,7 +2011,7 @@ function GuestHoursCard({
             className={cn(
               "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full",
               "text-muted-foreground/70 hover:bg-muted hover:text-muted-foreground",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042]/40"
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E10939]/40"
             )}
             aria-label={t("bookingAccessInfo", "More about this status")}
           >
@@ -2119,7 +2119,7 @@ function GuestHoursCard({
             className={cn(
               "flex min-w-0 flex-1 items-center gap-2 rounded-xl border px-3.5 py-2.5 transition-colors",
               dateNotAvailable
-                ? "border-[#F51042]/60 hover:border-[#F51042]"
+                ? "border-[#E10939]/60 hover:border-[#E10939]"
                 : "border-gray-300 hover:border-gray-400"
             )}
           >
@@ -2146,7 +2146,7 @@ function GuestHoursCard({
                 className="mt-0.5 w-full min-w-0 border-0 bg-transparent p-0 text-sm text-gray-900 outline-none focus-visible:ring-0"
               />
               {dateNotAvailable ? (
-                <span id="preview-date-unavailable" className="mt-0.5 block text-xs font-medium text-[#F51042]">
+                <span id="preview-date-unavailable" className="mt-0.5 block text-xs font-medium text-[#E10939]">
                   {t("dateNotAvailable", "Date is not available")}
                 </span>
               ) : null}
@@ -2167,7 +2167,7 @@ function GuestHoursCard({
               variant="ghost"
               size="sm"
               onClick={clearDates}
-              className="shrink-0 h-10 px-2 text-xs text-gray-500 hover:text-[#F51042]"
+              className="shrink-0 h-10 px-2 text-xs text-gray-500 hover:text-[#E10939]"
             >
               {t("clearDate", "Clear")}
             </Button>
@@ -2208,7 +2208,7 @@ function GuestHoursCard({
                   "text-gray-300 opacity-40 font-normal line-through decoration-gray-300/80 pointer-events-none",
                 cell: cn(
                   "text-center text-xs p-0 relative h-8 z-0",
-                  "[&:has([aria-selected])]:before:absolute [&:has([aria-selected])]:before:left-1/2 [&:has([aria-selected])]:before:top-1/2 [&:has([aria-selected])]:before:h-8 [&:has([aria-selected])]:before:w-8 [&:has([aria-selected])]:before:-translate-x-1/2 [&:has([aria-selected])]:before:-translate-y-1/2 [&:has([aria-selected])]:before:border-2 [&:has([aria-selected])]:before:border-[#F51042] [&:has([aria-selected])]:before:rounded-full [&:has([aria-selected])]:before:-z-10"
+                  "[&:has([aria-selected])]:before:absolute [&:has([aria-selected])]:before:left-1/2 [&:has([aria-selected])]:before:top-1/2 [&:has([aria-selected])]:before:h-8 [&:has([aria-selected])]:before:w-8 [&:has([aria-selected])]:before:-translate-x-1/2 [&:has([aria-selected])]:before:-translate-y-1/2 [&:has([aria-selected])]:before:border-2 [&:has([aria-selected])]:before:border-[#E10939] [&:has([aria-selected])]:before:rounded-full [&:has([aria-selected])]:before:-z-10"
                 ),
               }}
               disabled={(date) => {
@@ -2297,7 +2297,7 @@ function KitchenDetailsSection({
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
             <h2 className="text-lg sm:text-xl font-bold text-gray-900">{kitchen.name}</h2>
             {rateLabel && !hidePhotoCollage && (
-              <p className="text-base font-semibold text-[#F51042] shrink-0">{rateLabel}<span className="ml-2 text-xs font-normal text-muted-foreground">{bt("wfbPriceHint")}</span></p>
+              <p className="text-base font-semibold text-[#E10939] shrink-0">{rateLabel}<span className="ml-2 text-xs font-normal text-muted-foreground">{bt("wfbPriceHint")}</span></p>
             )}
           </div>
           {aboutCopy && isStacked && (
@@ -2331,7 +2331,7 @@ function KitchenDetailsSection({
           {locationAddress && (
             <div id="preview-location" className="rounded-2xl border border-gray-200 bg-white p-4 scroll-mt-32">
               <h3 className="mb-3 flex items-center gap-2 text-base font-semibold text-gray-900">
-                <PreviewIcon icon="mdi:map-marker" size={18} className="text-[#F51042]" />
+                <PreviewIcon icon="mdi:map-marker" size={18} className="text-[#E10939]" />
                 {t("whereItIs", "Location")}
               </h3>
               <LocationMap
@@ -2363,7 +2363,7 @@ function KitchenDetailsSection({
                   data-preview-tour="tab-equipment"
                   className="data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-t-lg rounded-b-none border-b-2 border-transparent data-[state=active]:border-primary px-4 py-2.5 text-sm font-medium"
                 >
-                  <PreviewIcon icon="mdi:pot-steam" size={16} className="mr-2 text-[#F51042]" />{t("equipment", "Equipment")}<Badge variant="count" className="ml-2">
+                  <PreviewIcon icon="mdi:pot-steam" size={16} className="mr-2 text-[#E10939]" />{t("equipment", "Equipment")}<Badge variant="count" className="ml-2">
                     {includedCount + rentalCount}
                   </Badge>
                 </TabsTrigger>
@@ -2374,7 +2374,7 @@ function KitchenDetailsSection({
                   data-preview-tour="tab-storage"
                   className="data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-t-lg rounded-b-none border-b-2 border-transparent data-[state=active]:border-primary px-4 py-2.5 text-sm font-medium"
                 >
-                  <PreviewIcon icon="mdi:warehouse" size={16} className="mr-2 text-[#F51042]" />{t("storage", "Storage")}<Badge variant="count" className="ml-2">
+                  <PreviewIcon icon="mdi:warehouse" size={16} className="mr-2 text-[#E10939]" />{t("storage", "Storage")}<Badge variant="count" className="ml-2">
                     {storageCount}
                   </Badge>
                 </TabsTrigger>
@@ -2396,7 +2396,7 @@ function KitchenDetailsSection({
                   {aboutCopy && (
                     <div>
                       <h3 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
-                        <PreviewIcon icon="mdi:file-document-outline" size={16} className="text-[#F51042]" />
+                        <PreviewIcon icon="mdi:file-document-outline" size={16} className="text-[#E10939]" />
                         {kitchen.description ? t("aboutThisKitchen") : t("aboutThisSpace")}
                       </h3>
                       <p className="text-[#6B6B6B] leading-relaxed whitespace-pre-wrap">
@@ -2408,7 +2408,7 @@ function KitchenDetailsSection({
                   {kitchen.availability && kitchen.availability.length > 0 && (
                     <div>
                       <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-                        <PreviewIcon icon="mdi:calendar" size={16} className="text-[#F51042]" />
+                        <PreviewIcon icon="mdi:calendar" size={16} className="text-[#E10939]" />
                         {t("weeklyAvailability")}
                       </h3>
                       <AvailabilityDisplay availability={kitchen.availability} />
@@ -2418,7 +2418,7 @@ function KitchenDetailsSection({
                   {locationAddress && (
                     <div className="pt-4 border-t border-border/50">
                       <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-                        <PreviewIcon icon="mdi:map-marker" size={16} className="text-[#F51042]" />
+                        <PreviewIcon icon="mdi:map-marker" size={16} className="text-[#E10939]" />
                         {t("location")}
                       </h3>
                       <LocationMap
@@ -2650,7 +2650,7 @@ function KitchenPreviewDockNav({
                 className={cn(
                   "shrink-0 whitespace-nowrap py-2 text-sm font-medium border-b-2 transition-colors duration-200",
                   isActive
-                    ? "border-[#F51042] text-gray-900"
+                    ? "border-[#E10939] text-gray-900"
                     : "border-transparent text-gray-500 hover:text-gray-900"
                 )}
               >
@@ -3283,7 +3283,7 @@ export default function KitchenPreviewPage() {
 
     const tourSurfaceClass =
       tourCta?.kind === "request"
-        ? cn("bg-[#F51042] text-white hover:bg-[#E00A38]", PREMIUM_PRIMARY_SHADOW)
+        ? cn("bg-[#E10939] text-white hover:bg-[#C90832]", PREMIUM_PRIMARY_SHADOW)
         : tourCta?.kind === "confirmed"
           ? cn(
               "border border-gray-200/90 bg-white text-gray-900 hover:bg-gray-50",
@@ -3326,7 +3326,7 @@ export default function KitchenPreviewPage() {
       tourCta?.kind === "request"
         ? "bg-white/20 text-white"
         : tourCta?.kind === "confirmed"
-          ? "bg-[#FFF1F3] text-[#F51042]"
+          ? "bg-[#FFF1F3] text-[#E10939]"
           : tourCta?.kind === "history"
             ? "bg-gray-100 text-gray-700"
           : tourCta?.kind === "loading"
@@ -3700,14 +3700,14 @@ export default function KitchenPreviewPage() {
                         className={cn(
                           "shrink-0 rounded-xl border px-3 py-2 text-left transition-colors",
                           selected
-                            ? "border-[#F51042] bg-[#FFF8F5] shadow-sm"
+                            ? "border-[#E10939] bg-[#FFF8F5] shadow-sm"
                             : "border-gray-200 bg-white hover:border-gray-300"
                         )}
                       >
                         <span
                           className={cn(
                             "block text-sm font-semibold",
-                            selected ? "text-[#F51042]" : "text-gray-900"
+                            selected ? "text-[#E10939]" : "text-gray-900"
                           )}
                         >
                           {kitchen.name}

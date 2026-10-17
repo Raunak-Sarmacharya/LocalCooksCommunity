@@ -131,7 +131,7 @@ export function KitchenGridCard({
           </TruncatedText>
           <span
             className={cn(
-              "min-w-0 break-words tabular-nums text-sm font-bold leading-snug text-[#F51042] sm:shrink-0",
+              "min-w-0 break-words tabular-nums text-sm font-bold leading-snug text-[#E10939] sm:shrink-0",
               !price && "invisible"
             )}
             aria-hidden={!price}

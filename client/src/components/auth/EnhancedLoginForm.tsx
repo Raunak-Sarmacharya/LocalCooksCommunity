@@ -339,7 +339,7 @@ export default function EnhancedLoginForm({
             aria-hidden
             className="flex h-16 w-16 items-center justify-center rounded-full bg-[#FCE3E9]"
           >
-            <Mail className="h-7 w-7 text-[#F51042]" />
+            <Mail className="h-7 w-7 text-[#E10939]" />
           </span>
         </div>
 
@@ -400,7 +400,7 @@ export default function EnhancedLoginForm({
               onClick={onUseDifferentEmail}
               // index.css forces min-height/min-width 44px on EVERY button, which would blow
               // this inline link out of its line.
-              className="!min-h-0 !min-w-0 font-medium text-[#E00A38] underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none"
+              className="!min-h-0 !min-w-0 font-medium text-[#C90832] underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none"
             >
               {t("useDifferentEmail", "Use a different email")}
             </button>
@@ -534,7 +534,7 @@ export default function EnhancedLoginForm({
                     <button
                       type="button"
                       onClick={() => switchChallenge("forgot-password")}
-                      className="text-sm text-[#F51042] hover:underline font-medium"
+                      className="text-sm text-[#E10939] hover:underline font-medium"
                       disabled={authState === "loading"}
                     >
                       {t("forgotPassword", "Forgot password?")}
@@ -576,7 +576,7 @@ export default function EnhancedLoginForm({
                 type="button"
                 onClick={() => switchChallenge("password")}
                 disabled={busy}
-                className="w-full rounded-full border border-gray-200 bg-white py-2 text-sm font-medium text-gray-700 transition-colors hover:border-[#F51042]/40 hover:bg-[#FFF7F9] hover:text-[#F51042] disabled:opacity-50"
+                className="w-full rounded-full border border-gray-200 bg-white py-2 text-sm font-medium text-gray-700 transition-colors hover:border-[#E10939]/40 hover:bg-[#FFF7F9] hover:text-[#E10939] disabled:opacity-50"
               >
                 {t("signInWithPassword", "Sign in with password")}
               </button>
@@ -585,7 +585,7 @@ export default function EnhancedLoginForm({
                 type="button"
                 onClick={() => switchChallenge("email-link")}
                 disabled={busy}
-                className="w-full rounded-full border border-gray-200 bg-white py-2 text-sm font-medium text-gray-700 transition-colors hover:border-[#F51042]/40 hover:bg-[#FFF7F9] hover:text-[#F51042] disabled:opacity-50"
+                className="w-full rounded-full border border-gray-200 bg-white py-2 text-sm font-medium text-gray-700 transition-colors hover:border-[#E10939]/40 hover:bg-[#FFF7F9] hover:text-[#E10939] disabled:opacity-50"
               >
                 {t("emailMeASignInLink", "Email me a sign-in link instead")}
               </button>
@@ -609,7 +609,7 @@ export default function EnhancedLoginForm({
               type="button"
               onClick={onTryAnotherWay}
               disabled={busy}
-              className="w-full text-sm font-medium text-[#E00A38] underline underline-offset-4 disabled:opacity-50"
+              className="w-full text-sm font-medium text-[#C90832] underline underline-offset-4 disabled:opacity-50"
             >
               {t("tryAnotherWay", "Try another way")}
             </motion.button>
@@ -621,7 +621,7 @@ export default function EnhancedLoginForm({
               <button
                 type="button"
                 onClick={onSwitchToRegister}
-                className="font-medium text-[#F51042] hover:underline"
+                className="font-medium text-[#E10939] hover:underline"
               >
                 {t("createAccountLink", "Create an account")}
               </button>
@@ -644,7 +644,7 @@ export default function EnhancedLoginForm({
                 onClick={onUseDifferentEmail}
                 // index.css forces min-height/min-width 44px on EVERY button, which would blow
                 // this inline link out of its line.
-                className="!min-h-0 !min-w-0 font-medium text-[#E00A38] underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none"
+                className="!min-h-0 !min-w-0 font-medium text-[#C90832] underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none"
               >
                 {t("useDifferentEmail", "Use a different email")}
               </button>

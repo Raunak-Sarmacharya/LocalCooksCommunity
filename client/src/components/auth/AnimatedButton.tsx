@@ -75,7 +75,7 @@ export default function AnimatedButton({
         // `loading` keeps the brand fill. It used to be excluded, so the button silently fell
         // back to the secondary style the moment work started — a washed-out pill under a
         // spinner, which reads as broken rather than busy.
-        variant === 'primary' && (state === 'idle' || state === 'loading') && "bg-[#F51042] text-white shadow-lg hover:bg-[#D90E3A] hover:shadow-xl",
+        variant === 'primary' && (state === 'idle' || state === 'loading') && "bg-[#E10939] text-white shadow-lg hover:bg-[#C90832] hover:shadow-xl",
         // …and the fade that `disabled` adds on top has to be undone for the same reason. The
         // attribute stays (it must not be clickable twice); the SPINNER is what says "working".
         state === 'loading' && "disabled:opacity-100",

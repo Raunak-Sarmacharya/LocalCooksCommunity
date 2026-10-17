@@ -158,7 +158,7 @@ function BrowseKitchenCard({
         className={cn(
           "flex h-full flex-col rounded-[26px] bg-white p-2 shadow-[0_1px_2px_rgba(80,0,20,0.08),0_24px_48px_-24px_rgba(80,0,20,0.45)] ring-1 ring-black/[0.04] transition-[transform,box-shadow] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover/card:-translate-y-1.5 group-hover/card:shadow-[0_1px_2px_rgba(80,0,20,0.08),0_36px_60px_-24px_rgba(80,0,20,0.55)]",
           highlighted &&
-            "-translate-y-1.5 shadow-[0_1px_2px_rgba(80,0,20,0.08),0_36px_60px_-24px_rgba(245,16,66,0.4)] ring-2 ring-[#F51042]/60"
+            "-translate-y-1.5 shadow-[0_1px_2px_rgba(80,0,20,0.08),0_36px_60px_-24px_rgba(245,16,66,0.4)] ring-2 ring-[#E10939]/60"
         )}
       >
         {/* Photo — inset, same radius family as the landing card */}
@@ -202,7 +202,7 @@ function BrowseKitchenCard({
           {rateLabel && (
             <span className="absolute right-3 top-3 z-10 inline-flex items-center gap-1 rounded-full bg-white/95 px-2.5 py-1 shadow-[0_4px_12px_-4px_rgba(0,0,0,0.3)] backdrop-blur">
               <span className="text-[0.72rem] font-medium text-[#5F5F5F]">{t("fromPrefix", "From")}</span>
-              <span className="text-[0.72rem] font-semibold text-[#F51042]">{rateLabel}</span>
+              <span className="text-[0.72rem] font-semibold text-[#E10939]">{rateLabel}</span>
             </span>
           )}
         </button>
@@ -210,12 +210,12 @@ function BrowseKitchenCard({
         {/* Details. Every line reserves its height whether or not it has content, and the
             actions sit on `mt-auto`, so a row of cards always lines up. */}
         <div className="flex flex-1 flex-col px-3 pb-3 pt-4 sm:px-4">
-          <h3 className="truncate text-[1.1rem] font-semibold tracking-[-0.01em] text-[#1F1F1F] transition-colors duration-300 group-hover/card:text-[#F51042]">
+          <h3 className="truncate text-[1.1rem] font-semibold tracking-[-0.01em] text-[#1F1F1F] transition-colors duration-300 group-hover/card:text-[#E10939]">
             {kitchen.name}
           </h3>
 
           <div className="mt-1.5 flex min-w-0 items-center gap-1.5">
-            <Icon icon="mdi:map-marker-outline" className="h-4 w-4 shrink-0 text-[#F51042]" aria-hidden />
+            <Icon icon="mdi:map-marker-outline" className="h-4 w-4 shrink-0 text-[#E10939]" aria-hidden />
             <p className="min-w-0 truncate text-[0.86rem] text-[#5F5F5F]">
               {kitchen.address?.trim() || "\u00a0"}
             </p>
@@ -244,10 +244,10 @@ function BrowseKitchenCard({
                 disabled={primaryDisabled}
                 onClick={onPrimaryAction}
                 className={cn(
-                  "group/btn inline-flex h-11 w-full items-center justify-center gap-2 rounded-full px-5 text-[0.9rem] font-semibold transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042] focus-visible:ring-offset-2",
+                  "group/btn inline-flex h-11 w-full items-center justify-center gap-2 rounded-full px-5 text-[0.9rem] font-semibold transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E10939] focus-visible:ring-offset-2",
                   primaryDisabled
                     ? "cursor-not-allowed bg-[#2C2C2C]/10 text-[#6B6B6B]"
-                    : "bg-[#F51042] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_8px_18px_-10px_rgba(245,16,66,0.8)] hover:bg-[#E30D3C]"
+                    : "bg-[#E10939] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_8px_18px_-10px_rgba(245,16,66,0.8)] hover:bg-[#C90832]"
                 )}
               >
                 <Icon icon={ACTION_ICON[action.kind]} className="h-4 w-4" aria-hidden />
@@ -266,10 +266,10 @@ function BrowseKitchenCard({
                 type="button"
                 onClick={onViewDetails}
                 className={cn(
-                  "group/btn inline-flex h-11 w-full items-center justify-center gap-2 rounded-full px-5 text-[0.9rem] font-semibold transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042] focus-visible:ring-offset-2",
+                  "group/btn inline-flex h-11 w-full items-center justify-center gap-2 rounded-full px-5 text-[0.9rem] font-semibold transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E10939] focus-visible:ring-offset-2",
                   action.kind === "guest"
-                    ? "bg-[#F51042] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_8px_18px_-10px_rgba(245,16,66,0.8)] hover:bg-[#E30D3C]"
-                    : "text-[#5F5F5F] hover:text-[#F51042]"
+                    ? "bg-[#E10939] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_8px_18px_-10px_rgba(245,16,66,0.8)] hover:bg-[#C90832]"
+                    : "text-[#5F5F5F] hover:text-[#E10939]"
                 )}
               >
                 {t("viewDetails", "View Details")}
@@ -295,7 +295,7 @@ function CardSkeleton() {
         <div className="h-5 w-2/3 animate-pulse rounded bg-[#2C2C2C]/8" />
         <div className="h-4 w-full animate-pulse rounded bg-[#2C2C2C]/6" />
         <div className="h-4 w-1/2 animate-pulse rounded bg-[#2C2C2C]/6" />
-        <div className="h-11 w-full animate-pulse rounded-full bg-[#F51042]/12 pt-2" />
+        <div className="h-11 w-full animate-pulse rounded-full bg-[#E10939]/12 pt-2" />
       </div>
     </div>
   );
@@ -307,7 +307,7 @@ function MapPanelSkeleton() {
       <div className="absolute inset-0 animate-pulse bg-[#2C2C2C]/4" />
       <div className="absolute inset-0 flex items-center justify-center">
         <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white shadow-sm ring-1 ring-[#2C2C2C]/8">
-          <MapIcon className="h-5 w-5 animate-pulse text-[#F51042]" />
+          <MapIcon className="h-5 w-5 animate-pulse text-[#E10939]" />
         </div>
       </div>
     </div>
@@ -542,7 +542,7 @@ export default function KitchenComparisonPage() {
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder={t("searchKitchensPlaceholder", "Search by name, address, or amenity…")}
-                    className="h-10 rounded-full border-[#2C2C2C]/12 bg-white pl-10 pr-4 text-sm shadow-[0_2px_12px_rgba(44,44,44,0.06)] focus-visible:ring-[#F51042]/30"
+                    className="h-10 rounded-full border-[#2C2C2C]/12 bg-white pl-10 pr-4 text-sm shadow-[0_2px_12px_rgba(44,44,44,0.06)] focus-visible:ring-[#E10939]/30"
                     aria-label={t("searchKitchensAria", "Search kitchens")}
                   />
                 </div>
@@ -565,7 +565,7 @@ export default function KitchenComparisonPage() {
                     <Button
                       variant="ghost"
                       onClick={() => navigate("/dashboard")}
-                      className="px-0 text-[#6B6B6B] hover:bg-transparent hover:text-[#F51042]"
+                      className="px-0 text-[#6B6B6B] hover:bg-transparent hover:text-[#E10939]"
                     >
                       <ArrowLeft className="mr-2 h-4 w-4" />
                       {t("backToDashboard")}
@@ -585,7 +585,7 @@ export default function KitchenComparisonPage() {
                   <h1 className="mb-3 text-2xl font-bold leading-tight text-[#1A1A1A] sm:text-4xl">
                     {t("discoverHeadingPlain", "Discover kitchens")}{" "}
                     <span className="relative inline-block">
-                      <span className="bg-gradient-to-r from-[#F51042] via-[#E8103A] to-[#FF6B7A] bg-clip-text text-transparent">
+                      <span className="bg-gradient-to-r from-[#E10939] via-[#E8103A] to-[#FF6B7A] bg-clip-text text-transparent">
                         {t("discoverHeadingAccent", "near you")}
                       </span>
                     </span>
@@ -606,7 +606,7 @@ export default function KitchenComparisonPage() {
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       placeholder={t("searchKitchensPlaceholder", "Search by name, address, or amenity…")}
-                      className="h-12 rounded-xl border-[#2C2C2C]/10 bg-[#FFF8F5]/50 pl-10 text-sm focus-visible:ring-[#F51042]/30"
+                      className="h-12 rounded-xl border-[#2C2C2C]/10 bg-[#FFF8F5]/50 pl-10 text-sm focus-visible:ring-[#E10939]/30"
                       aria-label={t("searchKitchensAria", "Search kitchens")}
                     />
                   </div>
@@ -648,8 +648,8 @@ export default function KitchenComparisonPage() {
               ) : (
                 <FadeInSection>
                   <div className="mx-auto max-w-md rounded-2xl border border-[#2C2C2C]/8 bg-white px-8 py-14 text-center shadow-sm">
-                    <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#F51042]/10">
-                      <Building2 className="h-7 w-7 text-[#F51042]" />
+                    <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#E10939]/10">
+                      <Building2 className="h-7 w-7 text-[#E10939]" />
                     </div>
                     <h2 className="mb-2 text-xl font-bold text-[#1A1A1A]">
                       {searchQuery.trim() ? t("noMatchesFound", "No matches found") : t("kitchensComingSoon", "Kitchens coming soon")}
@@ -660,7 +660,7 @@ export default function KitchenComparisonPage() {
                     {searchQuery.trim() && (
                       <Button
                         variant="outline"
-                        className="mt-6 rounded-full border-[#F51042]/30 text-[#F51042] hover:bg-[#F51042]/5"
+                        className="mt-6 rounded-full border-[#E10939]/30 text-[#E10939] hover:bg-[#E10939]/5"
                         onClick={() => setSearchQuery("")}
                       >
                         {t("clearSearch")}
@@ -674,15 +674,15 @@ export default function KitchenComparisonPage() {
               {!authLoading && !user && filteredKitchens.length > 0 && (
                 <FadeInSection delay={1}>
                   <div className="mx-auto mt-12 max-w-lg rounded-2xl border border-[#2C2C2C]/8 bg-white p-6 text-center shadow-[0_8px_30px_rgba(44,44,44,0.05)] sm:p-8">
-                    <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-[#F51042]/10">
-                      <Lock className="h-4 w-4 text-[#F51042]" />
+                    <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-[#E10939]/10">
+                      <Lock className="h-4 w-4 text-[#E10939]" />
                     </div>
                     <p className="mb-1 text-sm font-semibold text-[#1A1A1A]">{t("readyToBookKitchen", "Ready to book a kitchen?")}</p>
                     <p className="mb-5 text-pretty text-xs leading-relaxed text-[#6B6B6B] sm:text-sm">
                       {t("readyToBookKitchenDesc", "Create a free account to reserve your slot.")}
                     </p>
                     <Button
-                      className="w-full rounded-full bg-[#F51042] font-semibold text-white hover:bg-[#D90E3A] sm:w-auto sm:px-8"
+                      className="w-full rounded-full bg-[#E10939] font-semibold text-white hover:bg-[#C90832] sm:w-auto sm:px-8"
                       onClick={() => navigate("/auth?redirect=/compare-kitchens")}
                     >
                       {t("createFreeAccount", "Create Free Account")}
@@ -693,7 +693,7 @@ export default function KitchenComparisonPage() {
                       <button
                         type="button"
                         onClick={() => navigate("/auth?redirect=/compare-kitchens")}
-                        className="font-medium text-[#F51042] hover:underline"
+                        className="font-medium text-[#E10939] hover:underline"
                       >
                         {t("logIn")}
                       </button>

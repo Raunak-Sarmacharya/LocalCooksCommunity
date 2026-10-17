@@ -385,7 +385,7 @@ export function KitchenBookingPreferencesPanel({
     <div className={cn("relative", journeyCalendarContainer, !wide && "mx-auto max-w-[300px]")}>
       {availabilityLoading && (
         <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-white/60">
-          <Loader2 className="h-5 w-5 animate-spin text-[#F51042]" />
+          <Loader2 className="h-5 w-5 animate-spin text-[#E10939]" />
         </div>
       )}
       <UICalendar
@@ -412,7 +412,7 @@ export function KitchenBookingPreferencesPanel({
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="font-semibold text-sm text-gray-900 flex items-center gap-2">
-            <Calendar className="h-4 w-4 text-[#F51042]" />
+            <Calendar className="h-4 w-4 text-[#E10939]" />
             {t("selectYourDate", "Select your date")}
           </p>
           {kitchenName && <p className="text-xs text-muted-foreground mt-1">{kitchenName}</p>}
@@ -420,7 +420,7 @@ export function KitchenBookingPreferencesPanel({
         {!readOnly && selectedDate && (
           <button
             type="button"
-            className="shrink-0 text-xs font-medium text-gray-500 hover:text-[#F51042]"
+            className="shrink-0 text-xs font-medium text-gray-500 hover:text-[#E10939]"
             onClick={clearDates}
           >
             {t("clearDate", "Clear date")}
@@ -503,13 +503,13 @@ export function KitchenBookingPreferencesPanel({
       <div className="space-y-3">
         <div className="flex items-center justify-between gap-2">
           <p className="font-semibold text-sm text-gray-900 flex items-center gap-2">
-            <Clock className="h-4 w-4 text-[#F51042]" />
+            <Clock className="h-4 w-4 text-[#E10939]" />
             {t("preferredTimeSlots", "Preferred time slots")}
           </p>
           {!readOnly && (
             <button
               type="button"
-              className="text-xs font-medium text-[#F51042]"
+              className="text-xs font-medium text-[#E10939]"
               onClick={() => {
                 if (onRequestDateStep) onRequestDateStep();
                 else clearDates();
@@ -534,13 +534,13 @@ export function KitchenBookingPreferencesPanel({
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-2">
           <p className="font-semibold text-sm text-gray-900 flex items-center gap-2">
-            <Calendar className="h-4 w-4 text-[#F51042]" />
+            <Calendar className="h-4 w-4 text-[#E10939]" />
             {t("selectYourDate", "Select your date")}
           </p>
           {!readOnly && selectedDate && (
             <button
               type="button"
-              className="text-xs font-medium text-[#F51042] hover:underline"
+              className="text-xs font-medium text-[#E10939] hover:underline"
               onClick={() => (calendarOpen ? clearDates() : setCalendarOpen(true))}
             >
               {calendarOpen
@@ -559,7 +559,7 @@ export function KitchenBookingPreferencesPanel({
       {primaryDate && (
         <div className="space-y-2">
           <p className="font-semibold text-sm text-gray-900 flex items-center gap-2">
-            <Clock className="h-4 w-4 text-[#F51042]" />
+            <Clock className="h-4 w-4 text-[#E10939]" />
             {t("preferredTimeSlots", "Preferred time slots")}
           </p>
           {slotsPickerBody}

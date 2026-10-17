@@ -366,7 +366,7 @@ export function SpotlightWalkthrough({
                 key={item.id}
                 className={
                   index === stepIndex
-                    ? "h-1.5 w-1.5 rounded-full bg-[#F51042]"
+                    ? "h-1.5 w-1.5 rounded-full bg-[#E10939]"
                     : "h-1.5 w-1.5 rounded-full bg-gray-300"
                 }
               />

@@ -125,7 +125,7 @@ export default {
           light: "#6B6B6B",
         },
         brand: {
-          primary: "#F51042",
+          primary: "#E10939",
           accent: "#6B4A4F",
           text: "#333333",
           link: "#6B4A4F",

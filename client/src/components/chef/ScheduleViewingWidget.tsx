@@ -694,8 +694,8 @@ export function ScheduleViewingWidget({
     <KitchenJourneyAuth title="Verify your email to continue" subject="tour request" />
   ) : (
     <div className="space-y-4">
-      <div className="rounded-[1.35rem] border-2 border-[#F51042]/30 bg-[#F51042]/5 p-5 text-center space-y-3">
-        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#F51042] text-white">
+      <div className="rounded-[1.35rem] border-2 border-[#E10939]/30 bg-[#E10939]/5 p-5 text-center space-y-3">
+        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#E10939] text-white">
           <Mail className="h-6 w-6" aria-hidden />
         </div>
         <p className="text-lg font-bold text-gray-900 leading-snug">
@@ -703,7 +703,7 @@ export function ScheduleViewingWidget({
         </p>
         <ol className="text-left text-sm text-gray-800 space-y-2 max-w-sm mx-auto">
           <li className="flex gap-2">
-            <span className="font-bold text-[#F51042] shrink-0">1.</span>
+            <span className="font-bold text-[#E10939] shrink-0">1.</span>
             <span>
               {t("applyVerifyStep1", "Open the email from Local Cooks")}
               {user?.email ? (
@@ -716,13 +716,13 @@ export function ScheduleViewingWidget({
             </span>
           </li>
           <li className="flex gap-2">
-            <span className="font-bold text-[#F51042] shrink-0">2.</span>
+            <span className="font-bold text-[#E10939] shrink-0">2.</span>
             <span>
               {t("applyVerifyStep2", "Click the “Verify my email” button in that email")}
             </span>
           </li>
           <li className="flex gap-2">
-            <span className="font-bold text-[#F51042] shrink-0">3.</span>
+            <span className="font-bold text-[#E10939] shrink-0">3.</span>
             <span>{t("applyVerifyStep3", "Come back here and tap Continue below")}</span>
           </li>
         </ol>
@@ -732,7 +732,7 @@ export function ScheduleViewingWidget({
       </div>
       {verifyError && <p className="text-sm text-red-600 text-center">{verifyError}</p>}
       <Button
-        className="w-full bg-[#F51042] hover:bg-[#E00A38] text-white"
+        className="w-full bg-[#E10939] hover:bg-[#C90832] text-white"
         onClick={() => void handleCheckVerified()}
         disabled={isCheckingVerification}
       >
@@ -840,7 +840,7 @@ export function ScheduleViewingWidget({
       </div>
 
       <Button
-        className="w-full bg-[#F51042] hover:bg-[#E00A38] text-white"
+        className="w-full bg-[#E10939] hover:bg-[#C90832] text-white"
         size="lg"
         data-testid="tour-request-submit"
         // Left enabled for unverified users so the guard can explain the refusal
@@ -906,7 +906,7 @@ export function ScheduleViewingWidget({
 
       <div className="flex flex-col gap-2 pt-1">
         <Button
-          className="w-full bg-[#F51042] hover:bg-[#E00A38] text-white"
+          className="w-full bg-[#E10939] hover:bg-[#C90832] text-white"
           onClick={() => {
             onClose?.();
             setLocation(chefDashboardHref("viewings"));
@@ -1004,7 +1004,7 @@ export function ScheduleViewingWidget({
           <div className="hidden lg:flex lg:w-5/12 shrink-0 flex-col p-8 border-r border-gray-100 bg-[#F8F9FA] overflow-hidden">
             <DialogHeader className="text-left space-y-4">
               <DialogTitle className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-                <KitchenTour className="h-5 w-5 text-[#F51042] shrink-0" />
+                <KitchenTour className="h-5 w-5 text-[#E10939] shrink-0" />
                 {guidedChrome.title}
               </DialogTitle>
               <DialogDescription asChild>

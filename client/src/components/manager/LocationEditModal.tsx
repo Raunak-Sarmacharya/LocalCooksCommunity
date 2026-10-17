@@ -288,7 +288,7 @@ export default function LocationEditModal({
               />
             ) : (
               <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-[#FFE8DD] to-[#FFD4C4] flex items-center justify-center">
-                <Building2 className="w-6 h-6 text-[#F51042]" />
+                <Building2 className="w-6 h-6 text-[#E10939]" />
               </div>
             )}
             <div>
@@ -534,7 +534,7 @@ export default function LocationEditModal({
                         </p>
                         <AuthenticatedDocumentLink
                           url={location.kitchenLicenseUrl || `/api/files/kitchen-license/manager/${location.id}`}
-                          className="text-sm text-[#F51042] hover:underline inline-flex items-center gap-1"
+                          className="text-sm text-[#E10939] hover:underline inline-flex items-center gap-1"
                         >
                           <FileText className="w-4 h-4" />{mt("viewUploadedLicense")}</AuthenticatedDocumentLink>
                       </div>

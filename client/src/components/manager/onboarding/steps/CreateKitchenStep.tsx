@@ -110,7 +110,7 @@ function ListingSummary({
               * hourly leads, because that is the default booking mode.
               */}
             {hourly ? (
-              <span className="tabular-nums font-bold text-[#F51042]">{hourly}/hr</span>
+              <span className="tabular-nums font-bold text-[#E10939]">{hourly}/hr</span>
             ) : null}
             {hourly && daily ? (
               <span className="text-muted-foreground/50" aria-hidden>·</span>
@@ -118,7 +118,7 @@ function ListingSummary({
             {daily ? (
               <span className={cn(
                 "tabular-nums",
-                hourly ? "font-medium text-foreground" : "font-bold text-[#F51042]",
+                hourly ? "font-medium text-foreground" : "font-bold text-[#E10939]",
               )}>
                 {daily}/day
               </span>

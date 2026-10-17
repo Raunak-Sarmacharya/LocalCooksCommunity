@@ -59,7 +59,7 @@ export function CancellationPolicyDialog({
           <DialogTitle className="flex items-center gap-2">
             <Icon
               icon="mdi:shield-check-outline"
-              className="h-4 w-4 shrink-0 text-[#F51042]"
+              className="h-4 w-4 shrink-0 text-[#E10939]"
               aria-hidden
             />
             {t("sheetCancellationPolicyTitle", "Cancellation policy")}
@@ -102,7 +102,7 @@ export function KitchenTermsDialog({
           <DialogTitle className="flex items-center gap-2">
             <Icon
               icon="mdi:file-document-outline"
-              className="h-4 w-4 shrink-0 text-[#F51042]"
+              className="h-4 w-4 shrink-0 text-[#E10939]"
               aria-hidden
             />
             {t("thingsToKnowTermsTitle", "Kitchen terms & policies")}
@@ -120,7 +120,7 @@ export function KitchenTermsDialog({
             <a
               href={termsHref || "/terms"}
               {...(hasUpload ? { target: "_blank", rel: "noopener noreferrer" } : {})}
-              className="font-medium text-foreground underline underline-offset-2 hover:text-[#F51042]"
+              className="font-medium text-foreground underline underline-offset-2 hover:text-[#E10939]"
             >
               {hasUpload
                 ? t("thingsToKnowViewTerms", "View kitchen terms")

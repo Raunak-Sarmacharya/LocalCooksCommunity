@@ -23,7 +23,7 @@ export default function CookieConsentBanner() {
       aria-labelledby="cookie-consent-title"
       aria-describedby="cookie-consent-description"
     >
-      <div className="mb-2 h-1 w-6 rounded-full bg-[#f51042]" aria-hidden="true" />
+      <div className="mb-2 h-1 w-6 rounded-full bg-[#e10939]" aria-hidden="true" />
       <h2
         id="cookie-consent-title"
         className="font-figtree text-sm font-bold tracking-[-0.025em]"
@@ -37,7 +37,7 @@ export default function CookieConsentBanner() {
         {t("cookieConsent.description")}{" "}
         <a
           href="/privacy"
-          className="font-semibold text-[#282321] underline decoration-[#f51042]/50 underline-offset-4 transition-colors hover:text-[#f51042] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f51042] focus-visible:ring-offset-2"
+          className="font-semibold text-[#282321] underline decoration-[#e10939]/50 underline-offset-4 transition-colors hover:text-[#e10939] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#e10939] focus-visible:ring-offset-2"
         >
           {t("cookieConsent.privacyLink")}
         </a>
@@ -46,14 +46,14 @@ export default function CookieConsentBanner() {
         <button
           type="button"
           onClick={() => choose("rejected")}
-          className="group inline-flex items-center justify-center border border-[#2C2C2C]/20 text-[#2C2C2C] hover:border-[#F51042] hover:text-[#F51042] hover:bg-[#F51042]/5 font-medium py-1.5 px-4 text-[10px] sm:text-[11px] rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f51042] focus-visible:ring-offset-2 bg-transparent"
+          className="group inline-flex items-center justify-center border border-[#2C2C2C]/20 text-[#2C2C2C] hover:border-[#E10939] hover:text-[#E10939] hover:bg-[#E10939]/5 font-medium py-1.5 px-4 text-[10px] sm:text-[11px] rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#e10939] focus-visible:ring-offset-2 bg-transparent"
         >
           {t("cookieConsent.reject")}
         </button>
         <button
           type="button"
           onClick={() => choose("accepted")}
-          className="group inline-flex items-center justify-center bg-[#F51042] hover:bg-[#D90E3A] text-white font-medium py-1.5 px-4 text-[10px] sm:text-[11px] rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f51042] focus-visible:ring-offset-2"
+          className="group inline-flex items-center justify-center bg-[#E10939] hover:bg-[#C90832] text-white font-medium py-1.5 px-4 text-[10px] sm:text-[11px] rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#e10939] focus-visible:ring-offset-2"
         >
           {t("cookieConsent.accept")}
         </button>

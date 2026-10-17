@@ -109,7 +109,7 @@ export default function EmailVerificationScreen({
           aria-hidden
           className="flex h-16 w-16 items-center justify-center rounded-full bg-[#FCE3E9]"
         >
-          <Mail className="h-7 w-7 text-[#F51042]" />
+          <Mail className="h-7 w-7 text-[#E10939]" />
         </span>
       </motion.div>
 
@@ -145,7 +145,7 @@ export default function EmailVerificationScreen({
               }
             }}
             disabled={isChecking || isLeaving}
-            className="w-full bg-[#E00A38] text-white hover:bg-[#C00930]"
+            className="w-full bg-[#C90832] text-white hover:bg-[#C00930]"
           >
             {isChecking ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -210,7 +210,7 @@ export default function EmailVerificationScreen({
         }
       >
         {resendCount > 0 && (
-          <p className="font-medium text-[#E00A38]">
+          <p className="font-medium text-[#C90832]">
             {isMagicLink ? "Sign-in link" : "Verification email"} sent again.
           </p>
         )}
@@ -238,7 +238,7 @@ export default function EmailVerificationScreen({
           disabled={isLeaving || isChecking}
           // index.css forces min-height/min-width 44px on EVERY button, which
           // would blow this inline link out of its line.
-          className="!min-h-0 !min-w-0 font-medium text-[#E00A38] underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none"
+          className="!min-h-0 !min-w-0 font-medium text-[#C90832] underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none"
         >
           Use a different email
         </button>

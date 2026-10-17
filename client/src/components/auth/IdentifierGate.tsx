@@ -129,7 +129,7 @@ export default function IdentifierGate({
         <Button
           type="submit"
           disabled={busy}
-          className="w-full h-12 bg-[#E00A38] hover:bg-[#C00930] text-white text-base font-semibold rounded-xl"
+          className="w-full h-12 bg-[#C90832] hover:bg-[#C00930] text-white text-base font-semibold rounded-xl"
         >
           {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : t("btnContinue", "Continue")}
         </Button>

@@ -318,13 +318,13 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
           }
         },
         colors: {
-          primary: { main: '#F51042', light: '#FF5470', dark: '#C20D35', contrast: '#ffffff' },
+          primary: { main: '#E10939', light: '#FF5470', dark: '#C20D35', contrast: '#ffffff' },
           secondary: { main: '#000000', light: '#404040', dark: '#000000', contrast: '#ffffff' },
           accent: { main: '#f59e0b', light: '#fbbf24', dark: '#d97706', contrast: '#ffffff' },
           neutral: { main: '#6b7280', light: '#d1d5db', dark: '#374151', contrast: '#ffffff' },
           semantic: { success: '#16a34a', warning: '#f59e0b', error: '#dc2626', info: '#2563eb' },
           gradients: {
-            primary: 'linear-gradient(135deg, #F51042 0%, #FF5470 100%)',
+            primary: 'linear-gradient(135deg, #E10939 0%, #FF5470 100%)',
             secondary: 'linear-gradient(135deg, #000000 0%, #404040 100%)',
             accent: 'linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%)'
           }
@@ -338,7 +338,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
         },
         branding: {
           logoUrl: emailBrandLogo,
-          brandColors: ['#F51042', '#000000'],
+          brandColors: ['#E10939', '#000000'],
           fontFamily: 'Inter',
           tone: 'professional'
         }
@@ -390,7 +390,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
           title: 'Local Cooks',
           subtitle: 'Premium Quality Food',
           styling: {
-            backgroundColor: 'linear-gradient(135deg, #F51042 0%, #FF5470 100%)',
+            backgroundColor: 'linear-gradient(135deg, #E10939 0%, #FF5470 100%)',
             titleColor: '#ffffff',
             subtitleColor: '#ffffff',
             titleFontSize: '32px',
@@ -409,7 +409,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
           styling: {
             backgroundColor: '#f8fafc',
             textColor: '#64748b',
-            linkColor: '#F51042',
+            linkColor: '#E10939',
             fontSize: '14px',
             padding: '24px 32px',
             textAlign: 'center',
@@ -468,7 +468,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
         ...content.header,
         styling: {
           ...content.header.styling,
-          backgroundColor: 'linear-gradient(135deg, #F51042 0%, #FF5470 100%)' // Always enforce brand color
+          backgroundColor: 'linear-gradient(135deg, #E10939 0%, #FF5470 100%)' // Always enforce brand color
         }
       };
     }
@@ -616,7 +616,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
           text: currentDesign.content.buttonText || 'Get Started',
           url: currentDesign.content.orderUrl || 'https://localcooks.ca',
           styling: {
-            backgroundColor: '#F51042',
+            backgroundColor: '#E10939',
             color: '#ffffff',
             fontSize: '16px',
             fontWeight: '600',
@@ -720,7 +720,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
           text: content,
           url: currentDesign.content.orderUrl || 'https://localcooks.ca',
           styling: {
-            backgroundColor: '#F51042',
+            backgroundColor: '#E10939',
             color: '#ffffff',
             fontSize: '16px',
             fontWeight: '600',
@@ -840,7 +840,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
         text: currentDesign.content.sections?.['order-button']?.text || currentDesign.content.buttonText || currentDesign.content.orderButton?.text || '🌟 Get Started',
         url: currentDesign.content.sections?.['order-button']?.url || currentDesign.content.orderUrl || currentDesign.content.orderButton?.url || 'https://localcooks.ca',
         styling: {
-          backgroundColor: currentDesign.content.sections?.['order-button']?.styling?.backgroundColor || '#F51042',
+          backgroundColor: currentDesign.content.sections?.['order-button']?.styling?.backgroundColor || '#E10939',
           color: currentDesign.content.sections?.['order-button']?.styling?.color || '#ffffff',
           fontSize: '16px',
           fontWeight: '600',
@@ -1152,7 +1152,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                         <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
                           <div
                             className="w-full h-8 rounded-md border-2 border-red-300"
-                            style={{ background: 'linear-gradient(135deg, #F51042 0%, #FF5470 100%)' }}
+                            style={{ background: 'linear-gradient(135deg, #E10939 0%, #FF5470 100%)' }}
                           />
                           <p className="text-xs text-red-700 mt-2">
                             <strong>Brand Color:</strong> Header uses your Local Cooks brand color for consistent branding.
@@ -3054,8 +3054,8 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                   }`}
                 style={{
                   // Force brand color regardless of any other settings
-                  backgroundColor: '#F51042',
-                  backgroundImage: 'linear-gradient(135deg, #F51042 0%, #FF5470 100%)',
+                  backgroundColor: '#E10939',
+                  backgroundImage: 'linear-gradient(135deg, #E10939 0%, #FF5470 100%)',
                   backgroundSize: currentDesign.content.header?.styling?.backgroundSize || 'cover',
                   backgroundPosition: currentDesign.content.header?.styling?.backgroundPosition || 'center center',
                   backgroundRepeat: currentDesign.content.header?.styling?.backgroundRepeat || 'no-repeat',
@@ -3525,7 +3525,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                             <a
                               href={`mailto:${currentDesign.content.footer.contactText.split(' ').pop()}`}
                               style={{
-                                color: currentDesign.content.footer?.styling?.linkColor || '#F51042',
+                                color: currentDesign.content.footer?.styling?.linkColor || '#E10939',
                                 textDecoration: 'none'
                               }}
                             >

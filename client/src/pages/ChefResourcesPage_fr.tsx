@@ -512,13 +512,13 @@ export default function ChefResourcesPage_en_fr() {
           <main className="flex-1 min-w-0 max-w-3xl py-8 lg:py-12 lg:border-l lg:pl-10">
             {/* Compact hero — integrated into content flow */}
             <div className="mb-10">
-              <Badge variant="secondary" className="mb-4 bg-[#F51042] text-white hover:bg-[#F51042]/90 text-xs font-semibold tracking-wide px-3 py-1">
+              <Badge variant="secondary" className="mb-4 bg-[#E10939] text-white hover:bg-[#E10939]/90 text-xs font-semibold tracking-wide px-3 py-1">
                 <BookOpen className="h-3 w-3 mr-1.5" />
                 Guide de ressources du chef
               </Badge>
               <h1 className="text-2xl sm:text-3xl font-bold text-foreground mb-3 leading-tight">
                 {t("guideStartingLegal", "Your Guide to Starting a Legal")}{" "}
-                <span className="text-[#F51042]">{t("foodBusinessWord", "Food Business")}</span>{" "}
+                <span className="text-[#E10939]">{t("foodBusinessWord", "Food Business")}</span>{" "}
                 {t("inCanada", "in Canada")}
               </h1>
               <p className="text-muted-foreground text-sm sm:text-base leading-relaxed max-w-2xl mb-4">

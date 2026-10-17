@@ -76,7 +76,7 @@ const EnterpriseStepper = () => {
                     <div className="flex items-center gap-3">
                         <Logo variant="brand" className="h-10 w-auto" />
                         <div className="flex min-w-0 flex-col justify-center">
-                            <span className="font-logo text-lg leading-none text-[#F51042] tracking-tight font-normal">{mt("localCooks")}</span>
+                            <span className="font-logo text-lg leading-none text-[#E10939] tracking-tight font-normal">{mt("localCooks")}</span>
                             <span className="text-[10px] font-sans font-medium text-muted-foreground uppercase tracking-wider mt-0.5 leading-none">{mt("shellForKitchens")}</span>
                         </div>
                     </div>

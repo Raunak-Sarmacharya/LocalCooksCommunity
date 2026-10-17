@@ -59,7 +59,7 @@ export default function CustomerSupportButton() {
         disabled={isLoading}
         aria-expanded={menuOpen}
         aria-controls={menuId}
-        className="flex items-center gap-2.5 rounded-full bg-[#F51042] pl-3.5 pr-5 py-3 text-white shadow-[0_10px_28px_-8px_rgba(245,16,66,0.55)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#dc0e3b] hover:shadow-[0_14px_32px_-8px_rgba(245,16,66,0.65)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#F51042] active:translate-y-0 disabled:opacity-80 disabled:hover:translate-y-0"
+        className="flex items-center gap-2.5 rounded-full bg-[#E10939] pl-3.5 pr-5 py-3 text-white shadow-[0_10px_28px_-8px_rgba(245,16,66,0.55)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#dc0e3b] hover:shadow-[0_14px_32px_-8px_rgba(245,16,66,0.65)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E10939] active:translate-y-0 disabled:opacity-80 disabled:hover:translate-y-0"
       >
         <span className="flex h-9 w-9 items-center justify-center rounded-full bg-white/15">
           {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : menuOpen ? <X className="h-5 w-5" /> : <MessageCircle className="h-5 w-5" />}
@@ -82,9 +82,9 @@ export default function CustomerSupportButton() {
             type="button"
             onClick={handleChatClick}
             disabled={isLoading}
-            className="group flex w-full items-center gap-3 rounded-2xl px-3 py-3.5 text-left transition-colors hover:bg-rose-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#F51042] disabled:opacity-60"
+            className="group flex w-full items-center gap-3 rounded-2xl px-3 py-3.5 text-left transition-colors hover:bg-rose-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E10939] disabled:opacity-60"
           >
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-rose-50 text-[#F51042] group-hover:bg-white">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-rose-50 text-[#E10939] group-hover:bg-white">
               <MessageCircle className="h-5 w-5" />
             </span>
             <span className="min-w-0 flex-1">
@@ -98,9 +98,9 @@ export default function CustomerSupportButton() {
             target="_blank"
             rel="noopener noreferrer"
             onClick={() => setMenuOpen(false)}
-            className="group flex w-full items-center gap-3 rounded-2xl px-3 py-3.5 text-left transition-colors hover:bg-rose-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#F51042]"
+            className="group flex w-full items-center gap-3 rounded-2xl px-3 py-3.5 text-left transition-colors hover:bg-rose-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E10939]"
           >
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-rose-50 text-[#F51042] group-hover:bg-white">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-rose-50 text-[#E10939] group-hover:bg-white">
               <CalendarDays className="h-5 w-5" />
             </span>
             <span className="min-w-0 flex-1">

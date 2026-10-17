@@ -1126,7 +1126,7 @@ export default function EmailAction() {
 
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#FFFDFC] p-4 sm:p-8">
-      <div className="pointer-events-none absolute -left-28 -top-28 h-96 w-96 rounded-full bg-[#F51042]/[0.07] blur-3xl" />
+      <div className="pointer-events-none absolute -left-28 -top-28 h-96 w-96 rounded-full bg-[#E10939]/[0.07] blur-3xl" />
       <div className="pointer-events-none absolute -bottom-32 -right-24 h-96 w-96 rounded-full bg-amber-200/20 blur-3xl" />
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -1138,7 +1138,7 @@ export default function EmailAction() {
           <Logo className="h-12" />
         </div>
         <Card className="overflow-hidden rounded-[1.75rem] border border-slate-200/80 bg-white shadow-[0_24px_80px_-38px_rgba(15,23,42,0.32)]">
-          <div className="h-1.5 bg-gradient-to-r from-[#F51042] via-[#FF496C] to-[#F51042]" />
+          <div className="h-1.5 bg-gradient-to-r from-[#E10939] via-[#FF496C] to-[#E10939]" />
           <CardContent className="p-7 sm:p-10">
             {/* Loading State */}
             {status === 'loading' && (
@@ -1149,17 +1149,17 @@ export default function EmailAction() {
                   transition={{ duration: 0.45 }}
                   className="flex items-center justify-between gap-4"
                 >
-                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#F51042]/10 text-[#F51042]">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#E10939]/10 text-[#E10939]">
                     <ShieldCheck className="h-6 w-6" />
                   </div>
-                  <span className="inline-flex items-center gap-2 rounded-full border border-[#F51042]/15 bg-[#F51042]/5 px-3 py-1.5 text-xs font-bold text-[#D90E3A]">
-                    <span className="relative flex h-2 w-2"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#F51042] opacity-50" /><span className="relative inline-flex h-2 w-2 rounded-full bg-[#F51042]" /></span>
+                  <span className="inline-flex items-center gap-2 rounded-full border border-[#E10939]/15 bg-[#E10939]/5 px-3 py-1.5 text-xs font-bold text-[#C90832]">
+                    <span className="relative flex h-2 w-2"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#E10939] opacity-50" /><span className="relative inline-flex h-2 w-2 rounded-full bg-[#E10939]" /></span>
                     Secure connection
                   </span>
                 </motion.div>
 
                 <div className="text-left">
-                  <p className="mb-2 text-xs font-bold uppercase tracking-[0.16em] text-[#F51042]">LocalCooks account access</p>
+                  <p className="mb-2 text-xs font-bold uppercase tracking-[0.16em] text-[#E10939]">LocalCooks account access</p>
                   <h1 className="text-3xl font-bold tracking-[-0.035em] text-slate-950 sm:text-4xl">
                     {actionType === 'verifyEmail' && 'Verifying your email...'}
                     {actionType === 'verifyAndChangeEmail' && 'Finishing your account...'}
@@ -1178,9 +1178,9 @@ export default function EmailAction() {
                     <span className="text-xs font-semibold text-emerald-700">Complete</span>
                   </div>
                   <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-4">
-                    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#F51042]/10 text-[#F51042]"><Loader2 className="h-5 w-5 animate-spin" /></span>
+                    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#E10939]/10 text-[#E10939]"><Loader2 className="h-5 w-5 animate-spin" /></span>
                     <div className="min-w-0 flex-1"><p className="text-sm font-bold text-slate-900">Confirming your account</p><p className="text-xs text-slate-500">Matching your secure session</p></div>
-                    <span className="text-xs font-semibold text-[#F51042]">In progress</span>
+                    <span className="text-xs font-semibold text-[#E10939]">In progress</span>
                   </div>
                   <div className="flex items-center gap-3 px-4 py-4 opacity-55">
                     <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-500"><LayoutDashboard className="h-5 w-5" /></span>
@@ -1202,11 +1202,11 @@ export default function EmailAction() {
                 animate={{ opacity: 1, y: 0 }}
                 className="space-y-7"
               >
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#F51042]/10 text-[#F51042]">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#E10939]/10 text-[#E10939]">
                   <Mail className="h-7 w-7" />
                 </div>
                 <div>
-                  <p className="mb-2 text-xs font-bold uppercase tracking-[0.16em] text-[#F51042]">One secure step</p>
+                  <p className="mb-2 text-xs font-bold uppercase tracking-[0.16em] text-[#E10939]">One secure step</p>
                   <h1 className="text-3xl font-bold tracking-[-0.035em] text-slate-950">Confirm your email</h1>
                   <p className="mt-3 leading-relaxed text-slate-600">
                     Enter the email address that received this magic link. This protects your account when the link is opened on a different browser or device.
@@ -1232,12 +1232,12 @@ export default function EmailAction() {
                         aria-invalid={Boolean(confirmationError)}
                         aria-describedby={confirmationError ? 'magic-link-email-error' : undefined}
                         placeholder="you@example.com"
-                        className="h-[52px] w-full rounded-xl border border-slate-200 bg-white pl-11 pr-4 text-slate-950 outline-none transition focus:border-[#F51042] focus:ring-4 focus:ring-[#F51042]/10"
+                        className="h-[52px] w-full rounded-xl border border-slate-200 bg-white pl-11 pr-4 text-slate-950 outline-none transition focus:border-[#E10939] focus:ring-4 focus:ring-[#E10939]/10"
                       />
                     </div>
                     {confirmationError && <p id="magic-link-email-error" className="mt-2 text-sm font-medium text-red-600">{confirmationError}</p>}
                   </div>
-                  <Button type="submit" className="h-12 w-full rounded-xl bg-[#F51042] text-base font-semibold text-white shadow-lg shadow-[#F51042]/15 hover:bg-[#D90E3A]">
+                  <Button type="submit" className="h-12 w-full rounded-xl bg-[#E10939] text-base font-semibold text-white shadow-lg shadow-[#E10939]/15 hover:bg-[#C90832]">
                     Continue secure sign-in <ArrowRight className="ml-2 h-4 w-4" />
                   </Button>
                 </form>
@@ -1347,7 +1347,7 @@ export default function EmailAction() {
                   <Button
                     onClick={handleGoToLogin}
                     variant="destructive"
-                    className="h-12 w-full rounded-xl bg-[#F51042] hover:bg-[#D90E3A]"
+                    className="h-12 w-full rounded-xl bg-[#E10939] hover:bg-[#C90832]"
                   >
                     Go to Login
                     <ArrowRight className="w-4 h-4 ml-2" />

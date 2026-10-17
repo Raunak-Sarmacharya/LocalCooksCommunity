@@ -75,13 +75,13 @@ export const ColorPalette: React.FC<ColorPaletteProps> = ({
 
   const resetToDefault = () => {
     const defaultColors: ColorSystemConfig = {
-      primary: { main: "#F51042", light: "#FF5470", dark: "#C20D35", contrast: "#ffffff" },
+      primary: { main: "#E10939", light: "#FF5470", dark: "#C20D35", contrast: "#ffffff" },
       secondary: { main: "#000000", light: "#404040", dark: "#000000", contrast: "#ffffff" },
       accent: { main: "#f59e0b", light: "#fbbf24", dark: "#d97706", contrast: "#ffffff" },
       neutral: { main: "#6b7280", light: "#f3f4f6", dark: "#1f2937", contrast: "#ffffff" },
       semantic: { success: "#16a34a", warning: "#f59e0b", error: "#dc2626", info: "#2563eb" },
       gradients: {
-        primary: "linear-gradient(135deg, #F51042 0%, #FF5470 100%)",
+        primary: "linear-gradient(135deg, #E10939 0%, #FF5470 100%)",
         secondary: "linear-gradient(135deg, #000000 0%, #404040 100%)",
         accent: "linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%)"
       }
@@ -250,7 +250,7 @@ export const ColorPalette: React.FC<ColorPaletteProps> = ({
                   value={colorSystem.gradients.primary}
                   onChange={(e) => updateGradient('primary', e.target.value)}
                   className="flex-1 text-xs h-8"
-                  placeholder="linear-gradient(135deg, #F51042 0%, #FF5470 100%)"
+                  placeholder="linear-gradient(135deg, #E10939 0%, #FF5470 100%)"
                 />
                 <Button
                   variant="outline"

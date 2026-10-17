@@ -51,7 +51,7 @@ export default function GoogleAuthHint({
           type="button"
           onClick={continueWithGoogle}
           disabled={busy}
-          className="w-full bg-[#E00A38] hover:bg-[#C00930] text-white"
+          className="w-full bg-[#C90832] hover:bg-[#C00930] text-white"
         >
           {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <GoogleIcon className="mr-2 h-4 w-4 rounded-full bg-white p-0.5" />}
           {t("continueWithGoogle", "Continue with Google")}

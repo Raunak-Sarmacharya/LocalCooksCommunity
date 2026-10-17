@@ -901,7 +901,7 @@ function bookingCalendarParts(
   }));
   return {
     ics, links,
-    linksHtml: links.map(link => `<a href="${link.url}" target="_blank" style="display:inline-block;margin:4px 8px 4px 0;color:#F51042;text-decoration:underline">Add ${link.label} to calendar</a>`).join(''),
+    linksHtml: links.map(link => `<a href="${link.url}" target="_blank" style="display:inline-block;margin:4px 8px 4px 0;color:#E10939;text-decoration:underline">Add ${link.label} to calendar</a>`).join(''),
     linksText: links.map(link => `Add ${link.label} to calendar: ${link.url}`).join('\n'),
     timeLabel,
   };
@@ -2944,7 +2944,7 @@ Visit: ${getPromoUrl()}
       ${getSectionData('custom-message')?.styling?.paddingLeft ? `padding-left: ${getSectionData('custom-message')?.styling?.paddingLeft};` : ''}
     }
     .custom-header {
-      background: ${userData.header?.styling?.backgroundColor || 'linear-gradient(135deg, #F51042 0%, #FF5470 100%)'};
+      background: ${userData.header?.styling?.backgroundColor || 'linear-gradient(135deg, #E10939 0%, #FF5470 100%)'};
       ${userData.header?.styling?.backgroundImage ? `background-image: url(${userData.header.styling.backgroundImage});` : ''}
       ${userData.header?.styling?.backgroundSize ? `background-size: ${userData.header.styling.backgroundSize};` : ''}
       ${userData.header?.styling?.backgroundPosition ? `background-position: ${userData.header.styling.backgroundPosition};` : ''}
@@ -3045,7 +3045,7 @@ Visit: ${getPromoUrl()}
       line-height: 1.5;
     }
     .custom-footer .footer-link {
-      color: ${userData.footer?.styling?.linkColor || '#F51042'};
+      color: ${userData.footer?.styling?.linkColor || '#E10939'};
       text-decoration: none;
     }
     .cta-container {
@@ -3156,7 +3156,7 @@ Visit: ${getPromoUrl()}
 <body>
   <div class="email-container">
     <div class="custom-header" style="
-      background: ${userData.header?.styling?.backgroundColor || 'linear-gradient(135deg, #F51042 0%, #FF5470 100%)'};
+      background: ${userData.header?.styling?.backgroundColor || 'linear-gradient(135deg, #E10939 0%, #FF5470 100%)'};
       border-radius: ${userData.header?.styling?.borderRadius ||
     (userData.emailContainer?.borderRadius ?
       `${userData.emailContainer.borderRadius} ${userData.emailContainer.borderRadius} 0 0` :
@@ -3255,7 +3255,7 @@ Visit: ${getPromoUrl()}
         <p style="text-align: center; font-size: 11px; color: #6b7280; margin: 0;">
           Don't want to receive these emails? 
           <a href="${getWebsiteUrl()}/unsubscribe?email=${encodeURIComponent(userData.email)}" 
-             style="color: #F51042; text-decoration: underline;">
+             style="color: #E10939; text-decoration: underline;">
             Unsubscribe here
           </a>
         </p>

@@ -1441,7 +1441,7 @@ export const EmailCanvasDesigner: React.FC<EmailCanvasDesignerProps> = ({
                     <div className="mt-1 p-3 bg-red-50 border border-red-200 rounded-lg">
                       <div 
                         className="w-full h-8 rounded-md border-2 border-red-300"
-                        style={{ background: 'linear-gradient(135deg, #F51042 0%, #FF5470 100%)' }}
+                        style={{ background: 'linear-gradient(135deg, #E10939 0%, #FF5470 100%)' }}
                       />
                       <p className="text-xs text-red-700 mt-2">
                         <strong>Brand Color:</strong> Header uses your Local Cooks brand color for consistent branding.

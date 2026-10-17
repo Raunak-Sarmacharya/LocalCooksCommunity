@@ -45,7 +45,7 @@ function ApplyBookingPriceFooter({
         role="status"
         aria-live="polite"
       >
-        <Loader2 className="h-4 w-4 animate-spin text-[#F51042]" aria-hidden />
+        <Loader2 className="h-4 w-4 animate-spin text-[#E10939]" aria-hidden />
         <span className="text-xs text-muted-foreground">
           {t("calculatingPrice", "Calculating estimate...")}
         </span>
@@ -72,7 +72,7 @@ function ApplyBookingPriceFooter({
             role="status"
             aria-live="polite"
           >
-            <Loader2 className="h-5 w-5 animate-spin text-[#F51042]" aria-hidden />
+            <Loader2 className="h-5 w-5 animate-spin text-[#E10939]" aria-hidden />
             <span className="sr-only">{t("calculatingPrice", "Calculating estimate...")}</span>
           </div>
         ) : null}
@@ -202,8 +202,8 @@ function ApplyGuideRail({ step, skipVerify }: { step: ApplyUiStep; skipVerify?: 
             <span
               className={cn(
                 "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
-                done && "bg-[#F51042] text-white",
-                current && "bg-[#F51042]/15 text-[#F51042] ring-2 ring-[#F51042]/25",
+                done && "bg-[#E10939] text-white",
+                current && "bg-[#E10939]/15 text-[#E10939] ring-2 ring-[#E10939]/25",
                 !done && !current && "bg-gray-100 text-gray-400"
               )}
             >
@@ -1059,7 +1059,7 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
                   {applicationPhase === "submitted" ? (
                     <>
                       <div className="flex items-center gap-2">
-                        <CheckCircle2 className="h-5 w-5 text-[#F51042]" />
+                        <CheckCircle2 className="h-5 w-5 text-[#E10939]" />
                         <h3 className="text-lg font-semibold text-gray-900">
                           {t("step1CompleteTitle", "Request to apply submitted")}
                         </h3>
@@ -1092,7 +1092,7 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
                       <button
                         type="button"
                         onClick={goToMyApplicationsAfterSubmit}
-                        className="w-full rounded-lg bg-[#F51042] hover:bg-[#E00A38] text-white text-sm font-medium py-2.5 transition-colors"
+                        className="w-full rounded-lg bg-[#E10939] hover:bg-[#C90832] text-white text-sm font-medium py-2.5 transition-colors"
                       >
                         {t("viewApplicationBtn", "View application")}
                       </button>
@@ -1101,8 +1101,8 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
                     <>
                       {applicationPhase === "awaiting_verification" && !skipVerify ? (
                         <div className="space-y-4">
-                          <div className="rounded-xl border-2 border-[#F51042]/30 bg-[#F51042]/5 p-5 text-center space-y-3">
-                            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#F51042] text-white">
+                          <div className="rounded-xl border-2 border-[#E10939]/30 bg-[#E10939]/5 p-5 text-center space-y-3">
+                            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#E10939] text-white">
                               <Mail className="h-6 w-6" aria-hidden />
                             </div>
                             <p className="text-lg font-bold text-gray-900 leading-snug">
@@ -1110,7 +1110,7 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
                             </p>
                             <ol className="text-left text-sm text-gray-800 space-y-2 max-w-sm mx-auto">
                               <li className="flex gap-2">
-                                <span className="font-bold text-[#F51042] shrink-0">1.</span>
+                                <span className="font-bold text-[#E10939] shrink-0">1.</span>
                                 <span>
                                   {t("applyVerifyStep1", "Open the email from Local Cooks")}
                                   {registrationReview.email ? (
@@ -1130,7 +1130,7 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
                                 </span>
                               </li>
                               <li className="flex gap-2">
-                                <span className="font-bold text-[#F51042] shrink-0">2.</span>
+                                <span className="font-bold text-[#E10939] shrink-0">2.</span>
                                 <span>
                                   {t(
                                     "applyVerifyStep2",
@@ -1139,7 +1139,7 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
                                 </span>
                               </li>
                               <li className="flex gap-2">
-                                <span className="font-bold text-[#F51042] shrink-0">3.</span>
+                                <span className="font-bold text-[#E10939] shrink-0">3.</span>
                                 <span>
                                   {t(
                                     "applyVerifyStep3",
@@ -1162,7 +1162,7 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
                             type="button"
                             onClick={() => void handleCheckVerified()}
                             disabled={isCheckingVerification}
-                            className="w-full rounded-lg bg-[#F51042] hover:bg-[#E00A38] text-white text-sm font-semibold py-3 transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
+                            className="w-full rounded-lg bg-[#E10939] hover:bg-[#C90832] text-white text-sm font-semibold py-3 transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
                           >
                             {isCheckingVerification ? (
                               <>
@@ -1220,7 +1220,7 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
                               type="button"
                               onClick={submitApplyDraft}
                               disabled={isSubmittingApplication || !applyDraftReady}
-                              className="w-full rounded-lg bg-[#F51042] hover:bg-[#E00A38] text-white text-sm font-medium py-2.5 transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
+                              className="w-full rounded-lg bg-[#E10939] hover:bg-[#C90832] text-white text-sm font-medium py-2.5 transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
                             >
                               {isSubmittingApplication ? (
                                 <>
@@ -1255,7 +1255,7 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
                   <div className="mt-4 flex shrink-0 gap-3">
                     <Button
                       type="button"
-                      className="flex-1 bg-[#F51042] hover:bg-[#E00A38] text-white"
+                      className="flex-1 bg-[#E10939] hover:bg-[#C90832] text-white"
                       disabled={!stepValid}
                       onClick={goApplyContinue}
                     >
@@ -1292,7 +1292,7 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
                           type="button"
                           disabled={isSubmittingApplication || !applyDraftReady}
                           onClick={submitApplyDraft}
-                          className="flex-1 rounded-lg bg-[#F51042] hover:bg-[#E00A38] text-white text-sm font-medium py-2.5 transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
+                          className="flex-1 rounded-lg bg-[#E10939] hover:bg-[#C90832] text-white text-sm font-medium py-2.5 transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
                         >
                           {isSubmittingApplication ? (
                             <>

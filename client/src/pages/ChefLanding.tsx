@@ -266,7 +266,7 @@ function PhoneMockup({
       <div
         className={cn(
           "pointer-events-none absolute -inset-10 rounded-full blur-3xl",
-          tone === "chaos" ? "bg-[#2C2C2C]/[0.12]" : "bg-[#F51042]/[0.18]",
+          tone === "chaos" ? "bg-[#2C2C2C]/[0.12]" : "bg-[#E10939]/[0.18]",
         )}
       />
 
@@ -293,7 +293,7 @@ function PhoneMockup({
                 className="absolute inset-0"
                 style={{
                   background:
-                    "radial-gradient(90% 50% at 20% 0%, #FF8FA5 0%, rgba(255,143,165,0) 60%), radial-gradient(80% 60% at 100% 100%, #9E0728 0%, rgba(158,7,40,0) 70%), linear-gradient(180deg, #FF4D6F 0%, #F51042 45%, #C80A36 100%)",
+                    "radial-gradient(90% 50% at 20% 0%, #FF8FA5 0%, rgba(255,143,165,0) 60%), radial-gradient(80% 60% at 100% 100%, #9E0728 0%, rgba(158,7,40,0) 70%), linear-gradient(180deg, #FF4D6F 0%, #E10939 45%, #C80A36 100%)",
                 }}
               />
             )}
@@ -411,7 +411,7 @@ function LocalCooksNotificationFeed({ active }: { active: boolean }) {
           <motion.div key={uid} layout {...NOTIFICATION_MOTION} className="pb-[7px]">
             <div data-notif className="rounded-[18px] bg-white/90 px-2.5 py-2 shadow-[0_10px_24px_-14px_rgba(90,0,20,0.6)] backdrop-blur-xl">
               <div className="flex items-center gap-2.5">
-                <div className="flex h-[30px] w-[30px] flex-shrink-0 items-center justify-center rounded-[8px] bg-[#F51042] shadow-[inset_0_0_0_0.5px_rgba(0,0,0,0.08)]">
+                <div className="flex h-[30px] w-[30px] flex-shrink-0 items-center justify-center rounded-[8px] bg-[#E10939] shadow-[inset_0_0_0_0.5px_rgba(0,0,0,0.08)]">
                   <img src={logoWhite} alt="" className="h-[18px] w-[18px] object-contain" />
                 </div>
                 <div className="min-w-0 flex-1">
@@ -474,8 +474,8 @@ function PhoneComparison() {
       >
         <span className="h-px w-10 bg-gradient-to-r from-transparent to-[#2C2C2C]/15 md:h-16 md:w-px md:bg-gradient-to-b" />
         <span className="mx-3 flex h-11 w-11 items-center justify-center rounded-full border border-[#2C2C2C]/[0.08] bg-white shadow-[0_8px_20px_-8px_rgba(44,44,44,0.25)] md:mx-0 md:my-3">
-          <Icon icon="mdi:arrow-down" className="h-5 w-5 text-[#F51042] md:hidden" />
-          <Icon icon="mdi:arrow-right" className="hidden h-5 w-5 text-[#F51042] md:block" />
+          <Icon icon="mdi:arrow-down" className="h-5 w-5 text-[#E10939] md:hidden" />
+          <Icon icon="mdi:arrow-right" className="hidden h-5 w-5 text-[#E10939] md:block" />
         </span>
         <span className="h-px w-10 bg-gradient-to-l from-transparent to-[#2C2C2C]/15 md:h-16 md:w-px md:bg-gradient-to-t" />
       </motion.div>
@@ -492,7 +492,7 @@ function PhoneComparison() {
         </PhoneMockup>
         <figcaption className="mt-7 text-center">
           <p className="text-[0.98rem] font-semibold text-[#1F1F1F]">
-            {t("poweredBy")} <span className="font-logo text-[1.1rem] font-normal text-[#F51042]">LocalCooks</span>
+            {t("poweredBy")} <span className="font-logo text-[1.1rem] font-normal text-[#E10939]">LocalCooks</span>
           </p>
           <p className="mt-1 text-[0.85rem] text-[#6B6B6B]">{t("unifiedPlatform")}</p>
         </figcaption>
@@ -561,7 +561,7 @@ function MockPill({ tone, icon, children }: { tone: "green" | "red" | "neutral";
       className={cn(
         "inline-flex flex-shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[0.66rem] font-semibold",
         tone === "green" && "bg-emerald-50 text-emerald-700",
-        tone === "red" && "bg-[#F51042]/[0.08] text-[#F51042]",
+        tone === "red" && "bg-[#E10939]/[0.08] text-[#E10939]",
         tone === "neutral" && "bg-[#F4F2F0] text-[#6B6B6B]",
       )}
     >
@@ -610,7 +610,7 @@ function StepMockup({ path, step }: { path: HowPath; step: number }) {
           <MockRow i={1}>
             <p className="text-[0.66rem] font-medium text-[#8A8A8A]">{t("hiwMockKitchenSetting")}</p>
             <div className="mt-1 grid grid-cols-2 gap-2">
-              <span className="flex h-9 items-center justify-center gap-1.5 rounded-lg border border-[#F51042] bg-[#F51042]/[0.05] text-[0.76rem] font-semibold text-[#F51042]">
+              <span className="flex h-9 items-center justify-center gap-1.5 rounded-lg border border-[#E10939] bg-[#E10939]/[0.05] text-[0.76rem] font-semibold text-[#E10939]">
                 <Icon icon="mdi:home-outline" className="h-4 w-4" />
                 {t("hiwMockHome")}
               </span>
@@ -644,7 +644,7 @@ function StepMockup({ path, step }: { path: HowPath; step: number }) {
             </MockRow>
           ))}
           <MockRow i={3} className="px-2 pb-1 pt-1">
-            <span className="flex h-9 items-center justify-center gap-1.5 rounded-lg border border-dashed border-[#F51042]/35 text-[0.76rem] font-semibold text-[#F51042]">
+            <span className="flex h-9 items-center justify-center gap-1.5 rounded-lg border border-dashed border-[#E10939]/35 text-[0.76rem] font-semibold text-[#E10939]">
               <Icon icon="mdi:plus" className="h-4 w-4" />
               {t("hiwMockAddDish")}
             </span>
@@ -656,7 +656,7 @@ function StepMockup({ path, step }: { path: HowPath; step: number }) {
 
   if (path === "sell" && step === 2) {
     const orders = [
-      { amount: "$112.50", id: "#00198", state: "Out for delivery", dot: "bg-[#F51042]" },
+      { amount: "$112.50", id: "#00198", state: "Out for delivery", dot: "bg-[#E10939]" },
       { amount: "$48.00", id: "#00197", state: "Paid", dot: "bg-emerald-500" },
     ];
     return (
@@ -664,7 +664,7 @@ function StepMockup({ path, step }: { path: HowPath; step: number }) {
         {orders.map((o, i) => (
           <MockRow key={o.id} i={i}>
             <div className="flex items-center gap-3 rounded-2xl border border-[#2C2C2C]/[0.07] bg-white px-3.5 py-3 shadow-[0_18px_36px_-24px_rgba(44,44,44,0.35)]">
-              <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-[#F51042]">
+              <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-[#E10939]">
                 <img src={logoWhite} alt="" className="h-5 w-5 object-contain" />
               </span>
               <div className="min-w-0 flex-1">
@@ -696,7 +696,7 @@ function StepMockup({ path, step }: { path: HowPath; step: number }) {
                   initial={{ height: 0 }}
                   animate={{ height: `${h}%` }}
                   transition={{ duration: 0.6, delay: 0.5 + i * 0.05, ease: [0.22, 1, 0.36, 1] }}
-                  className={cn("flex-1 rounded-[3px]", i === 6 ? "bg-[#F51042]" : "bg-[#F51042]/15")}
+                  className={cn("flex-1 rounded-[3px]", i === 6 ? "bg-[#E10939]" : "bg-[#E10939]/15")}
                 />
               ))}
             </div>
@@ -779,7 +779,7 @@ function StepMockup({ path, step }: { path: HowPath; step: number }) {
                 key={d.getDate()}
                 className={cn(
                   "flex flex-col items-center rounded-xl py-1.5",
-                  selected ? "bg-[#F51042] text-white shadow-[0_8px_16px_-8px_rgba(245,16,66,0.8)]" : "text-[#6B6B6B]",
+                  selected ? "bg-[#E10939] text-white shadow-[0_8px_16px_-8px_rgba(245,16,66,0.8)]" : "text-[#6B6B6B]",
                 )}
               >
                 <span className={cn("text-[0.58rem] font-medium uppercase", selected ? "text-white/80" : "text-[#9A9A9A]")}>
@@ -794,7 +794,7 @@ function StepMockup({ path, step }: { path: HowPath; step: number }) {
           <MockRow i={1} className="flex items-center justify-between rounded-xl border border-[#2C2C2C]/[0.07] px-3 py-2.5 text-[0.78rem] text-[#9A9A9A]">
             <span className="tabular-nums">9:00 AM to 1:00 PM</span>
           </MockRow>
-          <MockRow i={2} className="flex items-center justify-between rounded-xl border border-[#F51042] bg-[#F51042]/[0.04] px-3 py-2.5">
+          <MockRow i={2} className="flex items-center justify-between rounded-xl border border-[#E10939] bg-[#E10939]/[0.04] px-3 py-2.5">
             <span className="text-[0.78rem] font-semibold tabular-nums text-[#1F1F1F]">2:00 to 6:00 PM</span>
             <MockPill tone="green" icon="mdi:check">{t("heroMiniBooked")}</MockPill>
           </MockRow>
@@ -915,7 +915,7 @@ function HowItWorksSection({ onVisitMarketplace }: { onVisitMarketplace: () => v
                   aria-controls="how-it-works-panel"
                   onClick={() => choosePath(key)}
                   className={cn(
-                    "relative inline-flex h-10 items-center gap-2 rounded-full px-4 text-[0.86rem] font-semibold transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042] sm:h-11 sm:px-5 sm:text-[0.92rem]",
+                    "relative inline-flex h-10 items-center gap-2 rounded-full px-4 text-[0.86rem] font-semibold transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E10939] sm:h-11 sm:px-5 sm:text-[0.92rem]",
                     active ? "text-[#1F1F1F]" : "text-[#7A7A7A] hover:text-[#1F1F1F]",
                   )}
                 >
@@ -926,7 +926,7 @@ function HowItWorksSection({ onVisitMarketplace }: { onVisitMarketplace: () => v
                       transition={{ type: "spring", stiffness: 380, damping: 32 }}
                     />
                   )}
-                  <Icon icon={paths[key].icon} className={cn("relative h-4 w-4", active && "text-[#F51042]")} />
+                  <Icon icon={paths[key].icon} className={cn("relative h-4 w-4", active && "text-[#E10939]")} />
                   <span className="relative whitespace-nowrap">{paths[key].label}</span>
                 </button>
               );
@@ -951,14 +951,14 @@ function HowItWorksSection({ onVisitMarketplace }: { onVisitMarketplace: () => v
                     onClick={() => chooseStep(i)}
                     aria-current={active ? "step" : undefined}
                     className={cn(
-                      "group relative flex w-full gap-4 overflow-hidden rounded-2xl p-4 text-left transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042] sm:p-5",
+                      "group relative flex w-full gap-4 overflow-hidden rounded-2xl p-4 text-left transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E10939] sm:p-5",
                       active ? "bg-[#FAFAF9] ring-1 ring-inset ring-[#2C2C2C]/[0.06]" : "hover:bg-[#FAFAF9]/70",
                     )}
                   >
                     <span
                       className={cn(
                         "flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-[0.8rem] font-bold tabular-nums transition-colors duration-300",
-                        active ? "bg-[#F51042] text-white shadow-[0_6px_14px_-6px_rgba(245,16,66,0.8)]" : "bg-[#F4F2F0] text-[#8A8A8A]",
+                        active ? "bg-[#E10939] text-white shadow-[0_6px_14px_-6px_rgba(245,16,66,0.8)]" : "bg-[#F4F2F0] text-[#8A8A8A]",
                       )}
                     >
                       {i + 1}
@@ -975,7 +975,7 @@ function HowItWorksSection({ onVisitMarketplace }: { onVisitMarketplace: () => v
                       <span className="absolute inset-x-5 bottom-0 h-[2px] overflow-hidden rounded-full bg-[#2C2C2C]/[0.06]">
                         <motion.span
                           key={`${path}-${step}-${playing}`}
-                          className="block h-full origin-left rounded-full bg-[#F51042]"
+                          className="block h-full origin-left rounded-full bg-[#E10939]"
                           initial={{ scaleX: playing ? 0 : 1 }}
                           animate={{ scaleX: 1 }}
                           transition={{ duration: playing ? HOW_STEP_MS / 1000 : 0, ease: "linear" }}
@@ -1030,7 +1030,7 @@ function HowItWorksSection({ onVisitMarketplace }: { onVisitMarketplace: () => v
             transition={{ duration: 0.7, ease }}
             className="flex scroll-mt-24 flex-col rounded-[28px] border border-[#2C2C2C]/[0.07] bg-white p-6 shadow-[0_1px_2px_rgba(44,44,44,0.04),0_24px_48px_-32px_rgba(44,44,44,0.3)] sm:p-8"
           >
-            <p className="inline-flex items-center gap-2 text-[0.72rem] font-semibold uppercase tracking-[0.14em] text-[#F51042]">
+            <p className="inline-flex items-center gap-2 text-[0.72rem] font-semibold uppercase tracking-[0.14em] text-[#E10939]">
               <Icon icon="mdi:book-open-page-variant-outline" className="h-4 w-4" />
               {t("hiwGuideEyebrow")}
             </p>
@@ -1042,7 +1042,7 @@ function HowItWorksSection({ onVisitMarketplace }: { onVisitMarketplace: () => v
             <ul className="mt-6 grid grid-cols-[minmax(0,1fr)] gap-x-5 gap-y-4 sm:grid-cols-2">
               {guideItems.map((item) => (
                 <li key={item.title} className="flex gap-3">
-                  <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-[#F51042]/[0.07] text-[#F51042]">
+                  <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-[#E10939]/[0.07] text-[#E10939]">
                     <Icon icon={item.icon} className="h-[18px] w-[18px]" />
                   </span>
                   <span className="min-w-0">
@@ -1056,7 +1056,7 @@ function HowItWorksSection({ onVisitMarketplace }: { onVisitMarketplace: () => v
             <div className="mt-8 pt-1 md:mt-auto md:pt-8">
               <Link
                 href="/resources"
-                className="group inline-flex h-11 w-full items-center justify-center gap-2 rounded-full bg-[#F51042] px-6 text-[0.92rem] font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_10px_22px_-10px_rgba(245,16,66,0.8)] transition-colors duration-300 hover:bg-[#E30D3C] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042] focus-visible:ring-offset-2 sm:w-auto"
+                className="group inline-flex h-11 w-full items-center justify-center gap-2 rounded-full bg-[#E10939] px-6 text-[0.92rem] font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_10px_22px_-10px_rgba(245,16,66,0.8)] transition-colors duration-300 hover:bg-[#C90832] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E10939] focus-visible:ring-offset-2 sm:w-auto"
               >
                 {t("hiwGuideCta")}
                 <Icon icon="mdi:arrow-right" className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-0.5" />
@@ -1069,7 +1069,7 @@ function HowItWorksSection({ onVisitMarketplace }: { onVisitMarketplace: () => v
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: "0px 0px -10% 0px" }}
             transition={{ duration: 0.7, delay: 0.1, ease }}
-            className="relative flex flex-col overflow-hidden rounded-[28px] bg-[#F51042] p-6 text-white shadow-[0_24px_48px_-28px_rgba(245,16,66,0.7)] sm:p-8"
+            className="relative flex flex-col overflow-hidden rounded-[28px] bg-[#E10939] p-6 text-white shadow-[0_24px_48px_-28px_rgba(245,16,66,0.7)] sm:p-8"
           >
             <div className="pointer-events-none absolute inset-0" aria-hidden="true">
               <div
@@ -1120,7 +1120,7 @@ function HowItWorksSection({ onVisitMarketplace }: { onVisitMarketplace: () => v
                   <img src={dish.image} alt="" className="h-[84px] w-full rounded-xl object-cover" loading="lazy" />
                   <div className="px-1.5 pb-1 pt-1.5">
                     <p className="truncate text-[0.68rem] font-semibold text-[#1F1F1F]">{dish.name}</p>
-                    <p className="text-[0.66rem] font-semibold tabular-nums text-[#F51042]">{dish.price}</p>
+                    <p className="text-[0.66rem] font-semibold tabular-nums text-[#E10939]">{dish.price}</p>
                   </div>
                 </div>
               ))}
@@ -1130,7 +1130,7 @@ function HowItWorksSection({ onVisitMarketplace }: { onVisitMarketplace: () => v
               <button
                 type="button"
                 onClick={onVisitMarketplace}
-                className="group inline-flex h-11 w-full items-center justify-center gap-2 rounded-full bg-white px-6 text-[0.92rem] font-semibold text-[#F51042] shadow-[0_10px_22px_-10px_rgba(80,0,20,0.6)] transition-transform duration-300 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#F51042] sm:w-auto"
+                className="group inline-flex h-11 w-full items-center justify-center gap-2 rounded-full bg-white px-6 text-[0.92rem] font-semibold text-[#E10939] shadow-[0_10px_22px_-10px_rgba(80,0,20,0.6)] transition-transform duration-300 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#E10939] sm:w-auto"
               >
                 {t("hiwMarketCta")}
                 <Icon icon="mdi:arrow-top-right" className="h-4 w-4 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
@@ -1156,7 +1156,7 @@ function ReviewCard({ text, name, business }: { text: string; name: string; busi
     <figure className="flex h-full w-[290px] flex-col rounded-[24px] border border-[#2C2C2C]/[0.09] bg-white p-6 shadow-[0_1px_2px_rgba(44,44,44,0.06),0_14px_30px_-14px_rgba(60,40,30,0.28)] sm:w-[380px] sm:p-7">
       <svg viewBox="0 0 48 36" className="h-5 w-7 flex-shrink-0" aria-hidden="true">
         <path
-          fill="#F51042"
+          fill="#E10939"
           d="M0 36V22.4C0 9.9 6.2 2.5 18.6 0l2 4.5C13.8 6.6 10.4 10.7 10 17h9.6v19H0Zm27.4 0V22.4C27.4 9.9 33.6 2.5 46 0l2 4.5c-6.8 2.1-10.2 6.2-10.6 12.5H47v19H27.4Z"
         />
       </svg>
@@ -1164,7 +1164,7 @@ function ReviewCard({ text, name, business }: { text: string; name: string; busi
       <figcaption className="mt-auto flex items-center gap-2 border-t border-[#2C2C2C]/[0.06] pt-4 text-[0.88rem]">
         <span className="font-semibold text-[#1F1F1F]">{name}</span>
         <span className="text-[#C4C4C4]" aria-hidden="true">·</span>
-        <span className="truncate font-medium text-[#F51042]">{business}</span>
+        <span className="truncate font-medium text-[#E10939]">{business}</span>
       </figcaption>
     </figure>
   );
@@ -1201,13 +1201,13 @@ function ChefProofSection({ onJoin }: { onJoin: () => void }) {
           >
             {t("tstTitleStart")}{" "}
             <span className="relative inline-block whitespace-nowrap">
-              <span className="relative z-10 bg-gradient-to-r from-[#F51042] via-[#E8103A] to-[#FF6B7A] bg-clip-text text-transparent">
+              <span className="relative z-10 bg-gradient-to-r from-[#E10939] via-[#E8103A] to-[#FF6B7A] bg-clip-text text-transparent">
                 {t("tstTitleEmphasis")}
               </span>
               <svg className="absolute -bottom-1.5 left-0 w-full md:-bottom-2" viewBox="0 0 300 12" fill="none" aria-hidden="true">
                 <motion.path
                   d="M2 8C50 3 100 3 150 6C200 9 250 5 298 8"
-                  stroke="#F51042"
+                  stroke="#E10939"
                   strokeOpacity="0.6"
                   strokeWidth="3"
                   strokeLinecap="round"
@@ -1269,7 +1269,7 @@ function ChefProofSection({ onJoin }: { onJoin: () => void }) {
           </div>
 
           {/* ── The ask ───────────────────────────────────────────────────── */}
-          <div className="relative overflow-hidden bg-[#F51042] px-6 py-10 sm:px-12 sm:py-12 lg:px-14">
+          <div className="relative overflow-hidden bg-[#E10939] px-6 py-10 sm:px-12 sm:py-12 lg:px-14">
             <div className="pointer-events-none absolute inset-0" aria-hidden="true">
               <div
                 className="absolute inset-0"
@@ -1308,7 +1308,7 @@ function ChefProofSection({ onJoin }: { onJoin: () => void }) {
               <button
                 type="button"
                 onClick={onJoin}
-                className="group inline-flex h-12 flex-shrink-0 items-center justify-center gap-2 rounded-full bg-white px-8 text-[1rem] font-semibold text-[#F51042] shadow-[0_16px_32px_-14px_rgba(80,0,20,0.7)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_20px_40px_-14px_rgba(80,0,20,0.8)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#F51042] sm:h-14 sm:px-10 sm:text-[1.05rem]"
+                className="group inline-flex h-12 flex-shrink-0 items-center justify-center gap-2 rounded-full bg-white px-8 text-[1rem] font-semibold text-[#E10939] shadow-[0_16px_32px_-14px_rgba(80,0,20,0.7)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_20px_40px_-14px_rgba(80,0,20,0.8)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#E10939] sm:h-14 sm:px-10 sm:text-[1.05rem]"
               >
                 {t("joinLocalCooks")}
                 <Icon icon="mdi:arrow-right" className="h-5 w-5 transition-transform duration-300 group-hover:translate-x-0.5" />
@@ -1477,8 +1477,8 @@ function SellPreview() {
             <svg viewBox="0 0 200 64" className="absolute inset-0 h-full w-full overflow-visible" preserveAspectRatio="none">
               <defs>
                 <linearGradient id="lc-showcase-fill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#F51042" stopOpacity="0.2" />
-                  <stop offset="100%" stopColor="#F51042" stopOpacity="0" />
+                  <stop offset="0%" stopColor="#E10939" stopOpacity="0.2" />
+                  <stop offset="100%" stopColor="#E10939" stopOpacity="0" />
                 </linearGradient>
               </defs>
               <motion.path
@@ -1491,7 +1491,7 @@ function SellPreview() {
               <motion.path
                 d="M0,50 L28,44 L56,47 L84,30 L112,36 L140,18 L168,24 L200,8"
                 fill="none"
-                stroke="#F51042"
+                stroke="#E10939"
                 strokeWidth="2.25"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -1506,8 +1506,8 @@ function SellPreview() {
               transition={{ duration: 0.4, delay: 2.5 }}
               className="absolute right-0 top-[12.5%] flex h-2.5 w-2.5 -translate-y-1/2 translate-x-1/2"
             >
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#F51042] opacity-30" />
-              <span className="relative inline-flex h-2.5 w-2.5 rounded-full border-2 border-white bg-[#F51042] shadow-[0_0_0_1px_rgba(245,16,66,0.25)]" />
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#E10939] opacity-30" />
+              <span className="relative inline-flex h-2.5 w-2.5 rounded-full border-2 border-white bg-[#E10939] shadow-[0_0_0_1px_rgba(245,16,66,0.25)]" />
             </motion.span>
           </div>
         </div>
@@ -1550,7 +1550,7 @@ function SellPreview() {
             <span
               className={cn(
                 "h-1.5 w-1.5 flex-shrink-0 rounded-full",
-                o.state === "Paid" ? "bg-emerald-500" : "bg-[#F51042]",
+                o.state === "Paid" ? "bg-emerald-500" : "bg-[#E10939]",
               )}
             />
             <span className="flex-shrink-0 text-[0.74rem] font-semibold tabular-nums text-[#1F1F1F]">
@@ -1622,7 +1622,7 @@ function KitchenPreview() {
                   "inline-flex h-6 flex-shrink-0 items-center gap-1 rounded-full px-2.5 text-[0.66rem] font-semibold",
                   k.booked
                     ? "border border-emerald-600/15 bg-emerald-50 text-emerald-700"
-                    : "bg-[#F51042] text-white shadow-[0_4px_10px_-4px_rgba(245,16,66,0.6)]",
+                    : "bg-[#E10939] text-white shadow-[0_4px_10px_-4px_rgba(245,16,66,0.6)]",
                 )}
               >
                 {k.booked && <Icon icon="mdi:check" className="h-3 w-3 flex-shrink-0" />}
@@ -1640,7 +1640,7 @@ function KitchenPreview() {
           className="mt-1.5 flex gap-3.5 rounded-xl border border-[#2C2C2C]/[0.07] bg-[#FAFAF9] p-3"
         >
           <div className="flex w-[3.25rem] flex-shrink-0 flex-col items-center overflow-hidden rounded-lg border border-[#2C2C2C]/[0.08] bg-white text-center shadow-[0_1px_2px_rgba(44,44,44,0.05)]">
-            <span className="w-full bg-[#F51042] py-[3px] text-[0.58rem] font-bold uppercase tracking-[0.08em] text-white">
+            <span className="w-full bg-[#E10939] py-[3px] text-[0.58rem] font-bold uppercase tracking-[0.08em] text-white">
               Sep
             </span>
             <span className="pt-1 text-[1.2rem] font-bold leading-none tabular-nums text-[#1F1F1F]">25</span>
@@ -1727,7 +1727,7 @@ export function ChefHero({
         <div
           data-float
           aria-hidden="true"
-          className="absolute inset-x-6 top-[90px] z-30 h-[340px] rounded-3xl bg-[#F51042]/15"
+          className="absolute inset-x-6 top-[90px] z-30 h-[340px] rounded-3xl bg-[#E10939]/15"
         />
       )}
 
@@ -1743,8 +1743,8 @@ export function ChefHero({
             transition={{ duration: 0.55, delay: 0.05, ease }}
             className="mb-6 inline-flex items-center gap-2 rounded-full border border-[#2C2C2C]/[0.08] bg-white/80 py-1 pl-1 pr-3.5 text-[0.78rem] font-medium text-[#4A4A4A] shadow-[0_1px_2px_rgba(44,44,44,0.05)] backdrop-blur-sm sm:mb-7 sm:text-[0.82rem]"
           >
-            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#F51042]/[0.09]">
-              <Icon icon="mdi:chef-hat" className="h-3.5 w-3.5 text-[#F51042]" />
+            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#E10939]/[0.09]">
+              <Icon icon="mdi:chef-hat" className="h-3.5 w-3.5 text-[#E10939]" />
             </span>
             {t("heroEyebrow")}
           </motion.p>
@@ -1847,7 +1847,7 @@ export function ChefHero({
                       type="button"
                       data-cta="path-sell"
                       onClick={onStartApplication}
-                      className="group/btn inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-[#F51042] px-6 text-[0.95rem] font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_1px_2px_rgba(245,16,66,0.3),0_10px_24px_-10px_rgba(245,16,66,0.7)] transition-all duration-300 hover:bg-[#E30D3C] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_1px_2px_rgba(245,16,66,0.3),0_14px_30px_-10px_rgba(245,16,66,0.8)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042] focus-visible:ring-offset-2 active:scale-[0.98] sm:w-auto"
+                      className="group/btn inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-[#E10939] px-6 text-[0.95rem] font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_1px_2px_rgba(245,16,66,0.3),0_10px_24px_-10px_rgba(245,16,66,0.7)] transition-all duration-300 hover:bg-[#C90832] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_1px_2px_rgba(245,16,66,0.3),0_14px_30px_-10px_rgba(245,16,66,0.8)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E10939] focus-visible:ring-offset-2 active:scale-[0.98] sm:w-auto"
                     >
                       <span className="truncate">{t("heroPathSellCta")}</span>
                       <Icon
@@ -1889,7 +1889,7 @@ export function ChefHero({
                       type="button"
                       data-cta="path-kitchen"
                       onClick={() => onScrollToSection?.("kitchen-access")}
-                      className="group/btn inline-flex h-12 w-full items-center justify-center gap-2 rounded-full border border-[#F51042]/30 bg-white px-6 text-[0.95rem] font-semibold text-[#F51042] shadow-[0_1px_2px_rgba(245,16,66,0.08),0_10px_24px_-12px_rgba(245,16,66,0.35)] transition-all duration-300 hover:border-[#F51042] hover:bg-[#FFF5F7] hover:shadow-[0_1px_2px_rgba(245,16,66,0.1),0_14px_30px_-12px_rgba(245,16,66,0.45)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042] focus-visible:ring-offset-2 active:scale-[0.98] sm:w-auto"
+                      className="group/btn inline-flex h-12 w-full items-center justify-center gap-2 rounded-full border border-[#E10939]/30 bg-white px-6 text-[0.95rem] font-semibold text-[#E10939] shadow-[0_1px_2px_rgba(245,16,66,0.08),0_10px_24px_-12px_rgba(245,16,66,0.35)] transition-all duration-300 hover:border-[#E10939] hover:bg-[#FFF5F7] hover:shadow-[0_1px_2px_rgba(245,16,66,0.1),0_14px_30px_-12px_rgba(245,16,66,0.45)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E10939] focus-visible:ring-offset-2 active:scale-[0.98] sm:w-auto"
                     >
                       <span className="truncate">{t("heroPathKitchenCta")}</span>
                       <Icon
@@ -2141,7 +2141,7 @@ export default function ChefLanding() {
                 >
                   {t("didntStartCooking")}{" "}
                   <span className="relative inline-block">
-                    <span className="relative z-10 bg-gradient-to-r from-[#F51042] via-[#E8103A] to-[#FF6B7A] bg-clip-text text-transparent">
+                    <span className="relative z-10 bg-gradient-to-r from-[#E10939] via-[#E8103A] to-[#FF6B7A] bg-clip-text text-transparent">
                       {t("buriedInAdmin")}
                     </span>
                     <svg
@@ -2162,9 +2162,9 @@ export default function ChefLanding() {
                       />
                       <defs>
                         <linearGradient id="underlineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                          <stop offset="0%" stopColor="#F51042" stopOpacity="0.5" />
+                          <stop offset="0%" stopColor="#E10939" stopOpacity="0.5" />
                           <stop offset="50%" stopColor="#FF6B7A" stopOpacity="0.75" />
-                          <stop offset="100%" stopColor="#F51042" stopOpacity="0.5" />
+                          <stop offset="100%" stopColor="#E10939" stopOpacity="0.5" />
                         </linearGradient>
                       </defs>
                     </svg>
@@ -2189,7 +2189,7 @@ export default function ChefLanding() {
                   transition={{ duration: 0.6, delay: 0.3, ease: [0.22, 1, 0.36, 1] }}
                   viewport={{ once: true, margin: "0px 0px -10% 0px" }}
                 >
-                  <span className="hidden h-1.5 w-1.5 flex-shrink-0 rounded-full bg-[#F51042] sm:block" aria-hidden="true" />
+                  <span className="hidden h-1.5 w-1.5 flex-shrink-0 rounded-full bg-[#E10939] sm:block" aria-hidden="true" />
                   {t("soundFamiliar")}
                 </motion.p>
               </div>
@@ -2208,7 +2208,7 @@ export default function ChefLanding() {
             them instead of being clipped into straight edges at a section boundary.
             The cards show one published kitchen per location, the first three.
         ═══════════════════════════════════════════════════════════════════════ */}
-        <section id="kitchen-access" className="relative scroll-mt-24 overflow-hidden bg-[#F51042] px-4 pb-28 pt-20 sm:pb-36 sm:pt-28 lg:pb-44 lg:pt-32">
+        <section id="kitchen-access" className="relative scroll-mt-24 overflow-hidden bg-[#E10939] px-4 pb-28 pt-20 sm:pb-36 sm:pt-28 lg:pb-44 lg:pt-32">
           <div className="pointer-events-none absolute inset-0" aria-hidden="true">
             <motion.div
               className="absolute left-[-18%] top-[4%] h-[520px] w-[520px] rounded-full md:h-[720px] md:w-[720px]"
@@ -2340,7 +2340,7 @@ export default function ChefLanding() {
                 <button
                   type="button"
                   onClick={handleBrowseKitchens}
-                  className="group inline-flex h-12 items-center justify-center gap-2 rounded-full bg-white px-7 text-[0.95rem] font-semibold text-[#F51042] shadow-[0_14px_30px_-12px_rgba(80,0,20,0.6)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_18px_36px_-12px_rgba(80,0,20,0.7)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#F51042]"
+                  className="group inline-flex h-12 items-center justify-center gap-2 rounded-full bg-white px-7 text-[0.95rem] font-semibold text-[#E10939] shadow-[0_14px_30px_-12px_rgba(80,0,20,0.6)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_18px_36px_-12px_rgba(80,0,20,0.7)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#E10939]"
                 >
                   {t("browseAllKitchens")}
                   <Icon icon="mdi:arrow-right" className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-0.5" />
@@ -2365,7 +2365,7 @@ export default function ChefLanding() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: "0px 0px -10% 0px" }}
             transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-            className="relative mx-auto max-w-5xl overflow-hidden rounded-[24px] border border-[#F51042]/[0.12] bg-gradient-to-r from-[#FFF4F6] via-white to-[#FFF4F6] p-5 shadow-[0_16px_40px_-28px_rgba(245,16,66,0.45)] sm:p-6"
+            className="relative mx-auto max-w-5xl overflow-hidden rounded-[24px] border border-[#E10939]/[0.12] bg-gradient-to-r from-[#FFF4F6] via-white to-[#FFF4F6] p-5 shadow-[0_16px_40px_-28px_rgba(245,16,66,0.45)] sm:p-6"
           >
             <div
               aria-hidden="true"
@@ -2373,12 +2373,12 @@ export default function ChefLanding() {
               style={{ background: "radial-gradient(closest-side, rgba(245,16,66,0.12), rgba(245,16,66,0))" }}
             />
             <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:gap-6">
-              <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-[#F51042] shadow-[inset_0_1px_0_rgba(255,255,255,0.25),0_10px_20px_-10px_rgba(245,16,66,0.8)]">
+              <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-[#E10939] shadow-[inset_0_1px_0_rgba(255,255,255,0.25),0_10px_20px_-10px_rgba(245,16,66,0.8)]">
                 <Icon icon="mdi:storefront-outline" className="h-6 w-6 text-white" aria-hidden />
               </div>
 
               <div className="min-w-0 flex-1">
-                <p className="text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-[#F51042]">
+                <p className="text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-[#E10939]">
                   {t("forKitchenOwners")}
                 </p>
                 <h2
@@ -2394,7 +2394,7 @@ export default function ChefLanding() {
 
               <a
                 href="https://kitchen.localcooks.ca"
-                className="group inline-flex h-11 flex-shrink-0 items-center justify-center gap-2 rounded-full bg-[#F51042] px-6 text-[0.9rem] font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_10px_22px_-10px_rgba(245,16,66,0.8)] transition-colors duration-300 hover:bg-[#E30D3C] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042] focus-visible:ring-offset-2"
+                className="group inline-flex h-11 flex-shrink-0 items-center justify-center gap-2 rounded-full bg-[#E10939] px-6 text-[0.9rem] font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_10px_22px_-10px_rgba(245,16,66,0.8)] transition-colors duration-300 hover:bg-[#C90832] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E10939] focus-visible:ring-offset-2"
               >
                 {t("becomePartner")}
                 <Icon icon="mdi:arrow-right" className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-0.5" />
@@ -2410,7 +2410,7 @@ export default function ChefLanding() {
           <div className="container mx-auto max-w-3xl">
             <FadeInSection>
               <div className="text-center mb-12">
-                <h2 className="font-display text-4xl md:text-5xl text-[#F51042]">{t("faq")}</h2>
+                <h2 className="font-display text-4xl md:text-5xl text-[#E10939]">{t("faq")}</h2>
               </div>
             </FadeInSection>
 
@@ -2427,7 +2427,7 @@ export default function ChefLanding() {
                   { q: t("chefFaqQ8"), a: t("chefFaqA8") },
                 ].map((item, i) => (
                   <AccordionItem key={i} value={`item-${i}`} className="border border-gray-100 rounded-xl bg-white px-6 shadow-sm">
-                    <AccordionTrigger className="text-left text-lg font-semibold text-[#2C2C2C] py-3 md:py-5 hover:no-underline hover:text-[#F51042]">
+                    <AccordionTrigger className="text-left text-lg font-semibold text-[#2C2C2C] py-3 md:py-5 hover:no-underline hover:text-[#E10939]">
                       {item.q}
                     </AccordionTrigger>
                     <AccordionContent className="text-[#6B6B6B] pb-5 text-base leading-relaxed">

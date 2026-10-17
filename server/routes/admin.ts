@@ -2035,7 +2035,7 @@ router.post('/test-email', requireFirebaseAuthWithUser, requireAdmin, async (req
                 title: 'Local Cooks Header',
                 subtitle: 'Premium Quality Food Subheader',
                 styling: {
-                    backgroundColor: 'linear-gradient(135deg, #F51042 0%, #FF5470 100%)',
+                    backgroundColor: 'linear-gradient(135deg, #E10939 0%, #FF5470 100%)',
                     titleColor: '#ffffff',
                     subtitleColor: '#ffffff',
                     titleFontSize: '32px',
@@ -2054,7 +2054,7 @@ router.post('/test-email', requireFirebaseAuthWithUser, requireAdmin, async (req
                 styling: {
                     backgroundColor: '#f8fafc',
                     textColor: '#64748b',
-                    linkColor: '#F51042',
+                    linkColor: '#E10939',
                     fontSize: '14px',
                     padding: '24px 32px',
                     textAlign: 'center',
@@ -2099,7 +2099,7 @@ router.post('/test-email', requireFirebaseAuthWithUser, requireAdmin, async (req
                 text: '🌟 Test Order Button',
                 url: 'https://localcooks.ca',
                 styling: {
-                    backgroundColor: '#F51042',
+                    backgroundColor: '#E10939',
                     color: '#ffffff',
                     fontSize: '16px',
                     fontWeight: '600',
@@ -2231,7 +2231,7 @@ router.post('/send-promo-email', requireFirebaseAuthWithUser, requireAdmin, asyn
                         text: buttonText || '🌟 Start Shopping Now',
                         url: orderUrl || 'https://localcooks.ca',
                         styling: {
-                            backgroundColor: '#F51042',
+                            backgroundColor: '#E10939',
                             color: '#ffffff',
                             fontSize: '16px',
                             fontWeight: '600',

@@ -214,11 +214,11 @@ export default function ManagerWelcomeScreen({ onContinue }: ManagerWelcomeScree
     <div className="relative min-h-screen overflow-hidden bg-[#FBFAF9]">
       <div
         aria-hidden
-        className="pointer-events-none absolute left-1/2 top-[-20rem] h-[36rem] w-[68rem] -translate-x-1/2 rounded-full bg-[#F51042]/[0.07] blur-3xl"
+        className="pointer-events-none absolute left-1/2 top-[-20rem] h-[36rem] w-[68rem] -translate-x-1/2 rounded-full bg-[#E10939]/[0.07] blur-3xl"
       />
       <div
         aria-hidden
-        className="pointer-events-none absolute bottom-[-14rem] right-[-12rem] h-[30rem] w-[30rem] rounded-full bg-[#F51042]/[0.05] blur-3xl"
+        className="pointer-events-none absolute bottom-[-14rem] right-[-12rem] h-[30rem] w-[30rem] rounded-full bg-[#E10939]/[0.05] blur-3xl"
       />
 
       <div className="relative mx-auto flex min-h-screen max-w-[1180px] flex-col justify-center px-5 py-10 sm:px-8">
@@ -234,7 +234,7 @@ export default function ManagerWelcomeScreen({ onContinue }: ManagerWelcomeScree
               renders it the same way. */}
           <Logo variant="brand" className="h-9 w-auto shrink-0" />
           <span className="flex flex-col justify-center">
-            <span className="font-logo text-xl font-normal leading-none tracking-tight text-[#F51042]">
+            <span className="font-logo text-xl font-normal leading-none tracking-tight text-[#E10939]">
               LocalCooks
             </span>
             <span className="mt-0.5 text-[9px] font-medium uppercase leading-none tracking-wider text-gray-500/70">
@@ -331,7 +331,7 @@ export default function ManagerWelcomeScreen({ onContinue }: ManagerWelcomeScree
                       key={icon}
                       className={
                         i === 0
-                          ? "flex h-6 w-6 items-center justify-center rounded-[7px] bg-[#F51042] text-white"
+                          ? "flex h-6 w-6 items-center justify-center rounded-[7px] bg-[#E10939] text-white"
                           : "flex h-6 w-6 items-center justify-center rounded-[7px] text-slate-300"
                       }
                     >
@@ -403,15 +403,15 @@ export default function ManagerWelcomeScreen({ onContinue }: ManagerWelcomeScree
                     >
                       <defs>
                         <linearGradient id="lc-welcome-spark" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#F51042" stopOpacity="0.26" />
-                          <stop offset="100%" stopColor="#F51042" stopOpacity="0.02" />
+                          <stop offset="0%" stopColor="#E10939" stopOpacity="0.26" />
+                          <stop offset="100%" stopColor="#E10939" stopOpacity="0.02" />
                         </linearGradient>
                       </defs>
                       <path d={sparkArea} fill="url(#lc-welcome-spark)" />
                       <path
                         d={sparkLine}
                         fill="none"
-                        stroke="#F51042"
+                        stroke="#E10939"
                         strokeWidth="1.75"
                         strokeLinecap="round"
                         strokeLinejoin="round"
@@ -421,7 +421,7 @@ export default function ManagerWelcomeScreen({ onContinue }: ManagerWelcomeScree
                         cx={lastX}
                         cy={lastY}
                         r="1.7"
-                        fill="#F51042"
+                        fill="#E10939"
                         vectorEffect="non-scaling-stroke"
                       />
                     </svg>
@@ -447,7 +447,7 @@ export default function ManagerWelcomeScreen({ onContinue }: ManagerWelcomeScree
                         <span className="text-xs font-bold text-slate-950">82%</span>
                       </div>
                       <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-100">
-                        <div className="h-full w-[82%] rounded-full bg-gradient-to-r from-[#e00f3c] to-[#ff5c7a]" />
+                        <div className="h-full w-[82%] rounded-full bg-gradient-to-r from-[#c90832] to-[#ff5c7a]" />
                       </div>
                     </div>
                   </div>
@@ -460,7 +460,7 @@ export default function ManagerWelcomeScreen({ onContinue }: ManagerWelcomeScree
                     <div className="mt-2 divide-y divide-slate-100">
                       {RULES.map((r) => (
                         <div key={r.key} className="flex items-center gap-2 py-[9px]">
-                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[6px] bg-[#F51042]/10 text-[#F51042]">
+                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[6px] bg-[#E10939]/10 text-[#E10939]">
                             <Icon icon={r.icon} className="h-3 w-3" aria-hidden />
                           </span>
                           <span className="min-w-0 flex-1 truncate text-[11px] font-semibold text-slate-800">
@@ -514,7 +514,7 @@ export default function ManagerWelcomeScreen({ onContinue }: ManagerWelcomeScree
             onClick={handleContinue}
             disabled={isCompleting}
             size="lg"
-            className="w-full rounded-xl bg-[#F51042] font-semibold text-white shadow-[0_2px_6px_-1px_rgba(15,23,42,0.1),0_10px_28px_-8px_rgba(245,16,66,0.38)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#E00A38]"
+            className="w-full rounded-xl bg-[#E10939] font-semibold text-white shadow-[0_2px_6px_-1px_rgba(15,23,42,0.1),0_10px_28px_-8px_rgba(245,16,66,0.38)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#C90832]"
           >
             {isCompleting ? (
               <>

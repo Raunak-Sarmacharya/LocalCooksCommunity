@@ -113,7 +113,7 @@ export function KitchenLocationCard({ location, navigate, index = 0 }: KitchenLo
 
                     {location.kitchenCount > 1 && (
                         <div className="absolute right-3 top-3 z-10 inline-flex items-center gap-1 rounded-full bg-white/95 px-2.5 py-1 shadow-[0_4px_12px_-4px_rgba(0,0,0,0.3)] backdrop-blur">
-                            <Icon icon={KITCHEN_ICON_NAME} className="h-3.5 w-3.5 text-[#F51042]" aria-hidden />
+                            <Icon icon={KITCHEN_ICON_NAME} className="h-3.5 w-3.5 text-[#E10939]" aria-hidden />
                             <span className="text-[0.72rem] font-semibold text-[#1F1F1F]">
                                 {t("kitchenCount", "{{count}} Kitchens", { count: location.kitchenCount })}
                             </span>
@@ -129,7 +129,7 @@ export function KitchenLocationCard({ location, navigate, index = 0 }: KitchenLo
                     </TruncatedText>
 
                     <div className="mt-1.5 flex min-w-0 items-center gap-1.5">
-                        <Icon icon="mdi:map-marker-outline" className="h-4 w-4 shrink-0 text-[#F51042]" aria-hidden />
+                        <Icon icon="mdi:map-marker-outline" className="h-4 w-4 shrink-0 text-[#E10939]" aria-hidden />
                         <TruncatedText as="p" className="min-w-0 truncate text-[0.86rem] text-[#5F5F5F]">
                             {location.address?.trim() || "\u00a0"}
                         </TruncatedText>
@@ -142,7 +142,7 @@ export function KitchenLocationCard({ location, navigate, index = 0 }: KitchenLo
                     <button
                         type="button"
                         onClick={() => navigate(previewHref)}
-                        className="group/btn mt-auto inline-flex h-11 w-full items-center justify-center gap-2 rounded-full bg-[#F51042] px-5 text-[0.9rem] font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_8px_18px_-10px_rgba(245,16,66,0.8)] transition-colors duration-300 hover:bg-[#E30D3C] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042] focus-visible:ring-offset-2"
+                        className="group/btn mt-auto inline-flex h-11 w-full items-center justify-center gap-2 rounded-full bg-[#E10939] px-5 text-[0.9rem] font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_8px_18px_-10px_rgba(245,16,66,0.8)] transition-colors duration-300 hover:bg-[#C90832] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E10939] focus-visible:ring-offset-2"
                     >
                         <Icon icon="mdi:calendar-month-outline" className="h-4 w-4" aria-hidden />
                         {t("viewAvailability", "View Availability")}

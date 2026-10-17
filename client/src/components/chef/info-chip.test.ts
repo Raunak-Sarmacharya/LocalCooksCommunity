@@ -29,7 +29,7 @@ describe("InfoChip custom icon enforcement", () => {
   it("strips caller size and color classes", () => {
     expect(sanitizeInfoChipIconClass("h-3 w-3 text-muted-foreground mr-1")).toBe("mr-1");
     expect(sanitizeInfoChipIconClass("size-2.5 text-success animate-spin")).toBe("animate-spin");
-    expect(sanitizeInfoChipIconClass("text-[#F51042] h-4")).toBe("");
+    expect(sanitizeInfoChipIconClass("text-[#E10939] h-4")).toBe("");
   });
 
   it("clones custom icons with tone color, size-3, and size=12", () => {
