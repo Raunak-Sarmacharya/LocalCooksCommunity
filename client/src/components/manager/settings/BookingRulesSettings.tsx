@@ -509,7 +509,7 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
                   onCheckedChange={setAllowMultiDay} />
               </SettingsRow>
               {allowMultiDay && <SettingsRow id="max-booking-days" label={mt("bpMaxDaysLabel", { count: maxBookingDays })}
-                hint={hint(mt("bpMultiDayOnValue", { count: maxBookingDays }), "maxBookingDays", changed.multiDay)}>
+                hint={hint(mt("bpMaxDaysHint"), "maxBookingDays", changed.multiDay)}>
                 <div className="flex flex-col items-end gap-1">
                   <NumericInput id="max-booking-days" disabled={policyUpdating} suffix={mt("bpDaysUnit", { count: maxBookingDays })}
                     value={String(maxBookingDays)} className="h-11 w-32" aria-describedby="max-booking-days-cap"
@@ -546,7 +546,7 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
               </div>
             </SettingsRow>}
 
-            {!isKitchenMode && <SettingsRow id="location-tax" label={mt("taxRate2")}
+            {!isKitchenMode && <SettingsRow id="location-tax" label={mt("bpTaxLabel")}
               hint={<><span className="block">{mt("bpTaxLocationHint")}</span>
                 <span className="mt-1 block text-xs">{mt("bpTaxUsedByAllKitchens", { count: (policyImpact as { kitchenCount?: number } | undefined)?.kitchenCount ?? 0 })}</span>
                 {taxChanged ? <span className="mt-1 block text-amber-700 dark:text-amber-400">{mt("bpTaxFanOutWarning")}</span> : null}
