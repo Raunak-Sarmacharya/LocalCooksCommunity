@@ -86,3 +86,8 @@ accepts); no marketplace changes a guest's booking without consent. Owner: the c
 3. Accept -> capture the new total only; the rest of the hold is released. Decline or no answer -> full hold released, both told.
 4. Chef's answer window: 24 h, or until 1 h before the refund deadline if sooner. Days stay reserved meanwhile; the kitchen's
    list shows "Waiting for the chef". No capture happens before the chef agrees, so no card fee is lost.
+5. **Last-minute guard (lead pushback, owner approved):** if under 3 hours would remain for the chef to answer, "Accept
+   without {item}" isn't offered — the kitchen accepts everything or declines and can message the chef ("This booking starts
+   soon, so there isn't time to ask the chef about a change. Accept the full request, or decline it and message the chef.").
+   Avoids losing a booking to a proposal nobody can answer overnight. Chef copy always states the exact deadline in kitchen
+   time and that silence closes the request and releases the hold.
