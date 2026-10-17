@@ -1,7 +1,7 @@
 import { StorageIcon as Package } from "@/components/ui/inventory-icons";
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuBadge, SidebarMenuButton, SidebarMenuItem, SidebarRail, SidebarSeparator } from "@/components/ui/sidebar";
 import { Badge } from "@/components/ui/badge";
-import { Shield, FileText, AlertTriangle, Users, Building2, Gift, DollarSign, Settings, Clock, LogOut, BarChart3, Lock, LayoutDashboard, CreditCard, FileWarning,  KeyRound, Mail, CalendarDays, LifeBuoy } from "lucide-react";
+import { Shield, FileText, AlertTriangle, Users, Building2, Gift, DollarSign, Settings, LogOut, BarChart3, Lock, LayoutDashboard, CreditCard, FileWarning,  KeyRound, Mail, CalendarDays, LifeBuoy } from "lucide-react";
 
 export type AdminSection =
   | "live-problems"
@@ -12,7 +12,6 @@ export type AdminSection =
   | "tour-requests"
   | "kitchen-licenses"
   | "damage-claims"
-  | "escalated-penalties"
   | "chef-kitchen-access"
   | "kitchen-management"
   | "user-management"
@@ -21,11 +20,9 @@ export type AdminSection =
   | "platform-overview"
   | "platform-settings"
   | "platform-requirements"
-  | "overstay-settings"
   | "damage-claim-settings"
   | "account-settings"
   | "transactions"
-  | "overstay-penalties-history"
   | "damage-claims-history"
   | "storage-rentals"
   | "security-settings"
@@ -55,7 +52,6 @@ const NAV_GROUPS = [
       { id: "tour-requests" as AdminSection, label: "Tour Requests", icon: CalendarDays },
       { id: "kitchen-licenses" as AdminSection, label: "Kitchen Licenses", icon: FileText, badgeKey: "pendingLicenses" as const },
       { id: "damage-claims" as AdminSection, label: "Claims to review", icon: AlertTriangle },
-      { id: "escalated-penalties" as AdminSection, label: "Escalated", icon: AlertTriangle },
     ],
   },
   {
@@ -80,7 +76,6 @@ const NAV_GROUPS = [
     label: "Revenue",
     items: [
       { id: "transactions" as AdminSection, label: "Transactions", icon: CreditCard },
-      { id: "overstay-penalties-history" as AdminSection, label: "Overstay Penalties", icon: Package },
       { id: "storage-rentals" as AdminSection, label: "Storage rentals", icon: Package },
       { id: "damage-claims-history" as AdminSection, label: "Claims history", icon: FileWarning },
       { id: "manager-revenues" as AdminSection, label: "Manager Revenues", icon: DollarSign },
@@ -93,7 +88,6 @@ const NAV_GROUPS = [
       { id: "platform-settings" as AdminSection, label: "Platform Settings", icon: Settings },
       { id: "platform-requirements" as AdminSection, label: "Platform Requirements", icon: Settings },
       { id: "security-settings" as AdminSection, label: "Security & Rate Limits", icon: Shield },
-      { id: "overstay-settings" as AdminSection, label: "Storage & Overstay", icon: Clock },
       { id: "damage-claim-settings" as AdminSection, label: "Claim rules", icon: AlertTriangle },
       { id: "account-settings" as AdminSection, label: "Account Settings", icon: Lock },
     ],

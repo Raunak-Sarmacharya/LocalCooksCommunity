@@ -5,7 +5,6 @@ import { friendlyDate, friendlyTime } from "@/lib/friendly-date";
  *
  * Manager view showing today's kitchen bookings with live check-in status.
  * Opens the booking or its focused inspection page for manager actions.
- * Mirrors PendingStorageCheckouts component pattern.
  */
 
 import { useLocation } from "wouter"

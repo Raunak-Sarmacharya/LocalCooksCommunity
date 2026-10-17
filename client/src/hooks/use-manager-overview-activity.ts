@@ -43,8 +43,9 @@ export interface ActivityRecord {
 
 // Reuse each workflow's query key so its mutations refresh the overview too.
 const sources = [
-  { key: ["/api/manager/storage-bookings"], path: "/manager/storage-bookings", field: null },
-  { key: ["/api/manager/storage-extensions/pending"], path: "/manager/storage-extensions/pending", field: null },
+  // Legacy storage feeds were removed with standalone rentals (WP-ST12); slots stay so indexes below don't shift.
+  { key: ["/api/manager/storage-bookings"], path: null, field: null },
+  { key: ["/api/manager/storage-extensions/pending"], path: null, field: null },
   { key: ["/api/manager/storage-checkouts/pending"], path: "/manager/storage-checkouts/pending", field: "pendingCheckouts" },
   { key: ["/api/manager/damage-claims", "all"], path: "/manager/damage-claims?includeAll=true", field: "claims" },
   { key: ["/api/manager/overstays", "all"], path: "/manager/overstays?includeAll=true", field: "overstays" },
@@ -69,8 +70,8 @@ export function useManagerOverviewActivity(locationId?: number, kitchenIds: numb
   });
   const queries = useQueries({ queries: sources.map((source) => ({
     queryKey: [...source.key],
-    queryFn: () => apiGet(source.path),
-    enabled: !!user, refetchInterval: 30_000, staleTime: 0,
+    queryFn: () => apiGet(source.path!),
+    enabled: !!user && source.path !== null, refetchInterval: 30_000, staleTime: 0,
   })) });
   const records = queries.map((query, index): ActivityRecord[] => {
     const field = sources[index].field;

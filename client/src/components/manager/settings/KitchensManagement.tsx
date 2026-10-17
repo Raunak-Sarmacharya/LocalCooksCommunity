@@ -149,10 +149,8 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
   }, []);
   const [policiesDirty, setPoliciesDirty] = useState(false);
   const [detailsDirty, setDetailsDirty] = useState(false);
-  const [storagePenaltyDirty, setStoragePenaltyDirty] = useState(false);
   const arrivalRef = useRef<CheckinCheckoutHandle>(null);
   const [arrivalDirty, setArrivalDirty] = useState(false);
-  const storagePenaltyRef = useRef<{ saveAllChanges: () => Promise<boolean> }>(null);
   /** In-page navigation held back until the unsaved-changes question is answered. */
   const [pendingNav, setPendingNav] = useState<(() => void) | null>(null);
 
@@ -395,8 +393,7 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
       || (activeSection === "availability" && availabilityDirty)
       || (activeSection === "tours" && toursDirty)
       || (activeSection === "policies" && policiesDirty)
-      || (activeSection === "arrival-departure" && arrivalDirty)
-      || (activeSection === "storage" && storagePenaltyDirty));
+      || (activeSection === "arrival-departure" && arrivalDirty));
 
   useEffect(() => {
     setSelectedKitchenId((current) => {
@@ -453,7 +450,7 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
       : activeSection === "policies"
       ? await requestPolicySave()
       : activeSection === "storage"
-      ? (await storagePenaltyRef.current?.saveAllChanges()) ?? true
+      ? true
       : activeSection === "arrival-departure"
       ? (await arrivalRef.current?.save()) ?? true
       : (await detailsRef.current?.saveAllChanges()) ?? true;
@@ -750,7 +747,7 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
             </TabsContent>
 
             <TabsContent value="storage" className="mt-0">
-              <StorageListingContent key={`${location.id}-${activeKitchenId}`} selectedLocationId={location.id} selectedKitchenId={activeKitchenId} onPenaltyDirtyChange={setStoragePenaltyDirty} penaltySaveRef={storagePenaltyRef} onConfigureInspections={() => onNavigate("settings-storage-checkin-checkout", activeKitchenId ?? undefined)} onListingsChanged={() => void queryClient.invalidateQueries({ queryKey: ["managerWorkspaceNavigation"] })} />
+              <StorageListingContent key={`${location.id}-${activeKitchenId}`} selectedLocationId={location.id} selectedKitchenId={activeKitchenId} onConfigureInspections={() => onNavigate("settings-storage-checkin-checkout", activeKitchenId ?? undefined)} onListingsChanged={() => void queryClient.invalidateQueries({ queryKey: ["managerWorkspaceNavigation"] })} />
             </TabsContent>
 
             <TabsContent value="availability" className="mt-0 space-y-4">

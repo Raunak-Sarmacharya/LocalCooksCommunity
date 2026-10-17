@@ -25,7 +25,6 @@ import { StorageUnitCard } from "@/components/manager/storage/StorageUnitCard";
 interface ManagerStorageBookingsPageProps {
   /** Kept for the dashboard's view contract; the board no longer routes to the legacy queues. */
   onOpenOverstays?: () => void;
-  onOpenInspections?: () => void;
 }
 
 export default function ManagerStorageBookingsPage(_props: ManagerStorageBookingsPageProps = {}) {

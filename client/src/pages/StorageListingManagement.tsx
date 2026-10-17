@@ -4,13 +4,12 @@ import { mt } from "@/i18n/manager";
 import { useSessionFileUpload } from "@/hooks/useSessionFileUpload";
 import { ACCEPTED_IMAGE_TYPES, GalleryPhotoField } from "@/components/manager/kitchen/KitchenPhotoFields";
 import { Plus, Pencil, Trash2, Thermometer, Snowflake, ChevronLeft, ClipboardCheck } from "@/components/ui/manager-icons";
-import { useState, useEffect, useMemo, useCallback, useRef, useImperativeHandle } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import { NeedsKitchen } from "@/components/manager/locations/NeedsPrerequisite";
 import { Button } from "@/components/ui/button";
 import { StatusButton } from "@/components/ui/status-button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
@@ -38,10 +37,6 @@ import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
 import { STORAGE_CATEGORIES, StorageTemplate, StorageTypeId, getDefaultTemperatureRange } from "@/lib/storage-templates";
 import { PLATFORM_MAX_TERM_DAYS } from "@shared/storage-rental";
 import { cn } from "@/lib/utils";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import type { Ref } from "react";
-import { OverstayPenaltySettings } from "@/components/manager/overstays/OverstayPenaltySettings";
-import { UnsavedChangesDialog } from "@/components/manager/UnsavedChangesDialog";
 
 /**
  * Storage tab — "My Kitchens".
@@ -329,8 +324,6 @@ export function StorageListingContent({
   selectedKitchenId,
   embedded = false,
   onConfigureInspections,
-  onPenaltyDirtyChange,
-  penaltySaveRef,
   onListingsChanged
 }: {
   selectedLocationId: number | null,
@@ -344,8 +337,6 @@ export function StorageListingContent({
    */
   embedded?: boolean,
   onConfigureInspections?: () => void,
-  onPenaltyDirtyChange?: (dirty: boolean) => void,
-  penaltySaveRef?: Ref<{ saveAllChanges: () => Promise<boolean> }>,
   /**
    * Called after this page's own list has been re-read following a successful write.
    *
@@ -361,12 +352,6 @@ export function StorageListingContent({
   onListingsChanged?: () => void
 }) {
   const { toast } = useToast();
-  const [storageSection, setStorageSection] = useState("inventory");
-  const penaltySettingsRef = useRef<{ saveAllChanges: () => Promise<boolean> }>(null);
-  useImperativeHandle(penaltySaveRef, () => ({ saveAllChanges: async () => (await penaltySettingsRef.current?.saveAllChanges()) ?? true }));
-  const [penaltySettingsDirty, setPenaltySettingsDirty] = useState(false);
-  const [confirmPenaltyExit, setConfirmPenaltyExit] = useState(false);
-  useEffect(() => { onPenaltyDirtyChange?.(penaltySettingsDirty); }, [penaltySettingsDirty, onPenaltyDirtyChange]);
 
   /** The tab shows either the listings or a full page for one listing. */
   const [view, setView] = useState<'list' | 'add' | 'edit'>('list');
@@ -1128,12 +1113,8 @@ export function StorageListingContent({
   // ── List page ─────────────────────────────────────────────────────────────
 
   return (
-    <Tabs value={storageSection} onValueChange={(section) => { if (penaltySettingsDirty) setConfirmPenaltyExit(true); else setStorageSection(section); }} className="space-y-4">
-      {!embedded && <TabsList className="h-auto w-full min-w-0 justify-start gap-6 overflow-x-auto rounded-none border-b border-border bg-transparent p-0 text-muted-foreground"><TabsTrigger value="inventory" className="group gap-2 rounded-none border-b-2 border-transparent px-0.5 py-2.5 font-normal text-muted-foreground transition-colors hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:font-medium data-[state=active]:text-foreground data-[state=active]:shadow-none">{mt("storageInventory")}</TabsTrigger><TabsTrigger value="penalties" className="group gap-2 rounded-none border-b-2 border-transparent px-0.5 py-2.5 font-normal text-muted-foreground transition-colors hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:font-medium data-[state=active]:text-foreground data-[state=active]:shadow-none">{mt("storagePenaltySettingsTab")}</TabsTrigger></TabsList>}
-      <TabsContent value="penalties" className="mt-0"><Card><div className="p-4 pb-3"><h3 className="font-semibold">{mt("storageOverstayPenaltyDefaults")}</h3><p className="mt-1 text-sm text-muted-foreground">{mt("storagePenaltyBannerBody")}</p></div><CardContent className={penaltySaveRef ? "p-0" : "p-4 pt-0"}>
-        {selectedLocationId && <OverstayPenaltySettings key={selectedLocationId} locationId={selectedLocationId} saveRef={penaltySettingsRef} hideSaveActions={!!penaltySaveRef} onDirtyChange={setPenaltySettingsDirty} />}
-      </CardContent></Card></TabsContent>
-      <TabsContent value="inventory" className="mt-0 space-y-4">
+    <div className="space-y-4">
+      <div className="mt-0 space-y-4">
       {!isLoading && visibleListings.length > 0 && selectedLocationId && onConfigureInspections && <StorageTrackingSetup locationId={selectedLocationId} onConfigure={onConfigureInspections} />}
       <div className="rounded-lg border bg-card">
         <div className="flex flex-wrap items-start justify-between gap-4 border-b p-4">
@@ -1268,10 +1249,7 @@ export function StorageListingContent({
       )}
 
       {unsavedDialog}
-      </TabsContent>
-      <UnsavedChangesDialog open={confirmPenaltyExit} onOpenChange={setConfirmPenaltyExit} description={mt("overstaySettingsUnsavedDescription")}
-        onSave={async () => { if (await penaltySettingsRef.current?.saveAllChanges()) { setConfirmPenaltyExit(false); setStorageSection("inventory"); } }}
-        onDiscard={() => { setConfirmPenaltyExit(false); setPenaltySettingsDirty(false); onPenaltyDirtyChange?.(false); setStorageSection("inventory"); }} />
-    </Tabs>
+      </div>
+    </div>
   );
 }

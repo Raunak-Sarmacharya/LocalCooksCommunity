@@ -24,7 +24,6 @@ export default function KitchenBookingPage() {
   const initialDateIso = searchParams.get('date') || undefined;
   const initialSlots = searchParams.get('slots')?.split(',') || undefined;
   const initialNotes = searchParams.get('notes') || undefined;
-  const initialStorage = searchParams.get('storage') || undefined;
   const initialEquipment = searchParams.get('equipment') || undefined;
   // "Change request": send this booking first; the earlier pending request closes once it is sent.
   const replacesBookingId = replacesFromSearch(window.location.search);
@@ -150,7 +149,6 @@ export default function KitchenBookingPage() {
         initialDateIso={initialDateIso}
         initialSlots={initialSlots}
         initialNotes={initialNotes}
-        initialStorage={initialStorage}
         initialEquipment={initialEquipment}
         replacesBookingId={replacesBookingId}
         onCancel={handleCancel}
