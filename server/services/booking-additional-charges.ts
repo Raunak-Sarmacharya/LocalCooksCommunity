@@ -1,6 +1,6 @@
 /**
  * Read-only: the other money a chef paid on a kitchen booking besides its own charge, i.e. session extensions,
- * extra-time charges and damage/cleaning claim payments. Each is its own `payment_transactions` row with the same
+ * extra-time charges, booking changes and damage/cleaning claim payments. Each is its own `payment_transactions` row with the same
  * booking id (`booking_type = 'kitchen'`) and a different PaymentIntent. Used by the booking-details responses so the
  * booking page can show the true total. Role-scoped: the chef gets what they paid; the kitchen also gets its share.
  * No writes, no provider calls.
@@ -9,7 +9,7 @@ import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { paymentTransactions } from '@shared/schema';
 import { kitchenPayout } from '@shared/kitchen-payout';
 
-export type AdditionalChargeKind = 'extension' | 'extra_time' | 'damage_claim';
+export type AdditionalChargeKind = 'extension' | 'extra_time' | 'damage_claim' | 'kitchen_change';
 export interface AdditionalCharge {
   id: number;
   kind: AdditionalChargeKind;
@@ -34,6 +34,7 @@ const cents = (value: string | number | null | undefined) => { const n = Math.ro
 export function chargeKind(metadata: unknown): AdditionalChargeKind | null {
   const meta = (metadata && typeof metadata === 'object' ? metadata : {}) as Record<string, unknown>;
   if (meta.type === 'damage_claim' || meta.damage_claim_id != null) return 'damage_claim';
+  if (meta.kitchenChangeId != null) return 'kitchen_change';
   if (meta.type === 'session_extension' || meta.sessionExtensionId != null) return meta.extensionKind === 'extra_time' ? 'extra_time' : 'extension';
   return null;
 }
@@ -52,7 +53,7 @@ export function toAdditionalCharges(rows: Row[], role: 'chef' | 'manager', paren
       // (managerRevenue is rewritten to the net amount when Stripe's fee is synced, so it can't be reduced again.)
       : kitchenPayout({ amount: row.amount ?? 0, baseAmount: row.baseAmount ?? 0, serviceFee: row.serviceFee ?? 0, stripeProcessingFee: row.stripeProcessingFee,
         managerRevenue: row.managerRevenue, metadata: row.metadata, transferId: row.transferId, payoutTiming: row.payoutTiming, payoutReleasedAt: row.payoutReleasedAt }).amountCents;
-    const minutes = kind === 'damage_claim' ? null : Number.isFinite(Number(meta.minutes)) ? Number(meta.minutes) : null;
+    const minutes = kind === 'damage_claim' || kind === 'kitchen_change' ? null : Number.isFinite(Number(meta.minutes)) ? Number(meta.minutes) : null;
     const line: AdditionalCharge = { id: row.id, kind, minutes, amountCents: cents(row.amount), refundedCents: cents(row.refundAmount),
       paidAt: row.paidAt ? new Date(row.paidAt).toISOString() : null, status: row.status };
     return [role === 'manager' ? { ...line, kitchenShareCents: kitchenShare } : line];
@@ -71,7 +72,7 @@ export async function readAdditionalCharges(db: any, bookingId: number, role: 'c
     eq(paymentTransactions.bookingId, bookingId),
     eq(paymentTransactions.bookingType, 'kitchen'),
     inArray(paymentTransactions.status, [...PAID]),
-    sql`(${paymentTransactions.metadata} ? 'sessionExtensionId' OR ${paymentTransactions.metadata}->>'type' IN ('session_extension', 'damage_claim') OR ${paymentTransactions.metadata} ? 'damage_claim_id')`,
-  )).orderBy(asc(paymentTransactions.id)).limit(50);
+    sql`(${paymentTransactions.metadata} ? 'sessionExtensionId' OR ${paymentTransactions.metadata}->>'type' IN ('session_extension', 'damage_claim') OR ${paymentTransactions.metadata} ? 'damage_claim_id' OR ${paymentTransactions.metadata} ? 'kitchenChangeId')`,
+  )).orderBy(asc(paymentTransactions.id));
   return toAdditionalCharges(rows, role, parentPaymentIntentId);
 }

@@ -3557,6 +3557,7 @@
   "bnChargeExtension": "Extra time · {length}",
   "bnChargeExtensionNoLength": "Extra time",
   "bnChargeExtraTime": "Extra-time charge",
+  "bnChargeBookingChange": "Booking change",
   "bnChargeDamage": "Damage and cleaning",
   "bnChargeRefunded": "Refunded {amount}",
   "bnPaidAllCharges": "Total paid, all charges",

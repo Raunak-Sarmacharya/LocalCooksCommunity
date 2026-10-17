@@ -15,9 +15,11 @@ vi.mock('./outcome-delivery', () => ({ queuePaymentOutcome: vi.fn() }));
 vi.mock('./stripe-service', () => ({ calculateRefundBreakdown: () => ({ maxRefundableToCustomer: 0 }) }));
 vi.mock('../logger', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 import { summarizePayoutStatementBookings } from './payout-statement-service';
-import { getTransactionHistory } from './revenue-service';
+import { getRevenueMetrics, getTransactionHistory } from './revenue-service';
+import { createTestDatabase } from './kitchen-booking-changes.pglite';
+import { kitchenBookings, kitchens, paymentTransactions } from '@shared/schema';
 import { getRevenueMetricsFromTransactions } from './revenue-service-v2';
-import { findPaymentTransactionByBooking, syncStripeAmountsToBookings } from './payment-transactions-service';
+import { findPaymentTransactionByBooking, getChefPaymentTransactions, syncStripeAmountsToBookings } from './payment-transactions-service';
 import { ManagerRepository } from '../domains/managers/manager.repository';
 
 const db = { execute: async (query: any) => capture(query) };
@@ -31,6 +33,7 @@ describe('manager lists show a booking with an extension once', () => {
     await new ManagerRepository().findInvoices(2, {} as any);
     const invoice = state.queries.find(text => text.includes('FROM kitchen_bookings kb'))!;
     expect(invoice).toMatch(/pt\.payment_intent_id = kb\.payment_intent_id/);
+    expect(invoice).toMatch(/CASE WHEN pt\.metadata \? 'originalBookingSchedule' THEN COALESCE\(pt\.service_fee, 0\)/);
   });
   it('the payout statement lists the booking once and sums parent + extension once each', () => {
     const booking = { id: 10, bookingDate: '2026-10-14', kitchenName: 'Harbour', chefName: 'Alex', totalPrice: 10000, serviceFee: 700, taxRatePercent: 13 };
@@ -67,7 +70,7 @@ describe('revenue counts the booking and its extension once each', () => {
       : text.includes('COUNT(*)') ? [{ count: '2' }] : [{}];
     await getRevenueMetricsFromTransactions(2, db).catch(() => undefined);
     const tax = state.queries.find(text => text.includes('calculated_tax_amount'))!;
-    expect(tax).toMatch(/pt\.metadata \? 'sessionExtensionId'\)\s+AND \(pt\.metadata->>'approvedTax'\) IS NOT NULL/);
+    expect(tax).toMatch(/WHEN \(pt\.metadata->>'approvedTax'\) IS NOT NULL/);
     // Totals are per payment row (never a booking join), so the extension charge is counted once.
     const totals = state.queries.find(text => text.includes('total_revenue'))!;
     expect(totals).toMatch(/FROM payment_transactions pt\s+WHERE/);
@@ -75,6 +78,13 @@ describe('revenue counts the booking and its extension once each', () => {
 });
 
 describe('the booking\'s own payment is never an extension charge', () => {
+  it('historical chef payment rows ignore the current booking subtotal and fee after a reschedule', async () => {
+    state.respond = text => text.includes('COUNT(*)') ? [{ total: '0' }] : [];
+    await getChefPaymentTransactions(3, db);
+    const query = state.queries.find(text => text.includes('as kb_total_price'))!;
+    expect(query).toMatch(/originalBookingSchedule' THEN NULL ELSE kb\.total_price/);
+    expect(query).toMatch(/originalBookingSchedule' THEN NULL ELSE kb\.service_fee/);
+  });
   it('lookup by booking excludes separate charges and prefers the booking PaymentIntent', async () => {
     await findPaymentTransactionByBooking(10, 'kitchen', db);
     expect(state.queries[0]).toContain("?| ARRAY['sessionExtensionId', 'kitchenChangeId', 'damage_claim_id', 'overstay_record_id']");
@@ -85,6 +95,12 @@ describe('the booking\'s own payment is never an extension charge', () => {
     await syncStripeAmountsToBookings('pi_ext', { stripeAmount: 3000, stripeNetAmount: 2708, stripeProcessingFee: 117, stripePlatformFee: 175 }, db);
     expect(state.queries.some(text => text.includes('UPDATE kitchen_bookings'))).toBe(false);
   });
+  it.each([{ kitchenChangeId: 'change-197' }, { originalBookingSchedule: { date: '2026-10-17' } }])('Stripe fee sync preserves rescheduled booking fees (%j)', async metadata => {
+    state.respond = text => text.includes('FROM payment_transactions pt') ? [{ id: 101, booking_id: 10, booking_type: 'kitchen', base_amount: '2875', service_fee: '175',
+      metadata: { ...metadata, approvedSubtotal: 2500, approvedTax: 375, platformCommission: 175 } }] : [];
+    await syncStripeAmountsToBookings('pi_change', { stripeAmount: 3050, stripeNetAmount: 2757, stripeProcessingFee: 118, stripePlatformFee: 175 }, db);
+    expect(state.queries.some(text => text.includes('UPDATE kitchen_bookings'))).toBe(false);
+  });
   it('Stripe fee sync for the booking payment only updates the booking that owns that PaymentIntent', async () => {
     state.respond = text => text.includes('FROM payment_transactions pt') ? [{ id: 99, booking_id: 10, booking_type: 'kitchen', base_amount: '11300', service_fee: '700', metadata: {} }] : [];
     await syncStripeAmountsToBookings('pi_booking', { stripeAmount: 12000, stripeNetAmount: 10942, stripeProcessingFee: 358, stripePlatformFee: 700 }, db);
@@ -92,6 +108,32 @@ describe('the booking\'s own payment is never an extension charge', () => {
     expect(state.queries[update]).toMatch(/WHERE id = \$\d+ AND payment_intent_id = \$\d+/);
     expect(state.params[update]).toContain('pi_booking');
   });
+});
+
+it('both revenue readers tax each captured payment once after the booking subtotal changes', async () => {
+  state.respond = text => text.includes('table_exists') ? [{ table_exists: true }] : text.includes('total_bookings') ? [{ total_bookings: '1', bookings_with_transactions: '1' }]
+    : text.includes('COUNT(*)') ? [{ count: '1' }] : [{}];
+  await getRevenueMetrics(2, db);
+  await getRevenueMetricsFromTransactions(2, db);
+  const queries = state.queries.map((text, i) => ({ text, params: state.params[i] }))
+    .filter(({ text }) => text.includes('as effective_tax') || text.includes('as calculated_tax_amount') && text.includes('FROM payment_transactions pt'));
+  expect(queries).toHaveLength(2);
+  const test = await createTestDatabase([kitchens, kitchenBookings, paymentTransactions]);
+  try {
+    await test.db.insert(kitchens).values({ id: 4, name: 'Test', locationId: 5, taxRatePercent: '15' });
+    await test.db.insert(kitchenBookings).values({ id: 197, chefId: 3, kitchenId: 4, bookingDate: new Date(), startTime: '08:00', endTime: '10:00', totalPrice: '5000' });
+    await test.db.insert(paymentTransactions).values([
+      { bookingId: 197, bookingType: 'kitchen', chefId: 3, managerId: 2, status: 'succeeded', amount: '6100', baseAmount: '5750', serviceFee: '350', managerRevenue: '5750', netAmount: '6100',
+        taxAmount: '750', metadata: { approvedSubtotal: 5000, approvedTax: 750, platformCommission: 350 } },
+      { bookingId: 197, bookingType: 'kitchen', chefId: 3, managerId: 2, status: 'succeeded', amount: '3050', baseAmount: '2875', serviceFee: '175', managerRevenue: '2875', netAmount: '3050',
+        taxAmount: '375', metadata: { kitchenChangeId: 'change-197', approvedSubtotal: 2500, approvedTax: 375, platformCommission: 175 } },
+    ]);
+    for (const query of queries) {
+      const result = await test.client.query(query.text, query.params);
+      const row = result.rows[0] as Record<string, unknown>;
+      expect(Number(row.effective_tax ?? row.calculated_tax_amount)).toBe(1125);
+    }
+  } finally { await test.client.close(); }
 });
 
 describe('manager dashboard pending payments', () => {

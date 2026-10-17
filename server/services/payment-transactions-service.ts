@@ -563,13 +563,13 @@ export async function syncStripeAmountsToBookings(
     const ptMetadata = transaction.metadata
       ? (typeof transaction.metadata === 'string' ? JSON.parse(transaction.metadata) : transaction.metadata)
       : {};
-    if (ptMetadata.partialCapture || ptMetadata.bookingDecisionId) {
+    if (ptMetadata.partialCapture || ptMetadata.bookingDecisionId || ptMetadata.originalBookingSchedule) {
       logger.info(`[Stripe Sync] Skipping booking table sync for partially captured PaymentIntent ${paymentIntentId} — capture engine already set correct values`);
       return;
     }
-    // A separate charge on the booking (session extension / extra time) must never overwrite the booking's own fee columns.
-    if (ptMetadata.type === 'session_extension' || ptMetadata.sessionExtensionId != null) {
-      logger.info(`[Stripe Sync] Skipping booking table sync for session-extension PaymentIntent ${paymentIntentId}`);
+    // Separate charges must never replace the booking's current fee with just their own fee.
+    if (ptMetadata.type === 'session_extension' || ptMetadata.sessionExtensionId != null || ptMetadata.kitchenChangeId != null) {
+      logger.info(`[Stripe Sync] Skipping booking table sync for additional-charge PaymentIntent ${paymentIntentId}`);
       return;
     }
     const canonicalSplit = computeManagerGrossAndCommission({
@@ -1245,8 +1245,8 @@ export async function getChefPaymentTransactions(
         ELSE NULL
       END as reference_code,
       -- Booking columns describe the booking's own payment only, not a separate charge on the same booking id.
-      CASE WHEN pt.payment_intent_id <> kb.payment_intent_id THEN NULL ELSE kb.total_price END as kb_total_price,
-      CASE WHEN pt.payment_intent_id <> kb.payment_intent_id THEN NULL ELSE kb.service_fee END as kb_service_fee
+      CASE WHEN pt.payment_intent_id <> kb.payment_intent_id OR pt.metadata ? 'originalBookingSchedule' THEN NULL ELSE kb.total_price END as kb_total_price,
+      CASE WHEN pt.payment_intent_id <> kb.payment_intent_id OR pt.metadata ? 'originalBookingSchedule' THEN NULL ELSE kb.service_fee END as kb_service_fee
     FROM payment_transactions pt
     LEFT JOIN kitchen_bookings kb ON pt.booking_type = 'kitchen' AND pt.booking_id = kb.id
     LEFT JOIN kitchens k ON kb.kitchen_id = k.id

@@ -51,7 +51,8 @@ export class ManagerRepository implements IManagerRepository {
                 kb.hourly_rate,
                 kb.duration_hours,
                 kb.pricing_mode,
-                COALESCE(NULLIF(kb.service_fee, 0), pt.service_fee, 0) as service_fee,
+                CASE WHEN pt.metadata ? 'originalBookingSchedule' THEN COALESCE(pt.service_fee, 0)
+                  ELSE COALESCE(NULLIF(kb.service_fee, 0), pt.service_fee, 0) END as service_fee,
                 kb.payment_status,
                 kb.payment_intent_id,
                 kb.currency,

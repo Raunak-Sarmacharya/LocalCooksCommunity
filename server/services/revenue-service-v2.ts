@@ -227,21 +227,13 @@ export async function getRevenueMetricsFromTransactions(
       ${simpleWhereClause}
     `);
     
-    // Calculate tax from kitchen's tax_rate_percent (for kitchen/bundle bookings)
-    // ENTERPRISE STANDARD: For partial captures, use pt.metadata->>'approvedTax' (exact value
-    // from capture engine). For normal bookings, use kb.total_price * tax_rate / 100.
-    // CRITICAL: kb.total_price may be stale for partial captures due to race condition between
-    // capture engine and payment_intent.succeeded webhook — the webhook's syncStripeAmountsToBookings
-    // can overwrite kb.total_price before the capture engine sets partialCapture metadata.
-    // pt.metadata.approvedTax is ALWAYS correct because it's set by the capture engine itself.
+    // Captured tax belongs to each payment, independent of the booking's current rescheduled subtotal.
     const kitchenTaxResult = await db.execute(sql`
       SELECT 
         COALESCE(SUM(
           CASE
-            -- PARTIAL CAPTURE: Use exact tax from capture engine metadata (source of truth).
-            -- SESSION EXTENSION: a separate charge on the same booking; its own approved tax, never the booking's again.
-            WHEN ((pt.metadata->>'partialCapture')::boolean = true OR pt.metadata ? 'sessionExtensionId')
-              AND (pt.metadata->>'approvedTax') IS NOT NULL THEN
+            -- Each capture owns its tax; a later booking change must never reprice an earlier payment.
+            WHEN (pt.metadata->>'approvedTax') IS NOT NULL THEN
               ROUND(
                 (pt.metadata->>'approvedTax')::numeric *
                 CASE 
@@ -250,10 +242,10 @@ export async function getRevenueMetricsFromTransactions(
                   ELSE 1
                 END
               )
-            -- NORMAL BOOKINGS: Tax = kb.total_price * tax_rate / 100
+            -- Legacy payments without captured metadata prefer their stored tax before the booking fallback.
             ELSE
               ROUND(
-                (kb.total_price::numeric * COALESCE(k.tax_rate_percent, 0)::numeric / 100) *
+                COALESCE(NULLIF(pt.tax_amount::numeric, 0), kb.total_price::numeric * COALESCE(k.tax_rate_percent, 0)::numeric / 100) *
                 CASE 
                   WHEN pt.amount::numeric > 0 THEN 
                     (pt.amount::numeric - COALESCE(pt.refund_amount::numeric, 0)) / pt.amount::numeric

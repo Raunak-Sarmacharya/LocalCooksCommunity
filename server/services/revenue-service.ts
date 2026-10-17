@@ -613,8 +613,8 @@ export async function getRevenueMetrics(
           -- For partial refunds: multiply by (1 - refund_ratio) to get effective tax
           -- A session extension is a separate charge on the same booking: its own approved tax, never the booking's again.
           ROUND(
-            (CASE WHEN pt.metadata ? 'sessionExtensionId' THEN COALESCE((pt.metadata->>'approvedTax')::numeric, pt.tax_amount::numeric, 0)
-              ELSE kb.total_price::numeric * COALESCE(k.tax_rate_percent, 0)::numeric / 100 END) *
+            COALESCE((pt.metadata->>'approvedTax')::numeric, NULLIF(pt.tax_amount::numeric, 0),
+              kb.total_price::numeric * COALESCE(k.tax_rate_percent, 0)::numeric / 100) *
             CASE 
               WHEN pt.amount::numeric > 0 THEN 
                 (pt.amount::numeric - COALESCE(pt.refund_amount::numeric, 0)) / pt.amount::numeric

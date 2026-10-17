@@ -3557,6 +3557,7 @@
   "bnChargeExtension": "Temps supplémentaire · {length}",
   "bnChargeExtensionNoLength": "Temps supplémentaire",
   "bnChargeExtraTime": "Frais de temps supplémentaire",
+  "bnChargeBookingChange": "Modification de réservation",
   "bnChargeDamage": "Dommages et nettoyage",
   "bnChargeRefunded": "Remboursé {amount}",
   "bnPaidAllCharges": "Total payé, tous les frais",

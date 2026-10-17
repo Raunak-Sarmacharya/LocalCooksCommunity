@@ -3557,6 +3557,7 @@
   "bnChargeExtension": "Додатковий час · {length}",
   "bnChargeExtensionNoLength": "Додатковий час",
   "bnChargeExtraTime": "Оплата за додатковий час",
+  "bnChargeBookingChange": "Зміна бронювання",
   "bnChargeDamage": "Пошкодження та прибирання",
   "bnChargeRefunded": "Повернено {amount}",
   "bnPaidAllCharges": "Усього сплачено, усі платежі",

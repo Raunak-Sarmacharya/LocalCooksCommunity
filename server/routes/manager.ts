@@ -4,7 +4,7 @@ import managerCustomersRouter from './manager-customers';
 import { revokeManagerLocationAccess, futureAccessBookings, deliverAccessNotice } from "../services/location-access-notices";
 import { projectBookingCloseout, projectBookingCloseouts } from '../services/clock-closeout';
 import { readKitchenPayout, attachKitchenPayouts, upcomingKitchenPayouts } from '../services/kitchen-payout-service';
-import { originalKitchenEntitlement } from '@shared/kitchen-payout';
+import { kitchenPayout, originalKitchenEntitlement } from '@shared/kitchen-payout';
 import { kitchenChecklistFields } from '@shared/kitchen-checklist';
 import { sendAdminNotificationEmail } from '../services/admin-email-preferences';
 import { Router, Request, Response } from "express";
@@ -4186,6 +4186,9 @@ router.get(
             managerRevenue: paymentTransactions.managerRevenue,
             status: paymentTransactions.status,
             stripeProcessingFee: paymentTransactions.stripeProcessingFee,
+            transferId: paymentTransactions.transferId,
+            payoutTiming: paymentTransactions.payoutTiming,
+            payoutReleasedAt: paymentTransactions.payoutReleasedAt,
             paidAt: paymentTransactions.paidAt,
             refundAmount: paymentTransactions.refundAmount,
             netAmount: paymentTransactions.netAmount,
@@ -4212,6 +4215,7 @@ router.get(
           paymentTransaction = {
             ...txn,
             amount: parseCentsField(txn.amount),
+            kitchenShareCents: ['succeeded', 'partially_refunded', 'refunded'].includes(txn.status) ? kitchenPayout(txn).amountCents : undefined,
             baseAmount: parseCentsField(txn.baseAmount),
             serviceFee: parseCentsField(txn.serviceFee),
             taxAmount: parseCentsField(txn.taxAmount),

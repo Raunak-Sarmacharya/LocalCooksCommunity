@@ -246,12 +246,20 @@ async function currentTerms(tx: Tx, row: Context): Promise<{ terms: PriceTerms; 
     throw new KitchenChangeError('To change a booking with storage, contact Local Cooks.', 409, 'storageContactSupport');
   const [latest] = await tx.select().from(kitchenBookingChanges).where(and(eq(kitchenBookingChanges.bookingId, booking.id), eq(kitchenBookingChanges.state, 'applied')))
     .orderBy(desc(kitchenBookingChanges.createdAt)).limit(1);
-  if (latest) return { terms: quoteOf(latest).newTerms, parent, sources };
+  const addon = await equipmentPriceTerms(tx, row, parent);
+  if (latest) {
+    const quote = quoteOf(latest), previousAddon = quote.equipmentTerms ?? { kitchenCents: 0, taxCents: 0, feeCents: 0 };
+    return { terms: { kitchenCents: quote.newTerms.kitchenCents - previousAddon.kitchenCents + addon.kitchenCents,
+      taxCents: quote.newTerms.taxCents - previousAddon.taxCents + addon.taxCents,
+      feeCents: quote.newTerms.feeCents - previousAddon.feeCents + addon.feeCents }, parent, sources };
+  }
   const tax = Number(saved.approvedTax ?? parent.taxAmount ?? 0), fee = Number(saved.platformCommission ?? parent.serviceFee ?? 0);
   const kitchen = Number(saved.approvedSubtotal ?? Number(parent.baseAmount) - tax);
   if (![kitchen, tax, fee].every(wholeCents) || kitchen <= 0 || kitchen + tax + fee !== Number(parent.amount))
     throw new KitchenChangeError('The original price split needs Local Cooks to look at it. Message the kitchen or contact Local Cooks.', 409, 'priceSplitReview');
-  return { terms: { kitchenCents: kitchen, taxCents: tax, feeCents: fee }, parent, sources };
+  const capturedAddon = await equipmentPriceTerms(tx, row, parent, false);
+  return { terms: { kitchenCents: kitchen - capturedAddon.kitchenCents + addon.kitchenCents,
+    taxCents: tax - capturedAddon.taxCents + addon.taxCents, feeCents: fee - capturedAddon.feeCents + addon.feeCents }, parent, sources };
 }
 
 /** The kitchen's current rate, tax and service fee for the booking's new length. */
@@ -277,12 +285,18 @@ async function processingFeeOf(source: Payment) {
   return amounts.stripeProcessingFee;
 }
 
-async function equipmentPriceTerms(tx: Tx, row: Context, parent: Payment): Promise<PriceTerms> {
+async function equipmentPriceTerms(tx: Tx, row: Context, parent: Payment, activeOnly = true): Promise<PriceTerms> {
   // Per-session equipment keeps its captured allocation, including its tax and service fee.
   const saved = (parent.metadata || {}) as Record<string, any>;
-  const equipment = await tx.select().from(equipmentBookings).where(and(eq(equipmentBookings.kitchenBookingId, row.booking.id), sql`${equipmentBookings.status} <> 'cancelled'`));
+  const items = await tx.select().from(equipmentBookings).where(eq(equipmentBookings.kitchenBookingId, row.booking.id));
+  const removed = new Set([...(saved.addonRemovals || []), ...(saved.kitchenAddonRefunds || [])]
+    .map((item: any) => item.componentId || `${item.kind}:${item.id}:0`));
+  const equipment = items.filter(item => item.paymentStatus !== 'failed' && (!activeOnly || item.status !== 'cancelled'
+    && !removed.has(`equipment:${item.id}:0`)));
   const capturedSubtotal = Number(saved.approvedSubtotal ?? Number(parent.baseAmount) - Number(parent.taxAmount));
-  const parts = (saved.capturedComponentAllocations || []).filter((part: any) => part.kind === 'equipment');
+  const capturedParts = (saved.capturedComponentAllocations || []).filter((part: any) => part.kind === 'equipment');
+  const parts = capturedParts.filter((part: any) => !activeOnly || equipment.some(item => item.id === part.bookingId));
+  if (capturedParts.length && !parts.length) return { kitchenCents: 0, taxCents: 0, feeCents: 0 };
   if (!parts.length && !equipment.length) return { kitchenCents: 0, taxCents: 0, feeCents: 0 };
   return parts.length ? { kitchenCents: parts.reduce((n: number, p: any) => n + Number(p.subtotalCents), 0),
     taxCents: parts.reduce((n: number, p: any) => n + Number(p.taxCents || 0), 0), feeCents: parts.every((p: any) => p.serviceFeeCents !== undefined) ? parts.reduce((n: number, p: any) => n + Number(p.serviceFeeCents), 0)
