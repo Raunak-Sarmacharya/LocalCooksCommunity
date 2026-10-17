@@ -70,3 +70,19 @@ when a location has 2+ kitchens. Local Cooks overrides show locked with the reas
 | Kitchen only | Hourly/daily rate, opening hours, equipment, extra time auto-approve, **weekly hours limit per chef** (labelled "at this kitchen") |
 HST (owner): HST on the kitchen price always goes to the kitchen, which remits it. Open for the accountant: HST on the Local
 Cooks service fee (if Local Cooks is GST/HST-registered) and the registration number for receipts.
+
+## Consistency with single-day bookings (owner, Oct 17)
+A multi-day booking is the same booking with more than one day: same flow, words and rules (one refund deadline, same
+late-charge arithmetic, same change request, per-visit lifecycle, per-visit payout). Equipment removal and extra time are
+temporarily refused on multi-day until CP6 / a later checkpoint price them per day; they then work exactly as single-day.
+
+**Kitchen declines an equipment item (applies to single-day AND multi-day; changes today's single-day behaviour):**
+research — Airbnb (host can't edit a request; sends a special offer the guest must accept), Peerspace (invite-to-book the guest
+accepts); no marketplace changes a guest's booking without consent. Owner: the chef must approve first.
+1. Kitchen chooses "Accept without {item}" (days stay all-or-nothing): "We'll ask the chef to confirm the new total. Nothing
+   is charged until they do."
+2. Chef (in-app + email): "{kitchen} can host you, but can't provide {item}. New total ${new} (was ${old}). Accept or decline
+   by {time}."
+3. Accept -> capture the new total only; the rest of the hold is released. Decline or no answer -> full hold released, both told.
+4. Chef's answer window: 24 h, or until 1 h before the refund deadline if sooner. Days stay reserved meanwhile; the kitchen's
+   list shows "Waiting for the chef". No capture happens before the chef agrees, so no card fee is lost.
