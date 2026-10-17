@@ -10,7 +10,11 @@ vi.mock('react-i18next', async (importOriginal) => {
 });
 const api = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn() }));
 vi.mock('@/lib/api', () => ({ apiGet: api.get, apiPut: api.put }));
-const policy = { policy: { id: 1, version: 1, noticeHours: 24, lateChargePercent: 100, adminOverrideReason: null as string | null }, settings: { noticeOptions: [24, 48, 72], chargeOptions: [50, 100] }, timezone: 'America/St_Johns' };
+const policy = {
+  policy: { id: 1, version: 1, noticeHours: 24, lateChargePercent: 100, adminOverrideReason: null as string | null },
+  settings: { noticeOptions: [24, 48, 72], chargeOptions: [50, 100] }, timezone: 'America/St_Johns',
+  followsLocation: true, locationDefault: { noticeHours: 24, lateChargePercent: 100 }, locationName: 'Harbour',
+};
 beforeEach(() => { vi.clearAllMocks(); api.get.mockResolvedValue(policy); api.put.mockResolvedValue({}); });
 function mount(admin = false) { const client = new QueryClient({ defaultOptions: { queries: { retry: false } } }); client.setQueryData(['managerBookings'], []); render(<QueryClientProvider client={client}><CancellationPolicyEditor kitchenId={10} admin={admin} /></QueryClientProvider>); }
 it('publishes exactly two choices with a live preview and new-bookings-only warning', async () => {
@@ -19,15 +23,28 @@ it('publishes exactly two choices with a live preview and new-bookings-only warn
   fireEvent.click(screen.getByRole('option', { name: '48 hours before' }));
   fireEvent.click(screen.getByLabelText('Late cancellation charge'));
   fireEvent.click(screen.getByRole('option', { name: '50% of the booking' }));
-  expect(screen.getByText(/Cancel at least 48 hours.*50%/)).toBeInTheDocument(); expect(screen.getByText(/Applies to new bookings only/)).toBeInTheDocument();
+  expect(screen.getAllByText(/Cancel at least 48 hours.*50%/).length).toBeGreaterThan(0); expect(screen.getByText(/Applies to new bookings only/)).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Save cancellation policy' }));
   expect(api.put).not.toHaveBeenCalled(); fireEvent.click(screen.getByRole('checkbox'));
   fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Save cancellation policy' }));
   await waitFor(() => expect(api.put).toHaveBeenCalledWith('/manager/kitchens/10/cancellation-policy', { noticeHours: 48, lateChargePercent: 50, reason: '' }));
 });
 it('shows and locks an audited admin override for the manager', async () => {
-  api.get.mockResolvedValue({ ...policy, policy: { ...policy.policy, adminOverrideReason: 'Pilot agreement' } }); mount();
-  expect(await screen.findByText('Local Cooks override: Pilot agreement')).toBeInTheDocument(); expect(screen.getByRole('button', { name: 'Save cancellation policy' })).toBeDisabled();
+  api.get.mockResolvedValue({ ...policy, followsLocation: false, policy: { ...policy.policy, adminOverrideReason: 'Pilot agreement' } }); mount();
+  expect(await screen.findByText(/Set by Local Cooks: Pilot agreement/)).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'Contact Local Cooks' })).toHaveAttribute('href', 'mailto:support@localcooks.ca');
+  expect(screen.getByRole('button', { name: 'Save cancellation policy' })).toBeDisabled();
+});
+
+it('re-follows the location policy from a kitchen override', async () => {
+  api.get.mockResolvedValue({
+    ...policy, followsLocation: false,
+    policy: { ...policy.policy, noticeHours: 72, lateChargePercent: 50 },
+    locationDefault: { noticeHours: 24, lateChargePercent: 100 },
+  });
+  mount();
+  fireEvent.click(await screen.findByRole('button', { name: "Use the location’s policy" }));
+  await waitFor(() => expect(api.put).toHaveBeenCalledWith('/manager/kitchens/10/cancellation-policy', { followLocation: true }));
 });
 it('stays quiet until a choice changes, then keeps the current policy when confirmation is cancelled', async () => {
   mount(); await waitFor(() => expect(screen.getByLabelText('Free cancellation until')).toBeEnabled());

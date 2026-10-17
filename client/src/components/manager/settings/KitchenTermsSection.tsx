@@ -14,17 +14,24 @@ import { SettingsFileUpload } from "./SettingsFileUpload";
 import { AuthenticatedDocumentLink } from "./AuthenticatedDocumentLink";
 import { PolicySection } from "./PolicySection";
 
-/** The kitchen's own terms PDF. Uploading saves on its own endpoint, so it is its own section and its own (only) action. */
-export function KitchenTermsSection({ location, note }: {
-  location: { id: number; kitchenTermsUrl?: string | null; kitchenTermsUploadedAt?: string | null };
+/**
+ * Location-owned terms PDF. On the location Booking policies page managers upload/replace;
+ * on a kitchen tab the same document is read-only with a link to edit location settings.
+ */
+export function KitchenTermsSection({ location, note, readOnly = false, locationName, onEditLocation }: {
+  location: { id: number; name?: string; kitchenTermsUrl?: string | null; kitchenTermsUploadedAt?: string | null };
   note?: string;
+  readOnly?: boolean;
+  locationName?: string;
+  onEditLocation?: () => void;
 }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [termsFile, setTermsFile] = useState<File | null>(null);
   const [isReplacing, setIsReplacing] = useState(false);
   const hasTerms = Boolean(location.kitchenTermsUrl);
-  const showUpload = !hasTerms || isReplacing;
+  const showUpload = !readOnly && (!hasTerms || isReplacing);
+  const place = locationName || location.name || mt("thisLocation");
 
   const uploadTerms = useCallback(async () => {
     if (!termsFile) return;
@@ -68,6 +75,12 @@ export function KitchenTermsSection({ location, note }: {
       description={<>
         <span className="block">{mt("bpTermsSubheading")}</span>
         {note ? <span className="mt-1 block text-xs">{note}</span> : null}
+        {readOnly ? <span className="mt-1 block text-xs">{mt("bpLocationOnlySetFor", { location: place })}
+          {onEditLocation ? <>{" · "}<button type="button" onClick={onEditLocation}
+            className="-my-2 inline-flex min-h-11 items-center rounded-md px-1 font-medium text-foreground underline decoration-muted-foreground/40 underline-offset-4 hover:decoration-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            {mt("bpEditLocationSettings")}
+          </button></> : null}
+        </span> : null}
       </>}>
       {hasTerms && (
         <div className="flex flex-wrap items-center gap-3 px-4 py-3">
@@ -85,9 +98,12 @@ export function KitchenTermsSection({ location, note }: {
               className="inline-flex min-h-11 items-center gap-1 rounded-md px-3 text-sm font-medium text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
               {mt("bpViewDocument")}<ExternalLink className="h-3.5 w-3.5" />
             </AuthenticatedDocumentLink>
-            {!isReplacing && <Button variant="ghost" className="min-h-11" onClick={() => setIsReplacing(true)}>{mt("replace")}</Button>}
+            {!readOnly && !isReplacing && <Button variant="ghost" className="min-h-11" onClick={() => setIsReplacing(true)}>{mt("replace")}</Button>}
           </div>
         </div>
+      )}
+      {readOnly && !hasTerms && (
+        <p className="px-4 py-3 text-sm text-muted-foreground">{mt("bpTermsMissingAtLocation", { location: place })}</p>
       )}
       {showUpload && (
         <div className={`space-y-3 px-4 py-3 ${hasTerms ? "border-t border-border" : ""}`}>

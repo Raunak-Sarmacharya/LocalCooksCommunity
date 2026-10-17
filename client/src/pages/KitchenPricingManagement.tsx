@@ -48,6 +48,7 @@ interface KitchenPricingContentProps {
   hideMinimumBookingDuration?: boolean;
   selectedLocationId: number | null;
   selectedKitchenId: number | null;
+  locationName?: string;
   /**
    * The location's hourly booking ceiling, or null when unknown.
    *
@@ -107,13 +108,14 @@ export const KitchenPricingContent = forwardRef<
   KitchenPricingHandle,
   KitchenPricingContentProps
 >(function KitchenPricingContent(
-  { selectedLocationId, selectedKitchenId, dailyBookingLimit, onDirtyChange, hideMinimumBookingDuration = false },
+  { selectedLocationId, selectedKitchenId, locationName, dailyBookingLimit, onDirtyChange, hideMinimumBookingDuration = false },
   ref,
 ) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
   const [pricing, setPricing] = useState<KitchenPricing>(EMPTY_PRICING);
+  const [resolvedLocationName, setResolvedLocationName] = useState(locationName ?? '');
   // Snapshot of the last saved values — dirty is a comparison against this, so
   // refetches after a save do not leave the form looking edited.
   const [baseline, setBaseline] = useState<KitchenPricing>(EMPTY_PRICING);
@@ -121,7 +123,6 @@ export const KitchenPricingContent = forwardRef<
   const isDirty =
     pricing.hourlyRate !== baseline.hourlyRate ||
     pricing.dailyRate !== baseline.dailyRate ||
-    pricing.taxRatePercent !== baseline.taxRatePercent ||
     (!hideMinimumBookingDuration && pricing.minimumBookingHours !== baseline.minimumBookingHours);
 
   useEffect(() => {
@@ -171,6 +172,7 @@ export const KitchenPricingContent = forwardRef<
       const form = toForm(data);
       setPricing(form);
       setBaseline(form);
+      if (typeof data.locationName === 'string') setResolvedLocationName(data.locationName);
     } catch (error) {
       logger.error('Error loading pricing:', error);
       toast({
@@ -208,7 +210,6 @@ export const KitchenPricingContent = forwardRef<
     const parseAmount = (value: string) => value.trim() === '' ? null : /^\d+(?:\.\d{1,2})?$/.test(value.trim()) ? Number(value.trim()) : NaN;
     const hourlyRateNum = parseAmount(pricing.hourlyRate);
     const dailyRateNum = parseAmount(pricing.dailyRate);
-    const taxRateNum = parseAmount(pricing.taxRatePercent);
 
     const invalid = (value: number | null) => value !== null && (!Number.isFinite(value) || value < 0);
 
@@ -239,22 +240,12 @@ export const KitchenPricingContent = forwardRef<
       throw new Error("no-rate");
     }
 
-    if (invalid(taxRateNum) || (taxRateNum ?? 0) > 100) {
-      toast({
-        title: mt("validationError"),
-        description: mt("taxRateMustBeAPositiveNumberOrEmpty"),
-        variant: "destructive",
-      });
-      throw new Error("invalid-tax-rate");
-    }
-
     const payload = {
-      // Rates travel in cents; the form holds dollars.
+      // Rates travel in cents; the form holds dollars. HST is location-owned — not sent here.
       hourlyRate: hourlyRateNum === null ? null : Math.round(hourlyRateNum * 100),
       dailyRate: dailyRateNum === null ? null : Math.round(dailyRateNum * 100),
       currency: CURRENCY,
       pricingModel: pricing.pricingModel || 'hourly',
-      taxRatePercent: taxRateNum,
       ...(!hideMinimumBookingDuration ? { minimumBookingHours: pricing.minimumBookingHours } : {}),
     };
 
@@ -341,17 +332,15 @@ export const KitchenPricingContent = forwardRef<
         <SettingsRow
           id="tax-rate"
           label={mt("taxRate2")}
-          hint={mt("percentageTaxToApplyToBookingsEGGSTHST")}
+          hint={mt("bpTaxSetForLocation", {
+            rate: pricing.taxRatePercent || "0",
+            location: resolvedLocationName || locationName || mt("thisLocation"),
+          })}
+          disabledReason={mt("bpTaxEditLocation", { location: resolvedLocationName || locationName || mt("thisLocation") })}
         >
-          <NumericInput
-            id="tax-rate"
-            allowDecimals
-            suffix="%"
-            value={pricing.taxRatePercent}
-            onValueChange={(val) => setPricing((current) => ({ ...current, taxRatePercent: val }))}
-            placeholder={mt("eG13")}
-            className="w-36"
-          />
+          <span id="tax-rate" className="text-sm font-medium tabular-nums">
+            {pricing.taxRatePercent ? mt("bpTaxReadonlyValue", { rate: pricing.taxRatePercent }) : mt("bpTaxUnset")}
+          </span>
         </SettingsRow>
 
         {!hideMinimumBookingDuration && <SettingsRow

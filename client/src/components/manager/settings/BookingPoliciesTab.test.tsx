@@ -12,8 +12,8 @@ vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock("@/lib/firebase", () => ({ auth: { currentUser: null } }));
 vi.mock("@/hooks/use-presigned-document-url", () => ({ usePresignedDocumentUrl: () => ({ url: null, isLoading: false, error: null }) }));
 vi.mock("@/lib/manager-bookings-query", () => ({ fetchManagerBookings: async () => [] }));
-const api = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn() }));
-vi.mock("@/lib/api", () => ({ apiGet: api.get, apiPut: api.put, apiPutWithMessage: api.put }));
+const api = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(), post: vi.fn() }));
+vi.mock("@/lib/api", () => ({ apiGet: api.get, apiPut: api.put, apiPutWithMessage: api.put, apiPost: api.post }));
 if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {};
 
 const location = { id: 33, name: "Harbour", kitchenTermsUrl: "https://cdn.example.com/harbour-terms.pdf" };
@@ -55,11 +55,15 @@ const rulesSection = () => screen.getByTestId("booking-rules-section");
 const saveRules = () => within(rulesSection()).getByRole("button", { name: "Save booking rules" });
 
 describe("Booking Policies tab", () => {
-  it("shows five sections in order, each quiet until something changes", async () => {
+  it("shows kitchen-scoped heading, location-default labels, read-only terms, and five sections", async () => {
     mount();
     await waitFor(() => expect(screen.getByLabelText("Free cancellation until")).toBeEnabled());
+    expect(screen.getByRole("heading", { name: /Rules for Prep Kitchen/i })).toBeInTheDocument();
+    expect(screen.getAllByText("Location default").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Change for this kitchen").length).toBeGreaterThan(0);
     expect(screen.getAllByRole("heading", { level: 3 }).map((heading) => heading.textContent)).toEqual(
       ["Booking rules", "Cancellation policy", "Extra time", "Damage and cleaning", "Terms and conditions"]);
+    expect(screen.queryByText("Copy these rules to your other kitchens")).not.toBeInTheDocument();
     expect(saveRules()).toBeDisabled();
     expect(screen.getByRole("button", { name: "Save cancellation policy" })).toBeDisabled();
     await waitFor(() => expect(within(screen.getByTestId("session-extension-settings")).getByRole("button", { name: "Save changes" })).toBeDisabled());
@@ -73,10 +77,13 @@ describe("Booking Policies tab", () => {
     expect(screen.getByText(/Full days are booked at your daily rate/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /More about Limit hours per chef each week/i }));
     expect(await screen.findByText(/Monday–Sunday/)).toBeInTheDocument();
+    expect(screen.getAllByText(/at this kitchen/i).length).toBeGreaterThan(0);
     expect(screen.queryByText(/Report damage or extra cleaning within 72 hours/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "How claims work" }));
     expect(screen.getByText(/Report damage or extra cleaning within 72 hours/)).toBeInTheDocument();
     expect(screen.getByText("harbour-terms.pdf")).toBeInTheDocument();
+    expect(screen.getByText(/Set for Harbour/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Replace" })).not.toBeInTheDocument();
   });
 
   it("caps the booking window at the Local Cooks limit and previews it before the save", async () => {
@@ -127,9 +134,32 @@ describe("Booking Policies tab", () => {
 
   it("marks a kitchen-only booking window and resets it to the location rule", async () => {
     mount({ ...workspace, kitchen: { ...workspace.kitchen, maxAdvanceBookingDays: 45 }, effective: { ...effective, maxAdvanceBookingDays: 45 } });
-    expect(screen.getByText("Set for this kitchen")).toBeInTheDocument();
+    expect(screen.getAllByText("Set for this kitchen").length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("button", { name: "Use the location’s rule" }));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith("/manager/kitchens/40/workspace-settings", { maxAdvanceBookingDays: null }));
+  });
+
+  it("offers copy-to-other-kitchens when the location has multiple kitchens", async () => {
+    api.get.mockImplementation(async (path: string) => {
+      if (path.endsWith("cancellation-policy")) return policy;
+      if (path.endsWith("session-extension-settings")) return extension;
+      if (path.includes("copy-booking-policies")) {
+        return { sourceKitchenId: 40, sourceKitchenName: "Prep Kitchen", kitchens: [
+          { kitchenId: 41, kitchenName: "Bake", changes: [{ field: "minimumBookingWindowHours", from: 1, to: 4, action: "set" }] },
+        ] };
+      }
+      return workspace;
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    client.setQueryData(kitchenWorkspaceSettingsKey(40), workspace);
+    client.setQueryData(["managerBookings"], []);
+    render(<QueryClientProvider client={client}><KitchenWorkspaceControls kitchenId={40} location={location} mode="policies"
+      showTerms kitchenCount={2} onRequestSave={vi.fn()} /></QueryClientProvider>);
+    fireEvent.click(await screen.findByRole("button", { name: "Copy these rules to your other kitchens" }));
+    expect(await screen.findByText("Bake")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Copy rules" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith("/manager/kitchens/40/copy-booking-policies", {}));
+    expect(api.get).toHaveBeenCalledWith("/manager/kitchens/40/copy-booking-policies");
   });
 
   it("works with an older server that has no window or buffer settings", async () => {

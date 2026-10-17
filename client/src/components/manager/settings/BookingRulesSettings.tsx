@@ -33,6 +33,7 @@ import { ChefPageHeader } from "@/components/chef/ui";
 import { SettingsRow } from "./SettingsRow";
 import { ManagerDamagePolicySection, PolicySection } from "./PolicySection";
 import { KitchenTermsSection } from "./KitchenTermsSection";
+import { LocationCancellationPolicyEditor } from "./CancellationPolicyEditor";
 import { arrivalTimingsLocked } from "./shared/ChecklistEditor";
 
 const SELECT_CLASS = "h-11 w-full min-w-[12rem] sm:w-56";
@@ -58,6 +59,7 @@ interface Location {
   maxAdvanceBookingDaysCap?: number | null;
   kitchenTermsUrl?: string | null;
   kitchenTermsUploadedAt?: string | null;
+  taxRatePercent?: number | string | null;
 }
 
 type PolicyOverrides = {
@@ -127,7 +129,17 @@ interface BookingRulesSettingsProps {
    * "you can add this later from Booking Policies" is a loop — so the caller owns the words.
    */
   termsNote?: string;
+  /** Location display name for scope / location-only copy on the kitchen tab. */
+  locationName?: string;
+  /** Opens location Booking policies (kitchen tab location-only rows). */
+  onEditLocation?: () => void;
 }
+
+type ImpactField = {
+  following: { id: number; name: string }[];
+  overriding: { id: number; name: string }[];
+  usedBy: number;
+};
 
 /** Shape of the arrival-timing values, which are owned by the check-in/check-out endpoint. */
 interface ArrivalTimings {
@@ -153,9 +165,16 @@ export interface BookingPoliciesHandle {
 const FALLBACK_WINDOW_CAP = 365;
 
 const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSettingsProps>(
-  function BookingRulesSettings({ location, onSave, onRequestSave, onDirtyChange, onNavigate, hideArrivalTimings = false, hideTerms = false, hideDamagePolicy = false, termsNote, policyOverrides, onResetPolicy, minimumBookingHours, hideHeader = false, kitchenName, policyUpdating = false }, ref) {
+  function BookingRulesSettings({ location, onSave, onRequestSave, onDirtyChange, onNavigate, hideArrivalTimings = false, hideTerms = false, hideDamagePolicy = false, termsNote, policyOverrides, onResetPolicy, minimumBookingHours, hideHeader = false, kitchenName, policyUpdating = false, locationName, onEditLocation }, ref) {
     const queryClient = useQueryClient();
     const { impact, impactFetching, impactError } = useSettingImpact(undefined, location.id);
+    const isKitchenMode = policyOverrides !== undefined || !!onRequestSave;
+    const place = locationName || location.name;
+    const { data: policyImpact } = useQuery<{ fields: Record<string, ImpactField> }>({
+      queryKey: ["booking-policy-impact", location.id],
+      queryFn: () => apiGet(`/manager/locations/${location.id}/booking-policy-impact`),
+      enabled: !!location.id && !isKitchenMode,
+    });
 
     // Legacy location field; no longer edited here (the versioned cancellation policy replaced it) but still saved back unchanged.
     const [cancellationHours, setCancellationHours] = useState(location.cancellationPolicyHours ?? 24);
@@ -184,6 +203,10 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
     const [maxBookingDays, setMaxBookingDays] = useState(savedMaxBookingDays);
     const [weeklyLimitEnabled, setWeeklyLimitEnabled] = useState(savedWeeklyLimit != null);
     const [weeklyLimitHours, setWeeklyLimitHours] = useState(savedWeeklyLimit ?? 8);
+    const savedTax = location.taxRatePercent == null || location.taxRatePercent === ""
+      ? "" : String(Number(location.taxRatePercent));
+    const [taxRate, setTaxRate] = useState(savedTax);
+    useEffect(() => setTaxRate(savedTax), [savedTax]);
 
     // Arrival timings. These live on the locations table but the check-in/check-out
     // endpoint owns them, so read them (plus the platform defaults shown as hints)
@@ -209,7 +232,8 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
       multiDay: hasMultiDay && (allowMultiDay !== savedAllowMultiDay || maxBookingDays !== savedMaxBookingDays),
       weekly: hasWeeklyLimit && effectiveWeeklyLimit !== savedWeeklyLimit,
     };
-    const rulesChanged = Object.values(changed).some(Boolean) || cancellationHours !== (location.cancellationPolicyHours ?? 24);
+    const taxChanged = !isKitchenMode && taxRate !== savedTax;
+    const rulesChanged = Object.values(changed).some(Boolean) || cancellationHours !== (location.cancellationPolicyHours ?? 24) || taxChanged;
     const timingChanged = !hideArrivalTimings && (checkinWindow !== (arrivalSettings?.timeWindowSettings?.checkinWindowMinutesBefore ?? null)
       || noShowGrace !== (arrivalSettings?.timeWindowSettings?.noShowGraceMinutes ?? null));
     const isRulesDirty = rulesChanged || timingChanged;
@@ -231,6 +255,7 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
       const weekly = location.weeklyChefHoursLimit ?? null;
       setWeeklyLimitEnabled(weekly != null);
       setWeeklyLimitHours(weekly ?? 8);
+      setTaxRate(location.taxRatePercent == null || location.taxRatePercent === "" ? "" : String(Number(location.taxRatePercent)));
     }, [location]);
 
     // Update state when location changes
@@ -280,6 +305,9 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
         ...(hasBuffer ? { bookingBufferMinutes: bufferMinutes } : {}),
         ...(hasMultiDay ? { allowMultiDayBookings: allowMultiDay, maxBookingDays } : {}),
         ...(hasWeeklyLimit ? { weeklyChefHoursLimit: effectiveWeeklyLimit } : {}),
+        ...(!isKitchenMode ? {
+          taxRatePercent: taxRate.trim() === "" ? null : Number(taxRate),
+        } : {}),
         // null clears the per-location override so the platform default applies.
         checkinWindowMinutesBefore: checkinWindow,
         noShowGraceMinutes: noShowGrace,
@@ -290,7 +318,7 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
     }, [
       onSave, location.id, cancellationHours, effectiveDailyLimit, minimumBookingWindowHours, minimumBookingHours,
       minimumDuration, hasWindow, windowDays, hasBuffer, bufferMinutes, hasMultiDay, allowMultiDay, maxBookingDays,
-      hasWeeklyLimit, effectiveWeeklyLimit, checkinWindow, noShowGrace, queryClient,
+      hasWeeklyLimit, effectiveWeeklyLimit, checkinWindow, noShowGrace, queryClient, isKitchenMode, taxRate,
     ]);
 
     const saveRulesAction = useStatusButton(saveRules);
@@ -318,21 +346,53 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
     // refetched location clears the dirty flag.
     const showSaveAction = isRulesDirty || saveRulesAction.status !== "idle";
 
-    /** "Set for this kitchen · Use the location's rule", only on rows this kitchen overrides. */
-    const overrideNote = (field: ResettablePolicyField) => policyOverrides?.[field] != null && onResetPolicy ? (
-      <span className="mt-1 flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
-        <span>{mt("bpOverridden")}</span>
-        <span aria-hidden>·</span>
-        <button type="button" disabled={isRulesDirty || policyUpdating} onClick={() => onResetPolicy(field)}
-          className="-my-3 inline-flex min-h-11 items-center gap-1 rounded-md px-1 font-medium text-foreground underline decoration-muted-foreground/40 underline-offset-4 transition-colors hover:decoration-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 disabled:no-underline">
-          {policyUpdating && <Loader2 className="h-3 w-3 animate-spin" />}
-          {mt("kitchenPolicyReset")}
-        </button>
-        {isRulesDirty && <span className="basis-full">{mt("kitchenPolicyResetAfterSave")}</span>}
-      </span>
-    ) : null;
-    const hint = (consequence: string, field?: ResettablePolicyField): ReactNode =>
-      <><span className="block">{consequence}</span>{field ? overrideNote(field) : null}</>;
+    /** Kitchen: "Location default · Change for this kitchen" or "Set for this kitchen · Use the location's rule". */
+    const scopeNote = (field: ResettablePolicyField) => {
+      if (!isKitchenMode || !field) return null;
+      const overridden = policyOverrides?.[field] != null;
+      if (overridden && onResetPolicy) {
+        return (
+          <span className="mt-1 flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
+            <span>{mt("bpOverridden")}</span>
+            <span aria-hidden>·</span>
+            <button type="button" disabled={isRulesDirty || policyUpdating} onClick={() => onResetPolicy(field)}
+              className="-my-3 inline-flex min-h-11 items-center gap-1 rounded-md px-1 font-medium text-foreground underline decoration-muted-foreground/40 underline-offset-4 transition-colors hover:decoration-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 disabled:no-underline">
+              {policyUpdating && <Loader2 className="h-3 w-3 animate-spin" />}
+              {mt("kitchenPolicyReset")}
+            </button>
+            {isRulesDirty && <span className="basis-full">{mt("kitchenPolicyResetAfterSave")}</span>}
+          </span>
+        );
+      }
+      return (
+        <span className="mt-1 flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
+          <span>{mt("kitchenPolicyFromLocation")}</span>
+          <span aria-hidden>·</span>
+          <span>{mt("bpChangeForThisKitchen")}</span>
+        </span>
+      );
+    };
+    const locationUsage = (field: string, dirtyField: boolean): ReactNode => {
+      if (isKitchenMode || !policyImpact?.fields?.[field]) return null;
+      const info = policyImpact.fields[field];
+      const followingNames = info.following.map((k) => k.name).join(", ");
+      return (
+        <span className="mt-1 block text-xs text-muted-foreground">
+          {mt("bpUsedByKitchens", { count: info.usedBy })}
+          {dirtyField && info.following.length > 0 ? (
+            <span className="mt-1 block text-amber-700 dark:text-amber-400">{mt("bpLocationDefaultWarning", { kitchens: followingNames })}</span>
+          ) : null}
+          {dirtyField && info.overriding.length > 0 ? (
+            <span className="mt-1 block">{mt("bpOverridesUnaffected", { kitchens: info.overriding.map((k) => k.name).join(", ") })}</span>
+          ) : null}
+        </span>
+      );
+    };
+    const hint = (consequence: string, field?: ResettablePolicyField, dirtyField = false): ReactNode =>
+      <><span className="block">{consequence}</span>{field ? scopeNote(field) : null}{field ? locationUsage(field, dirtyField) : null}</>;
+    const kitchenOnlyNote = (
+      <span className="mt-1 block text-xs text-muted-foreground">{mt("bpKitchenOnlyAtThisKitchen")}</span>
+    );
 
     // One chef-facing sentence per changed rule: the same sentence the row shows, so the preview never says something new.
     const noticeLine = mt("bpNoticeValue", { count: minimumBookingWindowHours });
@@ -400,7 +460,7 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
 
         <PolicySection title={mt("bpRulesTitle")} description={mt("bpRulesDescription")} footer={rulesFooter} testId="booking-rules-section">
           <div className="divide-y divide-border">
-            <SettingsRow id="min-window" label={mt("bpNoticeLabel")} hint={hint(noticeLine, "minimumBookingWindowHours")}>
+            <SettingsRow id="min-window" label={mt("bpNoticeLabel")} hint={hint(noticeLine, "minimumBookingWindowHours", changed.notice)}>
               <NumericInput id="min-window" disabled={policyUpdating} suffix={hourUnit(minimumBookingWindowHours)}
                 value={String(minimumBookingWindowHours)} className="h-11 w-32"
                 onValueChange={(val) => {
@@ -409,7 +469,7 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
                 }} />
             </SettingsRow>
 
-            {hasWindow && <SettingsRow id="booking-window" label={mt("bpWindowLabel")} hint={hint(windowLine, "maxAdvanceBookingDays")}>
+            {hasWindow && <SettingsRow id="booking-window" label={mt("bpWindowLabel")} hint={hint(windowLine, "maxAdvanceBookingDays", changed.window)}>
               <div className="flex flex-col items-end gap-1">
                 <NumericInput id="booking-window" disabled={policyUpdating} suffix={mt("bpDaysUnit", { count: windowDays })}
                   value={String(windowDays)} className="h-11 w-32" aria-describedby={windowCap ? "booking-window-cap" : undefined}
@@ -422,7 +482,8 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
               </div>
             </SettingsRow>}
 
-            {minimumBookingHours !== undefined && <SettingsRow id="kitchen-minimum-duration" label={mt("bpShortestLabel")} hint={hint(shortestLine)}>
+            {minimumBookingHours !== undefined && <SettingsRow id="kitchen-minimum-duration" label={mt("bpShortestLabel")}
+              hint={<><span className="block">{shortestLine}</span>{kitchenOnlyNote}</>}>
               <NumericInput id="kitchen-minimum-duration" suffix={hourUnit(minimumDuration)} value={String(minimumDuration)}
                 disabled={policyUpdating} className="h-11 w-32"
                 onValueChange={(value) => setMinimumDuration(Math.min(24, Math.max(0, parseInt(value, 10) || 0)))} />
@@ -430,7 +491,7 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
 
             <SettingsRow id="daily-limit"
               label={effectiveDailyLimit == null ? mt("bpLongestLabelOff") : mt("bpLongestLabel", { count: effectiveDailyLimit })}
-              hint={hint(longestLine, "defaultDailyBookingLimit")}
+              hint={hint(longestLine, "defaultDailyBookingLimit", changed.longest)}
               help={mt("bpLongestHelp")}>
               <div className="flex flex-col items-end gap-2">
                 <Switch id="daily-limit" checked={longestEnabled} disabled={policyUpdating}
@@ -443,12 +504,12 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
 
             {hasMultiDay && <>
               <SettingsRow id="allow-multiday" label={mt("bpMultiDayLabel")} help={mt("bpMultiDayHelp")}
-                hint={hint(multiDayLine, "allowMultiDayBookings")}>
+                hint={hint(multiDayLine, "allowMultiDayBookings", changed.multiDay)}>
                 <Switch id="allow-multiday" checked={allowMultiDay} disabled={policyUpdating}
                   onCheckedChange={setAllowMultiDay} />
               </SettingsRow>
               {allowMultiDay && <SettingsRow id="max-booking-days" label={mt("bpMaxDaysLabel", { count: maxBookingDays })}
-                hint={hint(mt("bpMultiDayOnValue", { count: maxBookingDays }), "maxBookingDays")}>
+                hint={hint(mt("bpMultiDayOnValue", { count: maxBookingDays }), "maxBookingDays", changed.multiDay)}>
                 <div className="flex flex-col items-end gap-1">
                   <NumericInput id="max-booking-days" disabled={policyUpdating} suffix={mt("bpDaysUnit", { count: maxBookingDays })}
                     value={String(maxBookingDays)} className="h-11 w-32" aria-describedby="max-booking-days-cap"
@@ -462,7 +523,7 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
             </>}
 
             {hasBuffer && <SettingsRow id="turnover-buffer" label={mt("bpBufferLabel")} help={mt("bpBufferHelp")}
-              hint={hint(bufferMinutes === 0 ? mt("bpBufferOff") : bufferMinutes === 120 ? mt("bpBufferOn2h") : mt("bpBufferOn"), "bookingBufferMinutes")}>
+              hint={hint(bufferMinutes === 0 ? mt("bpBufferOff") : bufferMinutes === 120 ? mt("bpBufferOn2h") : mt("bpBufferOn"), "bookingBufferMinutes", changed.buffer)}>
               <Select value={String(bufferMinutes)} disabled={policyUpdating}
                 onValueChange={(value) => setBufferMinutes(Number(value) as 0 | 60 | 120)}>
                 <SelectTrigger id="turnover-buffer" className={SELECT_CLASS}><SelectValue /></SelectTrigger>
@@ -474,8 +535,8 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
               </Select>
             </SettingsRow>}
 
-            {hasWeeklyLimit && <SettingsRow id="weekly-chef-limit" label={mt("bpWeeklyLabel")} help={mt("bpWeeklyHelp")}
-              hint={hint(weeklyLine)}>
+            {hasWeeklyLimit && isKitchenMode && <SettingsRow id="weekly-chef-limit" label={mt("bpWeeklyLabel")} help={mt("bpWeeklyHelp")}
+              hint={<><span className="block">{weeklyLine}</span>{kitchenOnlyNote}</>}>
               <div className="flex flex-col items-end gap-2">
                 <Switch id="weekly-chef-limit" checked={weeklyLimitEnabled} disabled={policyUpdating}
                   onCheckedChange={setWeeklyLimitEnabled} />
@@ -484,8 +545,20 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
                   onValueChange={(val) => setWeeklyLimitHours(Math.min(168, Math.max(1, parseInt(val, 10) || 1)))} />}
               </div>
             </SettingsRow>}
+
+            {!isKitchenMode && <SettingsRow id="location-tax" label={mt("taxRate2")}
+              hint={<><span className="block">{mt("bpTaxLocationHint")}</span>
+                <span className="mt-1 block text-xs">{mt("bpTaxUsedByAllKitchens", { count: (policyImpact as { kitchenCount?: number } | undefined)?.kitchenCount ?? 0 })}</span>
+                {taxChanged ? <span className="mt-1 block text-amber-700 dark:text-amber-400">{mt("bpTaxFanOutWarning")}</span> : null}
+              </>}>
+              <NumericInput id="location-tax" allowDecimals suffix="%" value={taxRate} className="h-11 w-32"
+                disabled={policyUpdating} placeholder={mt("eG13")}
+                onValueChange={setTaxRate} />
+            </SettingsRow>}
           </div>
         </PolicySection>
+
+        {!isKitchenMode && <LocationCancellationPolicyEditor locationId={location.id} />}
 
         {!hideArrivalTimings && (
           /* Arrival timing. These two values also appear on the check-in/check-out
@@ -529,7 +602,8 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
         )}
 
         {!hideDamagePolicy && <ManagerDamagePolicySection />}
-        {!hideTerms && <KitchenTermsSection location={location} note={termsNote} />}
+        {!hideTerms && <KitchenTermsSection location={location} note={termsNote} readOnly={isKitchenMode}
+          locationName={place} onEditLocation={onEditLocation} />}
       </div>
     );
   },

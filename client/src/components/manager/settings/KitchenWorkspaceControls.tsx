@@ -9,8 +9,10 @@ import { CancellationPolicyEditor } from './CancellationPolicyEditor';
 import { SessionExtensionSettingsCard } from './SessionExtensionSettingsCard';
 import { ManagerDamagePolicySection } from "./PolicySection";
 import { KitchenTermsSection } from "./KitchenTermsSection";
+import { CopyBookingPoliciesCard } from "./CopyBookingPoliciesCard";
 import { kitchenWorkspaceSettingsKey } from "@/lib/manager-kitchens-navigation";
 import { SettingsContentSkeleton } from "@/components/manager/SettingsContentSkeleton";
+import { ChefPageHeader } from "@/components/chef/ui";
 
 /**
  * Effective booking rules for one kitchen. The window/buffer fields (and the read-only cap) arrive
@@ -54,7 +56,7 @@ export interface KitchenWorkspaceSettings {
  * after it (Damage and cleaning, read-only) → the paperwork (Terms and conditions).
  * Each section owns at most one save; nothing saves from the page header.
  */
-export default function KitchenWorkspaceControls({ kitchenId, location, mode, onDirtyChange, saveRef, onRequestSave, showTerms = false, termsNote }: {
+export default function KitchenWorkspaceControls({ kitchenId, location, mode, onDirtyChange, saveRef, onRequestSave, showTerms = false, termsNote, kitchenCount = 1, onEditLocation }: {
   kitchenId: number;
   location: { id: number; name: string; kitchenTermsUrl?: string | null; kitchenTermsUploadedAt?: string | null };
   mode: "policies";
@@ -64,6 +66,8 @@ export default function KitchenWorkspaceControls({ kitchenId, location, mode, on
   onRequestSave?: () => void;
   showTerms?: boolean;
   termsNote?: string;
+  kitchenCount?: number;
+  onEditLocation?: () => void;
 }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -95,10 +99,16 @@ export default function KitchenWorkspaceControls({ kitchenId, location, mode, on
 
   return (
     <div className="space-y-8">
+      <ChefPageHeader
+        title={mt("bpRulesForKitchen", { kitchen: data.kitchen.name || mt("thisKitchen") })}
+        description={mt("kitchenPoliciesScopeDescription", { kitchen: data.kitchen.name || mt("thisKitchen") })}
+      />
       <BookingRulesSettings ref={rulesRef} location={policyLocation} hideHeader hideArrivalTimings hideTerms hideDamagePolicy
         kitchenName={data.kitchen.name} policyUpdating={change.isPending} onRequestSave={onRequestSave}
         minimumBookingHours={data.kitchen.minimumBookingHours ?? 0}
         policyOverrides={data.kitchen}
+        locationName={location.name}
+        onEditLocation={onEditLocation}
         onResetPolicy={(field) => {
           if (field === "bookingBufferMinutes" || field === "turnoverBufferEnabled") {
             change.mutate({ bookingBufferMinutes: null, turnoverBufferEnabled: null });
@@ -135,7 +145,8 @@ export default function KitchenWorkspaceControls({ kitchenId, location, mode, on
       <CancellationPolicyEditor kitchenId={kitchenId} />
       <SessionExtensionSettingsCard kitchenId={kitchenId} />
       <ManagerDamagePolicySection />
-      {showTerms && <KitchenTermsSection location={location} note={termsNote} />}
+      {showTerms && <KitchenTermsSection location={location} locationName={location.name} readOnly onEditLocation={onEditLocation} note={termsNote} />}
+      <CopyBookingPoliciesCard kitchenId={kitchenId} kitchenCount={kitchenCount} />
     </div>
   );
 }
