@@ -19,6 +19,7 @@ import { BookingNowCard, ClampedBlock, NowClaimRows, chefCanPayClaim, closedClai
 import { BookingVisitRecord, type VisitTimelineEvent } from '@/components/booking/BookingVisitRecord';
 import { BookingReceipts, useBookingDocuments } from "@/components/booking/BookingReceipts";
 import { BookingPaymentCard, paymentStatusSource } from '@/components/booking/BookingPaymentCard';
+import { BookingDayList, currentBookingDays } from '@/components/booking/BookingDayList';
 import { StorageRows, EquipmentRows } from '@/components/booking/BookingAddOns';
 import { bookingNowContent, NOW_SECONDARY_VISIBLE } from '@/lib/booking-now';
 import { formatBookedDuration } from '@/lib/booked-duration';
@@ -97,6 +98,8 @@ function useMedia(query: string) {
 }
 
 interface BookingDetails {
+  scheduleRevision?: number;
+  cancellationPolicySnapshot?: import('@shared/cancellation-policy').CancellationPolicySnapshot | null;
   payout?: import('@shared/kitchen-payout').KitchenPayout;
   closeout?: import("@shared/clock-closeout").BookingCloseout;
   id: number;
@@ -235,7 +238,7 @@ interface BookingDetails {
     kitchenShareCents?: number; refundedCents: number; paidAt: string | null; status: string }>;
   /** The chef's latest "running late" heads-up to the kitchen. */
   runningLate?: RunningLateState | null;
-  visits?: Array<{ id: number; updatedAt: string; blockIndex: number; startTime: string; endTime: string; checkinStatus: string; checkedInAt: string | null; checkoutRequestedAt: string | null; checkedOutAt: string | null; checkoutApprovedAt: string | null; noShowDetectedAt: string | null; checkoutManagerMessage?: string | null }>;
+  visits?: Array<{ id: number; updatedAt: string; blockIndex: number; startTime: string; endTime: string; checkinStatus: string; checkedInAt: string | null; checkoutRequestedAt: string | null; checkedOutAt: string | null; checkoutApprovedAt: string | null; noShowDetectedAt: string | null; checkoutManagerMessage?: string | null; visitDate?: string | null; scheduleRevision?: number | null; scheduleState?: string | null; pricingMode?: string | null }>;
 }
 
 async function getAuthHeaders(): Promise<HeadersInit> {
@@ -1245,6 +1248,8 @@ export default function BookingDetailsPage() {
   })();
   // ── State, times and facts for the Now card (design-booking-consolidation.md §2) ─────────────────────────────
   const hasMultipleVisits = (booking?.visits?.length ?? 0) > 1;
+  const datedBooking = !isManagerView && !!booking?.scheduleRevision;
+  const bookingDays = datedBooking ? currentBookingDays(booking?.visits ?? [], booking!.scheduleRevision!) : [];
   const tz = booking?.location?.timezone || undefined;
   const lang = i18n.language;
   const closeoutVisits = booking?.closeout?.visits || [];
@@ -1288,6 +1293,8 @@ export default function BookingDetailsPage() {
   const withZone = (value: Date | string) => `${clockTime(value)}${zoneName ? ` ${zoneName}` : ''}`;
   const cancellationCutoff = (() => {
     if (!booking) return null;
+    const policy = booking.cancellationPolicySnapshot;
+    if (datedBooking && policy?.sessions[0]) return Date.parse(policy.sessions[0].startAt) - policy.noticeHours * 3_600_000;
     try { return kitchenRescheduleCutoff(bookingChangeSchedule(booking), booking.cancellationPolicyHours ?? booking.location?.cancellationPolicyHours ?? 24); } catch { return null; }
   })();
   const cancellationDeadlineText = cancellationCutoff != null ? formatEventTimestamp(new Date(cancellationCutoff).toISOString()) : undefined;
@@ -1561,7 +1568,9 @@ export default function BookingDetailsPage() {
   const heroPhoto = !isManagerView ? booking?.kitchen?.photos?.find(Boolean) : null;
   const heroSrc = heroPhoto ? getR2ProxyUrl(heroPhoto) || heroPhoto : null;
   const slotText = bookingTimeSlots.length > 1 ? bookingTimeSlots.join(' · ') : null;
-  const whenLine = booking ? [
+  const whenLine = datedBooking && bookingDays.length ? [
+    formatDate(bookingDays[0].visitDate!), formatDate(bookingDays[bookingDays.length - 1].visitDate!),
+  ].join(' – ') + ` · ${policyT('mdSelectedDays', { count: bookingDays.length })}` : booking ? [
     visitBounds ? new Intl.DateTimeFormat(lang, { timeZone: tz, weekday: 'short', month: 'short', day: 'numeric' }).format(visitBounds.startAt)
       : new Date(`${bookingStartDateKey(booking) ?? booking.bookingDate.slice(0, 10)}T12:00:00Z`).toLocaleDateString(lang, { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' }),
     slotText || timeRange(formatTime(booking.startTime), formatTime(booking.endTime)),
@@ -1903,8 +1912,8 @@ export default function BookingDetailsPage() {
     />
   );
 
-  const cancellationCard = booking && !isManagerView && chefCanCancel && ['pending', 'confirmed'].includes(booking.status) && (
-    <BookingCancellationCard createdAt={booking.createdAt} bookingId={booking.id} status={booking.status} canCancel={chefCanCancel} onCancel={() => setCancelOpen(true)}
+  const cancellationCard = booking && !isManagerView && (chefCanCancel || datedBooking) && ['pending', 'confirmed'].includes(booking.status) && (
+    <BookingCancellationCard multiDay={datedBooking} frozenPolicy={booking.cancellationPolicySnapshot} createdAt={booking.createdAt} bookingId={booking.id} status={booking.status} canCancel={chefCanCancel} onCancel={() => setCancelOpen(true)}
       onChange={booking.status === 'confirmed' && !visitStarted ? () => setChangeOpen(true) : undefined}
       deadlineText={cancellationDeadlineText} deadlinePassed={!paidCancellationAvailable} />
   );
@@ -1955,6 +1964,7 @@ export default function BookingDetailsPage() {
       {/* Wide screens: the Now card, then a main column and a sidebar of at most three cards. Narrow: one column in §2.1 order. */}
       <div className="space-y-5">
         {nowCard}
+        {datedBooking && booking && <BookingDayList bookingId={booking.id} visits={bookingDays} timezone={booking.location?.timezone || 'America/St_Johns'} status={booking.status} />}
         {wide ? (
           <div className="grid grid-cols-3 gap-5">
             <div className="col-span-2 min-w-0 space-y-5">{visitRecord}{feedback}{personCard}{addOns}{note}{history}</div>

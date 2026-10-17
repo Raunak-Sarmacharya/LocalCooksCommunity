@@ -9,7 +9,9 @@ import { apiGet } from '@/lib/api';
 import { CancellationPolicySummary, type PolicyResponse } from './CancellationPolicySummary';
 import { CheckoutCancellationDisclosure, CheckoutConsentNotice } from './CheckoutCancellationDisclosure';
 import { ChangeRequestBanner, ChangeRequestConsentLine, useReplacedRequest } from './ChangeRequestNotice';
-import { CANCELLATION_DISCLOSURE_VERSION } from '@shared/cancellation-policy';
+import { CANCELLATION_DISCLOSURE_VERSION, DATED_DISCLOSURE_VERSION } from '@shared/cancellation-policy';
+import { buildDatedDays, datedDayError, dateSelectionReason, localDateKey, readDatedDraft, type DayHours, type DayResources, type DateStatus } from './dated-booking-draft';
+import { DatedCalendarDay, DatedCalendarContext } from './DatedCalendarDay';
 import { useBookingEligibility } from "@/hooks/use-booking-eligibility";
 import { BookingEligibilityBanner } from "./BookingEligibilityBanner";
 import { useKitchenBookings } from "@/hooks/use-kitchen-bookings";
@@ -391,12 +393,17 @@ export default function KitchenBookingFlow({
   // State
   const [selectedKitchen, setSelectedKitchen] = useState<any | null>(null);
   const [bookableThrough, setBookableThrough] = useState<string | null>(null);
+  const [dayRules, setDayRules] = useState<{ allowMultiDayBookings?: boolean; multidayCreationEnabled?: boolean; maxBookingDays?: number }>({});
+  const multipleAllowed = dayRules.allowMultiDayBookings === true && dayRules.multidayCreationEnabled === true;
   useEffect(() => {
     setBookableThrough(null);
     if (!selectedKitchen?.id) return;
     let stale = false;
     void apiGet(`/chef/kitchens/${selectedKitchen.id}/policy`).then(policy => {
-      if (!stale && typeof policy?.bookableThrough === 'string') setBookableThrough(policy.bookableThrough);
+      if (!stale) {
+        setDayRules(policy ?? {});
+        if (typeof policy?.bookableThrough === 'string') setBookableThrough(policy.bookableThrough);
+      }
     }).catch(() => {});
     return () => { stale = true; };
   }, [selectedKitchen?.id]);
@@ -430,20 +437,38 @@ export default function KitchenBookingFlow({
   today.setHours(0, 0, 0, 0);
   const [calendarMonth, setCalendarMonth] = useState<Date>(() => new Date(today.getFullYear(), today.getMonth(), 1));
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [selectedDates, setSelectedDates] = useState<string[]>([]);
+  const [dateStatuses, setDateStatuses] = useState<Record<string, DateStatus>>({});
+  const [dateAnnouncement, setDateAnnouncement] = useState('');
+  const [editingDay, setEditingDay] = useState<string | null>(null);
+  const [dayHours, setDayHours] = useState<Record<string, DayHours>>({});
+  const [dayEquipmentExcluded, setDayEquipmentExcluded] = useState<Record<string, number[]>>({});
+  const [dayResources, setDayResources] = useState<Record<string, DayResources>>({});
+  const [daysLoading, setDaysLoading] = useState(false);
+  const isMultiDay = multipleAllowed && selectedDates.length > 1;
+  const pickerDate = isMultiDay && editingDay ? new Date(`${editingDay}T12:00:00`) : selectedDate;
   const [dateAvailability, setDateAvailability] = useState<Record<string, boolean>>({});
   const [isLoadingAvailability, setIsLoadingAvailability] = useState(false);
 
   // Slots state
-  const [allSlots, setAllSlots] = useState<Array<{
+  const [singleSlots, setAllSlots] = useState<Array<{
     time: string;
     available: number;
     capacity: number;
     isFullyBooked: boolean;
   }>>([]);
-  const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
+  const [templateSlots, setTemplateSlots] = useState<string[]>([]);
+  const currentHours = isMultiDay && editingDay ? dayHours[editingDay] : undefined;
+  const selectedSlots = currentHours?.times ?? templateSlots;
+  const setSelectedSlots: Dispatch<SetStateAction<string[]>> = (value) => {
+    if (isMultiDay && editingDay) {
+      const times = typeof value === 'function' ? value(selectedSlots) : value;
+      setDayHours(current => ({ ...current, [editingDay]: { pricingMode: current[editingDay]?.pricingMode ?? templateRateMode, times } }));
+    } else setTemplateSlots(value);
+  };
   const selectedSlotsRef = useRef(selectedSlots);
   selectedSlotsRef.current = selectedSlots;
-  const [fullDayBookable, setFullDayBookable] = useState(false);
+  const [singleFullDayBookable, setFullDayBookable] = useState(false);
   const [pendingTimeSlots, setPendingTimeSlots] = useState<string[]>([]);
   const [timeModalOpen, setTimeModalOpen] = useState(false);
   const [isLoadingSlots, setIsLoadingSlots] = useState(false);
@@ -461,7 +486,15 @@ export default function KitchenBookingFlow({
     managerResponseBufferHours?: number;
     timezone?: string;
   } | null>(null);
-  const [bookingRateMode, setBookingRateMode] = useState<BookingRateMode>("hourly");
+  const [templateRateMode, setTemplateRateMode] = useState<BookingRateMode>("hourly");
+  const bookingRateMode = isMultiDay && editingDay ? (dayHours[editingDay]?.pricingMode ?? templateRateMode) : templateRateMode;
+  const setBookingRateMode = (pricingMode: BookingRateMode) => {
+    if (isMultiDay && editingDay) setDayHours(current => ({ ...current, [editingDay]: { pricingMode, times: dayHours[editingDay]?.times ?? templateSlots } }));
+    else setTemplateRateMode(pricingMode);
+  };
+  const pickerResource = dayResources[editingDay ?? selectedDates[0]];
+  const allSlots = isMultiDay ? pickerResource?.slots ?? singleSlots : singleSlots;
+  const fullDayBookable = isMultiDay ? !!pickerResource?.fullDay : singleFullDayBookable;
   const [estimatedPrice, setEstimatedPrice] = useState<{
     basePrice: number;
     tax: number;
@@ -485,6 +518,71 @@ export default function KitchenBookingFlow({
   const [discardModal, setDiscardModal] = useState<"equipment" | "time" | null>(null);
   const [confirmDatePopoverOpen, setConfirmDatePopoverOpen] = useState(false);
   const pendingLeaveRef = useRef<(() => void) | null>(null);
+  const restoredDaysFor = useRef<number | null>(null);
+  useEffect(() => {
+    if (!multipleAllowed || !isFlowReady || !selectedKitchen || restoredDaysFor.current === selectedKitchen.id) return;
+    restoredDaysFor.current = selectedKitchen.id;
+    if (initialDateIso) return;
+    const draft = readDatedDraft(selectedKitchen.id);
+    if (!draft) return;
+    setSelectedDates([...draft.dates].sort());
+    setSelectedDate(new Date(`${[...draft.dates].sort()[0]}T12:00:00`));
+    setCalendarMonth(new Date(`${[...draft.dates].sort()[0]}T12:00:00`));
+    setTemplateSlots(draft.template.times);
+    setTemplateRateMode(draft.template.pricingMode);
+    setDayHours(draft.hours);
+    setSelectedEquipmentIds(draft.equipmentIds);
+    setDayEquipmentExcluded(draft.excluded);
+    setNotes(draft.notes);
+    setHideDateStep(false);
+    setCurrentStep('calendar');
+  }, [multipleAllowed, selectedKitchen?.id, isFlowReady, initialDateIso]);
+  useEffect(() => {
+    if (!isMultiDay || !selectedKitchen) return;
+    try {
+      sessionStorage.setItem(`kitchen_booking_days_${selectedKitchen.id}`, JSON.stringify({ version: 1, dates: selectedDates,
+        template: { pricingMode: templateRateMode, times: templateSlots }, hours: dayHours, equipmentIds: selectedEquipmentIds,
+        excluded: dayEquipmentExcluded, notes }));
+    } catch { /* A full/unavailable session store must not block booking. */ }
+  }, [isMultiDay, selectedKitchen?.id, selectedDates, templateSlots, templateRateMode, dayHours, selectedEquipmentIds, dayEquipmentExcluded, notes]);
+
+  const datedDays = buildDatedDays(selectedDates, { pricingMode: templateRateMode, times: templateSlots }, dayHours,
+    Array.from(new Set([...equipmentListings.included.map(item => item.id), ...selectedEquipmentIds])), dayEquipmentExcluded, dayResources);
+  const datedPrices = datedDays.map(day => {
+    const kitchenSubtotal = day.pricingMode === 'daily' ? kitchenPricing?.dailyRate ?? 0 : day.slots.length * (kitchenPricing?.hourlyRate ?? 0);
+    const equipmentSubtotal = day.equipmentIds.reduce((sum, id) => sum + (equipmentListings.all.find(item => item.id === id)?.sessionRate ?? 0), 0);
+    return { ...day, kitchenSubtotal, equipmentSubtotal };
+  });
+  const datedKitchenSubtotal = datedPrices.reduce((sum, day) => sum + day.kitchenSubtotal, 0);
+  const datedEquipmentSubtotal = datedPrices.reduce((sum, day) => sum + day.equipmentSubtotal, 0);
+  const invalidDay = isMultiDay ? datedDays.find(day => datedDayError(day, dayResources[day.date], kitchenPricing?.minimumBookingHours ?? 0, maxSlotsPerChef)) : undefined;
+  const dateSetError = isMultiDay && (selectedDates.length > Math.min(dayRules.maxBookingDays ?? 7, 14) ? t('mdCountLimit', { count: dayRules.maxBookingDays ?? 7 })
+    : dateSelectionReason(selectedDates[selectedDates.length - 1], selectedDates.slice(0, -1), 14) ? t('mdSpanLimit') : null);
+
+  // Each operating date keeps its own opening window, notice filter and equipment inventory.
+  useEffect(() => {
+    if (!isMultiDay || !selectedKitchen) return;
+    let stale = false;
+    setDaysLoading(true);
+    const kitchenId = selectedKitchen.id;
+    void Promise.all(selectedDates.map(async date => {
+      const [slots, equipment] = await Promise.all([
+        apiGet(`/chef/kitchens/${kitchenId}/slots?date=${date}${replacesQuery}`),
+        apiGet(`/chef/kitchens/${kitchenId}/equipment-listings?date=${date}`),
+      ]);
+      const zone = kitchenPricing?.timezone || DEFAULT_TIMEZONE;
+      const notice = selectedKitchen.location?.minimumBookingWindowHours ?? 0;
+      const filtered = slots.filter((slot: any) => {
+        const instant = matchingLocalInstants(calendarDateForOperatingTime(date, slot.time, slots[0]?.time || slot.time), slot.time, zone)[0];
+        return instant !== undefined && instant > Date.now() + notice * 3_600_000;
+      });
+      return [date, { slots: filtered, fullDay: slots.length > 0 && filtered.length === slots.length && slots.every((slot: any) => !slot.isFullyBooked),
+        equipmentIds: [...(equipment.included ?? []), ...(equipment.rental ?? [])].filter((item: any) => !item.archivedAt).map((item: any) => item.id) }] as const;
+    })).then(entries => { if (!stale) setDayResources(Object.fromEntries(entries)); })
+      .catch(() => { if (!stale) { setDayResources({}); setLoadError(t('mdLoadDays')); } })
+      .finally(() => { if (!stale) setDaysLoading(false); });
+    return () => { stale = true; };
+  }, [isMultiDay, selectedDates.join(','), selectedKitchen?.id, kitchenPricing?.timezone, replacesQuery]);
 
   // Equipment pricing
   const equipmentPricing = useMemo(() => {
@@ -514,10 +612,10 @@ export default function KitchenBookingFlow({
 
   // Combined pricing
   const combinedSubtotal = useMemo(() => {
-    const kitchenBase = estimatedPrice?.basePrice || 0;
-    const equipmentBaseCents = equipmentPricing.subtotal || 0;
+    const kitchenBase = isMultiDay ? datedKitchenSubtotal : estimatedPrice?.basePrice || 0;
+    const equipmentBaseCents = isMultiDay ? datedEquipmentSubtotal : equipmentPricing.subtotal || 0;
     return kitchenBase + equipmentBaseCents;
-  }, [estimatedPrice?.basePrice, equipmentPricing.subtotal]);
+  }, [isMultiDay, datedKitchenSubtotal, datedEquipmentSubtotal, estimatedPrice?.basePrice, equipmentPricing.subtotal]);
 
   const tax = useMemo(() => {
     if (combinedSubtotal <= 0) return 0;
@@ -585,10 +683,10 @@ export default function KitchenBookingFlow({
 
   // Load slots when date changes
   useEffect(() => {
-    if (selectedKitchen && selectedDate) {
+    if (selectedKitchen && selectedDate && !isMultiDay) {
       loadAvailableSlots(selectedKitchen.id, toLocalDateString(selectedDate));
     }
-  }, [selectedKitchen, selectedDate]);
+  }, [selectedKitchen, selectedDate, isMultiDay]);
 
   // Load month availability for the date step (two months) and confirm popover (one month)
   useEffect(() => {
@@ -606,7 +704,7 @@ export default function KitchenBookingFlow({
         { year: currentYear, month: currentMonth },
       ]);
     }
-  }, [selectedKitchen, currentYear, currentMonth, currentStep, confirmDatePopoverOpen]);
+  }, [selectedKitchen, currentYear, currentMonth, currentStep, confirmDatePopoverOpen, multipleAllowed]);
 
   const loadMonthsAvailability = async (
     kitchenId: number,
@@ -639,7 +737,7 @@ export default function KitchenBookingFlow({
       const chunks = await Promise.all(
         months.map(async ({ year, month }) => {
           const response = await fetch(
-            `/api/chef/kitchens/${kitchenId}/month-availability?year=${year}&month=${month}${replacesQuery}`,
+            `/api/chef/kitchens/${kitchenId}/${multipleAllowed ? 'date-status' : 'month-availability'}?year=${year}&month=${month}${replacesQuery}`,
             {
               credentials: "include",
               headers,
@@ -649,7 +747,10 @@ export default function KitchenBookingFlow({
           if (!response.ok) {
             throw new Error(`Failed to load month availability (status ${response.status})`);
           }
-          const serverAvailability: Record<string, boolean> = await response.json();
+          const result = await response.json();
+          if (multipleAllowed) setDateStatuses(current => ({ ...current, ...result }));
+          const serverAvailability: Record<string, boolean> = multipleAllowed
+            ? Object.fromEntries(Object.entries(result as Record<string, DateStatus>).map(([date, status]) => [date, status.hourly || status.fullDay])) : result;
           const availability: Record<string, boolean> = {};
           const daysInMonth = getDaysInMonth(year, month);
           for (let day = 1; day <= daysInMonth; day++) {
@@ -705,10 +806,11 @@ export default function KitchenBookingFlow({
 
   useEffect(() => {
     if (bookingRateMode !== "daily" || isLoadingSlots) return;
+    if (isMultiDay) return; // Dated full days use each date's complete opening window.
     setSelectedSlots(fullDayBookable
       ? allSlots.map((slot) => slot.time)
       : []);
-  }, [allSlots, fullDayBookable, bookingRateMode, isLoadingSlots]);
+  }, [allSlots, fullDayBookable, bookingRateMode, isLoadingSlots, isMultiDay]);
 
   const loadAvailableSlots = async (kitchenId: number, date: string) => {
     setIsLoadingSlots(true);
@@ -875,6 +977,12 @@ export default function KitchenBookingFlow({
     setIsFlowReady(false);
     setSelectedKitchen(kitchen);
     setSelectedDate(null);
+    setSelectedDates([]);
+    setDayHours({});
+    setEditingDay(null);
+    setDayResources({});
+    setDateStatuses({});
+    setDayEquipmentExcluded({});
     setSelectedSlots([]);
     setAllSlots([]);
     setSelectedEquipmentIds([]);
@@ -946,6 +1054,7 @@ export default function KitchenBookingFlow({
         const [y, m, d] = restore.dateIso.split("-").map(Number);
         const restoredDate = new Date(y, m - 1, d);
         setSelectedDate(restoredDate);
+        setSelectedDates([restore.dateIso]);
         setCalendarMonth(new Date(y, m - 1, 1));
         if (restore.slots?.length) {
           if (restore.slots.some(time => !/^([01]\d|2[0-3]):[0-5]\d$/.test(time))) {
@@ -980,6 +1089,7 @@ export default function KitchenBookingFlow({
     if (normalized < today) return;
     if (!isDayAvailable(normalized)) return;
     setSelectedDate(normalized);
+    setSelectedDates([localDateKey(normalized)]);
     setSelectedSlots([]);
   };
 
@@ -988,6 +1098,28 @@ export default function KitchenBookingFlow({
     d.setHours(0, 0, 0, 0);
     if (d < today || bookableThrough && toLocalDateString(d) > bookableThrough) return false;
     return dateAvailability[toLocalDateString(d)] === true;
+  };
+
+  const blockedDateReason = (date: Date) => {
+    const key = localDateKey(date);
+    const limitReason = dateSelectionReason(key, selectedDates, Math.min(dayRules.maxBookingDays ?? 7, 14));
+    if (limitReason) return t(limitReason === 'count' ? 'mdCountLimit' : 'mdSpanLimit', { count: dayRules.maxBookingDays ?? 7 });
+    if (date < today) return t('mdReasonPast');
+    if (bookableThrough && key > bookableThrough) return t('mdReasonAdvance');
+    const status = dateStatuses[key];
+    if (selectedDates.includes(key)) return null;
+    if (status?.hourly || status?.fullDay) return null;
+    const reasons: Record<string, string> = { booked: 'mdReasonBooked', held: 'mdReasonBooked', closed: 'mdReasonClosed',
+      notice: 'mdReasonNotice', beyond_advance_window: 'mdReasonAdvance', weekly_limit: 'mdReasonWeekly', buffer: 'mdReasonBuffer',
+      clock_change: 'mdReasonClock', not_open_to_you: 'mdReasonAccess', maintenance: 'mdReasonMaintenance' };
+    return t(reasons[status?.reason ?? ''] ?? 'mdReasonUnavailable');
+  };
+  const selectMultipleDates = (dates: Date[] | undefined) => {
+    const keys = (dates ?? []).map(localDateKey).sort();
+    setSelectedDates(keys);
+    setSelectedDate(keys.length ? new Date(`${keys[0]}T12:00:00`) : null);
+    setEditingDay(null);
+    setDateAnnouncement(t('mdSelectedDays', { count: keys.length }));
   };
 
   const sortSelectedSlots = (slots: string[]) => {
@@ -1089,14 +1221,16 @@ export default function KitchenBookingFlow({
     return stepOrder[idx + delta] ?? null;
   };
 
-  const orderedSelectedSlots = bookingRateMode === 'daily' ? selectedSlots : sortSelectedSlots(selectedSlots);
+  const orderedSelectedSlots = isMultiDay ? datedDays[0]?.slots.map(slot => slot.startTime) ?? []
+    : bookingRateMode === 'daily' ? selectedSlots : sortSelectedSlots(selectedSlots);
+  const firstWindowStart = isMultiDay ? dayResources[selectedDates[0]]?.slots[0]?.time : allSlots[0]?.time;
   const checkoutResponseDeadline = (() => {
     if (!selectedDate || !orderedSelectedSlots.length) return null;
     try {
       const zone = kitchenPricing?.timezone || DEFAULT_TIMEZONE;
       return formatResponseDeadline(responseDeadlineForBooking({ createdAt: new Date(), status: 'pending',
         bookingDate: toLocalDateString(selectedDate), startTime: orderedSelectedSlots[0], endTime: addHour(orderedSelectedSlots.at(-1)!),
-        selectedSlots: orderedSelectedSlots, operatingWindowStartTime: allSlots[0]?.time,
+        selectedSlots: orderedSelectedSlots, operatingWindowStartTime: firstWindowStart,
         // Same frozen policy the server uses: the kitchen must answer before the chef's free cancellation ends.
         cancellationPolicyHours: acceptedPolicy?.policy.noticeHours ?? null }, zone, kitchenPricing?.managerResponseBufferHours), i18n.language, zone);
     } catch { return null; }
@@ -1105,7 +1239,7 @@ export default function KitchenBookingFlow({
     if (!selectedDate || !orderedSelectedSlots.length) return null;
     try {
       const start = firstBookingVisitStart({ bookingDate: toLocalDateString(selectedDate), startTime: orderedSelectedSlots[0], endTime: addHour(orderedSelectedSlots.at(-1)!),
-        selectedSlots: orderedSelectedSlots, operatingWindowStartTime: allSlots[0]?.time, status: 'pending' } as any, kitchenPricing?.timezone || DEFAULT_TIMEZONE);
+        selectedSlots: orderedSelectedSlots, operatingWindowStartTime: firstWindowStart, status: 'pending' } as any, kitchenPricing?.timezone || DEFAULT_TIMEZONE);
       return (start.getTime() - Date.now()) / 3_600_000;
     } catch { return null; }
   })();
@@ -1113,7 +1247,7 @@ export default function KitchenBookingFlow({
   const policyStartAt = (() => {
     if (!selectedDate || !orderedSelectedSlots.length || !acceptedPolicy) return undefined;
     try { return firstBookingVisitStart({ bookingDate: toLocalDateString(selectedDate), startTime: orderedSelectedSlots[0], endTime: addHour(orderedSelectedSlots.at(-1)!),
-      selectedSlots: orderedSelectedSlots, operatingWindowStartTime: allSlots[0]?.time, status: 'pending' } as any, acceptedPolicy.timezone).toISOString(); } catch { return undefined; }
+      selectedSlots: orderedSelectedSlots, operatingWindowStartTime: firstWindowStart, status: 'pending' } as any, acceptedPolicy.timezone).toISOString(); } catch { return undefined; }
   })();
   const selectionError = (times = selectedSlots) => validateKitchenSlotSelection(
     times, allSlots, bookingRateMode === 'hourly' ? Math.max(1, kitchenPricing?.minimumBookingHours ?? 0) : 1,
@@ -1121,6 +1255,15 @@ export default function KitchenBookingFlow({
   ) || (bookingRateMode === 'daily' && (!fullDayBookable || times.length !== allSlots.length)
     ? 'A daily booking must include the full available operating day.' : null);
   const requireValidSelection = () => {
+    if (isMultiDay) {
+      if (dateSetError) { setCheckoutError(dateSetError); setHideDateStep(false); setCurrentStep('calendar'); return false; }
+      if (!daysLoading && !invalidDay) return true;
+      const day = invalidDay?.date ?? selectedDates[0];
+      setEditingDay(day);
+      setCurrentStep('slots');
+      setCheckoutError(t('mdReviewDay', { date: formatDate(new Date(`${day}T12:00:00`)) }));
+      return false;
+    }
     const error = selectionError();
     if (!error) return true;
     toast({ title: ct('sweepText21'), description: error, variant: 'destructive' });
@@ -1130,10 +1273,17 @@ export default function KitchenBookingFlow({
   const bookingTimeBlocks = bookingVisitBlocks(
     orderedSelectedSlots.map(startTime => ({ startTime, endTime: addHour(startTime) }))
   ).map(block => `${formatTime(block.startTime)} - ${formatTime(block.endTime)}`);
+  const datedSummaryRows = isMultiDay ? datedPrices.map(day => ({
+    date: formatDate(new Date(`${day.date}T12:00:00`)),
+    hours: day.pricingMode === 'daily' ? t('sheetDailyRate') : day.slots.length
+      ? `${formatTime(day.slots[0].startTime)} – ${formatTime(day.slots[day.slots.length - 1].endTime)}` : t('sheetChooseTime'),
+    equipment: day.equipmentIds.map(id => equipmentName(equipmentListings.all.find(item => item.id === id) ?? {})).join(', '),
+    subtotal: day.kitchenSubtotal + day.equipmentSubtotal,
+  })) : undefined;
 
   // Redirect to Stripe Checkout
   const redirectToStripeCheckout = async () => {
-    if (!selectedKitchen || !selectedDate || selectedSlots.length === 0) return;
+    if (!selectedKitchen || !selectedDate || (!isMultiDay && selectedSlots.length === 0)) return;
     if (!acceptedPolicy) { setCheckoutError(policyT('cpError')); return; }
     if (bookingBlocked) return;
     if (!requireValidSelection()) return;
@@ -1141,7 +1291,7 @@ export default function KitchenBookingFlow({
 
     // Enforce minimum booking hours (0 = no restriction)
     const minHours = kitchenPricing?.minimumBookingHours ?? 0;
-    if (bookingRateMode === 'hourly' && minHours > 0 && selectedSlots.length < minHours) {
+    if (!isMultiDay && bookingRateMode === 'hourly' && minHours > 0 && selectedSlots.length < minHours) {
       toast({
         title: t("toastMinBookingRequiredTitle", "Minimum Booking Required"),
         description: t("toastMinBookingRequiredDesc", { minHours, selected: selectedSlots.length, defaultValue: `This kitchen requires a minimum of ${minHours} hour${minHours > 1 ? 's' : ''} per booking. You have selected ${selectedSlots.length}.` }),
@@ -1190,7 +1340,8 @@ export default function KitchenBookingFlow({
           // Selecting Checkout under the consent line is the acceptance (clickwrap); the server records the disclosure shown.
           cancellationPolicyAccepted: true,
           cancellationPolicyVersion: acceptedPolicy.policy.version,
-          cancellationDisclosureVersion: CANCELLATION_DISCLOSURE_VERSION,
+          cancellationDisclosureVersion: isMultiDay ? DATED_DISCLOSURE_VERSION : CANCELLATION_DISCLOSURE_VERSION,
+          ...(isMultiDay ? { days: datedDays } : {
           bookingDate: bookingDate.toISOString(),
           startTime,
           endTime,
@@ -1199,8 +1350,9 @@ export default function KitchenBookingFlow({
             endTime: addHour(slot),
           })),
           pricingMode: bookingRateMode,
-          specialNotes: notes,
           selectedEquipmentIds: selectedEquipmentIds.length > 0 ? selectedEquipmentIds : undefined,
+          }),
+          specialNotes: notes,
           ...(replacesBookingId ? { replacesBookingId } : {}),
         }),
       });
@@ -1371,6 +1523,7 @@ export default function KitchenBookingFlow({
                 className="shrink-0 text-sm font-medium text-muted-foreground hover:text-[#E10939]"
                 onClick={() => {
                   setSelectedDate(null);
+                  setSelectedDates([]);
                   setSelectedSlots([]);
                 }}
               >
@@ -1386,7 +1539,15 @@ export default function KitchenBookingFlow({
               </div>
             )}
             {bookableThrough && <p className="text-sm text-muted-foreground">{t("bookingBookableThrough", { defaultValue: "Bookable up to {date}", date: new Intl.DateTimeFormat(i18n.resolvedLanguage || i18n.language || "en-CA", { dateStyle: "medium" }).format(new Date(`${bookableThrough}T12:00:00`)) })}</p>}
-            <UICalendar
+            {multipleAllowed ? <DatedCalendarContext.Provider value={{ reason: blockedDateReason, announce: setDateAnnouncement, locale: i18n.language }}>
+              <p className="mb-2 text-sm text-muted-foreground">{t('mdSelectHelp', { count: Math.min(dayRules.maxBookingDays ?? 7, 14) })}</p>
+              <UICalendar mode="multiple" numberOfMonths={2} pagedNavigation
+                selected={selectedDates.map(date => new Date(`${date}T12:00:00`))} onSelect={selectMultipleDates}
+                month={calendarMonth} onMonthChange={setCalendarMonth} disabled={date => !!blockedDateReason(date)}
+                components={{ Day: DatedCalendarDay }}
+                className="w-full bg-transparent p-1" classNames={{ ...BOOKING_CALENDAR_TWO_MONTH_CLASS_NAMES, day: `${BOOKING_CALENDAR_CLASS_NAMES.day} h-11 w-11 max-w-[44px]`, cell: 'relative h-11 p-0 text-center text-sm' }} />
+              <p role="status" aria-live="polite" className="mt-2 text-sm">{dateAnnouncement || t('mdSelectedDays', { count: selectedDates.length })}</p>
+            </DatedCalendarContext.Provider> : <UICalendar
               mode="single"
               numberOfMonths={2}
               pagedNavigation
@@ -1399,13 +1560,13 @@ export default function KitchenBookingFlow({
               disabled={(date) => !isDayAvailable(date)}
               className="w-full bg-transparent p-1"
               classNames={BOOKING_CALENDAR_TWO_MONTH_CLASS_NAMES}
-            />
+            />}
           </div>
 
           {selectedDate && (
             <div className="mx-auto w-full max-w-[640px] rounded-[1.35rem] border border-[#E10939]/20 bg-[#E10939]/5 px-3 py-2.5">
               <p className="text-sm font-semibold text-gray-900">
-                {formatDate(selectedDate)}
+                {isMultiDay ? selectedDates.map(date => formatDate(new Date(`${date}T12:00:00`))).join(' · ') : formatDate(selectedDate)}
               </p>
               <p className="text-sm text-muted-foreground mt-0.5">
                 {isLoadingSlots
@@ -1428,6 +1589,18 @@ export default function KitchenBookingFlow({
       const isFullDayAvailable = fullDayBookable;
       return (
         <div className="flex h-full min-h-[16rem] flex-col gap-4">
+          {isMultiDay && <div className="space-y-2 rounded-xl border p-3">
+            <Button variant="outline" aria-pressed={!editingDay} className="min-h-11" onClick={() => setEditingDay(null)}>{t('mdSameHours')}</Button>
+            <label className="block text-sm font-medium" htmlFor="change-booking-day">{t('mdChangeOneDay')}</label>
+            <select id="change-booking-day" className="min-h-11 w-full rounded-lg border bg-white px-3" value={editingDay ?? ''}
+              onChange={event => setEditingDay(event.target.value || null)}>
+              <option value="">{t('mdSameHours')}</option>
+              {selectedDates.map(date => <option key={date} value={date}>{formatDate(new Date(`${date}T12:00:00`))}</option>)}
+            </select>
+            {editingDay && dayHours[editingDay] && <Button variant="ghost" onClick={() => setDayHours(current => { const next = { ...current }; delete next[editingDay]; return next; })}>{t('mdUseSameHours')}</Button>}
+            {daysLoading && <p role="status">{t('sheetLoadingSlotsText')}</p>}
+            {invalidDay && <p className="text-sm" role="status">{t('mdReviewDay', { date: formatDate(new Date(`${invalidDay.date}T12:00:00`)) })}</p>}
+          </div>}
           <div className="flex shrink-0 items-start justify-between gap-3">
             <div className="min-w-0">
               <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
@@ -1435,7 +1608,7 @@ export default function KitchenBookingFlow({
                 {t("sheetSelectTimeTitle", "Select Time")}
               </h3>
               <p className="text-sm text-muted-foreground mt-1">
-                {formatDate(selectedDate)}
+                {formatDate(pickerDate ?? selectedDate)}
                 {bookingRateMode === "hourly" && kitchenPricing?.minimumBookingHours && kitchenPricing.minimumBookingHours > 0
                   ? ` · ${t("sheetMinHourBadge", { minHours: kitchenPricing.minimumBookingHours, defaultValue: `Min ${kitchenPricing.minimumBookingHours}hr` })}`
                   : ""}
@@ -1535,7 +1708,7 @@ export default function KitchenBookingFlow({
               )}
               <div className={cn("grid flex-1 content-center grid-cols-2 gap-2.5 sm:grid-cols-3", bookingRateMode === "daily" && "pointer-events-none opacity-70")}>
                 {allSlots.map((slot) => {
-                  const isSelected = selectedSlots.includes(slot.time);
+                  const isSelected = isMultiDay && bookingRateMode === 'daily' ? fullDayBookable : selectedSlots.includes(slot.time);
                   const isFullyBooked = slot.isFullyBooked;
                   return (
                     <button
@@ -1604,6 +1777,23 @@ export default function KitchenBookingFlow({
             </Button>
           </div>
 
+          {isMultiDay && <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">{t('mdEquipmentHelp')}</p>
+            {datedDays.map(day => <fieldset key={day.date} className="space-y-2 rounded-xl border p-3">
+              <legend className="px-1 text-sm font-semibold">{formatDate(new Date(`${day.date}T12:00:00`))}</legend>
+              {equipmentListings.all.filter(item => dayResources[day.date]?.equipmentIds.includes(item.id)).map(item => {
+                const chosen = selectedEquipmentIds.includes(item.id) || equipmentListings.included.some(included => included.id === item.id);
+                return <label key={item.id} className="flex min-h-11 items-center gap-3 text-sm">
+                  <input type="checkbox" checked={day.equipmentIds.includes(item.id)} onChange={event => {
+                    if (!chosen) setSelectedEquipmentIds(current => [...current, item.id]);
+                    setDayEquipmentExcluded(current => ({ ...current, [day.date]: event.target.checked
+                      ? (current[day.date] ?? []).filter(id => id !== item.id) : [...(current[day.date] ?? []), item.id] }));
+                  }} />
+                  {equipmentName(item)} · {formatCurrency(item.sessionRate || 0)}
+                </label>;
+              })}
+            </fieldset>)}
+          </div>}
           {isLoadingAddons ? (
             <div className="flex justify-center py-12">
               <Icon icon="mdi:loading" className="h-5 w-5 animate-spin text-[#E10939]" aria-hidden />
@@ -1674,7 +1864,7 @@ export default function KitchenBookingFlow({
     }
 
     // Step: Confirm — editable choices only (kitchen + price live in the left rail)
-    if (currentStep === 'confirm' && selectedKitchen && selectedDate && selectedSlots.length > 0) {
+    if (currentStep === 'confirm' && selectedKitchen && selectedDate && (isMultiDay || selectedSlots.length > 0)) {
       const editLinkClass =
         "inline-flex items-center gap-1 text-sm font-medium text-[#E10939] hover:text-[#c90832] shrink-0";
 
@@ -1689,7 +1879,17 @@ export default function KitchenBookingFlow({
             </p>
           </div>
 
-          <div className="overflow-hidden rounded-[1.35rem] border divide-y bg-white">
+          {isMultiDay && <div className="space-y-3 rounded-[1.35rem] border bg-white p-4">
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => { setHideDateStep(false); setCurrentStep('calendar'); }}>{t('sheetChangeDate')}</Button>
+              <Button variant="outline" onClick={() => { setEditingDay(null); setCurrentStep('slots'); }}>{t('mdChangeHours')}</Button>
+              {hasEquipment && <Button variant="outline" onClick={() => setCurrentStep('equipment')}>{t('sheetEquipmentTitle')}</Button>}
+            </div>
+            <BookingPriceSummary days={datedSummaryRows} kitchenSubtotal={datedKitchenSubtotal} equipmentSubtotal={datedEquipmentSubtotal}
+              taxRatePercent={selectedKitchen?.taxRatePercent || 0} taxLabel={selectedKitchen?.taxLabel}
+              serviceFeeRate={kitchenPricing?.platformCommissionRate ?? 0} currency={kitchenPricing?.currency || 'CAD'} />
+          </div>}
+          {!isMultiDay && <div className="overflow-hidden rounded-[1.35rem] border divide-y bg-white">
             <div className="flex items-start justify-between gap-3 px-4 py-3.5">
               <div className="flex min-w-0 items-start gap-2.5">
                 <Icon icon="mdi:calendar-month-outline" className="mt-0.5 h-4 w-4 shrink-0 text-[#E10939]" aria-hidden />
@@ -1736,6 +1936,7 @@ export default function KitchenBookingFlow({
                         setConfirmDatePopoverOpen(false);
                         if (selectedDate && selectedDate.getTime() === normalized.getTime()) return;
                         setSelectedDate(normalized);
+                        setSelectedDates([localDateKey(normalized)]);
                         setSelectedSlots([]);
                         setCalendarMonth(new Date(normalized.getFullYear(), normalized.getMonth(), 1));
                         // New day needs new times — skip calendar step, go straight to slots
@@ -1804,7 +2005,7 @@ export default function KitchenBookingFlow({
                 </button>
               </div>
             ) : null}
-          </div>
+          </div>}
 
           <div>
             <label className="mb-2 block text-sm font-medium">
@@ -1824,7 +2025,7 @@ export default function KitchenBookingFlow({
             <h4 className="text-sm font-semibold text-gray-900">{t("sheetWhatNextTitle", "What happens next")}</h4>
             <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
               <li>{checkoutResponseDeadline ? t("sheetResponseDeadline", { deadline: checkoutResponseDeadline, defaultValue: "The kitchen has until {deadline} to respond." }) : t("sheetResponseDeadlineOnPage", "Your booking page will show when the kitchen needs to respond.")}</li>
-              <li>{t("sheetWhatNextCharge", "You are charged only if they accept. Until then your card is just on hold.")}</li>
+              <li>{isMultiDay ? t('mdCardHold') : t("sheetWhatNextCharge", "You are charged only if they accept. Until then your card is just on hold.")}</li>
               <li>{hoursUntilVisit !== null && hoursUntilVisit <= preparationLeadHours
                 ? t("sheetPreparationLeadLate", "Arrival details are shared as soon as the kitchen accepts.")
                 : t("sheetPreparationLead", { hours: preparationLeadHours, defaultValue: "Arrival details are shared {hours} hours before your visit, once the kitchen accepts." })}</li>
@@ -1860,7 +2061,7 @@ export default function KitchenBookingFlow({
             <span className="underline underline-offset-4">{t("bpsPriceBreakdown")}</span>
             <span className="font-semibold tabular-nums">{formatCurrency(grandTotal)} {kitchenPricing?.currency || "CAD"}</span>
           </summary>
-          <BookingPriceSummary kitchenSubtotal={estimatedPrice?.basePrice || 0} equipmentSubtotal={equipmentPricing.subtotal}
+          <BookingPriceSummary days={datedSummaryRows} kitchenSubtotal={isMultiDay ? datedKitchenSubtotal : estimatedPrice?.basePrice || 0} equipmentSubtotal={isMultiDay ? datedEquipmentSubtotal : equipmentPricing.subtotal}
             taxRatePercent={selectedKitchen?.taxRatePercent || 0} taxLabel={selectedKitchen?.taxLabel}
             serviceFeeRate={kitchenPricing?.platformCommissionRate ?? 0} currency={kitchenPricing?.currency || "CAD"}
             equipmentItems={equipmentPricing.items.map(item => ({ name: item.name, priceCents: item.rate }))} />
@@ -1898,7 +2099,7 @@ export default function KitchenBookingFlow({
           </div>
         ) : (
           <div className="space-y-1.5">
-            {selectedDate && currentStep !== "confirm" && (
+            {selectedDate && currentStep !== "confirm" && !isMultiDay && (
               <div className="mb-2 grid grid-cols-[0.78fr_1.22fr] gap-2 border-b pb-2">
                 <div className="flex items-start gap-2.5">
                   <Icon icon="mdi:calendar-month-outline" className="mt-0.5 h-4 w-4 shrink-0 text-[#E10939]" aria-hidden />
@@ -1938,8 +2139,9 @@ export default function KitchenBookingFlow({
               </div>
             )}
             <BookingPriceSummary
-              kitchenSubtotal={estimatedPrice?.basePrice || 0}
-              equipmentSubtotal={equipmentPricing.subtotal}
+              days={datedSummaryRows}
+              kitchenSubtotal={isMultiDay ? datedKitchenSubtotal : estimatedPrice?.basePrice || 0}
+              equipmentSubtotal={isMultiDay ? datedEquipmentSubtotal : equipmentPricing.subtotal}
               equipmentItems={equipmentPricing.items.map(item => ({ name: item.name, priceCents: item.rate }))}
               taxRatePercent={selectedKitchen?.taxRatePercent || 0}
               taxLabel={selectedKitchen?.taxLabel}
@@ -1959,6 +2161,7 @@ export default function KitchenBookingFlow({
       try {
         sessionStorage.removeItem(`kitchen_dates_${id}`);
         sessionStorage.removeItem(`kitchen_booking_prefs_${id}`);
+        sessionStorage.removeItem(`kitchen_booking_days_${id}`);
         notifyBookingPrefsChanged(String(id));
       } catch {
         /* ignore */
@@ -2041,7 +2244,7 @@ export default function KitchenBookingFlow({
         : t("sheetSelectDateToContinueButton", "Choose a date");
     }
     if (currentStep === "slots") {
-      return selectedSlots.length > 0
+      return (isMultiDay ? !invalidDay : selectedSlots.length > 0)
         ? t("sheetContinueButton", "Continue")
         : t("sheetSelectTimeSlotsToContinueButton", "Choose your hours");
     }
@@ -2055,7 +2258,7 @@ export default function KitchenBookingFlow({
 
   const continueDisabled =
     (currentStep === "calendar" && (!selectedDate || !isDayAvailable(selectedDate))) ||
-    (currentStep === "slots" && selectedSlots.length === 0) ||
+    (currentStep === "slots" && (isMultiDay ? daysLoading : selectedSlots.length === 0)) ||
     (currentStep === "equipment" && isLoadingAddons) ||
     bookingBlocked;
 
@@ -2067,8 +2270,8 @@ export default function KitchenBookingFlow({
     if (currentStep === "confirm") {
       return (
         <div className="space-y-3">
-          <div className="lg:hidden">{renderPriceBreakdown("mobile")}</div>
-          {grandTotal > 0 && <CheckoutCancellationDisclosure policy={acceptedPolicy} startAt={policyStartAt} detailsOpen={policyDetailsOpen} onDetailsOpenChange={setPolicyDetailsOpen} detailsId="checkout-cancellation-details" />}
+          {!isMultiDay && <div className="lg:hidden">{renderPriceBreakdown("mobile")}</div>}
+          {(grandTotal > 0 || isMultiDay) && <CheckoutCancellationDisclosure multiDay={isMultiDay} policy={acceptedPolicy} startAt={policyStartAt} detailsOpen={policyDetailsOpen} onDetailsOpenChange={setPolicyDetailsOpen} detailsId="checkout-cancellation-details" />}
           <div className="grid grid-cols-2 gap-3 sm:flex [&>button:first-child]:col-span-2 [&>button:first-child]:sm:col-auto">
             {cancelButton}
             {previousButton}
@@ -2078,10 +2281,10 @@ export default function KitchenBookingFlow({
               // a way forward instead of a dead button.
               onClick={() =>
                 guard(() =>
-                  grandTotal > 0 ? redirectToStripeCheckout() : handleFreeBookingSubmit()
+                  grandTotal > 0 || isMultiDay ? redirectToStripeCheckout() : handleFreeBookingSubmit()
                 )
               }
-              disabled={bookingBlocked || createBooking.isPending || isRedirectingToCheckout || isProcessingBooking || grandTotal > 0 && !acceptedPolicy}
+              disabled={bookingBlocked || createBooking.isPending || isRedirectingToCheckout || isProcessingBooking || (grandTotal > 0 || isMultiDay) && !acceptedPolicy || isMultiDay && (daysLoading || !!invalidDay)}
             >
               {createBooking.isPending || isRedirectingToCheckout || isProcessingBooking ? (
                 <>

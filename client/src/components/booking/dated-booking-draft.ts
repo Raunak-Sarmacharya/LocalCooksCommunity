@@ -36,3 +36,20 @@ export function datedDayError(day: DatedDay, resource: DayResources | undefined,
   if (day.pricingMode === 'daily') return resource.fullDay && day.slots.length > 0 ? null : 'fullDay';
   return validateKitchenSlotSelection(day.slots.map(slot => slot.startTime), resource.slots, Math.max(1, minimum), maximum ?? Infinity);
 }
+
+export type DatedDraft = { version: 1; dates: string[]; template: DayHours; hours: Record<string, DayHours>;
+  equipmentIds: number[]; excluded: Record<string, number[]>; notes: string };
+
+export function readDatedDraft(kitchenId: number): DatedDraft | null {
+  try {
+    const draft = JSON.parse(sessionStorage.getItem(`kitchen_booking_days_${kitchenId}`) ?? 'null') as DatedDraft | null;
+    const validHours = (hours: DayHours) => hours && ['hourly', 'daily'].includes(hours.pricingMode) && Array.isArray(hours.times)
+      && hours.times.every(time => /^([01]\d|2[0-3]):00$/.test(time));
+    if (!draft || draft.version !== 1 || !Array.isArray(draft.dates) || draft.dates.length < 2 || draft.dates.length > 14
+      || new Set(draft.dates).size !== draft.dates.length || draft.dates.some(date => !/^\d{4}-\d{2}-\d{2}$/.test(date) || new Date(`${date}T12:00:00Z`).toISOString().slice(0, 10) !== date)
+      || !validHours(draft.template) || !draft.hours || !Object.values(draft.hours).every(validHours)
+      || !Array.isArray(draft.equipmentIds) || !draft.equipmentIds.every(Number.isSafeInteger)
+      || !draft.excluded || !Object.values(draft.excluded).every(ids => Array.isArray(ids) && ids.every(Number.isSafeInteger)) || typeof draft.notes !== 'string') return null;
+    return draft;
+  } catch { return null; }
+}
