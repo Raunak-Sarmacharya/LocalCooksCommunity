@@ -176,5 +176,20 @@ before checking the fixes. `npm ci` installed this worktree's dependencies witho
 Pre-final focused verification: **255 passed, 5 files** (CP4, cancellation commands, session extensions and refund retry).
 Initial broader verification after implementation commit `d98b1455`: **676 passed, 40 files**. The final caller review then
 added the support-dispatch pre-reservation guard and its red/green regressions; that follow-up is committed before TypeScript.
-Final regression/TypeScript results will be appended after completion.
+Support follow-up commit `ed7171e5` passed **114 tests, 3 files**, including all 16 new pre-reservation refusals (all 16
+failed against the dispatcher before its fix). Final `npx tsc --noEmit -p tsconfig.json` was invoked **once**, in the
+foreground, after both implementation commits. It completed with **exit 0 and zero errors** in approximately nine minutes.
+No application code changed after this compiler pass. `git diff --check` passed.
+
+Final regression commands (in addition to the focused 255-test run above):
+
+```powershell
+npx vitest run --config vitest.config.server.ts dated-booking booking-checkout-fulfillment booking-checkout-replacement booking-checkout-guards booking-payment-decision booking-invitation-decision consecutive-checkout-session checkout-metadata cancellation-policy-settings kitchen-checkout-incidents kitchen-checkout-holds kitchen-payout-service stripe-transfer-payout-gate stripe-transfer-recovery booking-days-validation booking-response-deadline captured-component-allocations cancellation-policy booking-capture-terms booking-pricing-breakdown kitchen-booking-rate webhook-payment-intent-integrity storage-rental-webhooks booking-cancellation-refund booking-item-cancellation session-extensions stripe-refund manager-refund-review admin-refund-recovery booking-access-guards booking-support payment-refund-reconciliation storage-rental-money --maxWorkers=3
+# 676 passed, 40 files (after d98b1455)
+npx vitest run --config vitest.config.server.ts booking-support --maxWorkers=2
+# 114 passed, 3 files (support follow-up ed7171e5)
+npx tsc --noEmit -p tsconfig.json
+# One foreground invocation: exit 0, zero errors
+```
+
 No push, deployment, migration application, live Stripe request, Vercel or Inngest operation was performed.
