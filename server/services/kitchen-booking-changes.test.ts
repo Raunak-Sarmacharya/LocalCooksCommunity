@@ -311,6 +311,15 @@ describe('eligibility and the preview', () => {
     expect((await engine.readKitchenChanges(10, chef)).limits).toEqual({ minHours: 2, maxHours: 4 });
   });
 
+  it('a move may use only the weekly hours its original frees: the original is not counted, other reservations are', async () => {
+    await h.db.update(kitchens).set({ weeklyChefHoursLimit: 3 });
+    await expect(preview(dest(NEW_DATE, 9, 3))).resolves.toMatchObject({ destination: { date: NEW_DATE } });
+    await h.db.insert(kitchenCheckoutHolds).values({ id: 'other-checkout', kitchenId: 4, chefId: 3, operatingDate: NEW_DATE, windowStartTime: '08:00',
+      selectedSlots: [hour(14)], expiresAt: new Date(Date.now() + 60_000) });
+    await expect(preview(dest(NEW_DATE, 9, 3))).rejects.toMatchObject({ code: 'WEEKLY_CHEF_HOURS_LIMIT', status: 409 });
+    await expect(preview(dest(NEW_DATE, 9, 2))).resolves.toMatchObject({ destination: { date: NEW_DATE } });
+  });
+
   it('turns an unavailable, busy or unchanged time into a plain message', async () => {
     h.unavailable = true;
     expect(await messageOf(preview(dest(NEW_DATE, 9, 2)))).toBe('That time is no longer available. Pick another.');

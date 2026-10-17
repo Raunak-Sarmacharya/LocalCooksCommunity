@@ -102,6 +102,20 @@ describe('kitchen override: spacing only, never from a chef', () => {
   });
 });
 
+describe('saved kitchen grants', () => {
+  it('re-trust only for the exact invitation they were granted on', async () => {
+    const { invitationOverrideScope, overrideRecord, savedInvitationOverride, waivesWeeklyLimit } = await import('../../services/booking-rule-overrides');
+    const row = { id: 'inv-1', kitchenId: 4, chefId: 3 };
+    const grant = kitchenRuleOverride({ actorId: 8, actorRole: 'manager', scope: invitationOverrideScope(row), ignoreWeeklyLimit: true, reason: 'Regular chef, busy week' });
+    const saved = JSON.parse(JSON.stringify(overrideRecord(grant))); // as stored in booking_rule_overrides
+    expect(saved).toMatchObject({ ignoreWeeklyLimit: true, ignoreBuffer: false, actorId: 8, actorRole: 'manager', reason: 'Regular chef, busy week' });
+    expect(waivesWeeklyLimit(savedInvitationOverride({ ...row, bookingRuleOverrides: saved }))).toBe(true);
+    expect(savedInvitationOverride({ ...row, chefId: 9, bookingRuleOverrides: saved })).toBeUndefined(); // another chef
+    expect(savedInvitationOverride({ ...row, id: 'inv-2', bookingRuleOverrides: saved })).toBeUndefined(); // a replacement must grant again
+    expect(savedInvitationOverride({ ...row, bookingRuleOverrides: { ...saved, actorRole: 'chef' } })).toBeUndefined();
+  });
+});
+
 describe('later dated days block like any other day', () => {
   const dated = booking('10:00', '11:00', 0, { bookingDate: new Date('2099-10-01T12:00:00Z'), scheduleRevision: 1, selectedSlots: [
     { date: '2099-10-01', windowStartTime: '08:00', startTime: '10:00', endTime: '11:00' },

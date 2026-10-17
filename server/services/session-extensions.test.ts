@@ -774,3 +774,24 @@ it('does not offer extensions ending 59 minutes before the next booking but offe
   state.tables.kitchen_bookings[0].startTime = '17:30';
   expect((await readSessionExtensions(10, chef, undefined, IN_FINAL_HOUR)).options.some(option => option.minutes === 30)).toBe(true);
 });
+
+it('keeps the larger of the two saved buffers for added time, even after the kitchen turned buffers off', async () => {
+  state.context.kitchen.turnoverBufferEnabled = false;
+  state.context.booking.bufferMinutesSnapshot = 120;
+  state.tables.kitchen_bookings = [{ id: 11, kitchenId: 5, bookingDate: new Date('2026-10-14T00:00:00Z'), status: 'pending',
+    startTime: '18:30', endTime: '19:30', operatingWindowStartTime: '08:00', selectedSlots: [], bufferMinutesSnapshot: 0 }];
+  const minutes = async () => (await readSessionExtensions(10, chef, undefined, IN_FINAL_HOUR)).options.map(option => option.minutes);
+  expect(await minutes()).toEqual([15, 30]); // 16:30 end + 2 h reaches 18:30
+  state.context.booking.bufferMinutesSnapshot = 0;
+  expect((await minutes()).at(-1)).toBe(150); // no spacing on either side: up to the next start
+});
+
+it('stops added time at the chef\'s weekly hours at this kitchen, and says so', async () => {
+  const read = () => readSessionExtensions(10, chef, undefined, IN_FINAL_HOUR) as Promise<any>;
+  state.context.kitchen.weeklyChefHoursLimit = 3; // 2 h booked this week (Mon Oct 12 to Sun Oct 18)
+  expect((await read()).options.map((option: any) => option.minutes).at(-1)).toBe(60);
+  state.context.kitchen.weeklyChefHoursLimit = 2;
+  const view = await read();
+  expect(view.options).toEqual([]);
+  expect(view.noTimeReason).toBe('weekly_limit');
+});

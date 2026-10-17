@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/pglite';
 import { createTestDatabase } from './kitchen-booking-changes.pglite';
-import { bookingLifecycleEvents, equipmentBookings, kitchenBookings, kitchenCheckoutHolds, kitchens, locations,
+import { bookingLifecycleEvents, equipmentBookings, kitchenBookings, kitchenBookingVisits, kitchenCheckoutHolds, kitchens, locations,
   paymentTransactions, storageBookings } from '@shared/schema';
 
 // Real SQL and transactions; no external database, card provider, or mail delivery.
@@ -50,7 +50,7 @@ const events = () => h.db.select().from(bookingLifecycleEvents).orderBy(bookingL
 const original = async () => (await h.db.select().from(kitchenBookings).where(eq(kitchenBookings.id, 10)))[0];
 
 beforeAll(async () => {
-  const fixture = await createTestDatabase([locations, kitchens, kitchenBookings, kitchenCheckoutHolds, storageBookings, equipmentBookings, paymentTransactions, bookingLifecycleEvents]);
+  const fixture = await createTestDatabase([locations, kitchens, kitchenBookings, kitchenBookingVisits, kitchenCheckoutHolds, storageBookings, equipmentBookings, paymentTransactions, bookingLifecycleEvents]);
   h.client = fixture.client;
   // Capture generated SQL as well as executing it, so tests fail if the lock or query bound disappears.
   h.db = drizzle(h.client, { logger: { logQuery: (query: string) => { h.sql.push(query); } } });

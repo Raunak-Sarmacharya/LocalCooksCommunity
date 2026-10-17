@@ -16,7 +16,7 @@ vi.mock('../db', () => {
     const name = (table: any) => table[Symbol.for('drizzle:Name')];
     return {
       select: () => ({ from: (table: any) => {
-        const chain: any = { innerJoin: () => chain, where: () => chain, limit: () => chain,
+        const chain: any = { innerJoin: () => chain, where: () => chain, limit: () => chain, orderBy: () => chain, for: () => chain,
           then: (resolve: any) => resolve(name(table) === 'kitchen_bookings' && state.existing ? [state.existing] : rows[name(table)] || []) }; return chain;
       } }),
       insert: (table: any) => ({ values: (data: any) => {
@@ -25,6 +25,7 @@ vi.mock('../db', () => {
       } }),
       update: (table: any) => ({ set: (data: any) => ({ where: async () => { for (const row of rows[name(table)] || []) Object.assign(row, data); } }) }),
       transaction: async (work: any) => { const draft = structuredClone(state.rows), result = await work(database(draft)); Object.assign(state.rows, draft); return result; },
+      execute: async () => ({ rows: [] }), // advisory locks taken by the dated-visit builder
     };
   }; return { db: database(state.rows) };
 });
