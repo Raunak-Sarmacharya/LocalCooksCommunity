@@ -425,7 +425,7 @@
   "cpCancelled": "Your booking is cancelled.",
   "cpFeePending": "Your booking can be cancelled now. Local Cooks needs to verify the actual card processing fee before showing and issuing the exact refund.",
   "cpPendingButton": "Cancel and ask Local Cooks to verify the refund",
-  "cpAddons": "Unstarted equipment and storage linked to this session are included. Storage already in use stays reserved until removal is confirmed; contact Local Cooks for help.",
+  "cpAddons": "Unstarted equipment linked to this session is included.",
   "cpKitchenCancel": "Cancel as the kitchen",
   "cpKitchenConsequence": "The chef gets a full refund, including the card processing fee. Your payout is $0.00. Frequent cancellations can affect your listing.",
   "cpReason": "Tell the chef why the kitchen needs to cancel",
