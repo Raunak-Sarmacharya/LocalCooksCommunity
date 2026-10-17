@@ -12,19 +12,20 @@ import type { CancellationPolicySnapshot } from '@shared/cancellation-policy';
 
 type Quote = { quoteReady: boolean; chefRefundCents: number; alreadyRefundedCents?: number; feeRetainedCents: number; snapshot?: CancellationPolicySnapshot };
 
-export function BookingCancellationCard({ bookingId, status, canCancel, onCancel, onChange, deadlineText, deadlinePassed, createdAt }: {
+export function BookingCancellationCard({ bookingId, status, canCancel, onCancel, onChange, deadlineText, deadlinePassed, createdAt, multiDay, frozenPolicy }: {
   bookingId: number; status: string; canCancel: boolean; onCancel: () => void;
   /** Confirmed, not started: "Change date or time" sits next to "Cancel booking" (separate actions, like Airbnb). */
   onChange?: () => void;
   /** Fallback when the booking has no saved policy snapshot (older bookings). */
   deadlineText?: string; deadlinePassed?: boolean; createdAt?: string | Date | null;
+  multiDay?: boolean; frozenPolicy?: CancellationPolicySnapshot | null;
 }) {
   const { t: tbStrict, i18n } = useTranslation('booking');
   const tb = tbStrict as unknown as (key: string, options?: Record<string, unknown>) => string;
   const { t } = useTranslation('chef');
   const confirmed = status === 'confirmed';
   const { data } = useQuery<Quote>({ queryKey: ['chef-cancellation-quote', bookingId], queryFn: () => apiGet(`/bookings/${bookingId}/cancellation-quote`), staleTime: 0, enabled: confirmed });
-  const snapshot = data?.snapshot;
+  const snapshot = frozenPolicy ?? data?.snapshot;
   const sentence = status === 'pending' ? <p className="text-sm leading-relaxed">{tb('cpHold')}</p>
     : snapshot?.sessions[0] ? <p className="text-sm leading-relaxed">{(() => {
       // Same rule as CancellationPolicySummary, without repeating the zone (the when-line names it) or this year.
@@ -35,7 +36,7 @@ export function BookingCancellationCard({ bookingId, status, canCancel, onCancel
       const bookedInside = createdAt && new Date(createdAt).getTime() > deadlineAt;
       const key = bookedInside ? (noRefund ? 'cpBookedInsideNoRefund' : 'cpBookedInsideHalf') : Date.now() >= deadlineAt ? (noRefund ? 'cpDeadlinePastNoRefund' : 'cpDeadlinePast')
         : data?.quoteReady ? (noRefund ? 'cpDeadlineKnownNoRefund' : 'cpDeadlineKnown') : (noRefund ? 'cpDeadlineNoRefund' : 'cpDeadline');
-      return collapseDoublePeriods(tb(key, { deadline, charge, fee, hours: snapshot.noticeHours }));
+      return collapseDoublePeriods(tb(multiDay ? 'mdCancellation' : key, { deadline, charge: multiDay ? `${snapshot.lateChargePercent}%` : charge, fee, hours: snapshot.noticeHours }));
     })()}</p>
     : <p className="text-sm leading-relaxed">{deadlineText && !deadlinePassed ? t('bdhCancelUntil', { time: deadlineText }) : t('bdhCancelPassed')}</p>;
   return <section aria-labelledby="booking-cancellation-title" data-testid="cancellation-card">

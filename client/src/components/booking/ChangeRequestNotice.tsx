@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Info } from 'lucide-react';
 import { getAuthHeaders } from '@/lib/api';
+import type { DatedDay } from './dated-booking-draft';
 
 /** What the chef is changing: the earlier pending request, read from their own booking page data. */
 export interface ReplacedRequest {
@@ -12,6 +13,7 @@ export interface ReplacedRequest {
   startTime: string;
   endTime: string;
   holdCents: number | null;
+  days?: DatedDay[];
 }
 
 export function useReplacedRequest(bookingId?: number) {
@@ -22,14 +24,18 @@ export function useReplacedRequest(bookingId?: number) {
       if (!response.ok) return null;
       const data = await response.json();
       const amount = Number(data?.paymentTransaction?.amount);
+      const days = data.scheduleRevision ? (data.visits ?? []).filter((visit: any) => visit.scheduleRevision === data.scheduleRevision && visit.scheduleState === 'active')
+        .map((visit: any) => ({ date: visit.visitDate.slice(0, 10), pricingMode: visit.pricingMode, slots: visit.selectedSlots,
+          equipmentIds: (data.equipmentBookings ?? []).filter((item: any) => item.kitchenBookingVisitId === visit.id && item.status !== 'cancelled').map((item: any) => item.equipmentListingId) })) : undefined;
       return { id: Number(data.id), referenceCode: data.referenceCode ?? null, status: String(data.status || ''), bookingDate: String(data.bookingDate || ''),
-        startTime: String(data.startTime || ''), endTime: String(data.endTime || ''), holdCents: Number.isFinite(amount) && amount > 0 ? amount : null };
+        startTime: String(data.startTime || ''), endTime: String(data.endTime || ''), holdCents: Number.isFinite(amount) && amount > 0 ? amount : null, days };
     },
   });
 }
 
 /** "Oct 17, 10:00 a.m.–12:00 p.m." in the viewer's language; operating dates and clock times are kitchen-local, so read them as UTC. */
-export function changeRequestWhen(request: Pick<ReplacedRequest, 'bookingDate' | 'startTime' | 'endTime'>, language: string) {
+export function changeRequestWhen(request: Pick<ReplacedRequest, 'bookingDate' | 'startTime' | 'endTime' | 'days'>, language: string): string {
+  if (request.days?.length) return request.days.map(day => changeRequestWhen({ bookingDate: day.date, startTime: day.slots[0]?.startTime ?? '', endTime: day.slots[day.slots.length - 1]?.endTime ?? '' }, language)).join(' · ');
   const date = request.bookingDate.slice(0, 10);
   const at = (time: string) => new Date(`${date}T${time.slice(0, 5)}:00Z`);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(at(request.startTime).getTime()) || !Number.isFinite(at(request.endTime).getTime())) return '';

@@ -15,24 +15,30 @@ interface BookingPriceSummaryProps {
   serviceFeeRate: number;
   currency?: string;
   focusAddon?: "equipment" | "storage";
+  days?: Array<{ date: string; hours: string; equipment: string; subtotal: number }>;
 }
 
 /** Cents and rounding match the wizard estimate; presentation never changes the quote. */
 export function BookingPriceSummary({ kitchenSubtotal, equipmentSubtotal, storageSubtotal = 0,
-  equipmentItems, storageItems, taxRatePercent, taxLabel, serviceFeeRate, currency = "CAD",
+  equipmentItems, storageItems, taxRatePercent, taxLabel, serviceFeeRate, currency = "CAD", days,
 }: BookingPriceSummaryProps) {
   const { t } = useTranslation("booking");
   const subtotal = kitchenSubtotal + equipmentSubtotal + storageSubtotal;
   const tax = computeKitchenHstAmountCents(subtotal, taxRatePercent);
   const serviceFee = computePlatformFeeAmountCents(subtotal, serviceFeeRate);
   const items = [
-    { name: t("bpsKitchenTime"), priceCents: kitchenSubtotal },
-    ...(equipmentItems ?? [{ name: t("bpsEquipment"), priceCents: equipmentSubtotal }]),
+    ...(!days ? [{ name: t("bpsKitchenTime"), priceCents: kitchenSubtotal },
+    ...(equipmentItems ?? [{ name: t("bpsEquipment"), priceCents: equipmentSubtotal }])] : []),
     ...(storageItems ?? [{ name: t("bpsStorage"), priceCents: storageSubtotal }]),
     { name: `${taxLabel || t("wfbTaxName")} (${taxRatePercent}%)`, priceCents: tax },
     { name: t("wfbServiceFee"), priceCents: serviceFee },
   ];
   return <div className="w-full space-y-2 text-sm tabular-nums" data-testid="booking-price-summary">
+    {days?.map(day => <div key={day.date} className="flex items-start justify-between gap-4 border-b pb-2" data-testid="booking-day-price">
+      <div className="min-w-0"><p className="font-medium">{day.date}</p><p className="text-muted-foreground">{day.hours}</p>
+        {day.equipment && <p className="text-muted-foreground">{day.equipment}</p>}</div>
+      <span className="shrink-0 font-medium">{formatCurrency(day.subtotal)}</span>
+    </div>)}
     {items.filter(item => item.priceCents > 0).map((item, index) =>
       <div key={index} className="flex items-baseline justify-between gap-4">
         <span className="min-w-0 text-muted-foreground">{item.name}</span>

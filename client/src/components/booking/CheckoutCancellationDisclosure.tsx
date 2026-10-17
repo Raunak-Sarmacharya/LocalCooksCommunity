@@ -8,8 +8,8 @@ import { freeCancelResponseCap } from '@shared/booking-response-deadline';
  * always visible, and the full terms behind "Details". Consent is given by selecting Checkout (see CheckoutConsentNotice);
  * the wording shown here is disclosure food-corridor-v3.
  */
-export function CheckoutCancellationDisclosure({ policy, startAt, detailsOpen, onDetailsOpenChange, detailsId }: {
-  policy?: PolicyResponse; startAt?: string; detailsOpen?: boolean; onDetailsOpenChange?: (open: boolean) => void; detailsId?: string;
+export function CheckoutCancellationDisclosure({ policy, startAt, detailsOpen, onDetailsOpenChange, detailsId, multiDay = false }: {
+  policy?: PolicyResponse; startAt?: string; detailsOpen?: boolean; onDetailsOpenChange?: (open: boolean) => void; detailsId?: string; multiDay?: boolean;
 }) {
   const { t, i18n } = useTranslation('booking');
   const [ownOpen, setOwnOpen] = useState(false);
@@ -26,18 +26,20 @@ export function CheckoutCancellationDisclosure({ policy, startAt, detailsOpen, o
   return <section className="space-y-2 rounded-xl border p-3 sm:p-4" aria-label={t('cpTitle')}>
     <h3 className="text-sm font-semibold">{t('cpCheckoutTitle')}</h3>
     {!policy ? <p role="alert" className="text-sm">{t('cpError')}</p> : <>
-      {shortNotice
+      {multiDay && startAt ? <p className="text-sm leading-relaxed" data-testid="cancel-headline">{t('mdCancellation', {
+        deadline: cancellationDeadlineLabel(startAt, policy.policy.noticeHours, policy.timezone, i18n.language), charge: `${policy.policy.lateChargePercent}%`,
+      })}</p> : shortNotice
         ? <p className={warning} data-testid="cancel-short-notice">{t('cpShort', { hours: policy.policy.noticeHours, charge })}</p>
         : <p className="text-sm leading-relaxed" data-testid="cancel-headline">{startAt
           ? t('cpFreeUntil', { deadline: cancellationDeadlineLabel(startAt, policy.policy.noticeHours, policy.timezone, i18n.language) })
           : t('cpFreeHours', { hours: policy.policy.noticeHours })}</p>}
-      {nearDeadline && <p className={warning} data-testid="cancel-near-deadline">{t('cpNearDeadline', { charge })}</p>}
+      {!multiDay && nearDeadline && <p className={warning} data-testid="cancel-near-deadline">{t('cpNearDeadline', { charge })}</p>}
       <button type="button" className="min-h-[44px] text-sm font-medium underline underline-offset-2 sm:min-h-0" aria-expanded={open} aria-controls={panelId}
         onClick={() => setOpen(!open)}>{t(open ? 'cpHideDetails' : 'cpDetails')}</button>
       {open && <div id={panelId} className="space-y-2 border-t pt-2 text-sm text-muted-foreground" data-testid="cancel-details">
         {/* Before confirmation nothing is charged — only a card hold, released in full on withdrawal. */}
         <p className="leading-relaxed" data-testid="cancel-pre-confirmation">{t('preConfirmationRefundTitle')}</p>
-        {!shortNotice && <CancellationPolicySummary policy={policy.policy} timezone={policy.timezone} startAt={startAt} />}
+        {!multiDay && !shortNotice && <CancellationPolicySummary policy={policy.policy} timezone={policy.timezone} startAt={startAt} />}
         {!shortNotice && !nearDeadline && <p className="leading-relaxed">{t('cpResponseBefore')}</p>}
         {/* Owner (Oct 15): part of every policy the chef accepts (since disclosure food-corridor-v2). */}
         <p className="leading-relaxed" data-testid="cancel-no-show">{t('cpNoShow')}</p>

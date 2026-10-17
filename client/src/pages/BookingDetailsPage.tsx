@@ -19,6 +19,7 @@ import { BookingNowCard, ClampedBlock, NowClaimRows, chefCanPayClaim, closedClai
 import { BookingVisitRecord, type VisitTimelineEvent } from '@/components/booking/BookingVisitRecord';
 import { BookingReceipts, useBookingDocuments } from "@/components/booking/BookingReceipts";
 import { BookingPaymentCard, paymentStatusSource } from '@/components/booking/BookingPaymentCard';
+import { BookingDayList, currentBookingDays } from '@/components/booking/BookingDayList';
 import { StorageRows, EquipmentRows } from '@/components/booking/BookingAddOns';
 import { bookingNowContent, NOW_SECONDARY_VISIBLE } from '@/lib/booking-now';
 import { formatBookedDuration } from '@/lib/booked-duration';
@@ -53,7 +54,7 @@ import { arrivalRecorded, bookedMinutes, bookingHeaderPhase, canCancelOrChange, 
 import { bookingCancelCause } from '@/lib/booking-cancel-cause';
 import { bookingReference } from '@/lib/booking-reference';
 import { bookingStartDateKey, calendarDateKey } from '@/lib/calendar-date';
-import { bookingIcs, downloadBookingIcs } from "@/lib/booking-ics";
+import { bookingIcs, bookingDaysIcs, downloadBookingIcs } from "@/lib/booking-ics";
 import { buildChefBookingReceiptBreakdown, buildKitchenPayoutStatementBreakdown } from "@shared/booking-pricing-breakdown";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
@@ -97,6 +98,8 @@ function useMedia(query: string) {
 }
 
 interface BookingDetails {
+  scheduleRevision?: number;
+  cancellationPolicySnapshot?: import('@shared/cancellation-policy').CancellationPolicySnapshot | null;
   payout?: import('@shared/kitchen-payout').KitchenPayout;
   closeout?: import("@shared/clock-closeout").BookingCloseout;
   id: number;
@@ -235,7 +238,7 @@ interface BookingDetails {
     kitchenShareCents?: number; refundedCents: number; paidAt: string | null; status: string }>;
   /** The chef's latest "running late" heads-up to the kitchen. */
   runningLate?: RunningLateState | null;
-  visits?: Array<{ id: number; updatedAt: string; blockIndex: number; startTime: string; endTime: string; checkinStatus: string; checkedInAt: string | null; checkoutRequestedAt: string | null; checkedOutAt: string | null; checkoutApprovedAt: string | null; noShowDetectedAt: string | null; checkoutManagerMessage?: string | null }>;
+  visits?: Array<{ id: number; updatedAt: string; blockIndex: number; startTime: string; endTime: string; checkinStatus: string; checkedInAt: string | null; checkoutRequestedAt: string | null; checkedOutAt: string | null; checkoutApprovedAt: string | null; noShowDetectedAt: string | null; checkoutManagerMessage?: string | null; visitDate?: string | null; scheduleRevision?: number | null; scheduleState?: string | null; pricingMode?: string | null }>;
 }
 
 async function getAuthHeaders(): Promise<HeadersInit> {
@@ -1248,24 +1251,37 @@ export default function BookingDetailsPage() {
   })();
   // ── State, times and facts for the Now card (design-booking-consolidation.md §2) ─────────────────────────────
   const hasMultipleVisits = (booking?.visits?.length ?? 0) > 1;
+  const datedBooking = !isManagerView && !!booking?.scheduleRevision;
+  const bookingDays = datedBooking ? currentBookingDays(booking?.visits ?? [], booking!.scheduleRevision!) : [];
   const tz = booking?.location?.timezone || undefined;
   const lang = i18n.language;
   const closeoutVisits = booking?.closeout?.visits || [];
+  const headerDay = datedBooking ? bookingDays.find(visit => {
+    if (visit.scheduleState !== 'active' || visit.checkinStatus === 'checked_out') return false;
+    const clock = closeoutVisits.find(clock => clock.visitId === visit.id);
+    if (clock) return Date.parse(clock.scheduledEndAt) > nowMs;
+    try { return createBookingDateTime(calendarDateForBookingTime(visit.visitDate!.slice(0, 10), visit.endTime, visit.operatingWindowStartTime, visit.startTime), visit.endTime, tz!).getTime() > nowMs; }
+    catch { return false; }
+  }) ?? bookingDays.filter(visit => visit.scheduleState === 'active').at(-1) : undefined;
+  const headerClock = headerDay ? closeoutVisits.find(clock => clock.visitId === headerDay.id) : undefined;
   const inspectionDue = closeoutVisits[0]?.inspection?.deadline;
   const inspectionDueText = inspectionDue ? formatEventTimestamp(inspectionDue) : null;
-  const inspectionCanRespond = closeoutVisits.some(visit => visit.inspection.canRespond);
+  const inspectionCanRespond = datedBooking ? !!headerClock?.inspection.canRespond : closeoutVisits.some(visit => visit.inspection.canRespond);
   const visitBounds = (() => {
     if (!booking || !tz) return null;
     try {
-      const day = booking.bookingDate.split('T')[0];
-      const startAt = createBookingDateTime(calendarDateForBookingTime(day, booking.startTime, booking.operatingWindowStartTime), booking.startTime, tz);
-      const endAt = createBookingDateTime(calendarDateForBookingTime(day, booking.endTime, booking.operatingWindowStartTime, booking.startTime), booking.endTime, tz);
+      const date = headerDay?.visitDate?.slice(0, 10) ?? booking.bookingDate.split('T')[0];
+      const start = headerDay?.startTime ?? booking.startTime;
+      const end = headerDay?.endTime ?? booking.endTime;
+      const anchor = headerDay?.operatingWindowStartTime ?? booking.operatingWindowStartTime;
+      const startAt = createBookingDateTime(calendarDateForBookingTime(date, start, anchor), start, tz);
+      const endAt = createBookingDateTime(calendarDateForBookingTime(date, end, anchor, start), end, tz);
       return { startAt, endAt, opensAt: new Date(startAt.getTime() - (booking.checkinWindowMinutesBefore ?? 15) * 60_000) };
     } catch { return null; }
   })();
   const phase: BookingHeaderPhase = booking ? bookingHeaderPhase({
-    status: booking.status, checkinStatus: booking.checkinStatus, visits: booking.visits, closeoutPhase: booking.closeout?.phase,
-    visitAttendance: booking.closeout?.legacy ? undefined : booking.closeout?.visits?.map(visit => visit.attendance), inspectionCanRespond, startAt: visitBounds?.startAt, endAt: visitBounds?.endAt, checkinOpensAt: visitBounds?.opensAt, timezone: tz,
+    status: booking.status, checkinStatus: headerDay?.checkinStatus ?? booking.checkinStatus, visits: datedBooking ? undefined : booking.visits, closeoutPhase: datedBooking ? headerClock?.phase : booking.closeout?.phase,
+    visitAttendance: datedBooking ? headerClock ? [headerClock.attendance] : undefined : booking.closeout?.legacy ? undefined : booking.closeout?.visits?.map(visit => visit.attendance), inspectionCanRespond, startAt: visitBounds?.startAt, endAt: visitBounds?.endAt, checkinOpensAt: visitBounds?.opensAt, timezone: tz,
   }) : 'confirmed';
   const cancelCause = booking ? bookingCancelCause({ status: booking.status, chefId: booking.chefId, paymentDecision: booking.paymentDecision, partialAcceptance: booking.partialAcceptance }) : null;
   const findAnotherTimeHref = booking && !isManagerView && (cancelCause === 'declined' || cancelCause === 'expired') && (booking.location?.id ?? booking.kitchen?.locationId)
@@ -1291,6 +1307,8 @@ export default function BookingDetailsPage() {
   const withZone = (value: Date | string) => `${clockTime(value)}${zoneName ? ` ${zoneName}` : ''}`;
   const cancellationCutoff = (() => {
     if (!booking) return null;
+    const policy = booking.cancellationPolicySnapshot;
+    if (datedBooking && policy?.sessions[0]) return Date.parse(policy.sessions[0].startAt) - policy.noticeHours * 3_600_000;
     try { return kitchenRescheduleCutoff(bookingChangeSchedule(booking), booking.cancellationPolicyHours ?? booking.location?.cancellationPolicyHours ?? 24); } catch { return null; }
   })();
   const cancellationDeadlineText = cancellationCutoff != null ? formatEventTimestamp(new Date(cancellationCutoff).toISOString()) : undefined;
@@ -1382,7 +1400,7 @@ export default function BookingDetailsPage() {
     if (primary === 'review_request') openActionDialog();
     else if (primary === 'review_cancellation') openManagementDialog();
     else if (primary === 'review_checkout' || primary === 'inspect_visit') navigate(inspectionHref);
-    else if (primary === 'open_visit') navigate(`/booking/${booking.id}/visit`);
+    else if (primary === 'open_visit') navigate(`/booking/${booking.id}/visit${headerDay ? `?visitId=${headerDay.id}` : ''}`);
     // "They came": the existing visit-record statement (report_attended), with an optional note for the actual times.
     else if (primary === 'answer_attendance') openFix('report_attended');
   };
@@ -1402,6 +1420,17 @@ export default function BookingDetailsPage() {
   const goToHelp = () => document.getElementById('booking-support')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
   const addToCalendar = () => {
     if (!booking || !visitBounds) return;
+    if (datedBooking) {
+      const ics = bookingDaysIcs(bookingDays.map(visit => {
+        const day = visit.visitDate!.slice(0, 10);
+        return { uid: `booking-${booking.id}-visit-${visit.id}`, revision: booking.scheduleRevision!, title: t('bdhCalendarTitle', { kitchen: kitchenName }),
+          start: createBookingDateTime(calendarDateForBookingTime(day, visit.startTime, visit.operatingWindowStartTime), visit.startTime, tz!),
+          end: createBookingDateTime(calendarDateForBookingTime(day, visit.endTime, visit.operatingWindowStartTime, visit.startTime), visit.endTime, tz!),
+          cancelled: visit.scheduleState === 'cancelled', location: booking.location?.address, description: booking.referenceCode };
+      }));
+      downloadBookingIcs(`LocalCooks-${booking.referenceCode || booking.id}.ics`, ics);
+      return;
+    }
     const ics = bookingIcs({ uid: `booking-${booking.id}`, title: t('bdhCalendarTitle', { kitchen: kitchenName }), start: visitBounds.startAt, end: visitBounds.endAt,
       location: [booking.location?.name, booking.location?.address].filter(Boolean).join(', '), description: booking.referenceCode || undefined });
     downloadBookingIcs(`LocalCooks-${booking.referenceCode || booking.id}.ics`, ics);
@@ -1564,7 +1593,9 @@ export default function BookingDetailsPage() {
   const heroPhoto = !isManagerView ? booking?.kitchen?.photos?.find(Boolean) : null;
   const heroSrc = heroPhoto ? getR2ProxyUrl(heroPhoto) || heroPhoto : null;
   const slotText = bookingTimeSlots.length > 1 ? bookingTimeSlots.join(' · ') : null;
-  const whenLine = booking ? [
+  const whenLine = datedBooking && bookingDays.length ? [
+    formatDate(bookingDays[0].visitDate!), formatDate(bookingDays[bookingDays.length - 1].visitDate!),
+  ].join(' – ') + ` · ${policyT('mdSelectedDays', { count: bookingDays.length })}` : booking ? [
     visitBounds ? new Intl.DateTimeFormat(lang, { timeZone: tz, weekday: 'short', month: 'short', day: 'numeric' }).format(visitBounds.startAt)
       : new Date(`${bookingStartDateKey(booking) ?? booking.bookingDate.slice(0, 10)}T12:00:00Z`).toLocaleDateString(lang, { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' }),
     slotText || timeRange(formatTime(booking.startTime), formatTime(booking.endTime)),
@@ -1904,8 +1935,8 @@ export default function BookingDetailsPage() {
     />
   );
 
-  const cancellationCard = booking && !isManagerView && chefCanCancel && ['pending', 'confirmed'].includes(booking.status) && (
-    <BookingCancellationCard createdAt={booking.createdAt} bookingId={booking.id} status={booking.status} canCancel={chefCanCancel} onCancel={() => setCancelOpen(true)}
+  const cancellationCard = booking && !isManagerView && (chefCanCancel || datedBooking) && ['pending', 'confirmed'].includes(booking.status) && (
+    <BookingCancellationCard multiDay={datedBooking} frozenPolicy={booking.cancellationPolicySnapshot} createdAt={booking.createdAt} bookingId={booking.id} status={booking.status} canCancel={chefCanCancel} onCancel={() => setCancelOpen(true)}
       onChange={booking.status === 'confirmed' && !visitStarted ? () => setChangeOpen(true) : undefined}
       deadlineText={cancellationDeadlineText} deadlinePassed={!paidCancellationAvailable} />
   );
@@ -1956,6 +1987,7 @@ export default function BookingDetailsPage() {
       {/* Wide screens: the Now card, then a main column and a sidebar of at most three cards. Narrow: one column in §2.1 order. */}
       <div className="space-y-5">
         {nowCard}
+        {datedBooking && booking && <BookingDayList bookingId={booking.id} visits={bookingDays} timezone={booking.location?.timezone || 'America/St_Johns'} status={booking.status} />}
         {wide ? (
           <div className="grid grid-cols-3 gap-5">
             <div className="col-span-2 min-w-0 space-y-5">{visitRecord}{feedback}{personCard}{addOns}{note}{history}</div>

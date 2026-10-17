@@ -1,0 +1,23 @@
+import { cleanup, render, screen, within } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+vi.mock('react-i18next', async () => ({ useTranslation: (await import('@/test/booking-i18n')).useBookingTranslation }));
+import { BookingDayList, currentBookingDays, type BookingDayVisit } from './BookingDayList';
+afterEach(() => { cleanup(); vi.useRealTimers(); });
+describe('chef booking days', () => {
+  it('shows done, today, upcoming and cancelled days with a selected visit link only for today', () => {
+    vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2030-01-16T13:00:00Z'));
+    const visits: BookingDayVisit[] = [15, 16, 18, 19].map((day, i) => ({ id: i + 1, visitDate: `2030-01-${day}`, startTime: '10:00', endTime: '12:00', scheduleRevision: 2,
+      scheduleState: day === 19 ? 'cancelled' : 'active', pricingMode: day === 18 ? 'daily' : 'hourly', checkinStatus: day === 15 ? 'checked_out' : 'not_checked_in' }));
+    const days = currentBookingDays([...visits.reverse(), { ...visits[0], id: 99, scheduleRevision: 1 }, { ...visits[0], id: 100, scheduleState: 'superseded' }], 2);
+    render(<BookingDayList bookingId={5} visits={days} timezone="America/St_Johns" status="confirmed" />);
+    const rows = screen.getAllByRole('listitem'); expect(rows).toHaveLength(4);
+    expect(rows[0]).toHaveTextContent('Done'); expect(rows[1]).toHaveTextContent('Today'); expect(rows[2]).toHaveTextContent('Upcoming'); expect(rows[2]).toHaveTextContent('Full day'); expect(rows[3]).toHaveTextContent('Cancelled');
+    expect(screen.getByRole('link', { name: 'Open your visit' })).toHaveAttribute('href', '/booking/5/visit?visitId=2');
+    expect(within(rows[0]).queryByRole('link')).toBeNull(); expect(within(rows[3]).queryByRole('link')).toBeNull();
+  });
+  it('uses the kitchen day at the midnight boundary and never opens a cancelled booking', () => {
+    vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2030-01-17T02:00:00Z'));
+    render(<BookingDayList bookingId={5} visits={[{ id: 2, visitDate: '2030-01-16', startTime: '22:00', endTime: '23:00' }]} timezone="America/St_Johns" status="cancelled" />);
+    expect(screen.getByText('Cancelled')).toBeInTheDocument(); expect(screen.queryByRole('link')).toBeNull();
+  });
+});
