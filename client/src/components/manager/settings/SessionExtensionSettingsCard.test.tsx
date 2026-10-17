@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { SessionExtensionSettingsCard, SessionExtensionsPlatformSwitch } from './SessionExtensionSettingsCard';
 vi.mock('react-i18next', async () => ({ useTranslation: (await import('@/test/booking-i18n')).useBookingTranslation }));
+vi.mock('@/i18n/manager', () => ({ mt: (key: string) => key }));
 const api = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn() }));
 vi.mock('@/lib/api', () => ({ apiGet: api.get, apiPutWithMessage: api.put }));
 afterEach(cleanup);

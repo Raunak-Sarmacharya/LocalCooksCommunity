@@ -50,7 +50,7 @@ async function open() {
 const toConfirm = async () => {
   await waitFor(() => expect(screen.getByRole('button', { name: /^Continue$/ })).toBeEnabled());
   fireEvent.click(screen.getByRole('button', { name: /^Continue$/ }));
-  expect(screen.getByRole('tab', { name: /Confirm/ })).toHaveAttribute('aria-selected', 'true');
+  expect(screen.getByText(/Confirm/, { selector: 'p[aria-live="polite"]' })).toBeInTheDocument();
   // #52: no acceptance checkbox; Checkout enables once the published policy has loaded.
   await waitFor(() => expect(screen.getByRole('button', { name: /^(Checkout|Confirm Booking)$/ })).toBeEnabled());
 };
@@ -66,7 +66,7 @@ describe('booking is explained before it is attempted', () => {
     expect(within(banner).getByRole('button', { name: 'View your application' })).toBeVisible();
     await waitFor(() => expect(screen.getByRole('button', { name: /^Continue$/ })).toBeDisabled());
     fireEvent.click(screen.getByRole('button', { name: /^Continue$/ }));
-    expect(screen.getByRole('tab', { name: /Confirm/ })).toHaveAttribute('aria-selected', 'false');
+    expect(screen.queryByText(/Confirm/, { selector: 'p[aria-live="polite"]' })).toBeNull();
     expect(fixture.checkoutCalls).toBe(0);
     expect(fixture.mutate).not.toHaveBeenCalled();
   });

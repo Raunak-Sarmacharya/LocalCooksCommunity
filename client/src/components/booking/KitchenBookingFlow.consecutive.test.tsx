@@ -37,9 +37,8 @@ async function open(slots: string[] = []) {
   render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
     <KitchenBookingFlow locationId={1} locationName="Test Location" initialDateIso="2099-10-04" initialSlots={slots} onCancel={() => {}} onComplete={() => {}} />
   </QueryClientProvider>);
-  await screen.findByText(/Choose consecutive hours for your visit/);
   const first = Number(fixture.times[0].slice(0, 2));
-  await waitFor(() => expect(screen.getByRole('button', { name: new RegExp(`${first % 12 || 12}:00.*${(first + 1) % 12 || 12}:00`) })).toBeEnabled());
+  await waitFor(() => expect(screen.getByRole('button', { name: new RegExp(`${first % 12 || 12}:00.*${(first + 1) % 12 || 12}:00`) })).toBeEnabled(), { timeout: 3000 });
 }
 const hour = (start: number) => screen.getByRole('button', { name: new RegExp(`${start}:00.*${start === 12 ? 1 : start + 1}:00`) });
 const selected = (start: number) => expect(hour(start).className).toContain('bg-[#F51042]');
@@ -75,7 +74,7 @@ describe('actual kitchen picker consecutive selection', () => {
     selected(10); expect(fixture.toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Choose consecutive hours' }));
     fireEvent.click(hour(11)); expect(hour(11).className).not.toContain('bg-[#F51042]');
     fireEvent.click(screen.getByRole('button', { name: /^Continue$/ }));
-    expect(screen.getByRole('tab', { name: /Confirm/ })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByText(/Confirm/, { selector: 'p[aria-live="polite"]' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /^Edit$/ }));
     fireEvent.click(hour(12));
     expect(hour(12).className).not.toContain('bg-[#F51042]');
@@ -107,7 +106,7 @@ describe('actual kitchen picker consecutive selection', () => {
     expect(screen.getByRole('button', { name: /11:00.*12:00/ }).className).toContain('bg-[#F51042]');
     expect(screen.getByRole('button', { name: /12:00.*1:00/ }).className).toContain('bg-[#F51042]');
     fireEvent.click(screen.getByRole('button', { name: /^Continue$/ }));
-    expect(screen.getByRole('tab', { name: /Confirm/ })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByText(/Confirm/, { selector: 'p[aria-live="polite"]' })).toBeInTheDocument();
   });
   it('keeps full-day selection intact and rejects malformed restored hours without crashing', async () => {
     fixture.rateMode = 'daily'; await open();

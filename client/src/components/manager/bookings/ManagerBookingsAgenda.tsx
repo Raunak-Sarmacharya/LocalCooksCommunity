@@ -77,7 +77,7 @@ export function ManagerBookingsAgenda({ bookings, onReviewRequest }: {
   const shown = sections.map(section => ({ ...section, items: groups[section.key].filter(matches) })).filter(section => section.items.length);
 
   const tabTrigger = (key: Tab, label: string, count: number) => (
-    <TabsTrigger value={key} className="min-h-11 gap-1.5 px-4 sm:min-h-9">{label}{count > 0 && <span className="tabular-nums text-muted-foreground">{count}</span>}</TabsTrigger>
+    <TabsTrigger value={key} className="min-h-11 gap-1.5 px-4 sm:min-h-9">{label}{count > 0 && <span className="tabular-nums font-normal">{count}</span>}</TabsTrigger>
   );
   const grid = "md:grid md:grid-cols-[220px_minmax(0,1fr)_190px_100px_150px] md:items-center md:gap-4";
 

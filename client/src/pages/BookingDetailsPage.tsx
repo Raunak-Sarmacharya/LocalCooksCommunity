@@ -766,6 +766,7 @@ export default function BookingDetailsPage() {
     selectedSlots: booking.selectedSlots,
     operatingWindowStartTime: booking.operatingWindowStartTime,
     totalPrice: booking.totalPrice,
+    pricingMode: booking.pricingMode,
     transactionAmount: booking.paymentTransaction?.amount,
     serviceFee: totals.serviceFee || booking.paymentTransaction?.serviceFee || 0,
     stripeProcessingFee: booking.paymentTransaction?.stripeProcessingFee,

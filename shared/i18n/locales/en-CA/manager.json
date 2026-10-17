@@ -4166,5 +4166,7 @@
   "slNotesPlaceholder": "Anything chefs should know, such as shelf height or what to bring",
   "slMoreOptions": "More options",
   "slMaxTerm": "Longest stay, up to {max} days",
-  "slRulesNote": "Local Cooks storage rules apply. A chef has 5 extra days to extend at the same daily price. After that, the kitchen may charge the daily price for each extra day."
+  "slRulesNote": "Local Cooks storage rules apply. A chef has 5 extra days to extend at the same daily price. After that, the kitchen may charge the daily price for each extra day.",
+  "rowHelpAbout": "More about {label}",
+  "kitchenSessionFullDay": "Full day"
 }

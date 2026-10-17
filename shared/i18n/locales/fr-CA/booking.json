@@ -1266,5 +1266,6 @@
   "invSlotTaken": "{time} · réservé",
   "bssAccess_kitchen_hours": "Pendant les heures de la cuisine",
   "bssAccess_anytime": "En tout temps",
-  "bssAccess_by_arrangement": "Sur entente avec la cuisine"
+  "bssAccess_by_arrangement": "Sur entente avec la cuisine",
+  "sheetMinBookingNoticeSelect": "Sélectionnez au moins {minHours} heures consécutives."
 }

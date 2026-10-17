@@ -389,7 +389,7 @@ function StepperDescription({
   )
 }
 
-function StepperNav({ children, className }: React.ComponentProps<"nav">) {
+function StepperNav({ children, className, ...props }: React.ComponentProps<"nav">) {
   const { activeStep, orientation } = useStepper()
 
   return (
@@ -402,6 +402,7 @@ function StepperNav({ children, className }: React.ComponentProps<"nav">) {
         orientation === "horizontal" ? "flex-row items-center" : "flex-col",
         className
       )}
+      {...props}
     >
       {children}
     </nav>

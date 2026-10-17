@@ -51,7 +51,7 @@ const TabsList = React.forwardRef<
           onScroll?.(event)
         }}
         className={cn(
-          "flex h-auto items-center justify-start rounded-lg bg-muted p-1 text-muted-foreground overflow-x-auto scrollbar-none",
+          "flex h-auto items-center justify-start rounded-lg bg-muted p-1 text-gray-600 overflow-x-auto scrollbar-none", // muted-foreground on bg-muted is 4.39:1, under WCAG AA
           className
         )}
         {...props}

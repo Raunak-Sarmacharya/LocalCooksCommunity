@@ -203,6 +203,7 @@ export default function ManagerBookingsPanel({ embedded = false, onGoToKitchens 
       selectedSlots: details.selectedSlots,
       operatingWindowStartTime: details.operatingWindowStartTime,
       totalPrice: details.totalPrice,
+      pricingMode: details.pricingMode,
       transactionAmount: details.paymentTransaction?.amount,
       serviceFee: details.paymentTransaction?.serviceFee,
       stripeProcessingFee: details.paymentTransaction?.stripeProcessingFee,

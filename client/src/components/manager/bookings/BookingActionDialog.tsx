@@ -51,6 +51,7 @@ export interface BookingForAction {
   selectedSlots?: Array<string | { startTime: string; endTime: string }> | null;
   operatingWindowStartTime?: string | null;
   totalPrice?: number; // kitchen-only price in cents
+  pricingMode?: string | null;
   storageItems?: StorageItemForAction[];
   equipmentItems?: EquipmentItemForAction[];
   // Payment info for refund preview
@@ -597,7 +598,7 @@ function BookingActionDialogContent({
             <p className="text-sm leading-6 text-muted-foreground">{mt("reviewItemGuidance")}</p>
           </div>
           <BookingItemDecision
-            name={mt("kitchenSession")}
+            name={booking.pricingMode === 'daily' ? `${mt("kitchenSession")} · ${mt("kitchenSessionFullDay")}` : mt("kitchenSession")}
             details={kitchenBookingBlocks(booking).map(block =>
               `${formatTime(block.startTime)} – ${formatTime(block.endTime)}`).join(', ')}
             price={booking.totalPrice}

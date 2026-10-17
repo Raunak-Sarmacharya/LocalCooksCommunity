@@ -4166,5 +4166,7 @@
   "slNotesPlaceholder": "Tout ce qu’il faut savoir, comme la hauteur de la tablette ou quoi apporter",
   "slMoreOptions": "Plus d’options",
   "slMaxTerm": "Séjour le plus long, jusqu’à {max} jours",
-  "slRulesNote": "Les règles d’entreposage de Local Cooks s’appliquent. Une personne cuisinière a 5 jours de plus pour prolonger au même prix par jour. Ensuite, la cuisine peut facturer le prix par jour pour chaque jour additionnel."
+  "slRulesNote": "Les règles d’entreposage de Local Cooks s’appliquent. Une personne cuisinière a 5 jours de plus pour prolonger au même prix par jour. Ensuite, la cuisine peut facturer le prix par jour pour chaque jour additionnel.",
+  "rowHelpAbout": "En savoir plus : {label}",
+  "kitchenSessionFullDay": "Journée complète"
 }

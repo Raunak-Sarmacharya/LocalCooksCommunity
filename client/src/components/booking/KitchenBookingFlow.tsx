@@ -1434,10 +1434,10 @@ export default function KitchenBookingFlow({
               </h3>
               <p className="text-sm text-muted-foreground mt-1">
                 {formatDate(selectedDate)}
-                {kitchenPricing?.minimumBookingHours && kitchenPricing.minimumBookingHours > 0
+                {bookingRateMode === "hourly" && kitchenPricing?.minimumBookingHours && kitchenPricing.minimumBookingHours > 0
                   ? ` · ${t("sheetMinHourBadge", { minHours: kitchenPricing.minimumBookingHours, defaultValue: `Min ${kitchenPricing.minimumBookingHours}hr` })}`
                   : ""}
-                {` · ${t("sheetMaxHoursBadge", { maxHours: maxSlotsPerChef, defaultValue: `Max ${maxSlotsPerChef} hours` })}`}
+                {bookingRateMode === "hourly" && ` · ${t("sheetMaxHoursBadge", { maxHours: maxSlotsPerChef, defaultValue: `Max ${maxSlotsPerChef} hours` })}`}
               </p>
               <p className="text-xs text-muted-foreground mt-1" data-testid="setup-cleanup-hint">{t("sxbSetupCleanupHint", "Include setup and cleanup in your booking time.")}</p>
             </div>
@@ -1519,13 +1519,13 @@ export default function KitchenBookingFlow({
             </div>
           ) : (
             <div className="flex min-h-0 flex-1 flex-col gap-3">
-              <p className="text-sm text-muted-foreground">{ct('sweepLabel20')}</p>
+              {bookingRateMode === "hourly" && <p className="text-sm text-muted-foreground">{ct('sweepLabel20')}</p>}
               {kitchenPricing?.minimumBookingHours && kitchenPricing.minimumBookingHours > 1 && selectedSlots.length === 0 && (
                 <div className="shrink-0 rounded-lg border bg-muted/30 px-3 py-2 flex items-start gap-2">
                   <Icon icon="mdi:clock-outline" className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" aria-hidden />
                   <p className="text-sm text-muted-foreground leading-relaxed">
                     <strong>{t("sheetMinBookingNoticeBold", { minHours: kitchenPricing.minimumBookingHours, defaultValue: `Minimum ${kitchenPricing.minimumBookingHours}-hour booking.` })}</strong>{" "}
-                    {` Select at least ${kitchenPricing.minimumBookingHours} consecutive hours.`}
+                    {t("sheetMinBookingNoticeSelect", { minHours: kitchenPricing.minimumBookingHours })}
                   </p>
                 </div>
               )}
@@ -2145,8 +2145,10 @@ export default function KitchenBookingFlow({
             }}
             className="w-full rounded-[1.35rem] border bg-white px-3 py-3 shadow-sm sm:px-5"
             aria-label={t("sheetBookingStepsAria", "Booking steps")}
+            role="group"
           >
-            <StepperNav className="w-full flex-row items-start">
+            {/* Progress display only (steps aren't clickable); the caption below announces the current step. */}
+            <StepperNav aria-hidden className="w-full flex-row items-start">
               {steps.map((step, index) => (
                 <StepperItem
                   key={step.key}
@@ -2174,7 +2176,7 @@ export default function KitchenBookingFlow({
                 </StepperItem>
               ))}
             </StepperNav>
-            <p className="mt-2 text-center text-sm font-medium sm:hidden" aria-live="polite">{steps.find(step => step.key === currentStep)?.label}</p>
+            <p className="mt-2 text-center text-sm font-medium sm:sr-only" aria-live="polite">{steps.find(step => step.key === currentStep)?.label}</p>
           </Stepper>
         ) : (
           <Skeleton className="h-[4.5rem] w-full rounded-xl" />
@@ -2241,7 +2243,7 @@ export default function KitchenBookingFlow({
           <DialogHeader className="border-b border-gray-100 px-5 pb-4 pt-5 text-left">
             <DialogTitle>{t("sheetSelectTimeTitle", "Select time")}</DialogTitle>
             <DialogDescription>
-              {selectedDate ? formatDate(selectedDate) : ""} · {t("sheetMaxHoursBadge", { maxHours: maxSlotsPerChef, defaultValue: `Max ${maxSlotsPerChef} hours` })}
+              {selectedDate ? formatDate(selectedDate) : ""}{bookingRateMode === "hourly" && ` · ${t("sheetMaxHoursBadge", { maxHours: maxSlotsPerChef, defaultValue: `Max ${maxSlotsPerChef} hours` })}`}
             </DialogDescription>
           </DialogHeader>
           <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">

@@ -1266,5 +1266,6 @@
   "invSlotTaken": "{time} · заброньовано",
   "bssAccess_kitchen_hours": "У робочий час кухні",
   "bssAccess_anytime": "У будь-який час",
-  "bssAccess_by_arrangement": "За домовленістю з кухнею"
+  "bssAccess_by_arrangement": "За домовленістю з кухнею",
+  "sheetMinBookingNoticeSelect": "Виберіть щонайменше {minHours} послідовних годин."
 }

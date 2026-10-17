@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 
 import { AlertTriangle, Info, Lock } from "@/components/ui/manager-icons";
 import { Label } from "@/components/ui/label";
+import { mt } from "@/i18n/manager";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 
@@ -30,7 +31,7 @@ export function RowHelp({
       <PopoverTrigger asChild>
         <button
           type="button"
-          aria-label={label}
+          aria-label={mt("rowHelpAbout", { label })}
           className={cn(
             "!min-h-0 !min-w-0 inline-flex items-center justify-center rounded-md text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             compact ? "h-4 w-4" : "h-7 w-7",
