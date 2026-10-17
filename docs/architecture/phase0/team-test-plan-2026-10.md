@@ -45,6 +45,8 @@ Everything below runs on **dev** with **Stripe test mode**. Nothing touches prod
 
 ## Known dev limitations (not bugs)
 
+- **Bookings are single-day.** A booking can be hourly or a full day at the kitchen's daily rate, but not a range of days (e.g. Mon–Wed) — consecutive multi-day bookings are designed but not built (owner, Oct 17: leave for now). Book each day separately.
+
 - Test accounts use `@localcooks.test` emails, which bounce, so admins see "Booking notice needs delivery recovery". Use real inboxes for your team accounts if you want to read emails.
 - The recurring worker runs every 30 minutes on dev, so time-based steps (reminders, grace, removal review, auto-clear) can lag up to 30 minutes.
 
