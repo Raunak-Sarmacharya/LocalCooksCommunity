@@ -63,6 +63,7 @@ describe('storage notice routing', () => {
     expect(storageNoticeAudiences('declined')).toEqual(['chef']);
     expect(storageNoticeAudiences('moved_in')).toEqual(['manager']);
     expect(storageNoticeAudiences('holdover_charge')).toEqual(['chef', 'admins']);
+    expect(storageNoticeAudiences('holdover_paid')).toEqual(['chef', 'manager', 'admins']);
     expect(storageNoticeAudiences('payout_scheduled')).toEqual(['manager']);
     expect(storageNoticeAudiences('kitchen_debt')).toEqual(['manager', 'admins']);
     expect(storageNoticeAudiences('offer_extension')).toEqual(['chef']);
@@ -70,6 +71,7 @@ describe('storage notice routing', () => {
   it('only tracks money and legal events for Local Cooks', () => {
     expect(storageAdminKind('requested')).toBe('storage_requested');
     expect(storageAdminKind('extended')).toBe('storage_extension_paid');
+    expect(storageAdminKind('holdover_paid')).toBe('storage_holdover_paid');
     expect(storageAdminKind('final_notice')).toBe('storage_removal_review');
     expect(storageAdminKind('ending')).toBeUndefined();
     expect(storageAdminKind('move_in_due')).toBeUndefined();
@@ -102,7 +104,7 @@ describe('per-reader wording', () => {
   it.each(['fr-CA', 'uk'])('renders every reader in %s without raw keys or placeholders', async (value) => {
     locale(value);
     const events: StorageNoticeEvent[] = ['requested', 'approved', 'declined', 'expired', 'withdrawn', 'authorization_lapsed', 'move_in_due', 'moved_in', 'ending',
-      'extended', 'grace_started', 'holdover_started', 'holdover_charge', 'reclaim', 'move_out_requested', 'cleared',
+      'extended', 'grace_started', 'holdover_started', 'holdover_charge', 'holdover_paid', 'reclaim', 'move_out_requested', 'cleared',
       'auto_cleared', 'reopened', 'removal_review', 'final_notice', 'refund_issued', 'payout_scheduled', 'payout_released',
       'payout_on_hold', 'kitchen_debt', 'offer_extension'];
     for (const event of events) await queueStorageRentalNotice(tx(), 5, event, facts);
@@ -132,6 +134,17 @@ describe('per-reader wording', () => {
     await queueStorageRentalNotice(tx(), 5, 'ending', { ...facts, eventKey: 'd0', days: 0, amountCents: 1000 });
     expect(notice(5)!.message).toBe('Extend now · $10.00.');
   });
+  it('tells each reader once that the holdover was paid, with the amount incl. tax and no Stripe ids', async () => {
+    await queueStorageRentalNotice(tx(), 5, 'holdover_paid', { eventKey: 'record:3', amountCents: 518, days: 1 });
+    expect(state.notices.map(row => row.userId).sort()).toEqual([1, 2, 4, 5]);
+    expect(notice(5)).toMatchObject({ title: 'Holdover paid · $5.18', message: 'You paid $5.18 for 1 extra day at Shelf 2.', actionUrl: '/storage/5' });
+    expect(notice(2)!.title).toBe('Maya Chen paid the holdover · $5.18');
+    expect(notice(2)!.message).toContain('1 extra day at Shelf 2');
+    expect(notice(1)!.title).toBe('Holdover paid · Maya Chen · $5.18');
+    expect(notice(1)!.message).toContain('SB-X1');
+    expect(state.emails.map(row => row.recipientUserId).sort()).toEqual([1, 2, 5]);
+    for (const row of state.notices) expect(`${row.title} ${row.message}`).not.toMatch(/pi_|ch_|tr_|cs_|\$4\.50/);
+  });
   it('keeps the kitchen’s offer of more days with the price in the chef’s language', async () => {
     await queueStorageRentalNotice(tx(), 5, 'offer_extension', { ...facts, days: 14, amountCents: 14000 });
     expect(notice(5)!.message).toBe('Harbour Kitchen offers 14 more days for $140.00. Extend to keep your items.');
@@ -154,7 +167,7 @@ describe('email gates', () => {
 describe('no Stripe identifiers', () => {
   it('never leaks pi_/ch_/tr_/cs_ references into any notice or email', async () => {
     const events: StorageNoticeEvent[] = ['requested', 'approved', 'declined', 'expired', 'withdrawn', 'authorization_lapsed', 'move_in_due', 'moved_in', 'ending',
-      'extended', 'grace_started', 'holdover_started', 'holdover_charge', 'reclaim', 'move_out_requested', 'cleared',
+      'extended', 'grace_started', 'holdover_started', 'holdover_charge', 'holdover_paid', 'reclaim', 'move_out_requested', 'cleared',
       'auto_cleared', 'reopened', 'removal_review', 'final_notice', 'refund_issued', 'payout_scheduled', 'payout_released',
       'payout_on_hold', 'kitchen_debt', 'offer_extension'];
     for (const event of events) await queueStorageRentalNotice(tx(), 5, event, facts);

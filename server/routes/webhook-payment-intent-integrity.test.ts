@@ -37,6 +37,7 @@ vi.mock('../services/stripe-webhook-events', () => ({ claimStripeWebhookEvent: h
 vi.mock('../services/payment-transactions-service', () => ({
   findPaymentTransactionByIntentId: h.findPt, updatePaymentTransaction: h.updatePt,
   createPaymentTransaction: vi.fn(), syncStripeAmountsToBookings: vi.fn(),
+  findOrCreatePaymentTransactionByIntent: vi.fn(async () => ({ record: undefined, created: false })),
 }));
 vi.mock('../services/stripe-service', () => ({ getStripePaymentAmounts: vi.fn(async () => null) }));
 vi.mock('../services/obligation-payment-service', () => ({ reconcileObligationPayment: vi.fn(async () => null) }));

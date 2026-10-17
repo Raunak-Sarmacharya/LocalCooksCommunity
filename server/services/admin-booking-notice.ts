@@ -20,7 +20,7 @@ export const ADMIN_BOOKING_KINDS = new Set([
 export const ADMIN_STORAGE_KINDS = new Set([
   'storage_requested', 'storage_expired', 'storage_confirmed', 'storage_extension_paid',
   'storage_refund_issued', 'storage_payout_released', 'storage_payout_on_hold',
-  'storage_holdover_raised', 'storage_holdover_waived', 'storage_holdover_disputed',
+  'storage_holdover_raised', 'storage_holdover_paid', 'storage_holdover_waived', 'storage_holdover_disputed',
   'storage_reclaim_served', 'storage_removal_review', 'storage_kitchen_debt', 'storage_payment_recovery',
 ]);
 
@@ -130,6 +130,8 @@ function storageNoticeCopy(kind: string, facts: AdminStorageFacts): { title: str
       return { title: `Storage payout on hold · ${facts.kitchen}`, message: `${who}. ${facts.holdReason || facts.message || 'Paused while Local Cooks reviews an open issue.'}` };
     case 'storage_holdover_raised':
       return { title: `Holdover charge raised · ${facts.chef}`, message: `${who}. ${money(facts.amountCents)} for ${days}; the chef can dispute by ${facts.deadline || 'the recorded deadline'}.` };
+    case 'storage_holdover_paid':
+      return { title: `Holdover paid · ${facts.chef} · ${money(facts.amountCents)}`, message: `${who}. The chef paid ${money(facts.amountCents)} incl. tax for ${days}; sent to the kitchen's Stripe account at payment, less the card fee and commission.` };
     case 'storage_holdover_waived':
       return { title: `Holdover charge waived · ${facts.chef}`, message: `${who}. The kitchen waived the holdover charge.` };
     case 'storage_holdover_disputed':

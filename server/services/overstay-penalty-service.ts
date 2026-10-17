@@ -954,6 +954,19 @@ export async function createPenaltyPaymentCheckout(
       return { error: 'Chef not found' };
     }
 
+    // A holdover request covers the days raised in it (history metadata), and returns the chef to the rental page.
+    const holdover = isHoldoverRecord(overstayRecord);
+    let holdoverDays = overstayRecord.daysOverdue;
+    if (holdover) {
+      const [raised] = await db.select({ metadata: storageOverstayHistory.metadata }).from(storageOverstayHistory)
+        .where(and(eq(storageOverstayHistory.overstayRecordId, overstayRecordId), eq(storageOverstayHistory.newStatus, 'penalty_approved'))).limit(1);
+      holdoverDays = Number((raised?.metadata as { days?: number } | null)?.days) || holdoverDays;
+      const origin = new URL(successUrl).origin;
+      successUrl = `${origin}/storage/${booking.id}?holdover=paid`;
+      cancelUrl = `${origin}/storage/${booking.id}`;
+    }
+    const dayWord = holdoverDays === 1 ? 'day' : 'days';
+
     // Create Stripe Checkout session
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
       mode: 'payment',
@@ -963,10 +976,9 @@ export async function createPenaltyPaymentCheckout(
         {
           price_data: {
             currency: 'cad',
-            product_data: {
-              name: `Overstay Penalty - ${storageName}`,
-              description: `Storage overstay penalty for ${kitchenName}`,
-            },
+            product_data: holdover
+              ? { name: `Holdover · ${storageName}`, description: `${holdoverDays} extra ${dayWord} at ${kitchenName}` }
+              : { name: `Overstay Penalty - ${storageName}`, description: `Storage overstay penalty for ${kitchenName}` },
             unit_amount: penaltyAmountCents + penaltyTaxCents,
           },
           quantity: 1,
@@ -982,6 +994,7 @@ export async function createPenaltyPaymentCheckout(
         chefId: chefId.toString(),
         storageBookingId: overstayRecord.storageBookingId.toString(),
         managerId: managerId?.toString() || '',
+        ...(holdover ? { holdover_days: holdoverDays.toString() } : {}),
       },
       success_url: successUrl,
       cancel_url: cancelUrl,
@@ -991,7 +1004,7 @@ export async function createPenaltyPaymentCheckout(
       invoice_creation: {
         enabled: true,
         invoice_data: {
-          description: `Overstay Penalty - ${storageName} at ${kitchenName}`,
+          description: holdover ? `Holdover · ${storageName} at ${kitchenName}` : `Overstay Penalty - ${storageName} at ${kitchenName}`,
           metadata: {
             booking_type: 'overstay_penalty',
             overstay_record_id: overstayRecordId.toString(),

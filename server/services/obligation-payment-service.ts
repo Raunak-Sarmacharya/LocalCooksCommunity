@@ -140,7 +140,13 @@ export async function reconcileObligationPayment(intent: Stripe.PaymentIntent) {
           newStatus: 'charge_succeeded',eventType: 'charge_attempt',eventSource: 'stripe_webhook',
           description: `Stripe payment reconciled: ${intent.id}`,metadata: { paymentIntentId: intent.id }
         }).returning();
-        await queueOverstayOutcome(tx,history);
+        // A standalone-storage holdover is announced once per audience by the storage notices, with what the chef paid (incl. tax).
+        if(record.idempotencyKey.startsWith('holdover:')) {
+          const { queueStorageRentalNotice }=await import('./storage-rental-notices');
+          await queueStorageRentalNotice(tx,record.storageBookingId,'holdover_paid',{ eventKey: `record:${id}`,
+            amountCents: intent.amount_received,days: Number(intent.metadata.holdover_days)||record.daysOverdue });
+        }
+        else await queueOverstayOutcome(tx,history);
       }
     }
     const bookingId=isClaim? (record.storageBookingId||record.kitchenBookingId)!:record.storageBookingId;
