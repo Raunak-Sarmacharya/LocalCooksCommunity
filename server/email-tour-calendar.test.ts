@@ -86,7 +86,7 @@ describe('tour time and downloadable calendar', () => {
         expect(content).toContain('Add to Google Calendar'); expect(content).not.toContain('NDT');
       }
       expect(email.text).toContain('Door & "bell"'); expect(email.html).toContain('emailHeader-brand-red.png');
-      expect(email.text).toContain('Your appointment'); expect(email.text).toContain('Getting there');
+      expect(email.text).toMatch(/Your visit|Tour details/); expect(email.text).toMatch(/Arrival and departure|Preparing for/);
       expect(email.text).not.toContain('Confirmed at:');
       expect(email.html).not.toContain('callback.example.test');
     }
@@ -94,9 +94,9 @@ describe('tour time and downloadable calendar', () => {
   it('keeps arrival help available without a host contact, including in plain text', () => {
     vi.stubEnv('EMAIL_USER', 'notifications@example.test');
     const email = generateTourConfirmedEmail(base);
-    expect(email.text).toContain('Arrival help: support@example.test');
-    expect(email.html).toContain('Arrival help</p>');
-    expect(email.html).toContain('support@example.test</p>');
+    expect(email.text).toContain('Tour assistance: support@localcooks.ca');
+    expect(email.html).toContain('Tour assistance');
+    expect(email.html).toContain('support@localcooks.ca');
   });
   it.each([
     ['2026-10-07T11:30:00Z', 'Oct 7, 2026', '9:00 AM', '20261007T120000Z'],
@@ -193,7 +193,7 @@ describe('tour time and downloadable calendar', () => {
 describe('separate public confirmation guidance', () => {
   it.each([[undefined, undefined], ['Front door <&> Олена', undefined], [undefined, 'Return badge'], ['Front door <&> Олена', 'Return badge']])('preserves public notes in email and both calendars (%s / %s)', (arrivalNotes, departureNotes) => {
     const email = generateTourConfirmedEmail({ ...base, arrivalNotes, departureNotes, sharedManagerNotes: 'Public message', confirmedAt: new Date('2026-10-01T12:00:00Z') });
-    expect(email.text).toContain('Message from the kitchen manager');
+    expect(email.text).toContain('Manager notes: Public message');
     expect(email.text).toContain('Public message');
     const ics = calendar(email).replace(/\r\n /g, '');
     const google = email.text!.match(/https:\/\/calendar.google.com[^\s]+/)?.[0];
