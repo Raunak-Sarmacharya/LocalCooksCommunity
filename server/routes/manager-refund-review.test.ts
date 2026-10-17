@@ -41,13 +41,13 @@ describe('manager refund allocations and truthful recovery', () => {
     const handler = (manager as any).stack.find((entry: any) => entry.route?.path === '/revenue/transactions/:transactionId/full-refund-request').route.stack.at(-1).handle;
     const res = { status: vi.fn().mockReturnThis(), json: vi.fn() };
     await handler({ params: { transactionId: '99' }, neonUser: { id: 2, role: 'manager' }, body: { reason: 'Kitchen unavailable' } }, res);
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.stringContaining('Dated booking cancellations and refunds') }));
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.stringContaining('made per day') }));
     expect(state.update).not.toHaveBeenCalled();
   });
   it('refuses a dated direct refund before provider I/O', async () => {
     state.dated = true;
     const res = await refund();
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.stringContaining('Dated booking cancellations and refunds') }));
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.stringContaining('made per day') }));
     expect(state.refund).not.toHaveBeenCalled(); expect(state.update).not.toHaveBeenCalled();
   });
   it('records the zero platform contribution required to reconcile later payout callbacks', async () => {

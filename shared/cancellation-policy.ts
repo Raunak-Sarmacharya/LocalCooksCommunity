@@ -80,11 +80,14 @@ export function quoteCancellation(snapshot: CancellationPolicySnapshot, input: C
   const kitchen = input.components.reduce((sum, item) => sum + cents(item.kitchenCents), 0), platform = input.components.reduce((sum, item) => sum + cents(item.platformCents), 0);
   if (new Set(input.components.map(item => item.id)).size !== input.components.length || kitchen + platform !== captured || fee > kitchen) throw Error('Captured component allocations require review');
   const fees = allocateCents(fee, input.components.map(item => item.kitchenCents));
+  // A dated booking has one refund deadline: the notice period before its first originally booked day, never moved by a drop.
+  const firstStart = Math.min(...snapshot.sessions.map(session => instant(session.startAt)));
   const components = input.components.map((item, index) => {
     const startAt = snapshot.sessions[item.sessionIndex]?.startAt;
     if (!startAt) throw Error('Component session is missing');
     const started = input.startedComponents?.includes(item.id) || cancelAt >= instant(startAt);
-    const tier = snapshot.tiers.find(tier => instant(startAt) - cancelAt >= tier.minHoursBeforeStart * 3600000) ?? snapshot.tiers.at(-1)!;
+    const deadlineStart = snapshot.deadlineBasis === 'booking_first_day' ? firstStart : instant(startAt);
+    const tier = snapshot.tiers.find(tier => deadlineStart - cancelAt >= tier.minHoursBeforeStart * 3600000) ?? snapshot.tiers.at(-1)!;
     const percent = remedy ? 100 : input.cause === 'no_show' || started || snapshot.sessions[item.sessionIndex]?.nonRefundable ? 0 : tier.refundPercent;
     const pool = item.kitchenCents - fees[index] + item.platformCents;
     return { ...item, tier, refundPercent: percent, pool,

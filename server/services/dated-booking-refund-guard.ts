@@ -1,12 +1,13 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db';
 
-export const DATED_REFUND_REFUSAL = 'Dated booking cancellations and refunds are unavailable until whole-booking deadlines are supported. Contact Local Cooks support for manual review through the existing incident tools.';
-export function assertLegacyCancellation(booking: { scheduleRevision?: number | null }, sources: Array<{ payoutPartition?: string | null }>) {
-  // shortcut: CP6 must apply the first-day deadline before dated cancellations/refunds can use this engine.
-  if ((booking.scheduleRevision ?? 0) > 0 || sources.some(source => source.payoutPartition === 'per_day'))
-    throw Object.assign(new Error(DATED_REFUND_REFUSAL), { status: 409, statusCode: 409 });
-}
+/**
+ * CP6: a multi-day booking's refunds are made per day (`dated-booking-cancellation.ts`), each debiting exactly that day's
+ * kitchen share. An unscoped refund (a manager's amount, an admin full refund, a raw status change) can't say which day
+ * pays for it, so those paths refuse and point to the day-scoped commands.
+ */
+export const DATED_REFUND_REFUSAL = 'Refunds on a multi-day booking are made per day: cancel or refund that day, or remove its equipment, from the booking; or ask Local Cooks for a goodwill refund.';
+const refuse = () => { throw Object.assign(new Error(DATED_REFUND_REFUSAL), { status: 409, statusCode: 409 }); };
 
 /** Covers direct refunds as well as separately charged items linked to a dated parent. */
 export async function assertLegacyBookingRefund(target: { bookingId?: number; paymentIntentId?: string; paymentTransactionId?: number }, connection: Pick<typeof db, 'execute'> = db) {
@@ -29,5 +30,5 @@ export async function assertLegacyBookingRefund(target: { bookingId?: number; pa
         OR p.booking_type IN ('kitchen', 'bundle') AND p.booking_id IN (SELECT id FROM parents)
         OR p.booking_type = 'equipment' AND p.booking_id IN (SELECT id FROM equipment_bookings WHERE kitchen_booking_id IN (SELECT id FROM parents))
         OR p.booking_type = 'storage' AND p.booking_id IN (SELECT id FROM storage_bookings WHERE kitchen_booking_id IN (SELECT id FROM parents))) LIMIT 1`);
-  if (result.rows.length) assertLegacyCancellation({ scheduleRevision: 1 }, []);
+  if (result.rows.length) refuse();
 }

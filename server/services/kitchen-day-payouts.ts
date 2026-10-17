@@ -21,7 +21,9 @@ type Allocation = typeof allocations.$inferSelect;
 export type DayTransfer = { amount: number; currency: 'cad'; destination: string; source_transaction: string;
   transfer_group: string; metadata: Record<string, string> };
 type Evidence = { state?: 'pending' | 'sent'; params?: DayTransfer; sentAt?: string; noticeTick?: string;
-  startedAt?: string; noticeQueued?: boolean; nextAttemptAt?: string; attempts?: number; lastError?: string; reversedCents?: number };
+  startedAt?: string; noticeQueued?: boolean; nextAttemptAt?: string; attempts?: number; lastError?: string; reversedCents?: number;
+  /** Support released this day over a chef-reported problem, as single-day support can (an open flag still holds). */
+  supportReleased?: boolean };
 const evidenceOf = (row: Installment) => row.evidence as Evidence;
 const captured = ['succeeded', 'partially_refunded', 'refunded'];
 export const dayTransferKey = (sourceId: number, visitId: number, revision: number) => `kitchen-day-transfer:${sourceId}:${visitId}:${revision}`;
@@ -47,15 +49,15 @@ export async function ensureDayPayoutRows(tx: Tx, sourceId: number) {
 
 /** The same CP2 clock, narrowed to this visit; cancelled retained shares use that visit's scheduled end + grace. */
 export function dayEligibility(status: string, closeout: BookingCloseout, visitId: number, serviceEndGraceMinutes: number,
-  facts: { openFlag: boolean; openIssue: boolean }) {
+  facts: { openFlag: boolean; openIssue: boolean; supportReleased?: boolean }) {
   const visit = closeout.visits.find(row => row.visitId === visitId);
   if (!visit) throw Error('The allocated visit is not in its saved closeout');
   return payoutEligibility(status, { ...closeout, visits: [visit],
     serviceEndedAt: new Date(new Date(visit.scheduledEndAt).getTime() + serviceEndGraceMinutes * 60_000).toISOString() },
-  { ...facts, resolvedIssue: false, supportReleased: false });
+  { ...facts, resolvedIssue: false, supportReleased: facts.supportReleased === true });
 }
 
-async function context(tx: Tx, source: Source, visitId: number, now: Date) {
+async function context(tx: Tx, source: Source, visitId: number, now: Date, supportReleased = false) {
   const [row] = await tx.select({ booking: kitchenBookings, timezone: locations.timezone, locationId: locations.id })
     .from(kitchenBookings).innerJoin(kitchens, eq(kitchens.id, kitchenBookings.kitchenId))
     .innerJoin(locations, eq(locations.id, kitchens.locationId)).where(eq(kitchenBookings.id, source.bookingId));
@@ -76,7 +78,7 @@ async function context(tx: Tx, source: Source, visitId: number, now: Date) {
   const facts = result.rows[0] as { flag: boolean; issue: boolean } | undefined;
   if (!facts) throw Error('Day hold evidence unavailable');
   return { visit, eligibility: dayEligibility(visit.scheduleState === 'cancelled' ? 'cancelled' : row.booking.status, closeout, visitId,
-    snapshot.serviceEndGraceMinutes, { openFlag: facts.flag, openIssue: facts.issue }) };
+    snapshot.serviceEndGraceMinutes, { openFlag: facts.flag, openIssue: facts.issue, supportReleased }) };
 }
 
 function refundPending(source: Source) {
@@ -85,8 +87,20 @@ function refundPending(source: Source) {
     || m.cancellationRefundOperation && m.cancellationRefundOperation.status !== 'succeeded'
     || m.capturedCancellationRace || m.fullRefundRequest?.status === 'pending'
     || m.kitchenCancellationRefund && m.kitchenCancellationRefund.status !== 'succeeded'
-    // CP6 supplies scoped settled refund funding; never guess which day an unallocated refund debits.
-    || Number(source.refundAmount) > 0;
+    || !refundsAllocated(source);
+}
+/**
+ * Every refund on the charge is either a CP6 day refund (its kitchen debit already sits on that day's allocation) or
+ * entirely Local Cooks-funded (goodwill/absorbed fee). Never guess which day an unallocated refund debits.
+ */
+export function refundsAllocated(source: Pick<Source, 'refundAmount' | 'metadata'>) {
+  const m = (source.metadata || {}) as Record<string, any>;
+  const receipts: Array<{ id: string; customerReceived: number; managerDebited: number; platformServiceFeeReturned: number }> = m.refunds || [];
+  const dayRefunds = new Set([...(m.cancellationRefundOperations || []), m.cancellationRefundOperation]
+    .filter(op => op?.dated && op.status === 'succeeded' && op.refundId).map(op => op.refundId)
+    .concat((m.outsideRefunds || []).map((row: { refundId: string }) => row.refundId)));
+  return receipts.reduce((sum, row) => sum + Number(row.customerReceived), 0) === Number(source.refundAmount || 0)
+    && receipts.every(row => dayRefunds.has(row.id) || Number(row.managerDebited) === 0 && Number(row.platformServiceFeeReturned) === 0);
 }
 
 /** Unknown attempts always reuse their frozen parameters, even if setup, fees or holds changed meanwhile. */
@@ -109,7 +123,7 @@ async function prepare(id: number, now: Date, tick: string) {
       if (!previous.params || !row.releasedAt || row.transferAmountCents !== previous.params.amount) throw Error('Frozen day transfer needs review');
       return { row, source, params: previous.params };
     }
-    const current = await context(tx, source, row.visitId, now);
+    const current = await context(tx, source, row.visitId, now, previous.supportReleased);
     const parts = await tx.select().from(allocations).where(and(eq(allocations.sourceId, source.id), eq(allocations.visitId, row.visitId),
       eq(allocations.allocationRevision, row.allocationRevision))).orderBy(asc(allocations.id));
     const amount = dayEntitlement(parts);
@@ -157,6 +171,26 @@ export function verifyDayTransfer(transfer: Stripe.Transfer, params: DayTransfer
     throw Error('Provider installment differs from its frozen release');
 }
 
+/**
+ * No provider create can have happened before `startedAt` commits, so an unstarted reservation is safely released:
+ * it never blocks refunds, claims or other money actions while its day is held or its charge needs review.
+ */
+async function clearReservation(tx: Tx, row: Installment, holdReason: string | null, now: Date, lastError?: string) {
+  const { state, params, startedAt, ...rest } = evidenceOf(row);
+  if (startedAt || row.transferId) return;
+  await tx.update(payouts).set({ releasedAt: null, transferAmountCents: null, holdReason, updatedAt: now,
+    evidence: { ...rest, ...(lastError ? { lastError } : {}), nextAttemptAt: new Date(now.getTime() + 3600_000).toISOString() } }).where(eq(payouts.id, row.id));
+}
+async function releaseUnstarted(id: number, sourceBookingId: number, visitId: number, now: Date, lastError: string) {
+  await db.transaction(async tx => {
+    await lockBookingMoneySources(tx, sourceBookingId);
+    await tx.execute(sql`SELECT id FROM kitchen_bookings WHERE id = ${sourceBookingId} FOR UPDATE`);
+    await tx.execute(sql`SELECT id FROM kitchen_booking_visits WHERE id = ${visitId} FOR UPDATE`);
+    const [current] = await tx.select().from(payouts).where(eq(payouts.id, id)).for('update');
+    if (current) await clearReservation(tx, current, 'refund_or_visit_review', now, lastError);
+  });
+}
+
 /** Discovery may fail before create ever starts. Recheck holds until this durable attempt boundary. */
 async function startAttempt(row: Installment, source: Source, params: DayTransfer, now: Date) {
   return db.transaction(async tx => {
@@ -169,10 +203,9 @@ async function startAttempt(row: Installment, source: Source, params: DayTransfe
     if (!sameTransferParams(proof.params, params)) throw Error('Frozen installment parameters changed');
     if (!proof.startedAt) {
       const [fresh] = await tx.select().from(paymentTransactions).where(eq(paymentTransactions.id, source.id));
-      const { eligibility } = await context(tx, fresh, row.visitId, now);
+      const { eligibility } = await context(tx, fresh, row.visitId, now, proof.supportReleased);
       if (!eligibility.ready || refundPending(fresh)) {
-        await tx.update(payouts).set({ holdReason: eligibility.holdReason || 'refund_or_visit_review', evidence: { ...proof,
-          nextAttemptAt: new Date(now.getTime() + 3600_000).toISOString() } }).where(eq(payouts.id, row.id));
+        await clearReservation(tx, current, eligibility.holdReason || 'refund_or_visit_review', now);
         return { started: false };
       }
       await assertBookingMoneyWritable({ bookingId: source.bookingId, paymentTransactionId: source.id, visitId: row.visitId, payout: true,
@@ -198,7 +231,10 @@ export async function releaseDayPayout(id: number, now = new Date(), tick = now.
     const charge = await provider.charges.retrieve(params.source_transaction);
     if (!charge.paid || !charge.captured || charge.currency !== 'cad' || charge.amount_captured !== Number(source.amount)
       || (typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent?.id) !== source.paymentIntentId
-      || charge.amount_refunded > 0 || charge.amount_refunded !== Number(source.refundAmount || 0)) throw Error('Source charge/refunds need reconciliation');
+      || charge.amount_refunded !== Number(source.refundAmount || 0)) {
+      await releaseUnstarted(row.id, source.bookingId, row.visitId, now, 'Source charge/refunds need reconciliation');
+      throw Error('Source charge/refunds need reconciliation');
+    }
     const attempt = await startAttempt(row, source, params, now);
     if (!attempt.started) return { success: !!attempt.transferId, transferred: !!attempt.transferId, transferId: attempt.transferId || null };
     transfer = await provider.transfers.create(params, { idempotencyKey: row.operationKey });
@@ -244,7 +280,7 @@ export async function flushDayPayoutNotices(bookingId: number) {
   });
 }
 
-export async function releaseBookingDayPayouts(bookingId: number, now = new Date(), sourceId?: number, installmentId?: number) {
+export async function releaseBookingDayPayouts(bookingId: number, now = new Date(), sourceId?: number, installmentId?: number, options: { supportRelease?: boolean } = {}) {
   const selected = await db.select({ id: payouts.id, transferId: payouts.transferId, noEntitlement: payouts.noEntitlement }).from(payouts)
     .innerJoin(paymentTransactions, eq(paymentTransactions.id, payouts.sourceId))
     .where(and(eq(paymentTransactions.bookingId, bookingId), sourceId ? eq(payouts.sourceId, sourceId) : undefined,
@@ -252,6 +288,10 @@ export async function releaseBookingDayPayouts(bookingId: number, now = new Date
   if (installmentId && !selected.length) throw Error('Choose an installment belonging to this booking');
   const rows = selected.filter(row => !row.transferId && !row.noEntitlement);
   const alreadyComplete = selected.length > 0 && !rows.length;
+  // Support's release overrides a chef-reported problem only; flags, inspection deadlines and refunds still hold.
+  if (options.supportRelease && rows.length) await db.execute(sql`UPDATE kitchen_booking_day_payouts
+    SET evidence = evidence || '{"supportReleased": true}'::jsonb, updated_at = ${now}
+    WHERE id IN (${sql.join(rows.map(row => sql`${row.id}`), sql`, `)}) AND transfer_id IS NULL`);
   let transferred = false, failures = 0;
   for (const row of rows) {
     try { transferred = (await releaseDayPayout(row.id, now)).transferred || transferred; }
@@ -259,7 +299,8 @@ export async function releaseBookingDayPayouts(bookingId: number, now = new Date
   }
   await flushDayPayoutNotices(bookingId);
   await import('./booking-documents').then(d => d.issueBookingDocumentsSafely(bookingId, 'payout_released'));
-  return { success: failures === 0 && (transferred || alreadyComplete), transferred, deferred: !transferred && !alreadyComplete, overrideRecorded: false };
+  return { success: failures === 0 && (transferred || alreadyComplete), transferred, deferred: !transferred && !alreadyComplete, failures,
+    overrideRecorded: !!options.supportRelease && failures === 0 };
 }
 
 async function recordFailure(id: number, error: unknown, now: Date) {
@@ -312,7 +353,7 @@ export async function readDayPayouts(bookingIds: number[], tx: Tx = db as unknow
     .innerJoin(kitchenBookingVisits, eq(kitchenBookingVisits.id, payouts.visitId)).where(inArray(paymentTransactions.bookingId, bookingIds)).orderBy(asc(payouts.id));
   const parts = rows.length ? await tx.select().from(allocations).where(inArray(allocations.sourceId, Array.from(new Set(rows.map(r => r.payout.sourceId))))) : [];
   return Promise.all(rows.map(async ({ payout: p, source, bookingId, date }) => {
-    const live = !p.transferId && !p.noEntitlement ? await context(tx, source, p.visitId, new Date()).catch(() => null) : null;
+    const live = !p.transferId && !p.noEntitlement ? await context(tx, source, p.visitId, new Date(), evidenceOf(p).supportReleased).catch(() => null) : null;
     const hold = live ? live.eligibility.holdReason : p.holdReason;
     const amount = p.transferAmountCents ?? dayEntitlement(parts.filter(a => a.sourceId === p.sourceId && a.visitId === p.visitId && a.allocationRevision === p.allocationRevision));
     const payout: KitchenPayout = { timing: 'after_closeout', status: p.transferId ? 'sent' : p.noEntitlement ? 'not_applicable' : hold && hold !== 'visit_not_closed' ? 'on_hold' : 'scheduled',

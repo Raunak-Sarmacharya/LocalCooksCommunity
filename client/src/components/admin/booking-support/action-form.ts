@@ -44,6 +44,8 @@ export const ACTION_SPECS: Record<SupportActionType, Spec> = {
   resolve_flag: { acting: ANY, reasons: ["internal_review", "other"], fields: ["flag"], notifies: false },
   release_payout: { acting: ["local_cooks"], reasons: ["internal_review", "other"], fields: [], notifies: "kitchen" },
   resolve_money_attempt: { acting: ["local_cooks"], reasons: ["payment_problem", "internal_review", "other"], fields: [], notifies: false },
+  // shortcut: the refund/day/kitchen-share inputs aren't in this dialog yet (sent via the support API); add them with the CP9 support UI.
+  assign_outside_refund: { acting: ["local_cooks"], reasons: ["payment_problem", "internal_review", "other"], fields: [], notifies: false },
 };
 
 export type ActionForm = {

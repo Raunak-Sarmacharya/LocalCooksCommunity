@@ -32,7 +32,7 @@ describe('original reservation retry receipt adoption', () => {
     state.source.payoutPartition = 'per_day';
     const run = path === 'createRefund' ? () => createRefund('pi_one', 2440, 'requested_by_customer', options)
       : () => reverseTransferAndRefund('pi_one', 2440, 'requested_by_customer', { ...options, reservedOperation: true });
-    await expect(run()).rejects.toThrow('Dated booking cancellations and refunds');
+    await expect(run()).rejects.toThrow('made per day');
     expect(state.refund).not.toHaveBeenCalled(); expect(state.reverse).not.toHaveBeenCalled();
   });
   it.each(['failed', 'canceled'])('adopts the successful retry while its older %s attempt remains', async status => {

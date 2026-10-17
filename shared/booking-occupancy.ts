@@ -38,9 +38,9 @@ export function datedOccupiedSlots(owner: {
     windowStartTime: slot.windowStartTime || anchor, startTime: slot.startTime, endTime: slot.endTime }));
 }
 
-/** Operating dates a booking occupies (its first date plus every dated slot). */
+/** Operating dates a booking occupies: every dated slot (an undated slot is on its first date). A dropped first day is free. */
 export function occupiedOperatingDates(owner: Parameters<typeof datedOccupiedSlots>[0]): Set<string> {
-  return new Set([dateKey(owner.bookingDate), ...datedOccupiedSlots(owner).map(slot => slot.date)]);
+  return new Set(datedOccupiedSlots(owner).map(slot => slot.date));
 }
 
 /**

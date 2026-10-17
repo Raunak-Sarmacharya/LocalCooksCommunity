@@ -8,7 +8,7 @@ import { collapseDoublePeriods } from '@shared/i18n/sentence';
 export const ADMIN_BOOKING_KINDS = new Set([
   // Bookings & money
   'requested', 'confirmed', 'cancelled', 'cancellation_reviewed', 'storage_cancellation_reviewed', 'refund_issued',
-  'payout_released', 'payout_on_hold', 'payment_recovery_needed', 'booking_changed', 'addon_removed',
+  'payout_released', 'payout_on_hold', 'payment_recovery_needed', 'booking_changed', 'addon_removed', 'day_cancelled',
   // Problems
   'report_attended', 'report_no_show', 'checkout_claim_filed',
 ]);
@@ -82,6 +82,9 @@ export function adminBookingNotice(kind: string, facts: AdminBookingFacts): { ti
     }
     case 'refund_issued':
       return { title: `Refund issued · ${facts.reference}`, message: `${who}. ${facts.message}` };
+    // A multi-day booking lost some days; the message names them and the money (refund, fee kept or absorbed, kitchen share).
+    case 'day_cancelled':
+      return { title: `Days cancelled · ${facts.reference}`, message: `${who}. ${facts.message}` };
     // The chef moved a confirmed booking and the kitchen approved (the message carries the old and new time and the money).
     case 'booking_changed':
       return { title: `Booking changed · ${facts.reference}`, message: `${who}. ${facts.message}` };

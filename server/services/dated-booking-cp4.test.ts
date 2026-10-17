@@ -482,7 +482,7 @@ describe('CP4 all-or-nothing capture and actual day allocations', () => {
     const [addon] = await h.db.insert(s.paymentTransactions).values({ bookingId: item.id, bookingType: 'equipment', paymentIntentId: 'pi_separate',
       chefId: 3, managerId: 2, amount: '101', baseAmount: '101', serviceFee: '0', managerRevenue: '101', netAmount: '101', currency: 'CAD', status: 'succeeded' }).returning();
     for (const target of [{ bookingId: id }, { paymentIntentId: h.intent.id }, { paymentTransactionId: addon.id }, { paymentIntentId: 'pi_separate' }])
-      await expect(assertLegacyBookingRefund(target, h.db)).rejects.toThrow('Dated booking cancellations and refunds');
+      await expect(assertLegacyBookingRefund(target, h.db)).rejects.toThrow('made per day');
     await h.db.update(s.kitchenBookings).set({ scheduleRevision: 0 }); await h.db.update(s.paymentTransactions).set({ payoutPartition: null });
     await expect(assertLegacyBookingRefund({ paymentTransactionId: addon.id }, h.db)).resolves.toBeUndefined();
   });

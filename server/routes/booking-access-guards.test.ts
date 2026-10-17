@@ -30,7 +30,7 @@ describe('booking access boundaries (mocked role gates and services)', () => {
     const res = response();
     await route(managerRouter, '/bookings/:id/status').at(-1).handle({ neonUser: { id: 7 }, params: { id: '10' },
       body: kind === 'whole booking' ? { status: 'cancelled' } : { status: 'confirmed', [`${kind}Actions`]: [{ [`${kind}BookingId`]: 11, action: 'cancelled' }] } }, res);
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.stringContaining('Dated booking cancellations and refunds') }));
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.stringContaining('made per day') }));
     expect(mocks.write).not.toHaveBeenCalled();
   });
   it('does not load another manager’s kitchen bookings', async () => {
