@@ -108,7 +108,23 @@ dispatch to the day engine, the remaining refusals, goodwill and support day sco
 
 ## Verification
 
-Recorded after the implementation commit (below).
+`npm ci` installed this worktree's dependencies (no manifest change, no node_modules link). Implementation committed as
+`60a8f36c` before the final checks.
+
+- **Full server suite, once** (`npx vitest run --config vitest.config.server.ts --reporter=dot`): 308 files, **4021 passed,
+  6 failed**, 1 expected fail, 12 skipped. Re-run of the 4 failing files with `--no-file-parallelism`: the same 6 fail.
+  - 4 were expected CP6 behaviour changes in old tests: the manager status-change refusal now says "made per day"
+    (`booking-access-guards`, 3 cases), and the chef quote route passes the day target (`consecutive-bookings`).
+    Updated in `2a1d1a13` (with a small follow-up: a dated item removal returns its name and free/late flags).
+  - 2 are **pre-existing on d25645d8**, confirmed by running them with this branch's `server/` and `shared/` reverted to the
+    base commit: `booking-partial-acceptance-projection` (its PGlite fixture lacks a table the CP5 manager list query reads)
+    and `stripe-webhook-contract > refuses live Stripe keys` (environment-dependent). Not touched here.
+- **`npx tsc --noEmit -p tsconfig.json`, one foreground run** (~12 min): **3 errors**. Two were in the new engine
+  (`engine.perComponent` on the fee-pending union variant), fixed with an explicit fee-pending return. One was pre-existing in
+  `booking-payment-decision.ts:466` (from 7f308830, `proposal` possibly undefined although the same line's outcome check
+  guarantees it), fixed with a non-null assertion (type-only). The compiler was **not re-run**, per the one-run rule, so a
+  verified zero-error pass is still outstanding. Fixes committed after the run; the affected suites pass after them
+  (CP6 + cancellation + support: 205; payment decision / partial acceptance: 70 + the pre-existing projection failure).
 
 ## Risks and limits
 

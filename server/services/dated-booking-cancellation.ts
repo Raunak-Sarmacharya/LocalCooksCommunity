@@ -146,6 +146,7 @@ function price(ctx: Context, facts: Facts, target: DayTarget, requested: DayMode
     components: rows.map(row => ({ id: componentId(row), kind: row.componentKey === 'kitchen' ? 'kitchen' as const : 'equipment' as const,
       sessionIndex: Number(evidence(row).sessionIndex), kitchenCents: row.subtotalCents + row.taxCents, platformCents: row.serviceFeeCents })),
     settledComponents: Object.fromEntries(rows.filter(row => !selected.includes(row)).map(row => [componentId(row), { refundCents: 0, kitchenRefundCents: 0 }])) });
+  if (!engine.quoteReady) return { quoteReady: false as const, reasonCode: 'processing_fee_pending' as const, message: FEE_PENDING };
   // The engine's fee split must be the frozen actual fee share on each allocation; anything else is not that part's fee.
   if (rows.some((row, i) => engine.perComponent[i].feeCents !== row.stripeFeeCents)) throw fail('This booking’s card-fee shares need Local Cooks review.');
   const lines: DayRefundLine[] = selected.map(row => {
