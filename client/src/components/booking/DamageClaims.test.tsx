@@ -68,6 +68,10 @@ describe('manager guided filing', () => {
     mount(<DamageClaimSheet storageRentalId={43} chefName="Sam" />);
     fireEvent.click(screen.getByRole('button', { name: 'Report damage or extra cleaning' }));
     expect(await screen.findByText('No move-in photos were taken.')).toBeInTheDocument();
+    expect(screen.getByText(/move-in and move-out photos and notes are attached automatically/)).toBeInTheDocument();
+    expect(screen.getByText('At move-in')).toBeInTheDocument();
+    expect(screen.getByText('At move-out')).toBeInTheDocument();
+    expect(screen.queryByText('At arrival')).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('What happened?'), { target: { value: 'Shelf dented during the rental.' } });
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     fireEvent.change(screen.getByLabelText('What does this cost cover?'), { target: { value: 'Replace shelf' } });

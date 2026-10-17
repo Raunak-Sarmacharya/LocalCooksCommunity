@@ -72,7 +72,7 @@ export default function ChefStorageRentalPage() {
             {["reserved", "active"].includes(rental.state) && <><dt className="text-muted-foreground">{t("stcExtendBy")}</dt><dd>{storageDay(rental.graceEndsOn, locale, true)}</dd></>}
             {rental.rentalTerms && <><dt className="text-muted-foreground">{t("stcDailyPrice")}</dt><dd>{t("stcPerDay", { amount: cad(rental.rentalTerms.dailyPriceCents, locale) })}</dd></>}
           </dl>
-          {["reserved", "active"].includes(rental.state) && rental.rentalTerms && <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+          {["reserved", "active"].includes(rental.state) && !["grace", "holdover"].includes(rental.phase ?? "") && rental.rentalTerms && <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
             {t("stcDiscExtend", { end: storageDay(rental.paidThrough, locale), kitchen: rental.kitchen.name, daily: cad(rental.rentalTerms.dailyPriceCents, locale) })}</p>}
           {rental.declineReason && <p className="mt-3 text-sm">{t("stcDeclineReason", { reason: rental.declineReason })}</p>}
         </section>

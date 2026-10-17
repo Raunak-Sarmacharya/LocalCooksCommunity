@@ -21,7 +21,8 @@ router.get('/:kind/:id', async (req, res) => {
     const context = await db.transaction(tx => problemContext(tx, kind, id));
     const opens = problemReportingOpensAt(context);
     const reportingOpensAt = opens && opens.getTime() > Date.now() ? opens.toISOString() : null;
-    res.json({ problems, reportingAvailable: canReportProblem(context, req.neonUser!), reportingOpensAt, actorId: req.neonUser!.id });
+    res.json({ problems, reportingAvailable: canReportProblem(context, req.neonUser!), reportingOpensAt, actorId: req.neonUser!.id,
+      reference: context?.reference ?? null });
   }
   catch (error) { return errorResponse(res, error); }
 });

@@ -120,7 +120,8 @@ describe('storage extension payment operations', () => {
     expect(await rental()).toMatchObject({ paidThrough: '2026-10-21', occupancy: '[2026-10-01,2026-10-27)' });
     expect(await one(paymentTransactions)).toMatchObject({ payoutTiming: 'storage_term', payoutReleasedAt: null, payoutEligibleAt: new Date('2026-10-22T02:30:00Z'), metadata: { storageTermId: expect.any(Number) } });
     expect(h.notices).toHaveBeenCalledTimes(1);
-    expect(h.notices).toHaveBeenCalledWith(expect.anything(), 7, 'extended', expect.objectContaining({ amountCents: 3550, paidThrough: '2026-10-21' }));
+    expect(h.notices).toHaveBeenCalledWith(expect.anything(), 7, 'extended', expect.objectContaining({
+      amountCents: 3550, paidThrough: '2026-10-21', payoutCents: 3450, payoutDate: new Date('2026-10-22T02:30:00Z') }));
     expect(stripe.paymentIntents.create.mock.calls[0]).toMatchObject([{ capture_method: 'automatic', confirm: true, off_session: false, use_stripe_sdk: true, metadata: { type: 'storage_term' } }, { idempotencyKey: expect.stringMatching(/^storage-term:/) }]);
   });
   it('recovers a lost response by metadata without another create', async () => {

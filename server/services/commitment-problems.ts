@@ -236,7 +236,8 @@ export async function listProblems(actor: Actor, commitment?: 'booking' | 'tour'
     const visible = [];
     for (const row of rows) {
       const context = await problemContext(tx, row.storageBookingId ? 'storage' : row.bookingId ? 'booking' : 'tour', row.storageBookingId || row.bookingId || row.viewingId!);
-      if (actor.role === 'admin' || actor.id === context?.chefId || actor.id === context?.managerId) visible.push(row);
+      if (actor.role === 'admin' || actor.id === context?.chefId || actor.id === context?.managerId)
+        visible.push({ ...row, reference: context?.reference ?? null });
     }
     return visible;
   });

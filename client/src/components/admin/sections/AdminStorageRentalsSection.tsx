@@ -152,7 +152,7 @@ export function AdminStorageRentalsSection() {
                   [t("stAdminColListing"), selected.listingName],
                   [t("stAdminColUnit"), selected.unitLabel],
                   [t("stAdminColChef"), selected.chefName],
-                  [t("stAdminColState"), selected.state],
+                  [t("stAdminColState"), t(`stState_${selected.state}` as never)],
                   [t("stAdminColDates"), selected.startOn ? `${formatBookingDate(selected.startOn)} – ${formatBookingDate(selected.paidThrough ?? selected.startOn)}` : "—"],
                   [t("stAdminColAmount"), selected.totalCents != null ? formatCurrency(selected.totalCents) : "—"],
                 ].map(([label, value]) => (
