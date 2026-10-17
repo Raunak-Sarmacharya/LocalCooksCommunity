@@ -20,7 +20,7 @@
   "stMoveInDue_Chef_Title": "Move in to {listing}",
   "stMoveInDue_Chef_Body": "Your storage starts {start}. Add move-in photos to record the unit’s condition.",
   "stMovedIn_Kitchen_Title": "{chef} moved in",
-  "stMovedIn_Kitchen_Body": "{chef} moved into {listing} on {date} ? {photos, plural, one {# photo} other {# photos}} added.",
+  "stMovedIn_Kitchen_Body": "{chef} moved into {listing} on {date} · {photos, plural, one {# photo} other {# photos}} added.",
   "stEnding_Chef_Title": "Paid through {paidThrough}",
   "stEnding_Chef_Body": "{days, plural, =0 {Extend now} one {Extend 1 day} other {Extend # days}} · {amount}.",
   "stEnding_Kitchen_Title": "Storage ending soon · {listing}",
@@ -99,7 +99,7 @@
   "stAuthorizationLapsed_Chef_Title": "The card hold had lapsed",
   "stAuthorizationLapsed_Chef_Body": "The card hold for {listing} at {kitchen} had lapsed; nothing was charged. Send a new request to try again.",
   "stAuthorizationLapsed_Kitchen_Title": "Storage request expired",
-  "stAuthorizationLapsed_Kitchen_Body": "The card hold for {chef}?s request for {listing} had lapsed. Nothing was charged.",
+  "stAuthorizationLapsed_Kitchen_Body": "The card hold for {chef}’s request for {listing} had lapsed. Nothing was charged.",
   "stCheckoutServiceFee": "Service fee",
   "stCheckoutDays": "{count, plural, one {# day} other {# days}}",
   "stError_quote_expired": "Refresh the quote and try again.",
@@ -414,7 +414,7 @@
   "stError_relet": "This shelf has been rented again. Contact Local Cooks about the items left behind.",
   "stError_visit_evidence_required": "Add the photos and complete the tasks requested by the kitchen.",
   "stProblemTitle": "Storage {ref}: {status}",
-  "stProblemAt": "{name} ? Updated {date}",
+  "stProblemAt": "{name} · Updated {date}",
   "stProblemReceived": "Your report was received. Follow this problem for replies.",
   "stViewProblem": "View problem",
   "stProblemStatus_reported": "Awaiting response",
@@ -426,5 +426,5 @@
   "stAutoCleared_Chef_Title": "Move-out cleared",
   "stAutoCleared_Chef_Body": "The review time for {listing} at {kitchen} ended on {date}. Your storage is now cleared.",
   "stAutoCleared_Kitchen_Title": "Move-out cleared for {chef}",
-  "stAutoCleared_Kitchen_Body": "The review time for {chef}?s {listing} ended on {date}. The unit was cleared automatically."
+  "stAutoCleared_Kitchen_Body": "The review time for {chef}’s {listing} ended on {date}. The unit was cleared automatically."
 }
