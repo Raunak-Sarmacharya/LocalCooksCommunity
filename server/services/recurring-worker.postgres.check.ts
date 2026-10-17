@@ -86,7 +86,7 @@ describe('real PostgreSQL competing connection dispatch', () => {
     const database = drizzle(first, { schema });
     const { storageListingAwaitingRemoval } = await import('./booking-linked-cancellation');
     await database.insert(schema.storageBookings).values({ id: 30, storageListingId: 50, kitchenBookingId: 11, chefId: 3,
-      startDate: new Date('2026-01-01'), endDate: new Date('2026-01-02'), status: 'completed', totalPrice: '500', pricingModel: 'daily',
+      startDate: new Date('2026-01-01'), endDate: new Date('2026-01-02'), status: 'completed', rentalState: 'ended', totalPrice: '500', pricingModel: 'daily',
       checkoutStatus: 'completed', checkoutApprovedAt: new Date(), checkoutApprovedBy: null });
     const occupied = async () => (await database.execute(sql`SELECT ${storageListingAwaitingRemoval} AS occupied FROM (SELECT 50 AS id) storage_listings`)).rows[0].occupied;
     expect(await occupied()).toBe(true);

@@ -108,7 +108,7 @@ describe('isolated 4B additive upgrade and real recovery records', () => {
     expect((await first.query('SELECT id FROM commitment_problems')).rowCount).toBe(2);
     await expect(scoped(first, () => reportProblem('tour',20,{ id: 4, role: 'chef' },'Foreign visitor report attempt','foreign-report-123456'))).rejects.toThrow('access denied');
     expect(await scoped(first, () => listProblems({ id: 4, role: 'chef' }))).toEqual([]);
-    let row = (await scoped(first, () => listProblems(staff,'tour',20)))[0];
+    let row: Awaited<ReturnType<typeof updateProblem>> = (await scoped(first, () => listProblems(staff,'tour',20)))[0];
     await expect(scoped(first, () => updateProblem(row.id,manager,{ action: 'claim', expectedRevision: row.revision }))).rejects.toThrow('Local Cooks');
     row = await scoped(first, () => updateProblem(row.id,staff,{ action: 'claim', expectedRevision: row.revision }));
     await expect(scoped(first, () => updateProblem(row.id,staff,{ action: 'resolve', expectedRevision: row.revision, note: 'Resolution without acknowledgment' }))).rejects.toThrow('Acknowledge');
@@ -176,7 +176,7 @@ describe('isolated 4B additive upgrade and real recovery records', () => {
 
   it('participants reply to the same open request without taking ownership or resolving it',async () => {
     const { listProblems, updateProblem } = await import('./commitment-problems');
-    let row=(await scoped(first,()=>listProblems(staff,'booking',10))).find(row=>row.status==='reported' && row.claimedBy===1)!;
+    let row: Awaited<ReturnType<typeof updateProblem>>=(await scoped(first,()=>listProblems(staff,'booking',10))).find(row=>row.status==='reported' && row.claimedBy===1)!;
     const owner=row.claimedBy;
     for(const actor of [chef,manager]) {
       row=await scoped(first,()=>updateProblem(row.id,actor,{action:'reply',expectedRevision:row.revision,note:'Additional information about the reported issue'}));
