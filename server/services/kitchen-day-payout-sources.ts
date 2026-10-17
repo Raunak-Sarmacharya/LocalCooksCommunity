@@ -38,7 +38,7 @@ export async function syncDayPayoutSource(sourceId: number) {
     if (m.sessionExtensionId) {
       const [extension] = await tx.select().from(kitchenBookingExtensions).where(eq(kitchenBookingExtensions.id, Number(m.sessionExtensionId)));
       const visit = visits.find(v => v.id === extension?.visitId);
-      if (!visit || extension.bookingId !== locked.bookingId || extension.paymentIntentId !== locked.paymentIntentId || !extension.paidAt)
+      if (!extension || !visit || extension.bookingId !== locked.bookingId || extension.paymentIntentId !== locked.paymentIntentId || !extension.paidAt)
         throw Error('Supplemental payment visit needs review');
       components = [{ visitId: visit.id, sessionIndex: visit.blockIndex, componentKey: `extension:${extension.id}`,
         kind: 'kitchen', bookingId: locked.bookingId, subtotalCents: Number(locked.baseAmount) - Number(locked.taxAmount) }];
@@ -50,7 +50,7 @@ export async function syncDayPayoutSource(sourceId: number) {
     if (!components?.length || components.some(c => !visits.some(v => v.id === c.visitId) || !Number.isSafeInteger(c.subtotalCents) || c.subtotalCents < 0)
       || new Set(components.map(c => `${c.visitId}:${c.componentKey}`)).size !== components.length) throw Error('Supplemental day allocations required');
     components = [...components].sort((a, b) => visits.find(v => v.id === a.visitId)!.visitDate!.localeCompare(visits.find(v => v.id === b.visitId)!.visitDate!) || a.componentKey.localeCompare(b.componentKey));
-    if (evidence.intentId !== locked.paymentIntentId || evidence.capturedCents !== Number(locked.amount)
+    if (evidence.currency !== 'cad' || locked.currency.toLowerCase() !== 'cad' || evidence.intentId !== locked.paymentIntentId || evidence.capturedCents !== Number(locked.amount)
       || Number(locked.baseAmount) + Number(locked.serviceFee) !== evidence.capturedCents) throw Error('Supplemental capture differs');
     const allocated = allocateDatedCapture(components, { totalCents: Number(locked.amount), taxCents: Number(locked.taxAmount), serviceFeeCents: Number(locked.serviceFee) } as any, evidence.feeCents);
     const existing = await tx.select().from(allocations).where(eq(allocations.sourceId, sourceId)).orderBy(asc(allocations.id));

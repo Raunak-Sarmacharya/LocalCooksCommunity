@@ -46,7 +46,7 @@ beforeEach(async () => {
   const clock = makeCloseoutSnapshot(booking, 'UTC', { serviceEndGraceMinutes: 30, inspectionAutoCloseHours: 24, checkinWindowMinutesBefore: 30 }, visits);
   await h.db.update(s.kitchenBookings).set({ visitDuties: { clockCloseout: clock } }).where(eq(s.kitchenBookings.id, 1));
   await h.db.insert(s.paymentTransactions).values({ id: 1, bookingId: 1, bookingType: 'kitchen', chefId: 3, managerId: 2, amount: '4680', baseAmount: '4600',
-    serviceFee: '80', taxAmount: '600', stripeProcessingFee: '200', managerRevenue: '4400', status: 'succeeded', currency: 'cad',
+    serviceFee: '80', taxAmount: '600', stripeProcessingFee: '200', managerRevenue: '4400', netAmount: '4480', status: 'succeeded', currency: 'cad',
     paymentIntentId: 'pi_days', chargeId: 'ch_days', payoutPartition: 'per_day', payoutTiming: 'after_closeout' });
   await h.db.insert(s.kitchenBookingDayAllocations).values([1, 2].map(visitId => ({ sourceId: 1, visitId, componentKey: 'kitchen', subtotalCents: 2000,
     taxCents: 300, serviceFeeCents: 40, stripeFeeCents: 100, evidence: { chargeId: 'ch_days', balanceTransactionId: 'bt_days' } })));
@@ -90,6 +90,11 @@ describe('CP5 daily releases', () => {
     await h.db.update(s.commitmentProblems).set({ status: 'resolved' });
     await releaseDayPayout((await day(1)).id, new Date('2099-10-08T14:00:00Z'));
     expect(h.transfers).toHaveLength(2);
+  });
+  it('holds a manager operational problem on its visit, independently of damage claims', async () => {
+    await h.db.insert(s.commitmentProblems).values({ sourceKey: 'manager-problem', kind: 'live', bookingId: 1, visitId: 1, reportedBy: 2, description: 'Operational access problem' });
+    await releaseDayPayout((await day()).id, now()); expect(h.create).not.toHaveBeenCalled();
+    expect((await day()).holdReason).toBe('reported_issue');
   });
   it('keeps an unscoped problem booking-wide and ignores a manager damage claim', async () => {
     await h.db.update(s.kitchenBookingVisits).set({ checkinStatus: 'checkout_claim_filed' }).where(eq(s.kitchenBookingVisits.id, 1));
@@ -187,13 +192,52 @@ describe('CP5 daily releases', () => {
       originalEndTime: '12:00', endTime: '13:00', requestKey: 'extra-time-request', originalEndAt: new Date('2099-10-05T12:00:00Z'), endAt: new Date('2099-10-05T13:00:00Z'), expiresAt: now(),
       requestedBy: 2, amountCents: 1170, paymentIntentId: 'pi_extra', paidAt: now(), quote: {} as any });
     await h.db.insert(s.paymentTransactions).values({ id: 2, bookingId: 1, bookingType: 'kitchen', chefId: 3, managerId: 2, amount: '1170', baseAmount: '1150',
-      serviceFee: '20', taxAmount: '150', managerRevenue: '1150', status: 'succeeded', currency: 'cad', paymentIntentId: 'pi_extra', chargeId: 'ch_extra',
+      serviceFee: '20', taxAmount: '150', managerRevenue: '1150', netAmount: '1170', status: 'succeeded', currency: 'cad', paymentIntentId: 'pi_extra', chargeId: 'ch_extra',
       metadata: { sessionExtensionId: 1 } });
     expect(await h.db.transaction((tx: any) => partitionDatedSupplement(2, tx))).toBe(true);
     h.evidence = { intentId: 'pi_extra', capturedCents: 1170, currency: 'cad', feeCents: 50, chargeId: 'ch_extra', balanceTransactionId: 'bt_extra', feeDetails: [] };
     await syncDayPayoutSource(2); await syncDayPayoutSource(2);
     const rows = await readDayPayouts([1]); expect(rows.filter(r => r.sourceId === 2)).toHaveLength(1);
     expect(rows.find(r => r.sourceId === 2)).toMatchObject({ visitId: 1, amountCents: 1100 });
+  });
+  it('concurrent duplicate releases create one provider transfer and one evidence receipt', async () => {
+    const id = (await day()).id;
+    await Promise.all([releaseDayPayout(id, now()), releaseDayPayout(id, now())]);
+    expect(h.transfers).toHaveLength(1); expect(await get(s.paymentHistory)).toHaveLength(1);
+  });
+  it('retries manager setup failures before the 24-hour inspection deadline after a clear', async () => {
+    const clearedAt = new Date('2099-10-05T13:00:00Z');
+    await h.db.update(s.users).set({ stripeConnectAccountId: null }).where(eq(s.users.id, 2));
+    await releaseBookingDayPayouts(1, clearedAt);
+    await h.db.update(s.users).set({ stripeConnectAccountId: 'acct_daily' }).where(eq(s.users.id, 2));
+    expect((await sweepDayPayouts(3, new Date('2099-10-05T14:01:00Z'))).released).toBe(1);
+  });
+  it('replays an already-sent manual installment as success and rejects an unrelated selector', async () => {
+    const id = (await day()).id;
+    await releaseBookingDayPayouts(1, now(), undefined, id);
+    expect(await releaseBookingDayPayouts(1, now(), undefined, id)).toMatchObject({ success: true, deferred: false });
+    await expect(releaseBookingDayPayouts(9, now(), undefined, id)).rejects.toThrow('belonging');
+  });
+  it('allocates a WP-RS supplemental source to its explicit visit and waits for applied state', async () => {
+    await h.db.insert(s.kitchenBookingChanges).values({ id: 'change_daily', bookingId: 1, requestKey: 'change-key', kind: 'move', state: 'authorized',
+      original: {}, destination: {}, quote: {}, policy: {}, bookingVersion: now(), decisionBy: now(), managerId: 2 });
+    await h.db.insert(s.paymentTransactions).values({ id: 2, bookingId: 1, bookingType: 'kitchen', chefId: 3, managerId: 2, amount: '1170', baseAmount: '1150',
+      serviceFee: '20', taxAmount: '150', managerRevenue: '1150', netAmount: '1170', status: 'succeeded', currency: 'cad', paymentIntentId: 'pi_extra', chargeId: 'ch_extra',
+      payoutPartition: 'per_day', payoutTiming: 'after_closeout', metadata: { kitchenChangeId: 'change_daily', visitId: 1 } });
+    h.evidence = { intentId: 'pi_extra', capturedCents: 1170, currency: 'cad', feeCents: null, chargeId: 'ch_extra', balanceTransactionId: null, feeDetails: null };
+    await syncDayPayoutSource(2);
+    expect((await readDayPayouts([1])).find(d => d.sourceId === 2)).toMatchObject({ visitId: 1, feePending: true });
+    h.evidence.feeCents = 50; h.evidence.balanceTransactionId = 'bt_extra'; await syncDayPayoutSource(2);
+    const extra = (await get(s.kitchenBookingDayPayouts)).find((d: any) => d.sourceId === 2);
+    await expect(releaseDayPayout(extra.id, now())).rejects.toThrow('applied');
+    await h.db.update(s.kitchenBookingChanges).set({ state: 'applied' });
+    h.charge = { ...h.charge, id: 'ch_extra', payment_intent: 'pi_extra', amount_captured: 1170 };
+    await releaseDayPayout(extra.id, now()); expect(h.transfers[0]).toMatchObject({ amount: 1100, source_transaction: 'ch_extra' });
+  });
+  it('refuses an unallocated WP-RS supplement rather than guessing an equal day split', async () => {
+    await h.db.update(s.paymentTransactions).set({ metadata: { kitchenChangeId: 'no_manifest' } });
+    h.evidence = { intentId: 'pi_days', capturedCents: 4680, currency: 'cad', feeCents: 200, chargeId: 'ch_days', balanceTransactionId: 'bt_days' };
+    await expect(syncDayPayoutSource(1)).rejects.toThrow('allocations required'); expect(h.create).not.toHaveBeenCalled();
   });
   it('executes migration FKs and rejects a problem linked to a nonexistent visit', async () => {
     await expect(h.db.insert(s.commitmentProblems).values({ sourceKey: 'bad', kind: 'live', bookingId: 1, visitId: 9999, reportedBy: 3, description: 'Bad visit' })).rejects.toThrow();

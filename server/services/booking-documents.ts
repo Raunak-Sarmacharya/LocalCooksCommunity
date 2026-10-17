@@ -175,7 +175,7 @@ export function deriveBookingMoney(rows: MoneyRows): BookingMoney {
       : transferId ? cents(row.managerRevenue) : null;
     const installments: PaymentFact[] | undefined = row.dayPayouts?.map(day => ({ paymentIntentId: row.paymentIntentId!, chargeId: row.chargeId, purpose,
       paidAt: iso(row.paidAt), bookingSchedule: { ...(paymentBooking || booking), bookingDate: day.date },
-      items: [{ label: `Kitchen visit ? ${day.date}`, subtotalCents: day.subtotalCents }], taxCents: day.taxCents, taxRatePercent: null,
+      items: [{ label: `Kitchen visit - ${day.date}`, subtotalCents: day.subtotalCents }], taxCents: day.taxCents, taxRatePercent: null,
       serviceFeeCents: 0, amountCents: day.subtotalCents + day.taxCents, refunds: [],
       kitchen: { noShare: day.noEntitlement, processingAbsorbed: false, processingFeeCents: day.stripeFeeCents || 0, transferId: day.transferId,
         transferredCents: day.transferId ? day.amountCents : null, transferredAt: day.evidence.sentAt || null, reversedCents: day.evidence.reversedCents || 0 } }));
@@ -221,7 +221,7 @@ export function claimOpen(claim: ClaimRow) {
   return !FINAL_CLAIM.includes(claim.status);
 }
 export function settlementState(rows: MoneyRows, money: BookingMoney, facts: { visitsClosed: boolean; moneyFrozen: boolean }): SettlementState {
-  const owed = (payment: PaymentFact) => {
+  const owed = (payment: PaymentFact): number => {
     if (payment.installments) return payment.installments.reduce((sum, day) => sum + owed(day), 0);
     if (payment.kitchen.noShare || payment.kitchen.transferId) return 0;
     const gross = payment.items.reduce((total, item) => total + item.subtotalCents, 0) + payment.taxCents;

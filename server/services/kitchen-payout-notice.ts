@@ -28,7 +28,7 @@ export async function kitchenPayoutNotice(kind: KitchenPayoutNoticeKind, locale:
     ...(input.chefPaidCents != null ? [{ label: tEmail(language, 'payoutFactChefPaid'), value: money(input.chefPaidCents) }] : []),
     ...(input.feeCents ? [{ label: tEmail(language, 'payoutFactFee'), value: money(input.feeCents) }] : []),
     ...(input.processingCents != null ? [{ label: tEmail(language, 'payoutFactProcessing'), value: money(input.processingCents) }] : []),
-    ...(input.remainingNetCents != null ? [{ label: language.startsWith('fr') ? 'Versements ? venir' : 'Remaining payouts', value: money(input.remainingNetCents) }] : []),
+    ...(input.remainingNetCents != null ? [{ label: language.startsWith('fr') ? 'Versements \u00e0 venir' : 'Remaining payouts', value: money(input.remainingNetCents) }] : []),
     { label: tEmail(language, 'payoutFactPayout'), value: amount }];
   return kind === 'payout_released'
     ? { title: tEmail(language, 'payoutReleasedTitle', { amount, reference: input.reference }),

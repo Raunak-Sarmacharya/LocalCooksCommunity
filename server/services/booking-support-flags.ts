@@ -1,7 +1,7 @@
 import type Stripe from 'stripe';
 import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { db } from '../db';
-import { bookingFlags, kitchenBookings, paymentTransactions, storageBookings, equipmentBookings, users } from '@shared/schema';
+import { bookingFlags, kitchenBookings, paymentTransactions, storageBookings, equipmentBookings, users, kitchenBookingDayPayouts } from '@shared/schema';
 import { queueBookingLifecycleEvent } from './booking-lifecycle-delivery';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -114,7 +114,7 @@ export async function handleBookingSupportWebhook(event: Stripe.Event, stripe: S
     if (!sourceId || !transfer.amount_reversed) return { handled: true, linkedBookings: 0 };
     const source = await stripe.charges.retrieve(sourceId);
     if (source.status !== 'failed' || source.paid) return { handled: true, linkedBookings: 0 };
-    const ids = await bookingsForSources(eq(paymentTransactions.transferId, transfer.id));
+    const ids = await bookingsForSources(or(eq(paymentTransactions.transferId, transfer.id), sql`${paymentTransactions.id} IN (SELECT source_id FROM ${kitchenBookingDayPayouts} WHERE transfer_id = ${transfer.id})`)! );
     for (const id of ids.kitchen) await changeBookingFlag(id, 'transfer_failed', transfer.id);
     for (const id of ids.storage) await changeStorageFlag(id, 'transfer_failed', transfer.id);
     return { handled: true, linkedBookings: ids.kitchen.length + ids.storage.length };

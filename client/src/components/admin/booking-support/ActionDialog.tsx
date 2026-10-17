@@ -188,10 +188,10 @@ function ActionDialogContent({ action, supportCase: c, getFirebaseToken, onClose
           {type === 'release_payout' && c.money.dayPayouts?.length ? <Field label="Day installment">
             <NativeSelect value={installmentId} onChange={e => setInstallmentId(e.target.value)}>
               <option value="">All eligible day installments</option>
-              {c.money.dayPayouts.filter(d => !d.transferId).map(d => <option key={d.installmentId} value={String(d.installmentId)}>{d.operatingDate} ? {fmtMoney(d.amountCents, c.money.currency)} ? {d.status}</option>)}
+              {c.money.dayPayouts.filter(d => !d.transferId).map(d => <option key={d.installmentId} value={String(d.installmentId)}>{d.operatingDate} - {fmtMoney(d.amountCents, c.money.currency)} - {d.status}</option>)}
             </NativeSelect>
           </Field> : null}
-          {type === 'release_payout' && <p className="rounded-lg border bg-muted/30 p-3 text-sm">{t('bsReleasePayoutHelp')}</p>}
+          {type === 'release_payout' && <p className="rounded-lg border bg-muted/30 p-3 text-sm">{c.money.dayPayouts?.length ? 'Retry a day payout after its inspection closes. Open problem reports and reviews must be resolved first.' : t('bsReleasePayoutHelp')}</p>}
           {type === 'finish_kitchen_refund' && (
             <div className="space-y-2 rounded-lg border bg-muted/30 p-3 text-sm">
               <p>{t('bsFinishKitchenRefundHelp')}</p>

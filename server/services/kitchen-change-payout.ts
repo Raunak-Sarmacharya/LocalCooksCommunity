@@ -51,7 +51,7 @@ export async function releaseKitchenChangePayoutForSource(sourceId: number, now 
       await tx.update(paymentTransactions).set({ payoutEligibleAt: eligibleAt, payoutHoldReason: parent?.payoutHoldReason ?? null, updatedAt: now }).where(eq(paymentTransactions.id, source.id));
       return { result: { success: false, deferred: true, reason: 'Released together with the booking payout' } };
     }
-    await assertBookingMoneyWritable({ bookingId: source.bookingId!, paymentTransactionId: source.id, operationKey: `transfer:${source.paymentIntentId}` }, tx);
+    await assertBookingMoneyWritable({ bookingId: source.bookingId!, paymentTransactionId: source.id, payout: true, operationKey: `transfer:${source.paymentIntentId}` }, tx);
     if (decision === 'release') {
       const saved = (source.metadata || {}) as Record<string, any>;
       const [released] = await tx.update(paymentTransactions).set({ payoutReleasedAt: now, payoutHoldReason: null, updatedAt: now,

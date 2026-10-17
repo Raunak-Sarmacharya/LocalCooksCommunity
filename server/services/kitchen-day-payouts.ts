@@ -69,7 +69,7 @@ async function context(tx: Tx, source: Source, visitId: number, now: Date) {
   const result = await tx.execute(sql`SELECT
     EXISTS(SELECT 1 FROM booking_flags f WHERE f.booking_id = ${source.bookingId} AND f.resolved_at IS NULL
       AND f.kind <> 'chargeback' AND (f.visit_id IS NULL OR f.visit_id = ${visitId})) AS flag,
-    EXISTS(SELECT 1 FROM commitment_problems p WHERE p.booking_id = ${source.bookingId} AND p.reported_by = ${row.booking.chefId}
+    EXISTS(SELECT 1 FROM commitment_problems p WHERE p.booking_id = ${source.bookingId}
       AND p.status <> 'resolved' AND (p.visit_id IS NULL OR p.visit_id = ${visitId})) AS issue`);
   const facts = result.rows[0] as { flag: boolean; issue: boolean } | undefined;
   if (!facts) throw Error('Day hold evidence unavailable');
@@ -99,6 +99,7 @@ async function prepare(id: number, now: Date, tick: string) {
     await tx.execute(sql`SELECT id FROM kitchen_bookings WHERE id = ${source.bookingId} FOR UPDATE`);
     await tx.execute(sql`SELECT id FROM kitchen_booking_visits WHERE id = ${initial.visitId} AND booking_id = ${source.bookingId} FOR UPDATE`);
     const [row] = await tx.select().from(payouts).where(eq(payouts.id, id)).for('update');
+    if (row.operationKey !== dayTransferKey(source.id, row.visitId, row.allocationRevision)) throw Error('Daily transfer key differs from its installment');
     if (source.payoutPartition !== 'per_day' || !captured.includes(source.status)) throw Error('Daily source is not captured');
     if (row.transferId || row.noEntitlement) return { row, source };
     const previous = evidenceOf(row);
@@ -112,7 +113,7 @@ async function prepare(id: number, now: Date, tick: string) {
     const amount = dayEntitlement(parts);
     const waiting = !current.eligibility.ready ? current.eligibility.holdReason || 'visit_not_closed'
       : amount === null ? 'waiting_fee' : refundPending(source) ? 'refund_review' : null;
-    await tx.update(payouts).set({ eligibleAt: new Date(current.eligibility.expectedAt), holdReason: waiting, updatedAt: now,
+    await tx.update(payouts).set({ eligibleAt: waiting === 'visit_not_closed' ? new Date(current.eligibility.expectedAt) : now, holdReason: waiting, updatedAt: now,
       evidence: { ...previous, nextAttemptAt: new Date(now.getTime() + 3600_000).toISOString() } }).where(eq(payouts.id, id));
     if (waiting) return { row, source };
     await assertBookingMoneyWritable({ bookingId: source.bookingId, paymentTransactionId: source.id, visitId: row.visitId, payout: true,
@@ -193,7 +194,8 @@ export async function flushDayPayoutNotices(bookingId: number) {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(74103, ${bookingId})`);
     const rows = await tx.select({ payout: payouts }).from(payouts).innerJoin(paymentTransactions, eq(paymentTransactions.id, payouts.sourceId))
       .where(and(eq(paymentTransactions.bookingId, bookingId), sql`${payouts.transferId} IS NOT NULL`)).orderBy(asc(payouts.id));
-    const allocationRows = rows.length ? await tx.select().from(allocations).where(inArray(allocations.sourceId, Array.from(new Set(rows.map(r => r.payout.sourceId))))) : [];
+    const allocationRows = await tx.select().from(allocations).where(sql`${allocations.sourceId} IN
+      (SELECT id FROM payment_transactions WHERE booking_id = ${bookingId} AND booking_type IN ('kitchen','bundle') AND payout_partition = 'per_day')`);
     const sentIds = new Set(rows.map(r => `${r.payout.sourceId}:${r.payout.visitId}:${r.payout.allocationRevision}`));
     const remainingNetCents = allocationRows.filter(a => !sentIds.has(`${a.sourceId}:${a.visitId}:${a.allocationRevision}`))
       .reduce((sum, a) => sum + (a.stripeFeeCents === null ? 0 : Math.max(0, a.subtotalCents + a.taxCents - a.stripeFeeCents - Number((a.evidence as any).managerDebitedCents || 0))), 0);
@@ -213,15 +215,13 @@ export async function flushDayPayoutNotices(bookingId: number) {
 }
 
 export async function releaseBookingDayPayouts(bookingId: number, now = new Date(), sourceId?: number, installmentId?: number) {
-  const rows = await db.select({ id: payouts.id }).from(payouts).innerJoin(paymentTransactions, eq(paymentTransactions.id, payouts.sourceId))
+  const selected = await db.select({ id: payouts.id, transferId: payouts.transferId, noEntitlement: payouts.noEntitlement }).from(payouts)
+    .innerJoin(paymentTransactions, eq(paymentTransactions.id, payouts.sourceId))
     .where(and(eq(paymentTransactions.bookingId, bookingId), sourceId ? eq(payouts.sourceId, sourceId) : undefined,
-      installmentId ? eq(payouts.id, installmentId) : undefined, isNull(payouts.transferId), eq(payouts.noEntitlement, false)))
-    .orderBy(asc(payouts.id)).limit(42);
-  if (installmentId) {
-    const [chosen] = await db.select().from(payouts).innerJoin(paymentTransactions, eq(paymentTransactions.id, payouts.sourceId))
-      .where(and(eq(payouts.id, installmentId), eq(paymentTransactions.bookingId, bookingId)));
-    if (!chosen) throw Error('Choose an installment belonging to this booking');
-  }
+      installmentId ? eq(payouts.id, installmentId) : undefined)).orderBy(asc(payouts.id)).limit(42);
+  if (installmentId && !selected.length) throw Error('Choose an installment belonging to this booking');
+  const rows = selected.filter(row => !row.transferId && !row.noEntitlement);
+  const alreadyComplete = selected.length > 0 && !rows.length;
   let transferred = false, failures = 0;
   for (const row of rows) {
     try { transferred = (await releaseDayPayout(row.id, now)).transferred || transferred; }
@@ -229,7 +229,7 @@ export async function releaseBookingDayPayouts(bookingId: number, now = new Date
   }
   await flushDayPayoutNotices(bookingId);
   await import('./booking-documents').then(d => d.issueBookingDocumentsSafely(bookingId, 'payout_released'));
-  return { success: failures === 0 && transferred, transferred, deferred: !transferred, overrideRecorded: false };
+  return { success: failures === 0 && (transferred || alreadyComplete), transferred, deferred: !transferred && !alreadyComplete, overrideRecorded: false };
 }
 
 async function recordFailure(id: number, error: unknown, now: Date) {
@@ -283,7 +283,7 @@ export async function readDayPayouts(bookingIds: number[], tx: Tx = db as unknow
   const parts = rows.length ? await tx.select().from(allocations).where(inArray(allocations.sourceId, Array.from(new Set(rows.map(r => r.payout.sourceId))))) : [];
   return Promise.all(rows.map(async ({ payout: p, source, bookingId, date }) => {
     const live = !p.transferId && !p.noEntitlement ? await context(tx, source, p.visitId, new Date()).catch(() => null) : null;
-    const hold = live?.eligibility.holdReason || p.holdReason;
+    const hold = live ? live.eligibility.holdReason : p.holdReason;
     const amount = p.transferAmountCents ?? dayEntitlement(parts.filter(a => a.sourceId === p.sourceId && a.visitId === p.visitId && a.allocationRevision === p.allocationRevision));
     const payout: KitchenPayout = { timing: 'after_closeout', status: p.transferId ? 'sent' : p.noEntitlement ? 'not_applicable' : hold && hold !== 'visit_not_closed' ? 'on_hold' : 'scheduled',
       holdReason: hold === 'support_flag' || hold === 'reported_issue' ? hold : null,

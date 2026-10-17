@@ -153,7 +153,7 @@ export function MoneyCard({ c }: { c: SupportCase }) {
         {!!m.dayPayouts?.length && <div className="border-t pt-2">
           <p className="text-sm font-medium">Daily payout installments</p>
           <ul>{m.dayPayouts.map(day => <li key={day.installmentId} className="py-1 text-sm">
-            {day.operatingDate} ? {day.feePending ? 'Waiting for actual processing fee' : fmtMoney(day.amountCents, m.currency)} ? {humanize(day.status)}
+            {day.operatingDate} - {day.feePending ? 'Waiting for actual processing fee' : fmtMoney(day.amountCents, m.currency)} - {humanize(day.status)}
             {day.transferId && <span className="ml-2 text-muted-foreground">{day.transferId}</span>}
             {day.retryReason && <p className="text-muted-foreground">{humanize(day.retryReason)}</p>}
           </li>)}</ul>
