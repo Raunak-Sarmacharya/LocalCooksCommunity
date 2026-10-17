@@ -146,6 +146,8 @@ before checking the fixes. `npm ci` installed this worktree's dependencies witho
   6. Legacy manager status changes that cancel the booking or remove equipment/storage.
   7. Manager direct transaction refund and full-refund request; admin full-refund decision.
   8. Shared `createRefund` and `reverseTransferAndRefund`, including reserved/provider-only calls.
+  Support commands also refuse before reserving an action, preserving the clear refusal and avoiding a false recovery
+  record; all eight support refund/cancellation command variants are tested with both discriminators.
   CP4's whole-authorization decline/withdrawal still uses its own decision engine; it has no captured refund arithmetic.
   Provider-fact reconciliation and the existing checkout incident tools remain available for manual incident handling.
   Regressions parameterize all cancellation commands over both discriminators, include the Mon/Wed/Fri 12-hour example,
@@ -172,5 +174,7 @@ before checking the fixes. `npm ci` installed this worktree's dependencies witho
   decision, refund receipt reconciliation, and dispute created/updated/closed dispatch to support flags.
 
 Pre-final focused verification: **255 passed, 5 files** (CP4, cancellation commands, session extensions and refund retry).
-The implementation is committed before final regression/TypeScript checks; their results will be appended after completion.
+Initial broader verification after implementation commit `d98b1455`: **676 passed, 40 files**. The final caller review then
+added the support-dispatch pre-reservation guard and its red/green regressions; that follow-up is committed before TypeScript.
+Final regression/TypeScript results will be appended after completion.
 No push, deployment, migration application, live Stripe request, Vercel or Inngest operation was performed.
