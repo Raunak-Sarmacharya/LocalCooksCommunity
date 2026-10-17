@@ -6,7 +6,7 @@ import { db } from '../db';
  * kitchen share. An unscoped refund (a manager's amount, an admin full refund, a raw status change) can't say which day
  * pays for it, so those paths refuse and point to the day-scoped commands.
  */
-export const DATED_REFUND_REFUSAL = 'Refunds on a multi-day booking are made per day: cancel that day or remove its equipment from the booking, or ask Local Cooks for a goodwill refund.';
+export const DATED_REFUND_REFUSAL = 'Refunds on a multi-day booking are made per day: cancel or refund that day, or remove its equipment, from the booking; or ask Local Cooks for a goodwill refund.';
 const refuse = () => { throw Object.assign(new Error(DATED_REFUND_REFUSAL), { status: 409, statusCode: 409 }); };
 
 /** Covers direct refunds as well as separately charged items linked to a dated parent. */

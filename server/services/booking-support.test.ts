@@ -101,6 +101,31 @@ describe('support state × action matrix', () => {
       expect(perDay([{ id: 1, transferId: null, noEntitlement: false, holdReason: 'reported_issue', evidence: {} }])).toContain('release_payout');
       expect(perDay([{ id: 1, transferId: 'tr_1', noEntitlement: false, holdReason: null, evidence: { lastError: 'old' } }])).not.toContain('release_payout');
     });
+    it('L2: a stalled "kitchen can’t host" on a multi-day booking is verified from its day-refund receipt, not the support key', async () => {
+      Object.assign(state.booking, { scheduleRevision: 1 }); state.payments[0].payoutPartition = 'per_day';
+      state.provider.mockRejectedValueOnce(Error('Stripe timeout'));
+      const first = await executeBookingSupportAction(1, 7, input('cancel_kitchen_caused', { actingFor: 'manager', amountCents: undefined }));
+      expect(first.action.status).toBe('recovery_required');
+      state.receipts = [{ id: 're_day', status: 'succeeded', amount: 21960, metadata: { refund_operation_id: 'kitchen-day-refund:1:test-operation-1:8' } }];
+      const again = await executeBookingSupportAction(1, 7, input('cancel_kitchen_caused', { actingFor: 'manager', amountCents: undefined }));
+      expect(again.action.status).toBe('verified');
+    }, 20_000);
+    const dated = (extra: any = {}) => availableSupportActions({ ...context(), booking: { ...state.booking, scheduleRevision: 1 },
+      payments: [{ ...state.payments[0], payoutPartition: 'per_day', payoutTiming: 'after_closeout', transferId: null, ...extra.payment }],
+      equipment: extra.equipment ?? [], visits: extra.visits ?? state.visits } as any).map(action => action.type);
+    it('L3: "kitchen can’t host" stays for the remaining days after day 1 is used and after goodwill', () => {
+      const goodwill = { metadata: { refunds: [{ id: 're_g', customerReceived: 500, managerDebited: 0, platformServiceFeeReturned: 0, platformGoodwillCents: 500 }] }, refundAmount: '500' };
+      const used = [{ ...state.visits[0], checkinStatus: 'checked_out', checkedInAt: new Date() }, state.visits[1]];
+      expect(dated({ payment: goodwill, equipment: [{ id: 5, status: 'completed' }], visits: used })).toContain('cancel_kitchen_caused');
+      expect(dated({ visits: state.visits.map((visit: any) => ({ ...visit, checkinStatus: 'checked_out' })) })).not.toContain('cancel_kitchen_caused');
+      expect(dated({ visits: state.visits.map((visit: any) => ({ ...visit, scheduleState: 'cancelled' })) })).not.toContain('cancel_kitchen_caused');
+    });
+    it('L4: offers assigning a refund made outside the app only while one holds the day payouts', () => {
+      expect(dated()).not.toContain('assign_outside_refund');
+      expect(dated({ payment: { refundAmount: '500', metadata: { refunds: [{ id: 're_dash', customerReceived: 500, managerDebited: 500, platformServiceFeeReturned: 0 }] } } })).toContain('assign_outside_refund');
+      expect(dated({ payment: { refundAmount: '500', metadata: { refunds: [{ id: 're_dash', customerReceived: 500, managerDebited: 500, platformServiceFeeReturned: 0 }],
+        outsideRefunds: [{ refundId: 're_dash', visitId: 11, kitchenDebitCents: 500 }] } } })).not.toContain('assign_outside_refund');
+    });
     it('keeps an open non-chargeback flag holding a per-day release', () => {
       state.flags = [{ id: 1, kind: 'manual_hold' }];
       expect(perDay([{ id: 1, transferId: null, noEntitlement: false, holdReason: 'reported_issue', evidence: {} }])).not.toContain('release_payout');

@@ -971,6 +971,20 @@ router.post('/bookings/:id/days/cancel', requireFirebaseAuthWithUser, requireMan
     res.json(result);
   } catch (error) { res.status((error as { status?: number }).status || 409).json({ error: error instanceof Error ? error.message : 'Kitchen cancellation needs review' }); }
 });
+// Multi-day: the kitchen refunds the chef more for one day (kitchen-paid, out of that day's payout; never more than its remaining share).
+router.post('/bookings/:id/days/:visitId/refund', requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+  const id = Number(req.params.id), visitId = Number(req.params.visitId), amountCents = req.body?.amountCents;
+  if (!Number.isSafeInteger(visitId) || visitId <= 0 || !Number.isSafeInteger(amountCents) || amountCents <= 0) return res.status(400).json({ error: 'Choose the day and the amount to refund.' });
+  if (req.body?.reason !== undefined && (typeof req.body.reason !== 'string' || req.body.reason.length > 500)) return res.status(400).json({ error: 'Keep the note under 500 characters.' });
+  if (!/^[a-zA-Z0-9:_-]{8,160}$/.test(req.body?.operationKey || '')) return res.status(400).json({ error: 'A refund operation key is required' });
+  try {
+    const { refundDatedDay } = await import('../services/dated-booking-cancellation');
+    const result = await refundDatedDay(id, req.neonUser!.id, { visitId, amountCents, reason: req.body.reason, operationKey: req.body.operationKey });
+    await (await import('../services/booking-lifecycle-delivery')).deliverBookingLifecycleEvents(10, 20_000, id).catch(error => logger.warn('Day refund notice pending retry', error));
+    await import('../services/booking-documents').then(d => d.issueBookingDocumentsSafely(id, 'kitchen_day_refund')).catch(() => undefined);
+    res.json(result);
+  } catch (error) { res.status((error as { status?: number }).status || 409).json({ error: error instanceof Error ? error.message : 'The refund needs review' }); }
+});
 // Kitchen-caused add-on cancellation: the chef is refunded in full (card fee absorbed by Local Cooks); the kitchen's payout drops by the item's kitchen share only.
 router.post('/bookings/:id/addon-refund', requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   try {
@@ -3991,6 +4005,7 @@ router.get(
           checkinStatus: kitchenBookings.checkinStatus,
           visitDuties: kitchenBookings.visitDuties,
           selectedSlots: kitchenBookings.selectedSlots,
+          scheduleRevision: kitchenBookings.scheduleRevision,
           hasPendingVisitReview: sql<boolean>`EXISTS (SELECT 1 FROM kitchen_booking_visits v WHERE v.booking_id = ${kitchenBookings.id} AND v.checkin_status = 'checkout_requested')`,
           checkedInAt: kitchenBookings.checkedInAt,
           checkedInMethod: kitchenBookings.checkedInMethod,
@@ -4025,6 +4040,9 @@ router.get(
             inArray(kitchenBookings.status, ['confirmed', 'pending', 'completed']),
             or(
               gteOp(kitchenBookings.bookingDate, todayStart),
+              // A multi-day booking stays after its first day passes, while a later active day is still to come.
+              sql`EXISTS (SELECT 1 FROM kitchen_booking_visits v WHERE v.booking_id = ${kitchenBookings.id} AND v.schedule_revision = ${kitchenBookings.scheduleRevision}
+                AND ${kitchenBookings.scheduleRevision} > 0 AND v.schedule_state = 'active' AND v.visit_date >= ${todayKey}::date - 1)`,
               sql`EXISTS (SELECT 1 FROM kitchen_booking_visits v WHERE v.booking_id = ${kitchenBookings.id} AND v.checkin_status = 'checkout_requested')`,
               eq(kitchenBookings.checkinStatus, 'checkout_requested'),
             ),
@@ -4032,8 +4050,13 @@ router.get(
         )
         .orderBy(kitchenBookings.bookingDate, kitchenBookings.startTime);
 
+      const { readKitchenBookingVisits } = await import('../services/kitchen-booking-visits');
+      const { hasUpcomingDay, isCurrentVisit } = await import('@shared/dated-visits');
+      const datedVisits = new Map(await Promise.all(candidateBookings.filter(booking => booking.scheduleRevision > 0)
+        .map(async booking => [booking.id, await readKitchenBookingVisits(booking.id)] as const)));
       const todaysBookings = candidateBookings.filter(booking => {
         if (booking.checkinStatus === 'checkout_requested' || booking.hasPendingVisitReview) return true;
+        if (booking.scheduleRevision > 0) return hasUpcomingDay(booking, datedVisits.get(booking.id) || [], booking.timezone!, now);
         const operatingDate = booking.bookingDate.toISOString().slice(0, 10);
         if (operatingDate >= todayKey) return true;
         const endDate = calendarDateForBookingTime(operatingDate, booking.endTime,
@@ -4042,14 +4065,14 @@ router.get(
         return false;
       });
 
-      const { readKitchenBookingVisits } = await import('../services/kitchen-booking-visits');
-
       const derivedBookings = await attachKitchenPayouts(await projectBookingCloseouts(todaysBookings));
       const visitRows = (await Promise.all(derivedBookings.map(async booking => {
-        const visits = await readKitchenBookingVisits(booking.id);
+        // Cancelled or superseded days of a multi-day booking are not visits on the board.
+        const visits = (datedVisits.get(booking.id) || await readKitchenBookingVisits(booking.id)).filter(visit => isCurrentVisit(booking, visit));
         if (!visits.length) return [{ ...booking, operationsComplete: bookingOperationsComplete(booking) }];
         return visits.map(visit => ({
           ...booking,
+          ...(visit.visitDate ? { bookingDate: new Date(`${visit.visitDate}T12:00:00Z`), visitDate: visit.visitDate } : {}),
           operationsComplete: bookingOperationsComplete(booking),
           visitId: visit.id,
           visitBlockIndex: visit.blockIndex,
@@ -7235,6 +7258,7 @@ router.get(
           startTime: kitchenBookings.startTime,
           endTime: kitchenBookings.endTime,
           operatingWindowStartTime: kitchenBookings.operatingWindowStartTime,
+          scheduleRevision: kitchenBookings.scheduleRevision,
           timezone: locations.timezone,
           status: kitchenBookings.status,
           chefName: users.username,
@@ -7248,15 +7272,26 @@ router.get(
         .where(
           and(
             inArray(locations.id, locationIds),
-            gte(kitchenBookings.bookingDate, new Date(cutoffDate.getTime() - 86400000)),
-            lte(kitchenBookings.bookingDate, now), // Must be in the past (booking date <= now)
+            // A multi-day booking is keyed on its latest active day that ended within the window (checked below).
+            or(and(gte(kitchenBookings.bookingDate, new Date(cutoffDate.getTime() - 86400000)), lte(kitchenBookings.bookingDate, now)),
+              sql`${kitchenBookings.scheduleRevision} > 0 AND EXISTS (SELECT 1 FROM kitchen_booking_visits v WHERE v.booking_id = ${kitchenBookings.id}
+                AND v.schedule_revision = ${kitchenBookings.scheduleRevision} AND v.schedule_state = 'active'
+                AND v.visit_date >= ${new Date(cutoffDate.getTime() - 86400000).toISOString().slice(0, 10)}::date AND v.visit_date <= ${now.toISOString().slice(0, 10)}::date)`),
             inArray(kitchenBookings.status, ["confirmed", "completed"]),
           ),
         )
         .orderBy(desc(kitchenBookings.bookingDate))
         .limit(50);
 
-      const recentKitchenBookings = recentKitchenCandidates.filter(booking => {
+      const { readKitchenBookingVisits } = await import('../services/kitchen-booking-visits');
+      const { latestEndedDay } = await import('@shared/dated-visits');
+      const keyed = await Promise.all(recentKitchenCandidates.map(async booking => {
+        if (!(booking.scheduleRevision > 0)) return booking;
+        const day = latestEndedDay(booking, await readKitchenBookingVisits(booking.id), booking.timezone || DEFAULT_TIMEZONE, now);
+        return day && day.endAt >= cutoffDate ? { ...booking, bookingDate: new Date(`${day.date}T12:00:00Z`), claimDayEnded: true } : null;
+      }));
+      const recentKitchenBookings = keyed.filter((booking): booking is NonNullable<typeof booking> => !!booking).filter(booking => {
+        if ('claimDayEnded' in booking) return true;
         const date = booking.bookingDate.toISOString().slice(0, 10);
         const endDate = calendarDateForBookingTime(date, booking.endTime, booking.operatingWindowStartTime, booking.startTime);
         const scheduledEnd = createBookingDateTime(endDate, booking.endTime, DEFAULT_TIMEZONE);

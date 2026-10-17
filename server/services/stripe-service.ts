@@ -1079,9 +1079,9 @@ export async function reverseTransferAndRefund(
     }
 
     let recoveredRefund: Stripe.Refund | undefined;
+    const attempts: Stripe.Refund[] = [];
     if (options?.idempotencyKey) {
       refundParams.metadata = { ...refundParams.metadata, refund_operation_id: options.idempotencyKey };
-      const attempts: Stripe.Refund[] = [];
       for await (const receipt of stripe.refunds.list({ charge: chargeId, limit: 100 })) {
         if (receipt.metadata?.refund_operation_id !== options.idempotencyKey) continue;
         if (receipt.amount !== amount || receipt.currency !== charge.currency || receipt.charge !== chargeId) throw new Error('Conflicting refund receipts require financial review.');
@@ -1099,7 +1099,11 @@ export async function reverseTransferAndRefund(
       }
       successfulRefundAttempt(attempts, options.idempotencyKey);
     }
-    const refundKey = options?.refundIdempotencyKey || (options?.idempotencyKey ? `${options.idempotencyKey}-refund` : undefined);
+    // A new provider key only once Stripe shows every earlier attempt definitively failed; while one may still be in flight the
+    // original key makes Stripe return that same refund. Concurrent retries after the same failure share one key.
+    const lastFailed = attempts.filter(row => ['failed', 'canceled'].includes(row.status || '')).sort((a, b) => a.created - b.created || a.id.localeCompare(b.id)).at(-1);
+    const refundKey = options?.idempotencyKey ? options.refundIdempotencyKey && lastFailed ? `${options.idempotencyKey}-refund-after-${lastFailed.id}` : `${options.idempotencyKey}-refund`
+      : options?.refundIdempotencyKey;
     const refund = recoveredRefund || await stripe.refunds.create(refundParams, refundKey ? { idempotencyKey: refundKey } : undefined);
 
     if (!refund.charge || typeof refund.charge !== 'string') {

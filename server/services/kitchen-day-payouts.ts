@@ -97,7 +97,8 @@ export function refundsAllocated(source: Pick<Source, 'refundAmount' | 'metadata
   const m = (source.metadata || {}) as Record<string, any>;
   const receipts: Array<{ id: string; customerReceived: number; managerDebited: number; platformServiceFeeReturned: number }> = m.refunds || [];
   const dayRefunds = new Set([...(m.cancellationRefundOperations || []), m.cancellationRefundOperation]
-    .filter(op => op?.dated && op.status === 'succeeded' && op.refundId).map(op => op.refundId));
+    .filter(op => op?.dated && op.status === 'succeeded' && op.refundId).map(op => op.refundId)
+    .concat((m.outsideRefunds || []).map((row: { refundId: string }) => row.refundId)));
   return receipts.reduce((sum, row) => sum + Number(row.customerReceived), 0) === Number(source.refundAmount || 0)
     && receipts.every(row => dayRefunds.has(row.id) || Number(row.managerDebited) === 0 && Number(row.platformServiceFeeReturned) === 0);
 }

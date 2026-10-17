@@ -24,10 +24,15 @@ vi.mock('./stripe-service', () => ({
   getCancellationPaymentFacts: async () => ({ captured: 65880, processingCost: 1941, balanceTransactionId: 'bt_days', feeDetails: [], currency: 'cad',
     chargeId: 'ch_days', refunded: succeeded().reduce((sum, row) => sum + row.amount, 0), refunds: structuredClone(h.refunds) }),
   getCancellationReversalEvidence: async () => [],
+  createRefund: async (intent: string, amount: number, _reason: string, options: any) => {
+    const refund = { id: `re_${h.refunds.length + 1}`, amount, currency: 'cad', charge: 'ch_days', payment_intent: intent, status: 'succeeded',
+      metadata: { ...options.metadata, refund_operation_id: options.idempotencyKey } };
+    h.refunds.push(refund); return refund;
+  },
   getPaymentIntentRefunds: async () => structuredClone(h.refunds),
   // The provider side of `reverseTransferAndRefund` for day reversals; its real branch is tested with Stripe mocked in stripe-refund-recovery.
   reverseTransferAndRefund: async (intent: string, amount: number, _reason: string, options: any) => {
-    h.providerCalls.push({ intent, amount, options: structuredClone(options) });
+    h.providerCalls.push({ intent, amount, options: structuredClone({ ...options, sourceConnection: undefined }) });
     const key = options.idempotencyKey, existing = h.refunds.find(row => row.metadata.refund_operation_id === key && row.status === 'succeeded');
     if (existing) return { refundId: existing.id, refundAmount: existing.amount, refundStatus: 'succeeded', chargeId: 'ch_days', transferReversalId: null };
     expect(options.reverseTransferAmount).toBeUndefined();
@@ -48,10 +53,10 @@ vi.mock('./stripe-service', () => ({
     charges: { retrieve: async () => ({ id: 'ch_days', payment_intent: 'pi_days', paid: true, captured: true, currency: 'cad', amount_captured: 65880,
       amount_refunded: succeeded().reduce((sum, row) => sum + row.amount, 0) }) } }),
 }));
-import { cancelDatedDays, readDatedCancellationQuote, readDatedDayPreviews, remainingDayIds } from './dated-booking-cancellation';
+import { assignOutsideRefund, cancelDatedDays, readDatedCancellationQuote, readDatedDayPreviews, refundDatedDay, remainingDayIds } from './dated-booking-cancellation';
 import { ensureDayPayoutRows, releaseDayPayout, releaseBookingDayPayouts, refundsAllocated, dayEntitlement } from './kitchen-day-payouts';
 import { assertBookingMoneyWritable } from './booking-money-guard';
-import { cancelChefBooking, cancelKitchenCausedBooking, removeChefAddon, readChefAddonQuote, retryCancellationRefund } from './booking-cancellation-refund';
+import { cancelChefBooking, cancelKitchenCausedBooking, removeChefAddon, readChefAddonQuote, retryCancellationRefund, refundSupportGoodwill } from './booking-cancellation-refund';
 import { ADMIN_BOOKING_KINDS, adminBookingNotice } from './admin-booking-notice';
 
 beforeAll(async () => {
@@ -172,7 +177,7 @@ describe('CP6 one refund deadline and the existing late-charge arithmetic', () =
     expect(Array.from(occupiedOperatingDates(booking))).toEqual([MON, FRI]);
     const remaining = (await get(s.kitchenBookingDayAllocations)).filter((row: any) => row.visitId !== 2);
     expect(remaining.reduce((t: number, r: any) => t + r.subtotalCents + r.taxCents + r.serviceFeeCents, 0)).toBe(43920);
-    expect((await allocation(2)).evidence).toMatchObject({ managerDebitedCents: 20053, refund: { customerCents: 21313, kitchenCents: 20053, platformCents: 1260, feeCents: 647 } });
+    expect((await allocation(2)).evidence).toMatchObject({ managerDebitedCents: 20053, refunds: [expect.objectContaining({ customerCents: 21313, kitchenCents: 20053, platformCents: 1260, feeCents: 647 })] });
     const codes = await get(s.kitchenVisitArrivalChallenges);
     expect(codes.map((c: any) => !!c.revokedAt)).toEqual([false, true, false]);
     expect(await op()).toMatchObject({ dated: true, status: 'succeeded', customerRefund: 21313, managerRefund: 20053, platformRefund: 1260, visitIds: [2] });
@@ -247,10 +252,10 @@ describe('CP6 equipment per day (WP-AO)', () => {
     await cancelDatedDays(1, chef, { target: { visitIds: [3] }, operationKey: 'drop-fri-after-item' });
     await cancelChefBooking(1, 3, 'drop-rest');
     const rows = await get(s.kitchenBookingDayAllocations);
-    const refunded = rows.filter((row: any) => row.evidence.refund);
+    const refunded = rows.filter((row: any) => row.evidence.refunds?.length);
     expect(refunded.map((row: any) => row.componentKey)).toEqual(['kitchen', 'kitchen', `equipment:${friItem}`]);
-    expect(h.refunds.reduce((t, r) => t + r.amount, 0)).toBe(refunded.reduce((t: number, r: any) => t + r.evidence.refund.customerCents, 0));
-    expect(rows.find((row: any) => row.componentKey === `equipment:${monItem}`).evidence.refund).toBeUndefined();
+    expect(h.refunds.reduce((t, r) => t + r.amount, 0)).toBe(refunded.reduce((t: number, r: any) => t + r.evidence.refunds.reduce((u: number, x: any) => u + x.customerCents, 0), 0));
+    expect(rows.find((row: any) => row.componentKey === `equipment:${monItem}`).evidence.refunds).toBeUndefined();
   });
   it('removes free equipment with no refund and no provider call', async () => {
     const { items, total, fee } = await seed({ fri: 0 });
@@ -402,5 +407,100 @@ describe('CP6 notices', () => {
     expect(ADMIN_BOOKING_KINDS.has('day_cancelled')).toBe(true);
     expect(adminBookingNotice('day_cancelled', { chef: 'Alex', kitchen: 'Harbour kitchen', reference: 'KB-DAYS', when: 'Nov 2', message: 'The chef cancelled Wed, Nov 4. Refunded $213.13.' }))
       .toEqual({ title: 'Days cancelled · KB-DAYS', message: 'Alex at Harbour kitchen · Nov 2 · KB-DAYS. The chef cancelled Wed, Nov 4. Refunded $213.13.' });
+  });
+});
+
+describe('CP6 fix round', () => {
+  const closeMonday = () => h.db.update(s.kitchenBookingVisits).set({ checkinStatus: 'checked_out', checkoutApprovedBy: 2, checkoutApprovedAt: new Date('2099-11-02T17:30:00Z') })
+    .where(eq(s.kitchenBookingVisits.id, 1));
+  const paid = (row: any) => row.subtotalCents + row.taxCents + row.serviceFeeCents;
+  it('M1: the kitchen cancelling a day tops up an item the chef removed late, so the whole day comes back incl. its card fee', async () => {
+    const { items, total, fee } = await seed({ fri: 2000 });
+    await useFacts(total, fee);
+    const item = await allocation(3, `equipment:${items[0]}`), kitchenTime = await allocation(3);
+    at('2099-11-01T10:00:00Z');
+    await removeChefAddon(1, 3, { kind: 'equipment', id: items[0] }, { operationKey: 'chef-removes-fri-item' });
+    const late = h.refunds[0].amount, earlier = (await allocation(3, `equipment:${items[0]}`)).evidence.refunds[0];
+    expect(late).toBe(Math.round((paid(item) - item.stripeFeeCents) / 2));
+    await cancelKitchenCausedBooking(1, 2, 2, 'kitchen-cancels-fri', 'Closed', { visitIds: [3] });
+    expect(late + h.refunds[1].amount).toBe(paid(kitchenTime) + paid(item));
+    expect((await allocation(3, `equipment:${items[0]}`)).evidence.refunds[1]).toMatchObject({ mode: 'kitchen', absorbedFeeCents: item.stripeFeeCents,
+      kitchenCents: 2300 - item.stripeFeeCents - earlier.kitchenCents, platformCents: 140 - earlier.platformCents });
+    expect(dayEntitlement([await allocation(3), await allocation(3, `equipment:${items[0]}`)])).toBe(0);
+  });
+  it('M2: a dated request charged after it was declined is refunded in full by the whole-charge command, not the day engine', async () => {
+    await h.db.update(s.kitchenBookings).set({ status: 'pending', paymentStatus: 'paid',
+      paymentDecision: { state: 'pending', target: 'cancelled', deadEnd: { kind: 'captured_before_release' } } }).where(eq(s.kitchenBookings.id, 1));
+    await cancelKitchenCausedBooking(1, 2, 1, 'support-refund-captured');
+    expect(h.refunds).toEqual([expect.objectContaining({ amount: 65880, metadata: expect.objectContaining({ manager_debited: '60159',
+      platform_service_fee_returned: '3780', platform_processing_cost_cents: '1941' }) })]);
+    expect(h.providerCalls[0].options.installmentReversals).toEqual([]);
+    const [booking] = await get(s.kitchenBookings);
+    expect(booking).toMatchObject({ status: 'cancelled', paymentStatus: 'refunded', cancellationCause: 'kitchen' });
+    expect((await get(s.kitchenBookingDayPayouts)).every((row: any) => row.noEntitlement)).toBe(true);
+  });
+  it('M4: the kitchen refunds more for one day, out of that day only, capped at its remaining share', async () => {
+    await expect(refundDatedDay(1, 2, { visitId: 1, amountCents: 20054, operationKey: 'kitchen-extra-too-much' })).rejects.toThrow('most the kitchen can refund for Mon, Nov 2 is $200.53');
+    const result = await refundDatedDay(1, 2, { visitId: 1, amountCents: 5000, reason: 'Oven ran slow', operationKey: 'kitchen-extra-mon' });
+    expect(result).toMatchObject({ action: 'refunded', refundCents: 5000, managerPaysCents: 5000, localCooksPaysCents: 0 });
+    expect(h.refunds[0].metadata).toMatchObject({ customer_receives: '5000', manager_debited: '5000', platform_service_fee_returned: '0' });
+    expect(dayEntitlement([await allocation(1)])).toBe(15053); expect((await allocation(2)).evidence.managerDebitedCents).toBeUndefined();
+    expect(h.event).toHaveBeenCalledWith(expect.anything(), 1, 'refund_issued', 'The kitchen refunded you $50.00', expect.stringContaining('Mon, Nov 2: Oven ran slow'), 2,
+      expect.objectContaining({ noticeDay: expect.objectContaining({ date: MON }) }));
+    await expect(refundDatedDay(1, 2, { visitId: 1, amountCents: 15054, operationKey: 'kitchen-extra-mon-2' })).rejects.toThrow('$150.53');
+  });
+  it('M4: an extra refund counts toward a later drop of that day, as on a one-day booking', async () => {
+    await refundDatedDay(1, 2, { visitId: 2, amountCents: 5000, operationKey: 'kitchen-extra-wed' });
+    await cancelDatedDays(1, chef, { target: { visitIds: [2] }, operationKey: 'drop-wed-after-extra' });
+    expect(h.refunds[1]).toMatchObject({ amount: 16313, metadata: expect.objectContaining({ manager_debited: '15053', platform_service_fee_returned: '1260' }) });
+    expect(dayEntitlement([await allocation(2)])).toBe(0);
+  });
+  it.each([[[2, 3]], [[3, 2]]])('L1: late days dropped one at a time (order %j) refund exactly what dropping them together does', async order => {
+    at('2099-11-01T10:00:00Z');
+    for (const visitId of order) await cancelDatedDays(1, chef, { target: { visitIds: [visitId] }, operationKey: `drop-${visitId}-late` });
+    expect(h.refunds.map(r => r.amount)).toEqual([10657, 10656]);
+  });
+  it('L4: a refund made outside the app holds day payouts until Local Cooks assigns it to a day (debited there only)', async () => {
+    h.refunds.push({ id: 're_dash', amount: 500, currency: 'cad', charge: 'ch_days', payment_intent: 'pi_days', status: 'succeeded', metadata: {} });
+    await closeMonday(); at('2099-11-03T12:00:00Z');
+    await expect(releaseDayPayout((await installment(1)).id)).rejects.toThrow('need reconciliation');
+    await assignOutsideRefund(1, 99, { refundId: 're_dash', visitId: 2, kitchenDebitCents: 500, note: 'Refunded in Stripe by mistake' });
+    expect((await sourceRow()).refundAmount).toBe('500');
+    expect((await allocation(2)).evidence.managerDebitedCents).toBe(500);
+    expect((await get(s.paymentHistory)).some((row: any) => row.eventType === 'outside_refund_assigned' && row.createdBy === 99)).toBe(true);
+    await releaseDayPayout((await installment(1)).id);
+    expect(h.created).toHaveBeenCalledWith(expect.objectContaining({ amount: 20053 }));
+  });
+  it('L4: or marks it Local Cooks-funded, debiting no day', async () => {
+    h.refunds.push({ id: 're_dash', amount: 500, currency: 'cad', charge: 'ch_days', payment_intent: 'pi_days', status: 'succeeded', metadata: {} });
+    await assignOutsideRefund(1, 99, { refundId: 're_dash' });
+    expect(refundsAllocated(await sourceRow())).toBe(true);
+    expect((await get(s.kitchenBookingDayAllocations)).every((row: any) => !row.evidence.managerDebitedCents)).toBe(true);
+    await expect(assignOutsideRefund(1, 99, { refundId: 're_dash', visitId: 1, kitchenDebitCents: 100 })).resolves.toMatchObject({ replayed: true });
+  });
+  it('L5: Local Cooks goodwill counts toward a later drop (its own part first); a large one reduces later drops to $0, never blocks them', async () => {
+    await refundSupportGoodwill(1, 2, 99, 500, 'support-goodwill-small');
+    await cancelDatedDays(1, chef, { target: { visitIds: [2] }, operationKey: 'drop-wed-after-goodwill' });
+    expect(h.refunds[1]).toMatchObject({ amount: 20813, metadata: expect.objectContaining({ manager_debited: '20053', platform_service_fee_returned: '760' }) });
+    expect((await op()).goodwillAppliedCents).toBe(500);
+    await seed();
+    await refundSupportGoodwill(1, 2, 99, 30000, 'support-goodwill-large');
+    await cancelDatedDays(1, chef, { target: { visitIds: [2] }, operationKey: 'drop-wed-covered' });
+    expect(h.refunds).toHaveLength(1); expect(await op()).toMatchObject({ status: 'succeeded', customerRefund: 0, goodwillAppliedCents: 21313 });
+    expect(dayEntitlement([await allocation(2)])).toBe(20053); // Local Cooks' goodwill already paid this drop
+    await cancelDatedDays(1, chef, { target: { visitIds: [3] }, operationKey: 'drop-fri-rest-of-goodwill' });
+    expect(h.refunds[1].amount).toBe(21313 - (30000 - 21313));
+  });
+  it('L6: a day notice carries the affected day, not the booking’s first date', async () => {
+    await cancelDatedDays(1, chef, { target: { visitIds: [3] }, operationKey: 'drop-fri-notice' });
+    expect(h.event).toHaveBeenCalledWith(expect.anything(), 1, 'day_cancelled', expect.any(String), expect.any(String), 3,
+      expect.objectContaining({ noticeDay: { date: FRI, startTime: '09:00', endTime: '17:00' } }));
+  });
+  it('L7: reversing an already-paid day records that day’s reversed amount (revenue nets it)', async () => {
+    await h.db.update(s.kitchenBookingDayPayouts).set({ transferId: 'tr_fri', transferAmountCents: 20053, releasedAt: new Date(),
+      evidence: { state: 'sent', sentAt: '2099-10-20T12:00:00Z' } }).where(eq(s.kitchenBookingDayPayouts.visitId, 3));
+    await cancelKitchenCausedBooking(1, 2, 2, 'kitchen-fri-paid', 'Closed', { visitIds: [3] });
+    expect((await installment(3)).evidence).toMatchObject({ reversedCents: 20053 });
+    expect((await installment(1)).evidence.reversedCents).toBeUndefined();
   });
 });

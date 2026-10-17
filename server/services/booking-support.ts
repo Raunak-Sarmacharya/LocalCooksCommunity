@@ -17,6 +17,8 @@ import { acceptCancellationRefund, readCancellationRefund, requestChefCancellati
 import { getBookingPaymentIntent, getCancellationPaymentFacts, getBookingCheckoutSession, getPaymentIntentRefunds } from './stripe-service';
 import { bookingCaptureTerms } from '@shared/booking-capture-terms';
 import { assistKitchenVisit } from './visit-assistance';
+import { datedOperationId } from './dated-booking-cancellation';
+import { refundsAllocated } from './kitchen-day-payouts';
 import { recordBookingAttendance } from './booking-attendance-service';
 import { recordKitchenInspection, projectBookingCloseout } from './clock-closeout';
 import { claimKitchenVisit } from './kitchen-visit-lifecycle';
@@ -106,6 +108,7 @@ const labels: Record<SupportActionType, string> = {
   resolve_money_attempt: 'Check the earlier refund attempt',
   retry_refund: 'Retry refund', mark_refunded: 'Mark refunded after checking Stripe',
   finish_kitchen_refund: 'Finish the kitchen cancellation refund', refund_captured_request: 'Refund the charge and close the request',
+  assign_outside_refund: 'Assign a refund made outside the app',
 };
 const cents = (value: unknown) => value == null ? 0 : Number(value);
 /** Refund attempts whose provider outcome can be read back by their operation key. */
@@ -227,8 +230,14 @@ export function availableSupportActions(ctx: Pick<Context, 'booking' | 'payments
   }
   if (!busy && !recovering && booking.status === 'confirmed' && ['paid', 'partially_refunded'].includes(booking.paymentStatus || '')) {
     if (!flags && !moneyNeedsReview) result.push('request_cancellation_for_chef');
-    if (!flags && !moneyNeedsReview && !priorGoodwill && ctx.payments.length === 1 && !ctx.storage.some(item => item.status === 'completed' || item.checkinStatus === 'checkin_completed')
-      && !ctx.equipment.some(item => item.status === 'completed')) result.push('cancel_kitchen_caused');
+    // A multi-day booking: "kitchen can't host" covers only the remaining days, so a used day or earlier goodwill doesn't remove it.
+    const remainingDay = ctx.visits.some(visit => visit.scheduleRevision === booking.scheduleRevision && visit.scheduleState === 'active'
+      && (visit.checkinStatus ?? 'not_checked_in') === 'not_checked_in' && !visit.checkedInAt
+      && (ctx.closeout?.closeout.visits.find(row => row.visitId === visit.id)?.scheduledStartAt
+        ? new Date(ctx.closeout.closeout.visits.find(row => row.visitId === visit.id)!.scheduledStartAt) > now : !!visit.visitDate && visit.visitDate >= now.toISOString().slice(0, 10)));
+    if (!flags && !moneyNeedsReview && (booking.scheduleRevision ? remainingDay : !priorGoodwill && ctx.payments.length === 1
+      && !ctx.storage.some(item => item.status === 'completed' || item.checkinStatus === 'checkin_completed') && !ctx.equipment.some(item => item.status === 'completed')))
+      result.push('cancel_kitchen_caused');
   }
   // Its own action and wording: the request was never accepted, the card was simply charged before the hold could be released.
   if (!busy && capturedBeforeRelease && !flags && !moneyNeedsReview && !priorGoodwill && ctx.payments.length === 1 && !ctx.storage.some(item => item.status === 'completed')
@@ -266,6 +275,10 @@ export function availableSupportActions(ctx: Pick<Context, 'booking' | 'payments
     && !original.transferId && (original.payoutPartition === 'per_day' ? dayReleasable : original.payoutHoldReason === 'reported_issue')) result.push('release_payout');
   if (!busy && !recovering && !flags && !moneyNeedsReview && original && ['succeeded', 'partially_refunded'].includes(original.status)
     && cents(original.amount) > cents(original.refundAmount)) result.push('goodwill_refund');
+  // A refund made outside the app holds every day payout until Local Cooks assigns it to a day or marks it Local Cooks-funded.
+  if (!busy && !moneyNeedsReview && original?.payoutPartition === 'per_day' && (!refundsAllocated(original)
+    || (ctx.dayPayouts || []).some(row => !row.transferId && /refunds need reconciliation/.test(String((row.evidence as { lastError?: string } | null)?.lastError || '')))))
+    result.push('assign_outside_refund');
   const summary = money(ctx), goodwill = ctx.actions.filter(row => row.actionType === 'goodwill_refund' && row.status !== 'failed').reduce((sum, row) => sum + (row.amountCents || 0), 0);
   return result.map(type => ({ type, label: labels[type], moneyPreview: {
     currency: booking.currency, chefReceivesCents: KITCHEN_REFUND_TYPES.includes(type) ? summary.capturedCents - summary.refundedCents : type === 'goodwill_refund' || type === 'accept_cancellation_for_manager' ? null : 0,
@@ -410,6 +423,7 @@ const requiredActingFor: Partial<Record<SupportActionType, SupportActionInput['a
   issue_visit_code: 'manager', set_arrival_mode: 'manager', record_assisted_arrival: 'manager',
   clear_checkout_for_manager: 'manager', report_issue_for_manager: 'manager', goodwill_refund: 'local_cooks', release_payout: 'local_cooks',
   retry_refund: 'local_cooks', mark_refunded: 'local_cooks', resolve_money_attempt: 'local_cooks', finish_kitchen_refund: 'manager', refund_captured_request: 'manager',
+  assign_outside_refund: 'local_cooks',
 };
 function validateDetails(input: SupportActionInput) {
   const d = input.details || {};
@@ -425,6 +439,7 @@ function validateDetails(input: SupportActionInput) {
   if (input.type === 'report_issue_for_manager') require(d.visitId && d.claimTitle && d.claimDescription && d.claimedAmountCents, 'Choose a visit and describe the concern and claimed amount.');
   if (input.type === 'resend_notice') require(d.eventId && d.recipientId, 'Choose the original notice and recipient.');
   if (input.type === 'resolve_flag') require(d.flagId, 'Choose the support flag to resolve.');
+  if (input.type === 'assign_outside_refund') require(d.refundId && (!d.kitchenDebitCents || d.visitId), 'Choose the refund, and the day if the kitchen paid part of it.');
 }
 async function dispatch(ctx: Context, actorId: number, input: SupportActionInput): Promise<Record<string, unknown>> {
   const id = ctx.booking.id, d = input.details || {}, managerId = ctx.manager?.id;
@@ -454,6 +469,8 @@ async function dispatch(ctx: Context, actorId: number, input: SupportActionInput
       return { ...result, refundId: target.operation.refundId, paymentIntentId: target.operation.intentId, amountCents: target.operation.refunded, success: true };
     }
     case 'resolve_money_attempt': return resolveMoneyAttempts(ctx);
+    case 'assign_outside_refund': return (await import('./dated-booking-cancellation')).assignOutsideRefund(id, actorId,
+      { refundId: d.refundId!, visitId: d.visitId, kitchenDebitCents: d.kitchenDebitCents, note: input.note });
     case 'goodwill_refund': return refundSupportGoodwill(id, managerId!, actorId, input.amountCents!, input.operationKey);
     case 'release_payout': {
       // Verified once the payout is sent (or nothing is owed), or support's release is saved for when the visits close.
@@ -561,7 +578,11 @@ export async function executeBookingSupportAction(id: number, actorId: number, r
       } else if (MONEY_ATTEMPT_TYPES.includes(input.type) && reserved.ctx.booking.paymentIntentId) {
         const receipts = await getPaymentIntentRefunds(reserved.ctx.booking.paymentIntentId);
         // A retry of an already committed cancellation reuses the refund's original operation key, which is not this request's key.
-        const planKey = input.type === 'finish_kitchen_refund' ? reserved.ctx.payments.map(source => (source.metadata as { kitchenCancellationRefund?: { id?: string } } | null)?.kitchenCancellationRefund?.id).find(Boolean) : undefined;
+        const daySource = reserved.ctx.booking.scheduleRevision && reserved.ctx.booking.status !== 'pending'
+          ? reserved.ctx.payments.find(source => source.payoutPartition === 'per_day' && source.paymentIntentId === reserved.ctx!.booking.paymentIntentId) : undefined;
+        const planKey = input.type === 'finish_kitchen_refund' ? reserved.ctx.payments.map(source => (source.metadata as { kitchenCancellationRefund?: { id?: string } } | null)?.kitchenCancellationRefund?.id).find(Boolean)
+          // A multi-day "kitchen can't host" refund is sent under its day-refund operation key, not the support key.
+          : input.type === 'cancel_kitchen_caused' && daySource ? datedOperationId(id, input.operationKey, daySource.id) : undefined;
         const state = judgeMoneyAttempt(receipts, planKey ?? input.operationKey, reserved.action);
         if (state.kind === 'succeeded') verified = true;
         else {

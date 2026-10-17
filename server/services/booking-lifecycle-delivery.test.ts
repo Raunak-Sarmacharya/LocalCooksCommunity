@@ -645,3 +645,19 @@ it('an add-on removal tells the chef about the refund, the kitchen about its pay
   expect(emails[0].content.text).toContain('Your $20.55 refund for Harbour Kitchen'); expect(emails[1].content.text).toContain('Your payout changes by −$19.33.');
   expect(emails[2].content.text).toContain('Kitchen payout');
 });
+
+it('CP6 L6: a multi-day item removal names the affected day, not the booking’s first date', async () => {
+  vi.clearAllMocks(); state.database = tx; state.payout = null;
+  state.people = [{ id: 3, profile: { fullName: 'Sam' } }, { id: 2, profile: { fullName: 'Maya' } }];
+  state.rows = [[{ chefId: 3, managerId: 2, kitchenName: 'Harbour Kitchen', bookingDate: new Date('2026-10-14'), startTime: '09:00', timezone: 'UTC', referenceCode: 'KB-OVEN1' }],
+    [{ id: 3, email: 'chef@example.test', role: 'chef', locale: 'en-CA' }, { id: 2, email: 'manager@example.test', role: 'manager', locale: 'en-CA' },
+      { id: 4, email: 'test_admin@localcooks.ca', role: 'admin', adminEmailNotifications: true, locale: 'en-CA' }]];
+  await queueBookingLifecycleEvent(tx, 10, 'addon_removed', 'Commercial Oven removed', 'Commercial Oven removed.', 3,
+    { itemKind: 'equipment', itemId: 31, noticeDay: { date: '2026-10-16', startTime: '10:00', endTime: '14:00' },
+      addonRemoval: { state: 'removed', itemName: 'Commercial Oven', refundCents: 2055, kitchenRefundCents: 1933, feeCents: 67 } });
+  const by = (id: number) => state.notify.mock.calls.find(call => call[0].userId === id)![0];
+  expect(by(3).message).toContain('Harbour Kitchen on Oct 16, 2026, 10:00 a.m.');
+  expect(by(2).message).toContain('(Oct 16, 2026, 10:00 a.m.)');
+  expect(by(4).message).toContain('Oct 16, 2026, 10:00 a.m.');
+  for (const id of [2, 3, 4]) expect(by(id).message).not.toContain('Oct 14');
+});

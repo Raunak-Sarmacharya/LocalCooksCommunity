@@ -125,6 +125,29 @@ describe('source-specific reversal and refund recovery', () => {
       expect(state.refund).not.toHaveBeenCalled();
     });
   });
+  describe('M3: a support retry never makes a second refund while the first may still be in flight', () => {
+    const variants = [['single-day', { idempotencyKey: 'chef-cancel-10-99-op', reverseTransferAmount: 2300, refundApplicationFee: false }],
+      ['day refund', { idempotencyKey: 'kitchen-day-refund:1:op:1', refundApplicationFee: false, installmentReversals: [{ transferId: 'tr_day3', amountCents: 2000 }] }]] as const;
+    // Stripe's idempotency: the same key returns the same refund. An in-flight refund is not in the list yet.
+    const provider = new Map<string, any>();
+    beforeEach(() => { provider.clear(); state.refund.mockImplementation(async (params: any, opts: any) => {
+      if (!provider.has(opts.idempotencyKey)) provider.set(opts.idempotencyKey, { id: `re_${provider.size + 1}`, status: 'succeeded', charge: 'ch_one', ...params });
+      return provider.get(opts.idempotencyKey);
+    }); });
+    it.each(variants)('%s: the support retry reuses the original key, so Stripe returns the same refund', async (_name, base) => {
+      await reverseTransferAndRefund('pi_one', 2440, 'requested_by_customer', { ...base });
+      await reverseTransferAndRefund('pi_one', 2440, 'requested_by_customer', { ...base, refundIdempotencyKey: `${base.idempotencyKey}-refund-support-retry` });
+      expect(state.refund.mock.calls.map(call => call[1].idempotencyKey)).toEqual([`${base.idempotencyKey}-refund`, `${base.idempotencyKey}-refund`]);
+      expect(provider.size).toBe(1);
+    });
+    it.each(variants)('%s: only after Stripe shows the attempt failed does the retry use a new key (shared by concurrent retries)', async (_name, base) => {
+      state.refunds = [{ id: 're_failed', created: 1, charge: 'ch_one', amount: 2440, status: 'failed', metadata: { refund_operation_id: base.idempotencyKey } }];
+      await reverseTransferAndRefund('pi_one', 2440, 'requested_by_customer', { ...base, refundIdempotencyKey: `${base.idempotencyKey}-refund-support-a` });
+      await reverseTransferAndRefund('pi_one', 2440, 'requested_by_customer', { ...base, refundIdempotencyKey: `${base.idempotencyKey}-refund-support-b` });
+      expect(state.refund.mock.calls.map(call => call[1].idempotencyKey)).toEqual([`${base.idempotencyKey}-refund-after-re_failed`, `${base.idempotencyKey}-refund-after-re_failed`]);
+      expect(provider.size).toBe(1);
+    });
+  });
   it('a reserved cancellation source cannot fund a competing direct refund', async () => {
     state.source.metadata = { cancellationRefundOperation: { id: 'reserved_cancellation', status: 'pending' } };
     await expect(reverseTransferAndRefund('pi_one', 2440, 'requested_by_customer', options)).rejects.toThrow('Refund funding cannot be verified');

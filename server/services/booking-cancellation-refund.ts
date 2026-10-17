@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { and, asc, eq, inArray, or, sql } from 'drizzle-orm';
 import { db } from '../db';
-import { kitchenBookings, kitchenBookingVisits, kitchens, locations, paymentTransactions, equipmentBookings, equipmentListings, storageBookings } from '@shared/schema';
+import { kitchenBookings, kitchenBookingVisits, kitchenBookingDayPayouts, kitchens, locations, paymentTransactions, equipmentBookings, equipmentListings, storageBookings } from '@shared/schema';
 import { bookingChangeSchedule, kitchenRescheduleCutoff } from '@shared/kitchen-booking-change';
 import { cancellationSourceQuote, isCancellationReservationSource } from '@shared/cancellation-refund';
 import { DomainError } from '../shared/errors/domain-error';
@@ -15,7 +15,7 @@ import { logger } from '../logger';
 import { allocateCents, legacyCancellationSnapshot, quoteCancellation, type CancellationPolicySnapshot } from '@shared/cancellation-policy';
 import { getUserDisplayName } from '../utils/user-display';
 import { policySessionStart } from './cancellation-policy-settings';
-import { isDatedBooking, type DayTarget } from './dated-booking-cancellation';
+import { finalizeDatedRefund, isDatedBooking, type DayTarget } from './dated-booking-cancellation';
 
 /** Staff use the same instant frozen-policy command as the chef. */
 export async function requestChefCancellation(bookingId: number, chefId: number, actorId: number, publicMessage?: string, operationKey = `support-chef-cancel-${bookingId}`, visitIds?: number[]) {
@@ -79,7 +79,9 @@ const fromProvider = (message: string) => message.replace(/^Failed to (reverse t
  */
 export async function cancelKitchenCausedBooking(bookingId: number, managerId: number, actorId: number, operationKey: string, reason = 'Kitchen unavailable',
   options: { fundedByLocalCooks?: boolean; visitIds?: number[] } = {}) {
-  const days = await dated(bookingId);
+  // A confirmed multi-day booking is cancelled per day. A request charged after it was declined/withdrawn was never confirmed:
+  // its whole charge is refunded by the command below, exactly as for a one-day request.
+  const days = await dated(bookingId, true);
   if (days) {
     // Unpaid days are debited from the kitchen's pending payout; an already paid day that can't be reversed becomes recorded debt.
     if (options.fundedByLocalCooks) throw new Error('A multi-day refund is retried from its saved refund operation; Local Cooks funding is applied automatically if a paid day can’t be reversed.');
@@ -172,9 +174,16 @@ async function refundKitchenCancellation(bookingId: number, managerId: number, a
     const managerDebit = originalReceipt ? Number(originalReceipt.metadata?.manager_debited ?? Math.min(amount, money.managerRefund))
       : localCooksFunds ? 0 : Math.min(amount, money.managerRefund);
     const serviceFeeReturn = Math.min(amount - managerDebit, money.serviceFeeReview);
-    if (!originalReceipt && managerDebit > 0) await verifyCancellationRefundFunding(source.paymentIntentId, source.transferId, managerDebit);
+    const perDay = source.payoutPartition === 'per_day';
+    if (perDay) {
+      if (!capturedRace) throw Error('A multi-day booking is cancelled per day. Refresh the booking.');
+      const paid = await tx.select({ id: kitchenBookingDayPayouts.id }).from(kitchenBookingDayPayouts)
+        .where(and(eq(kitchenBookingDayPayouts.sourceId, source.id), sql`${kitchenBookingDayPayouts.transferId} IS NOT NULL`)).limit(1);
+      if (paid.length) throw Error('A day of this charge was already paid out. Local Cooks must review it before the refund.');
+    }
+    if (!originalReceipt && managerDebit > 0 && !perDay) await verifyCancellationRefundFunding(source.paymentIntentId, source.transferId, managerDebit);
     const refund = await reverseTransferAndRefund(source.paymentIntentId, amount, 'requested_by_customer', {
-      sourceConnection: tx, idempotencyKey: plan.id, reverseTransferAmount: managerDebit,
+      sourceConnection: tx, idempotencyKey: plan.id, ...(perDay ? { installmentReversals: [] } : { reverseTransferAmount: managerDebit }),
       metadata: { booking_id: String(bookingId), transaction_id: String(source.id), support_actor_id: String(actorId),
         customer_receives: String(amount), manager_debited: String(managerDebit), platform_service_fee_returned: String(serviceFeeReturn),
         platform_processing_cost_cents: String(amount - managerDebit - serviceFeeReturn) },
@@ -193,7 +202,10 @@ async function refundKitchenCancellation(bookingId: number, managerId: number, a
       // The refund closes the saved cancellation decision, so recovery and the support console treat it as finished.
       ...(capturedRace && decision ? { paymentDecision: { ...decision, state: 'complete', resolution: 'refunded_after_capture', refundId: refund.refundId } } : {}) })
       .where(eq(kitchenBookings.id, bookingId));
-    if (source.payoutTiming === 'after_closeout') await (await import('./kitchen-payout-service')).scheduleKitchenPayout(bookingId, tx);
+    // The whole charge went back: no day of a per-day charge is owed to the kitchen.
+    if (perDay) await tx.update(kitchenBookingDayPayouts).set({ noEntitlement: true, transferAmountCents: 0, holdReason: null, updatedAt: new Date() })
+      .where(and(eq(kitchenBookingDayPayouts.sourceId, source.id), sql`${kitchenBookingDayPayouts.transferId} IS NULL`));
+    else if (source.payoutTiming === 'after_closeout') await (await import('./kitchen-payout-service')).scheduleKitchenPayout(bookingId, tx);
     await addPaymentHistory(source.id, { previousStatus: source.status, newStatus: 'refunded', eventType: 'kitchen_caused_cancellation',
       description: localCooksFunds ? 'Kitchen cancellation fully refunded; Local Cooks funded the refund' : 'Kitchen cancellation fully refunded; Local Cooks absorbed processing cost', createdBy: actorId,
       metadata: { operationKey: plan.id, amountCents: amount, processingCostAbsorbedCents: amount - managerDebit - serviceFeeReturn, refundId: refund.refundId, fundedByLocalCooks: localCooksFunds } }, tx);
@@ -318,9 +330,9 @@ export async function refundKitchenCausedAddons(bookingId: number, managerId: nu
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type Source = typeof paymentTransactions.$inferSelect;
 /** CP6: a dated (multi-day) booking is cancelled and refunded per day by its own engine, never by the single-session paths below. */
-async function dated(bookingId: number) {
-  const [row] = await db.select({ scheduleRevision: kitchenBookings.scheduleRevision }).from(kitchenBookings).where(eq(kitchenBookings.id, bookingId)).limit(1);
-  return !!row && isDatedBooking(row) ? import('./dated-booking-cancellation') : null;
+async function dated(bookingId: number, confirmedOnly = false) {
+  const [row] = await db.select({ scheduleRevision: kitchenBookings.scheduleRevision, status: kitchenBookings.status }).from(kitchenBookings).where(eq(kitchenBookings.id, bookingId)).limit(1);
+  return !!row && isDatedBooking(row) && (!confirmedOnly || row.status === 'confirmed') ? import('./dated-booking-cancellation') : null;
 }
 export type CancellationScope = { kind: 'storage' | 'equipment'; id: number };
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -759,6 +771,7 @@ export async function finalizeCancellationRefund(tx: Tx, source: Source, operati
   if (['kitchen', 'bundle'].includes(source.bookingType)) await tx.update(kitchenBookings).set({ paymentStatus: bookingPaymentStatus, updatedAt: new Date() })
     .where(and(eq(kitchenBookings.id, operation.bookingId), eq(kitchenBookings.paymentIntentId, source.paymentIntentId!)));
   if (operation.kitchenDebtCents) await reportKitchenDebt(tx, operation.bookingId, source, operation);
+  if (operation.dated) await finalizeDatedRefund(tx, operation);
 }
 
 /** Local Cooks hears once when a chef's add-on refund didn't go through (the chef and kitchen were told it's being processed). */
