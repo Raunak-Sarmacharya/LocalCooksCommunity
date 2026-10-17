@@ -13,30 +13,39 @@ type CostDraft = { id: string; type: ClaimLine['type']; description: string; amo
 const newLine = (): CostDraft => ({ id: crypto.randomUUID(), type: 'damage', description: '', amount: '' });
 const cents = (text: string) => /^\d+(?:\.\d{1,2})?$/.test(text) ? Math.round(Number(text) * 100) : NaN;
 
-export function DamageClaimSheet({ bookingId, visitId, chefName, onFiled, open: controlledOpen, onOpenChange, hideTrigger = false }: {
-  bookingId: number; visitId?: number; chefName: string; onFiled?: () => void; open?: boolean; onOpenChange?: (value: boolean) => void; hideTrigger?: boolean;
+export function DamageClaimSheet({ bookingId, storageRentalId, visitId, chefName, onFiled, open: controlledOpen, onOpenChange, hideTrigger = false }: {
+  bookingId?: number; storageRentalId?: number; visitId?: number; chefName: string; onFiled?: () => void; open?: boolean; onOpenChange?: (value: boolean) => void; hideTrigger?: boolean;
 }) {
   const { t, i18n } = useTranslation('booking');
   const [ownOpen, setOwnOpen] = useState(false), open = controlledOpen ?? ownOpen;
   const setOpen = (value: boolean) => { setOwnOpen(value); onOpenChange?.(value); };
+  const formKey = storageRentalId ? `storage:${storageRentalId}` : `${bookingId}:${visitId || ''}`;
   return <>
     {!hideTrigger && <Button variant="outline" onClick={() => setOpen(true)}>{t('dcV2Report')}</Button>}
     <Sheet open={open} onOpenChange={setOpen}><SheetContent className="w-full overflow-y-auto sm:max-w-xl">
       <SheetHeader><SheetTitle>{t('dcV2Report')}</SheetTitle><SheetDescription>{t('dcV2FilingIntro')}</SheetDescription></SheetHeader>
-      {open && <ClaimForm key={`${bookingId}:${visitId || ''}`} bookingId={bookingId} visitId={visitId} chefName={chefName}
+      {open && <ClaimForm key={formKey} bookingId={bookingId} storageRentalId={storageRentalId} visitId={visitId} chefName={chefName}
         onDone={() => { setOpen(false); onFiled?.(); }} locale={i18n.language} />}
     </SheetContent></Sheet>
   </>;
 }
-function ClaimForm({ bookingId, visitId, chefName, onDone, locale }: { bookingId: number; visitId?: number; chefName: string; onDone: () => void; locale: string }) {
-  const { t } = useTranslation('booking'), queryClient = useQueryClient();
+function ClaimForm({ bookingId, storageRentalId, visitId, chefName, onDone, locale }: {
+  bookingId?: number; storageRentalId?: number; visitId?: number; chefName: string; onDone: () => void; locale: string;
+}) {
+  const { t } = useTranslation(['booking', 'storage']), queryClient = useQueryClient();
   const [step, setStep] = useState(1), [description, setDescription] = useState(''), [lines, setLines] = useState<CostDraft[]>(() => [newLine()]);
   const [photos, setPhotos] = useState<ClaimLine['document'][]>([]), [key] = useState(() => crypto.randomUUID());
   const [selectedPhotoUrls, setSelectedPhotos] = useState<string[]>([]);
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [supportSent, setSupportSent] = useState(false);
   const { uploadFile, isUploading } = useSessionFileUpload();
-  const query = useQuery({ queryKey: ['damage-claim-filing', bookingId, visitId], retry: false,
-    queryFn: () => claimRequest<FilingContext>(`/manager/damage-claims/filing-context/${bookingId}${visitId ? `?visitId=${visitId}` : ''}`) });
+  const storage = !!storageRentalId;
+  const query = useQuery({
+    queryKey: storage ? ['damage-claim-filing', 'storage', storageRentalId] : ['damage-claim-filing', bookingId, visitId],
+    retry: false,
+    queryFn: () => claimRequest<FilingContext>(storage
+      ? `/manager/storage-rentals/${storageRentalId}/claims/filing-context`
+      : `/manager/damage-claims/filing-context/${bookingId}${visitId ? `?visitId=${visitId}` : ''}`),
+  });
   const total = lines.reduce((sum, line) => sum + (Number.isFinite(cents(line.amount)) ? cents(line.amount) : 0), 0);
   const overCap = total > CLAIM_CAP_CENTS;
   const validLines = lines.every(line => line.description.trim().length >= 3 && cents(line.amount) > 0 && !!line.document);
@@ -55,12 +64,24 @@ function ClaimForm({ bookingId, visitId, chefName, onDone, locale }: { bookingId
     try {
       if (support) {
         const details = `${description}\n\n${lines.map(line => `${line.description}: ${line.amount} CAD; ${line.document?.fileUrl || ''}`).join('\n')}`;
-        await claimRequest('/manager/damage-claims/support', { bookingId, description: details.slice(0, 2000), requestKey: key });
+        if (storage) {
+          await claimRequest(`/commitment-problems/storage/${storageRentalId}`, { description: details.slice(0, 2000), requestKey: key, category: 'other' });
+        } else {
+          await claimRequest('/manager/damage-claims/support', { bookingId, description: details.slice(0, 2000), requestKey: key });
+        }
         setSupportSent(true); return;
       }
-      await claimRequest('/manager/damage-claims/file', { bookingId, ...(visitId ? { visitId } : {}), description, photos, selectedPhotoUrls, requestKey: key,
-        lines: lines.map(({ type, description, amount, document }) => ({ type, description, amountCents: cents(amount), document })) });
-      await queryClient.invalidateQueries({ queryKey: ['damage-claims', bookingId] });
+      if (storage) {
+        await claimRequest(`/manager/storage-rentals/${storageRentalId}/claims`, {
+          description, photos, selectedPhotoUrls, requestKey: key,
+          lines: lines.map(({ type, description, amount, document }) => ({ type, description, amountCents: cents(amount), document })),
+        });
+        await queryClient.invalidateQueries({ queryKey: ['damage-claims', 'storage', storageRentalId] });
+      } else {
+        await claimRequest('/manager/damage-claims/file', { bookingId, ...(visitId ? { visitId } : {}), description, photos, selectedPhotoUrls, requestKey: key,
+          lines: lines.map(({ type, description, amount, document }) => ({ type, description, amountCents: cents(amount), document })) });
+        await queryClient.invalidateQueries({ queryKey: ['damage-claims', bookingId] });
+      }
       await queryClient.invalidateQueries({ queryKey: ['/api/manager/damage-claims'] });
       onDone();
     } catch (cause) { setError(cause instanceof Error ? cause.message : t('dcV2Failed')); }
@@ -77,6 +98,7 @@ function ClaimForm({ bookingId, visitId, chefName, onDone, locale }: { bookingId
     {step === 1 && <>
       <label className="block space-y-2"><span>{t('dcV2WhatHappened')}</span><Textarea value={description} maxLength={2000} onChange={event => setDescription(event.target.value)} /></label>
       <p className="text-sm">{t('dcV2AutoPhotos')}</p>
+      {ctx.noBaseline && <p className="text-sm">{t('stNoBaseline', { ns: 'storage' })}</p>}
       <div className="grid grid-cols-2 gap-3">{['before', 'after'].map(side => <section key={side}><h3 className="text-sm font-medium mb-2">{t(side === 'before' ? 'dcV2Before' : 'dcV2After')}</h3>
         {ctx[side as 'before' | 'after'].map((url, index) => <div key={url}><a href={url} target="_blank" rel="noopener noreferrer"><img className="mb-2 aspect-square w-full rounded-lg object-cover" src={url} alt={t('dcV2VisitPhoto', { number: index + 1 })} /></a>
           <label className="flex items-center gap-2 text-xs mb-2"><input type="checkbox" checked={selectedPhotoUrls.includes(url)} onChange={event => setSelectedPhotos(current => event.target.checked ? [...current, url] : current.filter(photo => photo !== url))} />{t('dcV2UsePhoto', { number: index + 1 })}</label></div>)}</section>)}</div>

@@ -90,6 +90,14 @@ export function BookingDamageClaims({ bookingId, manager = false }: { bookingId:
   if (query.isError) return <p role="alert" className="text-sm">{t('dcV2LoadFailed')} <Button variant="link" onClick={() => void query.refetch()}>{t('dcV2Retry')}</Button></p>;
   return <div className="space-y-4">{query.data?.claims?.map(claim => <DamageClaimCard key={claim.id} claim={claim} manager={manager} onChanged={() => void query.refetch()} />)}</div>;
 }
+export function StorageDamageClaims({ storageRentalId, manager = false }: { storageRentalId: number; manager?: boolean }) {
+  const { t } = useTranslation('booking');
+  const path = manager ? `/manager/storage-rentals/${storageRentalId}/claims` : `/chef/storage-rentals/${storageRentalId}/claims`;
+  const query = useQuery({ queryKey: ['damage-claims', 'storage', storageRentalId], queryFn: () => claimRequest<{ claims: DamageClaimCardData[] }>(path), retry: false });
+  if (query.isError) return <p role="alert" className="text-sm">{t('dcV2LoadFailed')} <Button variant="link" onClick={() => void query.refetch()}>{t('dcV2Retry')}</Button></p>;
+  if (!query.data?.claims?.length) return null;
+  return <div className="space-y-4" data-testid="storage-damage-claims">{query.data.claims.map(claim => <DamageClaimCard key={claim.id} claim={claim} manager={manager} onChanged={() => void query.refetch()} />)}</div>;
+}
 /** Whether an unpaid, decided claim pauses new bookings. One cached read for the banner, the dashboard and the booking flow. */
 export function useClaimBookingHold() {
   // Refreshes on focus and every minute, so paying elsewhere lifts it without a manual refresh.

@@ -60,6 +60,30 @@ describe('manager guided filing', () => {
     await waitFor(() => expect(state.bodies).toHaveLength(1));
     expect(state.bodies[0].path).toBe('/manager/damage-claims/support'); expect(state.bodies[0].body.description).toContain('Oven repair: 300 CAD');
   });
+  it('uses the storage filing-context and file endpoints when storageRentalId is set', async () => {
+    state.context = { ...state.context, noBaseline: true, before: ['https://example.invalid/before.jpg'], after: ['https://example.invalid/after.jpg'] };
+    const { testI18n } = await import('@/test/booking-i18n');
+    const storage = (await import('@shared/i18n/locales/en-CA/storage.json')).default;
+    testI18n.addResourceBundle('en-CA', 'storage', storage);
+    mount(<DamageClaimSheet storageRentalId={43} chefName="Sam" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Report damage or extra cleaning' }));
+    expect(await screen.findByText('No move-in photos were taken.')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('What happened?'), { target: { value: 'Shelf dented during the rental.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    fireEvent.change(screen.getByLabelText('What does this cost cover?'), { target: { value: 'Replace shelf' } });
+    fireEvent.change(screen.getByLabelText('Amount (CAD)'), { target: { value: '20' } });
+    fireEvent.change(screen.getByLabelText('Receipt, invoice or quote (required)'), { target: { files: [new File(['quote'], 'quote.pdf', { type: 'application/pdf' })] } });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Next' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Send to Local Cooks' }));
+    await waitFor(() => expect(state.bodies).toHaveLength(1));
+    expect(state.bodies[0]).toMatchObject({
+      path: '/manager/storage-rentals/43/claims',
+      body: { lines: [{ amountCents: 2000, document: { fileName: 'quote.pdf' } }] },
+    });
+    expect(state.bodies[0].body.bookingId).toBeUndefined();
+    expect(state.bodies[0].body.storageRentalId).toBeUndefined();
+  });
 });
 describe('chef response and kitchen reply', () => {
   it('shows the kitchen-local deadline, Pay/Dispute, and requires a dispute note', async () => {

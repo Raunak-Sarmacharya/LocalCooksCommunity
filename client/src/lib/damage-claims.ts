@@ -14,7 +14,8 @@ export type DamageClaimCardData = { id: number; referenceCode: string | null; bo
   paymentReview?: string | null;
   evidence: Array<{ id: number; evidenceType: string; fileUrl: string; fileName: string | null; uploadedBy: number; description: string | null }>;
   history: Array<{ id: number; action: string; status: string; createdAt: string }> };
-export type FilingContext = { allowed: boolean; deadline: string; endedAt: string; timezone: string; kitchenName: string; before: string[]; after: string[] };
+export type FilingContext = { allowed: boolean; deadline: string; endedAt: string; timezone: string; kitchenName: string; before: string[]; after: string[];
+  noBaseline?: boolean; baselineNote?: string | null };
 export async function claimRequest<T>(path: string, body?: unknown): Promise<T> {
   const response = body === undefined ? await apiClient.get(path) : await apiClient.post(path, body);
   const result = await response.json();
