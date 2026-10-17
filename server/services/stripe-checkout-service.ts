@@ -20,8 +20,6 @@ import Stripe from 'stripe';
 import { ensureServerI18n, tLocale } from '../i18n';
 import { expandHourlySlots, serializeCheckoutSlots } from './checkout-metadata';
 import { assertConsecutiveBookingSlots } from '@shared/consecutive-booking-slots';
-import { saveStorageOverstayQuote, describeStorageOverstayTerms } from './storage-overstay-terms-service';
-import { isStorageOverstayTerms } from '@shared/storage-overstay-terms';
 
 // Initialize Stripe client
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
@@ -33,10 +31,9 @@ const stripe = stripeSecretKey ? new Stripe(stripeSecretKey, {
   apiVersion: '2026-02-25.clover',
 }) : null;
 
-async function kitchenSubmitText(locale: string | undefined, storageTerms: boolean): Promise<string> {
+async function kitchenSubmitText(locale: string | undefined): Promise<string> {
   await ensureServerI18n();
-  return [tLocale(locale, 'booking:wfbCheckoutHold'),
-    ...(storageTerms ? [tLocale(locale, 'booking:wfbCheckoutStorageTerms')] : [])].join(' ');
+  return tLocale(locale, 'booking:wfbCheckoutHold');
 }
 
 export interface CreateCheckoutSessionParams {
@@ -202,22 +199,6 @@ export async function createPendingCheckoutSession(
         });
       }
 
-      // Storage line items (one per storage booking)
-      if (lineItemBreakdown.storageItems && lineItemBreakdown.storageItems.length > 0) {
-        for (const item of lineItemBreakdown.storageItems) {
-          if (item.priceCents > 0) {
-            lineItems.push({
-              price_data: {
-                currency: currency.toLowerCase(),
-                product_data: { name: item.name },
-                unit_amount: item.priceCents,
-              },
-              quantity: 1,
-            });
-          }
-        }
-      }
-
       // Equipment line items (one per equipment booking)
       if (lineItemBreakdown.equipmentItems && lineItemBreakdown.equipmentItems.length > 0) {
         for (const item of lineItemBreakdown.equipmentItems) {
@@ -334,7 +315,7 @@ export async function createPendingCheckoutSession(
 
     // Store optional fields as JSON strings (Stripe metadata values must be strings)
     if (lineItemBreakdown) {
-      const prices = { s: (lineItemBreakdown.storageItems || []).map(item => [item.listingId, item.priceCents]),
+      const prices = { s: [],
         e: (lineItemBreakdown.equipmentItems || []).map(item => [item.listingId, item.priceCents]) };
       if ([...prices.s, ...prices.e].some(([id, price]) => !Number.isSafeInteger(id) || !Number.isSafeInteger(price)))
         throw new Error('Checkout item pricing could not be recorded');
@@ -342,7 +323,6 @@ export async function createPendingCheckoutSession(
       if (snapshot.length > 500) throw new Error('Too many items for one checkout');
       sessionMetadata.addon_prices = snapshot;
       bookingAddonPrices(sessionMetadata);
-      if (prices.s.length !== (bookingData.selectedStorage?.length || 0)) throw new Error('Selected storage pricing is incomplete');
     }
     if (bookingData.specialNotes) {
       sessionMetadata.special_notes = bookingData.specialNotes;
@@ -354,17 +334,6 @@ export async function createPendingCheckoutSession(
       bookingData.pricingMode,
     );
     if (selectedSlots) sessionMetadata.selected_slots = selectedSlots;
-    if (bookingData.selectedStorage && bookingData.selectedStorage.length > 0) {
-      sessionMetadata.selected_storage = JSON.stringify(bookingData.selectedStorage);
-      for (const storage of bookingData.selectedStorage) {
-        const quote = await saveStorageOverstayQuote(storage.storageListingId, bookingData.chefId);
-        sessionMetadata[`storage_quote_${storage.storageListingId}`] = quote.id;
-        const terms = quote.terms;
-        const description = describeStorageOverstayTerms(terms);
-        lineItems.push({ price_data: { currency: currency.toLowerCase(), unit_amount: 0,
-          product_data: { name: 'Storage overstay terms', description } }, quantity: 1 });
-      }
-    }
     if (bookingData.selectedEquipmentIds && bookingData.selectedEquipmentIds.length > 0) {
       sessionMetadata.selected_equipment_ids = JSON.stringify(bookingData.selectedEquipmentIds);
     }
@@ -399,7 +368,7 @@ export async function createPendingCheckoutSession(
       success_url: successUrl,
       cancel_url: cancelUrl,
       metadata: sessionMetadata,
-      custom_text: { submit: { message: await kitchenSubmitText(params.locale, !!bookingData.selectedStorage?.length) } },
+      custom_text: { submit: { message: await kitchenSubmitText(params.locale) } },
       // NOTE: invoice_creation removed — incompatible with capture_method:'manual'
       // Invoices are generated at capture time via payment_intent.succeeded webhook
       // Stripe will send receipt email when payment is actually captured
@@ -527,18 +496,6 @@ export async function createCheckoutSession(
       .from(kitchenBookings).where(eq(kitchenBookings.id, bookingId)).limit(1);
     if (params.kitchenChangeAuthorization && (metadata.type !== 'kitchen_booking_change' || existingBooking?.paymentStatus !== 'paid'))
       throw new Error('Kitchen change authorizations require an existing paid booking');
-    const storedStorage = existingBooking?.paymentStatus === 'pending' ? await db.select().from(storageBookings)
-      .where(eq(storageBookings.kitchenBookingId, bookingId)) : [];
-    const overstayQuoteMetadata: Record<string, string> = {};
-    for (const storage of storedStorage) {
-      if (existingBooking?.chefId == null) throw new Error('Storage booking has no chef');
-      if (!isStorageOverstayTerms(storage.overstayTerms) || storage.overstayTerms.acceptedAt) continue;
-      const quote = await saveStorageOverstayQuote(storage.storageListingId, existingBooking.chefId, storage.overstayTerms);
-      overstayQuoteMetadata[`storage_booking_quote_${storage.id}`] = quote.id;
-      lineItems.push({ price_data: { currency: currency.toLowerCase(), unit_amount: 0,
-        product_data: { name: 'Storage overstay terms', description: describeStorageOverstayTerms(quote.terms) } }, quantity: 1 });
-    }
-
     // ARCHITECTURE — Separate Charges and Transfers:
     //   Charge lands on platform balance. No transfer_data, no application_fee_amount.
     //   Webhook creates the Transfer to manager's Connect account post-capture.
@@ -577,15 +534,11 @@ export async function createCheckoutSession(
       },
       success_url: successUrl,
       cancel_url: cancelUrl,
-      ...(params.kitchenChangeAuthorization ? { expires_at: params.kitchenChangeAuthorization.expiresAt } : {}),
-      ...(!params.kitchenChangeAuthorization ? { custom_text: { submit: {
-        message: await kitchenSubmitText(params.locale, !!Object.keys(overstayQuoteMetadata).length),
-      } } } : Object.keys(overstayQuoteMetadata).length ? { custom_text: { submit: {
-        message: tLocale(params.locale, 'booking:wfbCheckoutStorageTerms'),
-      } } } : {}),
+      ...(params.kitchenChangeAuthorization ? { expires_at: params.kitchenChangeAuthorization.expiresAt }
+        : { custom_text: { submit: { message: await kitchenSubmitText(params.locale) } } }),
       metadata: {
         booking_id: bookingId.toString(),
-        ...overstayQuoteMetadata,
+        
         booking_price_cents: bookingPriceInCents.toString(),
         platform_fee_cents: platformFeeInCents.toString(),
         total_cents: totalAmountInCents.toString(),

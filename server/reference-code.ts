@@ -51,8 +51,6 @@ export async function generateReferenceCode(type: ReferenceType, reader: Pick<ty
         UNION ALL
         SELECT reference_code FROM storage_bookings WHERE reference_code = ${code}
         UNION ALL
-        SELECT reference_code FROM pending_storage_extensions WHERE reference_code = ${code}
-        UNION ALL
         SELECT reference_code FROM storage_overstay_records WHERE reference_code = ${code}
         UNION ALL
         SELECT reference_code FROM damage_claims WHERE reference_code = ${code}

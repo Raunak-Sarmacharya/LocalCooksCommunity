@@ -176,7 +176,7 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
   // Retries keep its recorded money, items and calendar identity.
   let confirmation: Parameters<typeof generateBookingConfirmationEmail>[0] | undefined;
   if (kind === 'confirmed') {
-    const { kitchenDuties, storageDuties } = await import('./visit-duties');
+    const { kitchenDuties } = await import('./visit-duties');
     const confirmedDuties = await kitchenDuties(bookingId, tx, 'confirmation');
     const [row] = await tx.select({ booking: kitchenBookings, kitchen: kitchens, location: locations }).from(kitchenBookings)
       .innerJoin(kitchens, eq(kitchens.id, kitchenBookings.kitchenId))
@@ -188,9 +188,6 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
     const [payment] = await tx.select({ amount: paymentTransactions.amount, payout: paymentTransactions.managerRevenue, payoutTiming: paymentTransactions.payoutTiming, processingFee: paymentTransactions.stripeProcessingFee }).from(paymentTransactions)
       .where(and(eq(paymentTransactions.paymentIntentId, row.booking.paymentIntentId!), eq(paymentTransactions.status, 'succeeded'))).limit(1);
     if (!payment) throw new Error('Confirmed itinerary requires recorded successful payment');
-    const storage = await tx.select({ item: storageBookings, name: storageListings.name }).from(storageBookings)
-      .innerJoin(storageListings, eq(storageListings.id, storageBookings.storageListingId))
-      .where(and(eq(storageBookings.kitchenBookingId, bookingId), eq(storageBookings.status, 'confirmed')));
     const equipment = await tx.select({ item: equipmentBookings, name: equipmentListings.equipmentType }).from(equipmentBookings)
       .innerJoin(equipmentListings, eq(equipmentListings.id, equipmentBookings.equipmentListingId))
       .where(and(eq(equipmentBookings.kitchenBookingId, bookingId), eq(equipmentBookings.status, 'confirmed')));
@@ -198,10 +195,7 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
     const declined = [
       ...(await tx.select({ name: equipmentListings.equipmentType }).from(equipmentBookings).innerJoin(equipmentListings, eq(equipmentListings.id, equipmentBookings.equipmentListingId))
         .where(and(eq(equipmentBookings.kitchenBookingId, bookingId), eq(equipmentBookings.status, 'cancelled')))),
-      ...(await tx.select({ name: storageListings.name }).from(storageBookings).innerJoin(storageListings, eq(storageListings.id, storageBookings.storageListingId))
-        .where(and(eq(storageBookings.kitchenBookingId, bookingId), eq(storageBookings.status, 'cancelled')))),
     ].map(row => row.name).filter(Boolean);
-    for (const { item } of storage) await storageDuties(item.id, tx, 'confirmation');
     const date = (value: Date) => value.toISOString().slice(0, 10);
     const manager = recipients.find(person => person.id === context.managerId);
     confirmation = { bookingDate: row.booking.bookingDate, startTime: row.booking.startTime, endTime: row.booking.endTime,
@@ -223,8 +217,7 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
       contactEmail: manager?.email || undefined,
 
       ...(declined.length ? { declinedAddons: declined.join(', ') } : {}),
-      addons: [...equipment.map(({ name }) => name),
-        ...storage.map(({ item, name }) => `${name}: ${date(item.startDate)}–${date(item.endDate)}. Storage removal is separate from kitchen checkout.`)].join('; '),
+      addons: equipment.map(({ name }) => name).join('; '),
     };
   }
   // A new request gets the same request templates as the legacy routes: deadline, hold, total.

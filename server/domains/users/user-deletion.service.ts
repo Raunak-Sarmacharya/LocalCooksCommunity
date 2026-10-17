@@ -63,7 +63,6 @@ export function userDeletionTargets(id: number): Array<{ table: string; where: S
     { table: "storage_rental_terms", where: sql`rental_id IN (${storageIds}) OR payment_transaction_id IN (SELECT id FROM payment_transactions WHERE chef_id = ${id} OR manager_id = ${id} OR (booking_type IN ('kitchen', 'bundle') AND booking_id IN (${bookingIds})) OR (booking_type = 'storage' AND booking_id IN (${storageIds})) OR (booking_type = 'equipment' AND booking_id IN (${equipmentIds})))` },
     // booking_id on the payment ledger is polymorphic, not a foreign key.
     { table: "payment_transactions", where: sql`chef_id = ${id} OR manager_id = ${id} OR (booking_type IN ('kitchen', 'bundle') AND booking_id IN (${bookingIds})) OR (booking_type = 'storage' AND booking_id IN (${storageIds})) OR (booking_type = 'equipment' AND booking_id IN (${equipmentIds}))` },
-    { table: "pending_storage_extensions", where: sql`manager_id = ${id} OR storage_booking_id IN (${storageIds})` },
     { table: "storage_bookings", where: sql`id IN (${storageIds})` },
     { table: "equipment_bookings", where: sql`id IN (${equipmentIds})` },
     { table: "kitchen_booking_visits", where: sql`booking_id IN (${bookingIds})` },

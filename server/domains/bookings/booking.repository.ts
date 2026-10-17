@@ -13,7 +13,6 @@ import {
     kitchens,
     locations,
     users,
-    pendingStorageExtensions,
     paymentTransactions,
     chefKitchenApplications,
     storageOverstayRecords,
@@ -460,15 +459,6 @@ export class BookingRepository {
         return conflicts;
     }
 
-    // ===== STORAGE BOOKINGS =====
-
-    async createStorageBooking(data: any) {
-        const { quoteStorageOverstayTerms } = await import('../../services/storage-overstay-terms-service');
-        const overstayTerms = await quoteStorageOverstayTerms(data.storageListingId);
-        const [booking] = await db.insert(storageBookings).values({ ...data, overstayTerms }).returning();
-        return this.mapStorageBookingToDTO(booking);
-    }
-
     async getStorageBookingsByChefId(chefId: number) {
         const result = await db
             .select({
@@ -640,71 +630,6 @@ export class BookingRepository {
                 not(eq(storageBookings.paymentStatus, 'failed'))
             ))
             .orderBy(asc(storageBookings.endDate));
-    }
-
-    // ===== PENDING STORAGE EXTENSIONS =====
-
-    async createPendingStorageExtension(data: {
-        storageBookingId: number;
-        newEndDate: Date;
-        extensionDays: number;
-        extensionBasePriceCents: number;
-        extensionServiceFeeCents: number;
-        extensionTotalPriceCents: number;
-        stripeSessionId: string;
-        stripePaymentIntentId?: string;
-        status: string;
-    }) {
-        const extRefCode = await generateReferenceCode('storage_extension');
-        const [extension] = await db
-            .insert(pendingStorageExtensions)
-            .values({
-                referenceCode: extRefCode,
-                storageBookingId: data.storageBookingId,
-                newEndDate: data.newEndDate,
-                extensionDays: data.extensionDays,
-                extensionBasePriceCents: data.extensionBasePriceCents,
-                extensionServiceFeeCents: data.extensionServiceFeeCents,
-                extensionTotalPriceCents: data.extensionTotalPriceCents,
-                stripeSessionId: data.stripeSessionId,
-                stripePaymentIntentId: data.stripePaymentIntentId,
-                status: data.status,
-            })
-            .returning();
-        return extension;
-    }
-
-    async getPendingStorageExtension(storageBookingId: number, stripeSessionId: string) {
-        const [extension] = await db
-            .select()
-            .from(pendingStorageExtensions)
-            .where(and(
-                eq(pendingStorageExtensions.storageBookingId, storageBookingId),
-                eq(pendingStorageExtensions.stripeSessionId, stripeSessionId)
-            ))
-            .limit(1);
-        return extension || null;
-    }
-
-    async updatePendingStorageExtension(id: number, updates: { status: string; stripePaymentIntentId?: string; completedAt?: Date }) {
-        const [updated] = await db
-            .update(pendingStorageExtensions)
-            .set({
-                ...updates,
-                updatedAt: new Date(),
-            })
-            .where(eq(pendingStorageExtensions.id, id))
-            .returning();
-        return updated;
-    }
-
-    async getPendingStorageExtensionBySessionId(stripeSessionId: string) {
-        const [extension] = await db
-            .select()
-            .from(pendingStorageExtensions)
-            .where(eq(pendingStorageExtensions.stripeSessionId, stripeSessionId))
-            .limit(1);
-        return extension || null;
     }
 
     // ===== EQUIPMENT BOOKINGS =====

@@ -36,14 +36,13 @@ export async function recordReplacementWithdrawal(tx: Parameters<Parameters<type
   booking: typeof kitchenBookings.$inferSelect, replacedBy: NonNullable<Decision['replacedBy']>) {
   if (booking.status !== 'pending' || booking.paymentStatus !== 'authorized' || booking.paymentDecision || !booking.paymentIntentId)
     throw new BookingTermsReviewRequired();
-  const storage = await tx.select().from(storageBookings).where(eq(storageBookings.kitchenBookingId, booking.id)).for('update');
   const equipment = await tx.select().from(equipmentBookings).where(eq(equipmentBookings.kitchenBookingId, booking.id)).for('update');
   const [payment] = await tx.select().from(paymentTransactions).where(eq(paymentTransactions.paymentIntentId, booking.paymentIntentId)).limit(1);
   const authorizedAmount = Number(payment?.amount);
   if (!Number.isSafeInteger(authorizedAmount) || authorizedAmount <= 0) throw new BookingTermsReviewRequired();
   const decision: Decision = { id: randomUUID(), target: 'cancelled', state: 'pending', intentId: booking.paymentIntentId,
     actorId: booking.chefId ?? undefined, amount: 0, subtotal: 0, tax: 0, commission: 0, taxRate: 0, authorizedAmount,
-    storage: storage.map(item => ({ id: item.id, status: 'cancelled' })),
+    storage: [],
     equipment: equipment.map(item => ({ id: item.id, status: 'cancelled' })), startedAt: new Date().toISOString(), replacedBy };
   await tx.update(kitchenBookings).set({ paymentDecision: decision, updatedAt: new Date() }).where(eq(kitchenBookings.id, booking.id));
 }
@@ -80,8 +79,7 @@ export async function decideAuthorizedBooking(bookingId: number, target: 'confir
     else throw new Error('A different payment decision already exists. Local Cooks must review this booking.');
   }
   if (decision) {
-    for (const [actions, key, items] of [[storageActions, 'storageBookingId', decision.storage],
-      [equipmentActions, 'equipmentBookingId', decision.equipment]] as const)
+    for (const [actions, key, items] of [[equipmentActions, 'equipmentBookingId', decision.equipment]] as const)
       if (actions.some(action => items.find(item => item.id === action[key])?.status !== action.action))
         throw new Error('The recorded item decision cannot be changed during payment recovery. Local Cooks must review this booking.');
   }
@@ -92,7 +90,6 @@ export async function decideAuthorizedBooking(bookingId: number, target: 'confir
     // Releasing the recorded hold does not require reconstructing historical fee terms.
     let terms = { subtotal: 0, tax: 0, commission: 0, rate: 0, authorizedAmount: intent.amount };
     let itemPrices: ReturnType<typeof bookingAddonPrices> = null;
-    let requestedStorage: number[] = [];
     if (target === 'confirmed') {
       const session = await getBookingCheckoutSession(intent.id);
       if (!session || session.status !== 'complete' || session.currency !== 'cad' || session.amount_total !== intent.amount
@@ -100,10 +97,6 @@ export async function decideAuthorizedBooking(bookingId: number, target: 'confir
         || session.metadata.kitchen_id !== String(booking.kitchenId)) throw new BookingTermsReviewRequired();
       terms = bookingCaptureTerms(session.metadata, intent.amount);
       itemPrices = bookingAddonPrices(session.metadata);
-      try {
-        requestedStorage = JSON.parse(session.metadata.selected_storage || '[]').map((item: { storageListingId: number }) => item.storageListingId);
-        if (requestedStorage.some(id => !Number.isSafeInteger(id) || id <= 0) || new Set(requestedStorage).size !== requestedStorage.length) throw new Error();
-      } catch { throw new BookingTermsReviewRequired(); }
     }
     decision = await db.transaction(async tx => {
       const [current] = await tx.select().from(kitchenBookings).where(eq(kitchenBookings.id, bookingId)).limit(1).for('update');
@@ -112,27 +105,23 @@ export async function decideAuthorizedBooking(bookingId: number, target: 'confir
         || current.updatedAt.getTime() !== booking.updatedAt.getTime()) throw new Error('Booking changed; refresh before deciding');
       if (target === 'confirmed' && !current.invitationId && current.createdAt && new Date() >= await getBookingResponseDeadline(current, tx))
         throw new BookingRequestExpired();
-      const storage = await tx.select().from(storageBookings).where(eq(storageBookings.kitchenBookingId, bookingId)).for('update');
       const equipment = await tx.select().from(equipmentBookings).where(eq(equipmentBookings.kitchenBookingId, bookingId)).for('update');
-      if (target === 'confirmed' && (storage.length !== requestedStorage.length || storage.some(item => !requestedStorage.includes(item.storageListingId))))
-        throw new BookingTermsReviewRequired();
-      for (const [actions, key, items] of [[storageActions, 'storageBookingId', storage], [equipmentActions, 'equipmentBookingId', equipment]] as const) {
+      for (const [actions, key, items] of [[equipmentActions, 'equipmentBookingId', equipment]] as const) {
         if (actions.some(action => !items.some(item => item.id === action[key] && item.chefId === current.chefId)))
           throw new Error('Booking item changed; refresh before deciding');
       }
-      if ([...storage, ...equipment].some(item => !['pending', 'cancelled'].includes(item.status))) throw new BookingTermsReviewRequired();
-      const plan = (items: typeof storage | typeof equipment, actions: ItemAction[], key: 'storageBookingId' | 'equipmentBookingId') =>
+      if (equipment.some(item => !['pending', 'cancelled'].includes(item.status))) throw new BookingTermsReviewRequired();
+      const plan = (items: typeof equipment, actions: ItemAction[], key: 'storageBookingId' | 'equipmentBookingId') =>
         items.map(item => ({ id: item.id, status: (target === 'cancelled' || item.status === 'cancelled' ? 'cancelled'
           : actions.find(action => action[key] === item.id)?.action || 'confirmed') as 'confirmed' | 'cancelled' }));
-      const storagePlan = plan(storage, storageActions, 'storageBookingId');
       const equipmentPlan = plan(equipment, equipmentActions, 'equipmentBookingId');
       if (target === 'confirmed' && itemPrices) {
-        for (const [items, prices, key] of [[storage, itemPrices.s, 'storageListingId'], [equipment, itemPrices.e, 'equipmentListingId']] as const)
+        for (const [items, prices, key] of [[equipment, itemPrices.e, 'equipmentListingId']] as const)
           if (items.length !== prices.length || items.some(item => !prices.some(([id, cents]) => id === (item as any)[key] && cents === Number(item.totalPrice))))
             throw new BookingTermsReviewRequired();
       }
-      const rejectedCents = [...storage, ...equipment].reduce((sum, item) => {
-        const itemPlan = 'storageListingId' in item ? storagePlan : equipmentPlan;
+      const rejectedCents = equipment.reduce((sum, item) => {
+        const itemPlan = equipmentPlan;
         const price = Number(item.totalPrice);
         if (!Number.isSafeInteger(price) || price < 0) throw new BookingTermsReviewRequired();
         return sum + (itemPlan.find(entry => entry.id === item.id)?.status === 'cancelled' ? price : 0);
@@ -141,7 +130,7 @@ export async function decideAuthorizedBooking(bookingId: number, target: 'confir
       const subtotal = target === 'confirmed' ? terms.subtotal - rejectedCents : 0;
       const capture = target === 'confirmed' ? approvedBookingCapture(terms, subtotal) : { amount: 0, tax: 0, commission: 0 };
       const next: Decision = { id: randomUUID(), target, state: 'pending', intentId: intent.id, subtotal, actorId, expiry,
-        ...capture, authorizedAmount: terms.authorizedAmount, taxRate: terms.rate, storage: storagePlan,
+        ...capture, authorizedAmount: terms.authorizedAmount, taxRate: terms.rate, storage: [],
         equipment: equipmentPlan, startedAt: new Date().toISOString(),
         ...(target === 'cancelled' && options.message?.trim() ? { declineMessage: options.message.trim().slice(0, 500) } : {}),
         ...(target === 'cancelled' && options.replacedBy ? { replacedBy: options.replacedBy } : {}) };
@@ -149,7 +138,6 @@ export async function decideAuthorizedBooking(bookingId: number, target: 'confir
       const [transaction] = await tx.select().from(paymentTransactions).where(eq(paymentTransactions.paymentIntentId, intent.id)).limit(1).for('update');
       if (!transaction && target === 'confirmed') throw new BookingTermsReviewRequired();
       const components = target === 'confirmed' ? [
-        ...storage.filter(item => storagePlan.find(plan => plan.id === item.id)?.status === 'confirmed').map(item => ({ kind: 'storage' as const, bookingId: item.id, subtotalCents: Number(item.totalPrice) })),
         ...equipment.filter(item => equipmentPlan.find(plan => plan.id === item.id)?.status === 'confirmed').map(item => ({ kind: 'equipment' as const, bookingId: item.id, subtotalCents: Number(item.totalPrice) })),
       ] : [];
       const allocations = target === 'confirmed' ? capturedComponentAllocations([
@@ -272,22 +260,16 @@ export async function reconcileBookingDecision(bookingId: number, recorded?: Dec
     if (booking!.status !== 'pending' && !alreadyCancelled) throw new Error('Booking status changed; Local Cooks review required');
     if (decision!.target === 'cancelled') {
       await cancelLinkedBookingDates(tx, bookingId);
-      await tx.update(storageBookings).set({ paymentStatus: 'failed', updatedAt: new Date() })
-        .where(and(eq(storageBookings.kitchenBookingId, bookingId), eq(storageBookings.paymentStatus, 'authorized')));
       await tx.update(equipmentBookings).set({ paymentStatus: 'failed', updatedAt: new Date() })
         .where(and(eq(equipmentBookings.kitchenBookingId, bookingId), eq(equipmentBookings.paymentStatus, 'authorized')));
     }
     else {
-      for (const item of decision!.storage) await tx.update(storageBookings).set({ status: item.status,
-        paymentStatus: item.status === 'confirmed' ? 'paid' : 'failed', updatedAt: new Date() })
-        .where(and(eq(storageBookings.id, item.id), eq(storageBookings.kitchenBookingId, bookingId)));
       for (const item of decision!.equipment) await tx.update(equipmentBookings).set({ status: item.status,
         paymentStatus: item.status === 'confirmed' ? 'paid' : 'failed', updatedAt: new Date() })
         .where(and(eq(equipmentBookings.id, item.id), eq(equipmentBookings.kitchenBookingId, bookingId)));
     }
     await tx.update(kitchenBookings).set({ status: decision!.target, paymentStatus: decision!.target === 'confirmed' ? 'paid' : 'failed',
       ...(decision!.target === 'confirmed' ? { totalPrice: String(decision!.subtotal), serviceFee: String(decision!.commission),
-        storageItems: (booking!.storageItems as any[] || []).map(item => decision!.storage.some(row => row.id === (item.storageBookingId ?? item.id) && row.status === 'cancelled') ? { ...item, rejected: true } : item),
         equipmentItems: (booking!.equipmentItems as any[] || []).map(item => decision!.equipment.some(row => row.id === (item.equipmentBookingId ?? item.id) && row.status === 'cancelled') ? { ...item, rejected: true } : item) } : {}),
       paymentDecision: { ...decision, state: 'complete', completedAt: new Date().toISOString() }, updatedAt: new Date() })
       .where(eq(kitchenBookings.id, bookingId));
@@ -358,7 +340,7 @@ async function supersedeReleasedHoldDecision(bookingId: number, decision: Decisi
       throw new Error('Payment decision changed; Local Cooks review required');
     const next: Decision = { id: randomUUID(), target: 'cancelled', state: 'pending', intentId: saved.intentId, actorId, subtotal: 0, amount: 0, tax: 0,
       commission: 0, authorizedAmount: saved.authorizedAmount, taxRate: saved.taxRate, supersedes: saved.id, startedAt: new Date().toISOString(),
-      storage: saved.storage.map(item => ({ ...item, status: 'cancelled' as const })), equipment: saved.equipment.map(item => ({ ...item, status: 'cancelled' as const })) };
+      storage: [], equipment: saved.equipment.map(item => ({ ...item, status: 'cancelled' as const })) };
     await tx.update(kitchenBookings).set({ paymentDecision: next }).where(eq(kitchenBookings.id, bookingId));
     return next;
   });
