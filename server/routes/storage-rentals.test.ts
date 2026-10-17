@@ -97,7 +97,7 @@ describe('storage rental API contract', () => {
 describe('storage visit endpoints', () => {
   it.each(['handover', 'clear-move-out', 'items-still-here', 'mark-ready'])('forwards %s as the authenticated manager and returns the refreshed DTO', async action => {
     const input = action === 'clear-move-out' ? { needsCleaning: true } : action === 'mark-ready' ? {} : { photoUrls: ['https://example.invalid/photo.jpg'], note: ' Shelf inspected ' };
-    await call('post', `/manager/storage-rentals/:id/${action}`, input);
+    await call('post', `/manager/storage-rentals/:id/${action}`, { ...input, operationKey: 'storage:7:op' });
     expect(h.visit).toHaveBeenCalledWith(7, { id: 3, role: 'manager' }, action,
       action === 'clear-move-out' || action === 'mark-ready' ? input : { ...input, note: 'Shelf inspected' });
     expect(h.read).toHaveBeenCalledWith(7, { id: 3, role: 'manager' });
