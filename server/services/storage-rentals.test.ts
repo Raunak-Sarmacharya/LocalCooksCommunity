@@ -250,6 +250,11 @@ describe('storage decisions and exact expiry', () => {
     expect(dto.actions).toEqual(['approve', 'decline']); expect(JSON.stringify(dto)).not.toMatch(/pi_a|cs_test_a|storage-decision/);
     expect((await readRental(id, approveActor, new Date(now.getTime() + 86400000))).actions).toEqual(['decline']);
     expect(await storageTermStillEligible(id, h.db)).toBe(false);
+    await h.db.update(storageBookings).set({ rentalState: 'active', termStart: '2026-10-16', paidThrough: '2026-10-22' }).where(eq(storageBookings.id, id));
+    expect((await readRental(id, { id: 3, role: 'chef' }, now)).actions).toContain('extend');
+    expect((await readRental(id, approveActor, now)).actions).not.toContain('extend');
+    await h.db.update(storageBookings).set({ paidThrough: '2026-11-05' }).where(eq(storageBookings.id, id));
+    expect((await readRental(id, { id: 3, role: 'chef' }, now)).actions).not.toContain('extend');
   });
   it('refuses live keys before any Stripe request', () => {
     vi.stubEnv('STRIPE_SECRET_KEY', 'sk_live_not_a_secret');

@@ -152,6 +152,7 @@ describe("term payout status", () => {
   it("reports scheduled, paid and on-hold terms", () => {
     expect(termPayout(term({ payoutEligibleAt: "2026-10-11T02:30:00Z" }))).toMatchObject({ status: "scheduled", amountCents: 3550 });
     expect(termPayout(term({ payoutReleasedAt: "2026-10-12T02:30:00Z" }))).toMatchObject({ status: "paid" });
+    expect(termPayout(term({ payoutEligibleAt: "2026-10-11T02:30:00Z", payoutCents: 3340 }))).toMatchObject({ status: "scheduled", amountCents: 3340 });
     expect(termPayout(term({ payoutEligibleAt: "2026-10-11T02:30:00Z", payoutHoldReason: "problem_open" }))).toMatchObject({ status: "hold" });
     expect(termPayout(term({ status: "authorized" }))).toMatchObject({ status: "none" });
   });

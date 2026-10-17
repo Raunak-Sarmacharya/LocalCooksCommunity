@@ -11,6 +11,7 @@ import { ct } from '@/i18n/chef-ns';
  */
 
 import { useState, useEffect } from "react";
+import { storageDay } from "@/lib/storage-rentals";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, CheckCircle, Clock, Info } from "lucide-react";
@@ -50,7 +51,7 @@ export function StorageCheckoutDialog({
 }: StorageCheckoutDialogProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { t: tStrict } = useTranslation("chef");
+  const { t: tStrict, i18n } = useTranslation("chef");
   const t = tStrict as unknown as (key: string, options?: Record<string, unknown>) => string;
   const [checkoutNotes, setCheckoutNotes] = useState("");
   // Photos keyed by requirement id (or __generic__ for fallback)
@@ -173,7 +174,7 @@ export function StorageCheckoutDialog({
           <div className="bg-muted/50 rounded-lg p-3">
             <div className="text-sm font-medium">{storageBooking.storageName || t("sxDefaultUnitName")}</div>
             <div className="text-xs text-muted-foreground mt-1">
-              {t("coEndDate")} {new Date(storageBooking.endDate).toLocaleDateString()}
+              {t("coEndDate")} {storageDay(storageBooking.endDate.slice(0, 10), i18n.language, true)}
             </div>
             {storageBooking.storageType && (
               <Badge variant="outline" className="mt-2 text-xs">

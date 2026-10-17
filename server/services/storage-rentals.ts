@@ -5,7 +5,7 @@ import { db } from '../db';
 import { kitchens, locations, storageListings, storageBookings, storageRentalTerms, paymentTransactions, platformSettings, kitchenCheckoutIncidents } from '@shared/schema';
 import { addDays, approvedTermDates, GRACE_DAYS, localDayStart, localToday, MAX_LEAD_DAYS, occupancyRange, pickFreeUnit,
   rentalPhase, REMOVAL_REVIEW_DAYS, responseDeadline, STORAGE_TERMS_VERSION, storageCancellationSnapshot, termPayoutEligibleAt,
-  termPrice, toDateRange, type RentalDates } from '@shared/storage-rental';
+  termPrice, toDateRange, daysBetween, EXTEND_WINDOW_DAYS, type RentalDates } from '@shared/storage-rental';
 import type { CancellationPolicySnapshot } from '@shared/cancellation-policy';
 import { chefService } from '../domains/users/chef.service';
 import { getUserDisplayName } from '../utils/user-display';
@@ -374,7 +374,7 @@ export async function readRental(id: number, actor: RentalActor, now = new Date(
   const paymentIds = terms.flatMap(term => (typeof term.paymentTransactionId === 'number' ? [term.paymentTransactionId] : []));
   const payments = paymentIds.length
     ? await db.select({ id: paymentTransactions.id, payoutEligibleAt: paymentTransactions.payoutEligibleAt,
-        payoutReleasedAt: paymentTransactions.payoutReleasedAt, payoutHoldReason: paymentTransactions.payoutHoldReason })
+        payoutReleasedAt: paymentTransactions.payoutReleasedAt, payoutHoldReason: paymentTransactions.payoutHoldReason, managerRevenue: paymentTransactions.managerRevenue })
         .from(paymentTransactions).where(inArray(paymentTransactions.id, paymentIds))
     : [];
   const payoutById = new Map(payments.map(payment => [payment.id, payment]));
@@ -382,6 +382,9 @@ export async function readRental(id: number, actor: RentalActor, now = new Date(
   const { storageRentalVisitActions, storageRentalRelet } = await import('./storage-checkout-service');
   actions.push(...storageRentalVisitActions(rental, actor.role, now, rental.rentalState === 'ended' && await storageRentalRelet(rental)));
   if (rental.termStart! <= localToday(now, rental.timezone!) && !['requested', 'declined', 'expired', 'withdrawn'].includes(rental.rentalState!)) actions.push('report_problem');
+  // The extend sheet quotes the exact limit (max term, reclaim, next renter); this only gates the button.
+  if (actor.role === 'chef' && !pending && ['reserved', 'active', 'removal_review'].includes(rental.rentalState!)
+    && daysBetween(localToday(now, rental.timezone!), rental.paidThrough!) <= EXTEND_WINDOW_DAYS) actions.push('extend');
   return { id, ref: rental.referenceCode, kitchen: { id: ctx.kitchen.id, name: ctx.kitchen.name },
     listing: { id: ctx.listing.id, name: ctx.listing.name }, chef: { id: rental.chefId ?? null, name: chefName },
     unitLabel: String(rental.unitIndex), state: rental.rentalState, timezone: rental.timezone,
@@ -391,7 +394,8 @@ export async function readRental(id: number, actor: RentalActor, now = new Date(
     terms: terms.map(({ id, seq, kind, startsOn, endsOn, days, dailyPriceCents, subtotalCents, taxCents, serviceFeeCents, totalCents, status, paidAt, paymentTransactionId }) => {
       const payout = paymentTransactionId ? payoutById.get(paymentTransactionId) : undefined;
       return { id, seq, kind, startsOn, endsOn, days, dailyPriceCents, subtotalCents, taxCents, serviceFeeCents, totalCents, status, paidAt,
-        payoutEligibleAt: payout?.payoutEligibleAt ?? null, payoutReleasedAt: payout?.payoutReleasedAt ?? null, payoutHoldReason: payout?.payoutHoldReason ?? null };
+        payoutEligibleAt: payout?.payoutEligibleAt ?? null, payoutReleasedAt: payout?.payoutReleasedAt ?? null, payoutHoldReason: payout?.payoutHoldReason ?? null,
+        payoutCents: payout ? Math.round(Number(payout.managerRevenue)) : null };
     }),
     noBaseline: (rental.rentalTerms as { noBaseline?: boolean })?.noBaseline ?? false, needsCleaning: rental.needsCleaning, releasedOn: rental.releasedOn,
     evidence: { checkinPhotoUrls: rental.checkinPhotoUrls, handoverPhotoUrls: rental.handoverPhotoUrls, checkoutPhotoUrls: rental.checkoutPhotoUrls } };

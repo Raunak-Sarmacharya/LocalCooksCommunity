@@ -28,6 +28,8 @@ export interface StorageRentalTerm {
   payoutEligibleAt: string | null;
   payoutReleasedAt: string | null;
   payoutHoldReason: string | null;
+  /** Kitchen net for this term (after the Local Cooks fee); null before payment. */
+  payoutCents?: number | null;
 }
 
 export interface StorageRental {
@@ -262,11 +264,13 @@ export interface TermPayout {
 }
 
 export function termPayout(term: StorageRentalTerm): TermPayout {
-  if (term.status !== "paid") return { status: "none", amountCents: term.totalCents, at: null };
-  if (term.payoutReleasedAt) return { status: "paid", amountCents: term.totalCents, at: term.payoutReleasedAt };
-  if (term.payoutHoldReason) return { status: "hold", amountCents: term.totalCents, at: null };
-  if (term.payoutEligibleAt) return { status: "scheduled", amountCents: term.totalCents, at: term.payoutEligibleAt };
-  return { status: "none", amountCents: term.totalCents, at: null };
+  // The kitchen is paid its net (after the Local Cooks fee), never the chef's total.
+  const amountCents = term.payoutCents ?? term.totalCents;
+  if (term.status !== "paid") return { status: "none", amountCents, at: null };
+  if (term.payoutReleasedAt) return { status: "paid", amountCents, at: term.payoutReleasedAt };
+  if (term.payoutHoldReason) return { status: "hold", amountCents, at: null };
+  if (term.payoutEligibleAt) return { status: "scheduled", amountCents, at: term.payoutEligibleAt };
+  return { status: "none", amountCents, at: null };
 }
 
 /** Which input fields a More-menu action asks for, before its confirm sheet. */

@@ -84,11 +84,11 @@ describe('per-reader wording', () => {
     expect(notice(5)!.message).toBe('Your card is on hold for $30.00. Harbour Kitchen answers by Oct 17, 2026, 3:30 p.m.');
     expect(notice(2)).toMatchObject({ target: 'manager', actionUrl: '/manager/storage/5' });
     expect(notice(2)!.title).toBe('Maya Chen wants storage · Shelf 2');
-    expect(notice(2)!.message).toBe('Maya Chen asked for Shelf 2 Oct 20, 2026–Oct 27, 2026. Answer by Oct 17, 2026, 3:30 p.m.');
+    expect(notice(2)!.message).toBe('Maya Chen asked for Shelf 2 Oct 20, 2026–Oct 27, 2026 · total $30.00. Answer by Oct 17, 2026, 3:30 p.m.');
   });
   it('shows the chef the approved unit and charge, and gives Local Cooks a factual summary', async () => {
-    await queueStorageRentalNotice(tx(), 5, 'approved', facts);
-    expect(notice(5)!.message).toBe('Shelf 2 at Harbour Kitchen. Starts Oct 20, 2026. Your card was charged $30.00.');
+    await queueStorageRentalNotice(tx(), 5, 'approved', { ...facts, unitLabel: '1' });
+    expect(notice(5)!.message).toBe('Shelf 2 · unit 1 at Harbour Kitchen. Starts Oct 20, 2026. Your card was charged $30.00.');
     expect(notice(1)).toMatchObject({ target: 'manager', actionUrl: '/admin?section=storage-rentals&rental=5' });
     expect(notice(1)!.message).toContain('Maya Chen at Harbour Kitchen · Shelf 2 · SB-X1');
     expect(notice(1)!.message).toContain("The kitchen accepted and the chef's card was charged $30.00.");

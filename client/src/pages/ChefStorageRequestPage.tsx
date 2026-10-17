@@ -147,6 +147,7 @@ export default function ChefStorageRequestPage() {
             <li>{t("stcDiscDays")}</li>
             {q && <li>{t("stcDiscExtend", { end: storageDay(q.endOn, locale), kitchen, daily: cad(q.dailyPriceCents, locale) })}</li>}
             <li>{t("stcDiscEarly")}</li>
+            <li>{t("stcDiscCancel", { kitchen })}</li>
           </ul>
         </section>
         <CheckoutCancellationDisclosure policy={policy.data} startAt={startOn ? localDayStart(startOn, timezone).toISOString() : undefined}
