@@ -116,22 +116,6 @@ const router = Router();
 router.use(bookingAttendancePrivacy);
 router.use('/customers', managerCustomersRouter);
 
-async function verifyManagerOwnsOverstay(
-  overstayRecordId: number,
-  managerId: number,
-): Promise<boolean> {
-  const [row] = await db
-    .select({ managerId: locations.managerId })
-    .from(storageOverstayRecords)
-    .innerJoin(storageBookingsTable, eq(storageOverstayRecords.storageBookingId, storageBookingsTable.id))
-    .innerJoin(storageListings, eq(storageBookingsTable.storageListingId, storageListings.id))
-    .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
-    .innerJoin(locations, eq(kitchens.locationId, locations.id))
-    .where(eq(storageOverstayRecords.id, overstayRecordId))
-    .limit(1);
-  return row?.managerId === managerId;
-}
-
 async function getManagerIdForBooking(
   bookingId: number,
   bookingType: "kitchen" | "storage" | "equipment" | "bundle",
@@ -3116,11 +3100,17 @@ router.put("/locations/:locationId/kitchen-booking-policies", requireFirebaseAut
   const locationPatch: Partial<typeof locations.$inferInsert> = {};
   const kitchenPatch: Partial<typeof kitchens.$inferInsert> = {};
   const [cap, daysCap] = await Promise.all([bookingWindowCap(), bookingDaysCap()]);
-  for (const field of ["cancellationPolicyHours", "minimumBookingWindowHours", "defaultDailyBookingLimit", "maxAdvanceBookingDays", "maxBookingDays"] as const) {
+      for (const field of ["cancellationPolicyHours", "minimumBookingWindowHours", "defaultDailyBookingLimit", "maxAdvanceBookingDays", "maxBookingDays"] as const) {
     const value = req.body?.[field];
     if (value === undefined) continue;
     const min = field === "defaultDailyBookingLimit" || field === "maxAdvanceBookingDays" || field === "maxBookingDays" ? 1 : 0;
     const max = field === "maxAdvanceBookingDays" ? cap : field === "maxBookingDays" ? daysCap : field === "defaultDailyBookingLimit" ? 24 : field === "minimumBookingWindowHours" ? 168 : 2147483647;
+    // Longest booking may be null (no cap); other fields stay required integers.
+    if (field === "defaultDailyBookingLimit" && value === null) {
+      locationPatch[field] = null;
+      kitchenPatch[field] = null;
+      continue;
+    }
     if (!Number.isInteger(value) || value < min || value > max) {
       return res.status(400).json({
         error: field === "maxAdvanceBookingDays" ? `Booking window must be a whole number from 1 to ${max} days.`
@@ -3389,7 +3379,7 @@ router.put(
         if (locationId) {
           const location = await locationService.getLocationById(locationId);
           const dailyLimit = resolveKitchenBookingPolicies(kitchen, location).defaultDailyBookingLimit;
-          if (minimumBookingHours > dailyLimit) {
+          if (dailyLimit != null && minimumBookingHours > dailyLimit) {
             return res.status(400).json({
               error: `Minimum booking hours (${minimumBookingHours}) cannot exceed this kitchen's daily hourly-slot limit (${dailyLimit} hours). Please increase the daily limit first or reduce the minimum.`
             });
@@ -5028,6 +5018,7 @@ router.put(
 
       if (
         defaultDailyBookingLimit !== undefined &&
+        defaultDailyBookingLimit !== null &&
         (typeof defaultDailyBookingLimit !== "number" ||
           defaultDailyBookingLimit < 1 ||
           defaultDailyBookingLimit > 24)
@@ -5035,12 +5026,12 @@ router.put(
         return res
           .status(400)
           .json({
-            error: "Daily booking limit must be between 1 and 24 hours",
+            error: "Daily booking limit must be between 1 and 24 hours, or null for no limit",
           });
       }
 
-      // Cross-validate: daily limit cannot be less than any kitchen's minimumBookingHours
-      if (defaultDailyBookingLimit !== undefined) {
+      // Cross-validate: a finite daily limit cannot be less than any kitchen's minimumBookingHours
+      if (defaultDailyBookingLimit !== undefined && defaultDailyBookingLimit !== null) {
         const locationKitchens = await db
           .select({ id: kitchens.id, name: kitchens.name, minimumBookingHours: kitchens.minimumBookingHours, defaultDailyBookingLimit: kitchens.defaultDailyBookingLimit })
           .from(kitchens)
@@ -6467,385 +6458,6 @@ router.post(
 // STORAGE EXTENSION APPROVAL ENDPOINTS
 // ===================================
 
-
-// ============================================================================
-// OVERSTAY PENALTY MANAGEMENT ENDPOINTS
-// ============================================================================
-
-import {
-  overstayPenaltyService,
-  type ManagerPenaltyDecision,
-} from "../services/overstay-penalty-service";
-
-/**
- * GET /manager/overstays
- * Get all overstay records (pending and past) for manager's locations
- */
-router.get(
-  "/overstays",
-  requireFirebaseAuthWithUser,
-  requireManager,
-  async (req: Request, res: Response) => {
-    try {
-      const managerId = req.neonUser!.id;
-      const includeAll = req.query.includeAll === "true";
-
-      // Get manager's location IDs
-      const managerLocations = await db
-        .select({ id: locations.id })
-        .from(locations)
-        .where(eq(locations.managerId, managerId));
-
-      const locationIds = managerLocations.map((l) => l.id);
-
-      if (locationIds.length === 0) {
-        return res.json({ overstays: [], pastOverstays: [], stats: null });
-      }
-
-      // Get pending overstays for all manager's locations
-      const pendingOverstays =
-        await overstayPenaltyService.getPendingOverstayReviews();
-      const filteredPending = pendingOverstays.filter((o) =>
-        locationIds.includes(o.locationId),
-      );
-
-      // Get all overstays (including past/resolved) if requested
-      let pastOverstays: typeof pendingOverstays = [];
-      if (includeAll) {
-        const allOverstays =
-          await overstayPenaltyService.getAllOverstayRecords();
-        const filteredAll = allOverstays.filter((o) =>
-          locationIds.includes(o.locationId),
-        );
-        // Past = all records that are not in active statuses
-        const pendingStatuses = [
-          "detected",
-          "grace_period",
-          "pending_review",
-          "penalty_approved",
-          "charge_pending",
-          "charge_failed",
-          "escalated",
-        ];
-        pastOverstays = filteredAll.filter(
-          (o) => !pendingStatuses.includes(o.status),
-        );
-      }
-
-      // Get stats scoped to this manager's locations
-      const stats = await overstayPenaltyService.getOverstayStats(locationIds);
-      const namedOverstays = await withChefDisplayNames([...filteredPending, ...pastOverstays]);
-
-      res.json({
-        overstays: namedOverstays.slice(0, filteredPending.length),
-        pastOverstays: namedOverstays.slice(filteredPending.length),
-        stats,
-      });
-    } catch (error) {
-      logger.error("Error fetching overstays:", error);
-      return errorResponse(res, error);
-    }
-  },
-);
-
-/**
- * GET /manager/overstays/:id
- * Get a single overstay record with full details
- */
-router.get(
-  "/overstays/:id",
-  requireFirebaseAuthWithUser,
-  requireManager,
-  async (req: Request, res: Response) => {
-    try {
-      const overstayId = parseInt(req.params.id);
-      const managerId = req.neonUser!.id;
-      if (isNaN(overstayId)) {
-        return res.status(400).json({ error: "Invalid overstay ID" });
-      }
-
-      // Verify manager owns this overstay record's location
-      const ownsRecord = await verifyManagerOwnsOverstay(overstayId, managerId);
-      if (!ownsRecord) {
-        return res.status(403).json({ error: "Access denied" });
-      }
-
-      const record = await overstayPenaltyService.getOverstayRecord(overstayId);
-      if (!record) {
-        return res.status(404).json({ error: "Overstay record not found" });
-      }
-
-      // Get history
-      const history =
-        await overstayPenaltyService.getOverstayHistory(overstayId);
-
-      res.json({
-        overstay: record,
-        history,
-      });
-    } catch (error) {
-      logger.error("Error fetching overstay record:", error);
-      return errorResponse(res, error);
-    }
-  },
-);
-
-/**
- * POST /manager/overstays/:id/approve
- * Approve a penalty charge (optionally with adjusted amount)
- */
-router.post(
-  "/overstays/:id/approve",
-  requireFirebaseAuthWithUser,
-  requireManager,
-  async (req: Request, res: Response) => {
-    try {
-      const overstayId = parseInt(req.params.id);
-      const managerId = req.neonUser!.id;
-      const { finalPenaltyCents, managerNotes } = req.body;
-
-      if (isNaN(overstayId)) {
-        return res.status(400).json({ error: "Invalid overstay ID" });
-      }
-
-      // Verify manager owns this overstay record's location
-      const ownsRecord = await verifyManagerOwnsOverstay(overstayId, managerId);
-      if (!ownsRecord) {
-        return res.status(403).json({ error: "Access denied" });
-      }
-
-      // Validate penalty amount if provided
-      if (finalPenaltyCents !== undefined) {
-        // Number.isFinite also rejects NaN/Infinity: `typeof NaN === "number"`
-        // and every comparison against NaN is false, so a bare `< 0` check let
-        // a NaN amount through to the service and on to the database.
-        if (
-          typeof finalPenaltyCents !== "number" ||
-          !Number.isFinite(finalPenaltyCents) ||
-          finalPenaltyCents < 0
-        ) {
-          return res.status(400).json({ error: "Invalid penalty amount" });
-        }
-      }
-
-      const decision: ManagerPenaltyDecision = {
-        overstayRecordId: overstayId,
-        managerId,
-        action: finalPenaltyCents !== undefined ? "adjust" : "approve",
-        finalPenaltyCents,
-        managerNotes,
-      };
-
-      const result =
-        await overstayPenaltyService.processManagerDecision(decision);
-
-      if (!result.success) {
-        return res.status(400).json({ error: result.error });
-      }
-
-      res.json({ success: true, message: 'Penalty approved. Collection waits for the configured chef dispute window.', autoCharged: false });
-    } catch (error) {
-      logger.error("Error approving penalty:", error);
-      return errorResponse(res, error);
-    }
-  },
-);
-
-/**
- * POST /manager/overstays/:id/waive
- * Waive a penalty charge
- */
-router.post(
-  "/overstays/:id/waive",
-  requireFirebaseAuthWithUser,
-  requireManager,
-  async (req: Request, res: Response) => {
-    try {
-      const overstayId = parseInt(req.params.id);
-      const managerId = req.neonUser!.id;
-      const { waiveReason, managerNotes } = req.body;
-
-      if (isNaN(overstayId)) {
-        return res.status(400).json({ error: "Invalid overstay ID" });
-      }
-
-      // Verify manager owns this overstay record's location
-      const ownsRecord = await verifyManagerOwnsOverstay(overstayId, managerId);
-      if (!ownsRecord) {
-        return res.status(403).json({ error: "Access denied" });
-      }
-
-      if (
-        !waiveReason ||
-        typeof waiveReason !== "string" ||
-        waiveReason.trim().length === 0
-      ) {
-        return res.status(400).json({ error: "Waive reason is required" });
-      }
-
-      const decision: ManagerPenaltyDecision = {
-        overstayRecordId: overstayId,
-        managerId,
-        action: "waive",
-        waiveReason: waiveReason.trim(),
-        managerNotes,
-      };
-
-      const result =
-        await overstayPenaltyService.processManagerDecision(decision);
-
-      if (!result.success) {
-        return res.status(400).json({ error: result.error });
-      }
-
-      res.json({
-        success: true,
-        message: "Penalty waived successfully",
-      });
-    } catch (error) {
-      logger.error("Error waiving penalty:", error);
-      return errorResponse(res, error);
-    }
-  },
-);
-
-/**
- * POST /manager/overstays/:id/charge
- * Charge an approved penalty
- */
-router.post(
-  "/overstays/:id/charge",
-  requireFirebaseAuthWithUser,
-  requireManager,
-  async (req: Request, res: Response) => {
-    try {
-      const overstayId = parseInt(req.params.id);
-      const managerId = req.neonUser!.id;
-
-      if (isNaN(overstayId)) {
-        return res.status(400).json({ error: "Invalid overstay ID" });
-      }
-
-      // Verify manager owns this overstay record's location
-      const ownsRecord = await verifyManagerOwnsOverstay(overstayId, managerId);
-      if (!ownsRecord) {
-        return res.status(403).json({ error: "Access denied" });
-      }
-
-      const result =
-        await overstayPenaltyService.chargeApprovedPenalty(overstayId);
-
-      if (!result.success) {
-        return res.status(400).json({
-          error: result.error,
-          message:
-            "Failed to charge penalty. The chef may need to update their payment method.",
-        });
-      }
-
-      res.json({
-        success: true,
-        message: "Penalty charged successfully",
-        paymentIntentId: result.paymentIntentId,
-        chargeId: result.chargeId,
-      });
-    } catch (error) {
-      logger.error("Error charging penalty:", error);
-      return errorResponse(res, error);
-    }
-  },
-);
-
-/**
- * POST /manager/overstays/:id/resolve
- * Mark an overstay as resolved (chef extended or removed items)
- */
-router.post(
-  "/overstays/:id/resolve",
-  requireFirebaseAuthWithUser,
-  requireManager,
-  async (req: Request, res: Response) => {
-    try {
-      const overstayId = parseInt(req.params.id);
-      const managerId = req.neonUser!.id;
-      const { resolutionType, resolutionNotes } = req.body;
-
-      if (isNaN(overstayId)) {
-        return res.status(400).json({ error: "Invalid overstay ID" });
-      }
-
-      // Verify manager owns this overstay record's location
-      const ownsRecord = await verifyManagerOwnsOverstay(overstayId, managerId);
-      if (!ownsRecord) {
-        return res.status(403).json({ error: "Access denied" });
-      }
-
-      const validTypes = ["extended", "removed", "escalated"];
-      if (!resolutionType || !validTypes.includes(resolutionType)) {
-        return res
-          .status(400)
-          .json({
-            error:
-              "Invalid resolution type. Must be: extended, removed, or escalated",
-          });
-      }
-
-      const result = await overstayPenaltyService.resolveOverstay(
-        overstayId,
-        resolutionType,
-        resolutionNotes,
-        managerId,
-      );
-
-      if (!result.success) {
-        return res.status(400).json({ error: result.error });
-      }
-
-      res.json({
-        success: true,
-        message: `Overstay marked as ${resolutionType}`,
-      });
-    } catch (error) {
-      logger.error("Error resolving overstay:", error);
-      return errorResponse(res, error);
-    }
-  },
-);
-
-/**
- * GET /manager/overstays/stats
- * Get overstay statistics for manager's locations
- */
-router.get(
-  "/overstays-stats",
-  requireFirebaseAuthWithUser,
-  requireManager,
-  async (req: Request, res: Response) => {
-    try {
-      const managerId = req.neonUser!.id;
-
-      // Get manager's location IDs
-      const managerLocations = await db
-        .select({ id: locations.id })
-        .from(locations)
-        .where(eq(locations.managerId, managerId));
-
-      const locationIds = managerLocations.map((l) => l.id);
-
-      if (locationIds.length === 0) {
-        return res.json({ stats: null });
-      }
-
-      // Get stats scoped to this manager's locations
-      const stats = await overstayPenaltyService.getOverstayStats(locationIds);
-
-      res.json({ stats });
-    } catch (error) {
-      logger.error("Error fetching overstay stats:", error);
-      return errorResponse(res, error);
-    }
-  },
-);
 
 // ============================================================================
 // STORAGE CHECKOUT VERIFICATION ENDPOINTS (Hybrid Verification System)

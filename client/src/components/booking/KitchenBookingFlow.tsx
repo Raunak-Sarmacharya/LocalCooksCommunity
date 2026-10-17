@@ -447,7 +447,8 @@ export default function KitchenBookingFlow({
   const [pendingTimeSlots, setPendingTimeSlots] = useState<string[]>([]);
   const [timeModalOpen, setTimeModalOpen] = useState(false);
   const [isLoadingSlots, setIsLoadingSlots] = useState(false);
-  const [maxSlotsPerChef, setMaxSlotsPerChef] = useState<number>(2);
+  /** Null = no longest-booking hours cap (opening hours only). */
+  const [maxSlotsPerChef, setMaxSlotsPerChef] = useState<number | null>(null);
 
   // Pricing state
   const [kitchenPricing, setKitchenPricing] = useState<{
@@ -740,13 +741,14 @@ export default function KitchenBookingFlow({
           if (policy && typeof policy.maxSlotsPerChef === 'number' && policy.maxSlotsPerChef > 0) {
             setMaxSlotsPerChef(policy.maxSlotsPerChef);
           } else {
-            setMaxSlotsPerChef(2);
+            // null / missing = no per-request hours cap
+            setMaxSlotsPerChef(null);
           }
         } else {
-          setMaxSlotsPerChef(2);
+          setMaxSlotsPerChef(null);
         }
       } catch {
-        setMaxSlotsPerChef(2);
+        setMaxSlotsPerChef(null);
       }
 
       // Fetch slots
@@ -1008,7 +1010,7 @@ export default function KitchenBookingFlow({
 
     setter(prev => {
       const next = prev.includes(slot.time) ? prev.filter(s => s !== slot.time) : [...prev, slot.time];
-      if (next.length > maxSlotsPerChef) {
+      if (maxSlotsPerChef != null && next.length > maxSlotsPerChef) {
         toast({
           title: t("toastLimitReachedTitle", "Limit reached"),
           description: t("toastLimitReachedDesc", { count: maxSlotsPerChef, defaultValue: `You can select up to ${maxSlotsPerChef} hour slot${maxSlotsPerChef > 1 ? 's' : ''} for this day.` }),
@@ -1115,7 +1117,7 @@ export default function KitchenBookingFlow({
   })();
   const selectionError = (times = selectedSlots) => validateKitchenSlotSelection(
     times, allSlots, bookingRateMode === 'hourly' ? Math.max(1, kitchenPricing?.minimumBookingHours ?? 0) : 1,
-    bookingRateMode === 'hourly' ? maxSlotsPerChef : Infinity,
+    bookingRateMode === 'hourly' ? (maxSlotsPerChef ?? Infinity) : Infinity,
   ) || (bookingRateMode === 'daily' && (!fullDayBookable || times.length !== allSlots.length)
     ? 'A daily booking must include the full available operating day.' : null);
   const requireValidSelection = () => {
@@ -1437,7 +1439,9 @@ export default function KitchenBookingFlow({
                 {bookingRateMode === "hourly" && kitchenPricing?.minimumBookingHours && kitchenPricing.minimumBookingHours > 0
                   ? ` · ${t("sheetMinHourBadge", { minHours: kitchenPricing.minimumBookingHours, defaultValue: `Min ${kitchenPricing.minimumBookingHours}hr` })}`
                   : ""}
-                {bookingRateMode === "hourly" && ` · ${t("sheetMaxHoursBadge", { maxHours: maxSlotsPerChef, defaultValue: `Max ${maxSlotsPerChef} hours` })}`}
+                {bookingRateMode === "hourly" && maxSlotsPerChef != null
+                  ? ` · ${t("sheetMaxHoursBadge", { maxHours: maxSlotsPerChef, defaultValue: `Max ${maxSlotsPerChef} hours` })}`
+                  : ""}
               </p>
               <p className="text-xs text-muted-foreground mt-1" data-testid="setup-cleanup-hint">{t("sxbSetupCleanupHint", "Include setup and cleanup in your booking time.")}</p>
             </div>
@@ -2244,7 +2248,9 @@ export default function KitchenBookingFlow({
           <DialogHeader className="border-b border-gray-100 px-5 pb-4 pt-5 text-left">
             <DialogTitle>{t("sheetSelectTimeTitle", "Select time")}</DialogTitle>
             <DialogDescription>
-              {selectedDate ? formatDate(selectedDate) : ""}{bookingRateMode === "hourly" && ` · ${t("sheetMaxHoursBadge", { maxHours: maxSlotsPerChef, defaultValue: `Max ${maxSlotsPerChef} hours` })}`}
+              {selectedDate ? formatDate(selectedDate) : ""}{bookingRateMode === "hourly" && maxSlotsPerChef != null
+                ? ` · ${t("sheetMaxHoursBadge", { maxHours: maxSlotsPerChef, defaultValue: `Max ${maxSlotsPerChef} hours` })}`
+                : ""}
             </DialogDescription>
           </DialogHeader>
           <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">

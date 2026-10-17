@@ -1156,7 +1156,7 @@ router.get("/locations", requireFirebaseAuthWithUser, requireAdmin, async (req: 
             notificationEmail: loc.notificationEmail || loc.notification_email || null,
             cancellationPolicyHours: loc.cancellationPolicyHours ?? loc.cancellation_policy_hours ?? 24,
             cancellationPolicyMessage: loc.cancellationPolicyMessage || loc.cancellation_policy_message || "Bookings cannot be cancelled within {hours} hours of the scheduled time.",
-            defaultDailyBookingLimit: loc.defaultDailyBookingLimit || loc.default_daily_booking_limit || 2,
+            defaultDailyBookingLimit: loc.defaultDailyBookingLimit ?? loc.default_daily_booking_limit ?? null,
             createdAt: loc.createdAt || loc.created_at,
             updatedAt: loc.updatedAt || loc.updated_at,
         }));
@@ -1365,7 +1365,7 @@ router.post("/locations", requireFirebaseAuthWithUser, requireAdmin, async (req:
             notificationPhone: (location as any).notificationPhone || (location as any).notification_phone || null,
             cancellationPolicyHours: (location as any).cancellationPolicyHours ?? (location as any).cancellation_policy_hours ?? 24,
             cancellationPolicyMessage: (location as any).cancellationPolicyMessage || (location as any).cancellation_policy_message || "Bookings cannot be cancelled within {hours} hours of the scheduled time.",
-            defaultDailyBookingLimit: (location as any).defaultDailyBookingLimit || (location as any).default_daily_booking_limit || 2,
+            defaultDailyBookingLimit: (location as any).defaultDailyBookingLimit ?? (location as any).default_daily_booking_limit ?? null,
             createdAt: (location as any).createdAt || (location as any).created_at,
             updatedAt: (location as any).updatedAt || (location as any).updated_at,
         };
@@ -1588,7 +1588,7 @@ router.put("/locations/:id", async (req: Request, res: Response) => {
             notificationEmail: (updated as any).notificationEmail || (updated as any).notification_email || null,
             cancellationPolicyHours: (updated as any).cancellationPolicyHours ?? (updated as any).cancellation_policy_hours ?? 24,
             cancellationPolicyMessage: (updated as any).cancellationPolicyMessage || (updated as any).cancellation_policy_message || "Bookings cannot be cancelled within {hours} hours of the scheduled time.",
-            defaultDailyBookingLimit: (updated as any).defaultDailyBookingLimit || (updated as any).default_daily_booking_limit || 2,
+            defaultDailyBookingLimit: (updated as any).defaultDailyBookingLimit ?? (updated as any).default_daily_booking_limit ?? null,
             createdAt: (updated as any).createdAt || (updated as any).created_at,
             updatedAt: (updated as any).updatedAt || (updated as any).updated_at,
         };

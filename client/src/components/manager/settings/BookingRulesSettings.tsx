@@ -41,7 +41,8 @@ interface Location {
   id: number;
   name: string;
   cancellationPolicyHours?: number;
-  defaultDailyBookingLimit?: number;
+  /** Null / omitted = no longest-booking hours cap. */
+  defaultDailyBookingLimit?: number | null;
   minimumBookingWindowHours?: number;
   /** Days ahead chefs can book. Absent on servers that predate the setting. */
   maxAdvanceBookingDays?: number | null;
@@ -158,7 +159,9 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
 
     // Legacy location field; no longer edited here (the versioned cancellation policy replaced it) but still saved back unchanged.
     const [cancellationHours, setCancellationHours] = useState(location.cancellationPolicyHours ?? 24);
-    const [dailyBookingLimit, setDailyBookingLimit] = useState(location.defaultDailyBookingLimit || 2);
+    const savedDailyLimit = location.defaultDailyBookingLimit ?? null;
+    const [longestEnabled, setLongestEnabled] = useState(savedDailyLimit != null);
+    const [dailyBookingLimit, setDailyBookingLimit] = useState(savedDailyLimit ?? 8);
     const [minimumBookingWindowHours, setMinimumBookingWindowHours] = useState(location.minimumBookingWindowHours ?? 1);
     const [minimumDuration, setMinimumDuration] = useState(minimumBookingHours ?? 0);
     useEffect(() => setMinimumDuration(minimumBookingHours ?? 0), [minimumBookingHours]);
@@ -196,11 +199,12 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
     const [noShowGrace, setNoShowGrace] = useState<number | null>(null);
 
     const effectiveWeeklyLimit = weeklyLimitEnabled ? weeklyLimitHours : null;
+    const effectiveDailyLimit = longestEnabled ? dailyBookingLimit : null;
     const changed = {
       notice: minimumBookingWindowHours !== (location.minimumBookingWindowHours ?? 1),
       window: hasWindow && windowDays !== savedWindow,
       shortest: minimumBookingHours !== undefined && minimumDuration !== minimumBookingHours,
-      longest: dailyBookingLimit !== (location.defaultDailyBookingLimit || 2),
+      longest: effectiveDailyLimit !== savedDailyLimit,
       buffer: hasBuffer && bufferMinutes !== savedBufferMinutes,
       multiDay: hasMultiDay && (allowMultiDay !== savedAllowMultiDay || maxBookingDays !== savedMaxBookingDays),
       weekly: hasWeeklyLimit && effectiveWeeklyLimit !== savedWeeklyLimit,
@@ -216,7 +220,9 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
 
     const resetLocalEdits = useCallback(() => {
       setCancellationHours(location.cancellationPolicyHours ?? 24);
-      setDailyBookingLimit(location.defaultDailyBookingLimit || 2);
+      const longest = location.defaultDailyBookingLimit ?? null;
+      setLongestEnabled(longest != null);
+      setDailyBookingLimit(longest ?? 8);
       setMinimumBookingWindowHours(location.minimumBookingWindowHours ?? 1);
       setWindowDays(location.maxAdvanceBookingDays ?? 30);
       setBufferMinutes(location.bookingBufferMinutes ?? (location.turnoverBufferEnabled ? 60 : 0));
@@ -266,7 +272,7 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
       await onSave({
         locationId: location.id,
         cancellationPolicyHours: cancellationHours,
-        defaultDailyBookingLimit: dailyBookingLimit,
+        defaultDailyBookingLimit: effectiveDailyLimit,
         minimumBookingWindowHours: minimumBookingWindowHours,
         ...(minimumBookingHours !== undefined ? { minimumBookingHours: minimumDuration } : {}),
         // Only send the newer settings to a server that told us about them.
@@ -282,7 +288,7 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
       // cache too or the page would keep rendering the pre-save values.
       queryClient.invalidateQueries({ queryKey: ["checkin-checkout-settings", location.id] });
     }, [
-      onSave, location.id, cancellationHours, dailyBookingLimit, minimumBookingWindowHours, minimumBookingHours,
+      onSave, location.id, cancellationHours, effectiveDailyLimit, minimumBookingWindowHours, minimumBookingHours,
       minimumDuration, hasWindow, windowDays, hasBuffer, bufferMinutes, hasMultiDay, allowMultiDay, maxBookingDays,
       hasWeeklyLimit, effectiveWeeklyLimit, checkinWindow, noShowGrace, queryClient,
     ]);
@@ -332,7 +338,9 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
     const noticeLine = mt("bpNoticeValue", { count: minimumBookingWindowHours });
     const windowLine = mt("bpWindowValue", { count: windowDays });
     const shortestLine = mt("bpShortestValue", { count: minimumDuration });
-    const longestLine = mt("bpLongestValue", { count: dailyBookingLimit });
+    const longestLine = effectiveDailyLimit == null
+      ? mt("bpLongestOff")
+      : mt("bpLongestValue", { count: effectiveDailyLimit });
     const bufferLine = bufferMinutes === 0 ? mt("bpBufferOff")
       : bufferMinutes === 120 ? mt("bpBufferOnWhat2h")
       : mt("bpBufferOnWhat");
@@ -420,11 +428,17 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
                 onValueChange={(value) => setMinimumDuration(Math.min(24, Math.max(0, parseInt(value, 10) || 0)))} />
             </SettingsRow>}
 
-            <SettingsRow id="daily-limit" label={mt("bpLongestLabel", { count: dailyBookingLimit })} hint={hint(longestLine, "defaultDailyBookingLimit")}
+            <SettingsRow id="daily-limit"
+              label={effectiveDailyLimit == null ? mt("bpLongestLabelOff") : mt("bpLongestLabel", { count: effectiveDailyLimit })}
+              hint={hint(longestLine, "defaultDailyBookingLimit")}
               help={mt("bpLongestHelp")}>
-              <NumericInput id="daily-limit" disabled={policyUpdating} suffix={hourUnit(dailyBookingLimit)}
-                value={String(dailyBookingLimit)} className="h-11 w-32"
-                onValueChange={(val) => setDailyBookingLimit(Math.min(24, Math.max(1, parseInt(val, 10) || 2)))} />
+              <div className="flex flex-col items-end gap-2">
+                <Switch id="daily-limit" checked={longestEnabled} disabled={policyUpdating}
+                  onCheckedChange={setLongestEnabled} />
+                {longestEnabled && <NumericInput id="daily-limit-hours" disabled={policyUpdating}
+                  suffix={hourUnit(dailyBookingLimit)} value={String(dailyBookingLimit)} className="h-11 w-32"
+                  onValueChange={(val) => setDailyBookingLimit(Math.min(24, Math.max(1, parseInt(val, 10) || 1)))} />}
+              </div>
             </SettingsRow>
 
             {hasMultiDay && <>

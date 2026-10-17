@@ -140,9 +140,8 @@ router.get("/chef/kitchens/:kitchenId/policy", requireChef, async (req: Request,
 
         const location = await locationService.getLocationById(locationId);
 
-        // Return maxSlotsPerChef from location's default_daily_booking_limit
-        // Default to 2 if not set
-        const maxSlotsPerChef = kitchen.defaultDailyBookingLimit ?? location.defaultDailyBookingLimit ?? 2;
+        // maxSlotsPerChef: kitchen override → location; null = no per-request hours cap.
+        const maxSlotsPerChef = kitchen.defaultDailyBookingLimit ?? location.defaultDailyBookingLimit ?? null;
 
         const policies = await kitchenBookingPolicies(kitchenId);
         res.json({ maxSlotsPerChef, ...policies, bookableThrough: bookingWindowLastDate(policies.maxAdvanceBookingDays, policies.timezone) });
@@ -714,13 +713,13 @@ router.get("/public/kitchens/:kitchenId/booking-estimate", async (req: Request, 
         }
 
         const locationId = kitchen.locationId;
-        let maxSlotsPerChef = 2;
+        let maxSlotsPerChef: number | null = null;
         if (locationId) {
             try {
                 const location = await locationService.getLocationById(locationId);
-                maxSlotsPerChef = kitchen.defaultDailyBookingLimit ?? location?.defaultDailyBookingLimit ?? 2;
+                maxSlotsPerChef = kitchen.defaultDailyBookingLimit ?? location?.defaultDailyBookingLimit ?? null;
             } catch {
-                maxSlotsPerChef = 2;
+                maxSlotsPerChef = null;
             }
         }
 

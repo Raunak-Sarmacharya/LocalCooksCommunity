@@ -32,7 +32,6 @@ export interface ActivityRecord {
   startDate?: string;
   endDate?: string;
   storageBookingId?: number;
-  overstayId?: number;
   chefName?: string;
   chefId?: number | null;
   kitchenName?: string;
@@ -48,7 +47,6 @@ const sources = [
   { key: ["/api/manager/storage-extensions/pending"], path: null, field: null },
   { key: ["/api/manager/storage-checkouts/pending"], path: "/manager/storage-checkouts/pending", field: "pendingCheckouts" },
   { key: ["/api/manager/damage-claims", "all"], path: "/manager/damage-claims?includeAll=true", field: "claims" },
-  { key: ["/api/manager/overstays", "all"], path: "/manager/overstays?includeAll=true", field: "overstays" },
   { key: ["/api/manager/bookings/upcoming"], path: "/manager/bookings/upcoming", field: "bookings" },
   { key: ["/api/manager/booking-lifecycle"], path: "/manager/booking-lifecycle", field: null },
 ] as const;
@@ -75,7 +73,7 @@ export function useManagerOverviewActivity(locationId?: number, kitchenIds: numb
   })) });
   const records = queries.map((query, index): ActivityRecord[] => {
     const field = sources[index].field;
-    const rows = index === 4 ? [...(query.data?.overstays ?? []), ...(query.data?.pastOverstays ?? [])] : field ? query.data?.[field] : query.data;
+    const rows = field ? query.data?.[field] : query.data;
     return (Array.isArray(rows) ? rows : []).filter((row: ActivityRecord) => !locationId ||
       row.locationId === locationId || (row.locationId == null && row.kitchenId != null && kitchenIds.includes(row.kitchenId)));
   });
@@ -85,8 +83,8 @@ export function useManagerOverviewActivity(locationId?: number, kitchenIds: numb
   })) });
   return {
     storageBookings: inheritStorageChef(records[0], parentBookings), extensions: records[1], storageCheckouts: records[2],
-    claims: records[3], overstays: records[4], visits: records[5],
-    bookingEvents: records[6] || [],
+    claims: records[3], visits: records[4],
+    bookingEvents: records[5] || [],
     listingReadiness: readiness.map((query, index) => ({ kitchenId: kitchenIds[index], data: query.data, isLoading: query.isLoading, isError: query.isError })),
     unreadThreads: (messages.data ?? []).filter((thread) => !thread.unavailable && !thread.archivedManagerAt && thread.unreadManagerCount > 0 && (!locationId || thread.locationId === locationId)),
     paymentsNeedAttention: payments.data != null && (payments.data.hasAccount === false ||

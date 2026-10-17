@@ -65,7 +65,10 @@ export function KitchenTermsSection({ location, note }: {
 
   return (
     <PolicySection title={mt("bpTermsTitle")} testId="terms-section"
-      description={<>{mt("bpTermsDescription")}{note ? <span className="mt-1 block text-xs">{note}</span> : null}</>}>
+      description={<>
+        <span className="block">{mt("bpTermsSubheading")}</span>
+        {note ? <span className="mt-1 block text-xs">{note}</span> : null}
+      </>}>
       {hasTerms && (
         <div className="flex flex-wrap items-center gap-3 px-4 py-3">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">

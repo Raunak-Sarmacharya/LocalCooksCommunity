@@ -1,7 +1,7 @@
 import { managerNavIcons } from "@/lib/manager-nav-icons";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { DEFAULT_TIMEZONE } from "@shared/timezone-utils";
-import { bookingNextAction, tourNextAction, licenseNextAction, overstayNextAction, storageHasEnded } from "@/lib/manager-overview-lifecycle";
+import { bookingNextAction, tourNextAction, licenseNextAction, storageHasEnded } from "@/lib/manager-overview-lifecycle";
 import { tourRequestDecision } from '@shared/tour-request-decision';
 import { formatTourWhen } from '@/lib/chef-viewing-display';
 import { isPendingOrUpcomingTour } from "@/lib/chef-viewing-display";
@@ -111,7 +111,6 @@ const ACTIVITY_VIEW: Record<string, keyof typeof managerNavIcons> = {
   storage: "storage-bookings",
   application: "applications",
   claim: "damage-claims",
-  overstay: "overstays",
 };
 
 /** The URL param each destination deep-links with. Bookings link straight to their own page. */
@@ -121,7 +120,6 @@ const ACTIVITY_PARAM: Record<string, string | undefined> = {
   storage: "storageBooking",
   application: "application",
   claim: "claim",
-  overstay: undefined,
 };
 
 /**
@@ -130,7 +128,7 @@ const ACTIVITY_PARAM: Record<string, string | undefined> = {
  * This card is a FEED, not a work queue: it is informational, it is already sorted newest-first, and
  * every entry is also reachable from its own page (Bookings, Tours, Applications, …). So a hard cap
  * costs the manager nothing they need. Without it the card mounts every booking, tour, application,
- * storage booking, claim and overstay the location has EVER had — thousands of rows on a mature
+ * storage booking and claim the location has EVER had — thousands of rows on a mature
  * account, all mounted at once inside a 320px scroll box with no virtualization.
  *
  * `attentionGroups` is deliberately NOT capped. That card is a WORK QUEUE: every row is money on the
@@ -216,7 +214,7 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
     const name = [parentName, record.chefName, record.fullName, record.chefId ? applications.find(application => application.chefId === record.chefId)?.fullName : undefined].find(value => value?.trim() && !value.includes("@"));
     return name?.trim() || mt("guestChef");
   };
-  const financialActivityStatus: Record<string,string> = {draft:"overviewDraft",submitted:"overviewAwaitingAdmin",under_review:"overviewAwaitingAdmin",chef_disputed:"overviewAwaitingAdmin",chef_accepted:"chefAccepted",approved:"approved",partially_approved:"partiallyApproved",charge_pending:"overviewPaymentProcessing",charge_failed:"chargeFailed",charge_succeeded:"overviewPaymentCollected",resolved:"overviewResolved",rejected:"rejected",expired:"overviewExpired",escalated:"overviewEscalated",pending_review:"overviewAwaitingReview",penalty_approved:"approved",penalty_waived:"overviewWaived",detected:"overviewOverstayDetected",grace_period:"overviewGracePeriod"};
+  const financialActivityStatus: Record<string,string> = {draft:"overviewDraft",submitted:"overviewAwaitingAdmin",under_review:"overviewAwaitingAdmin",chef_disputed:"overviewAwaitingAdmin",chef_accepted:"chefAccepted",approved:"approved",partially_approved:"partiallyApproved",charge_pending:"overviewPaymentProcessing",charge_failed:"chargeFailed",charge_succeeded:"overviewPaymentCollected",resolved:"overviewResolved",rejected:"rejected",expired:"overviewExpired",escalated:"overviewEscalated",pending_review:"overviewAwaitingReview",penalty_approved:"approved",penalty_waived:"overviewWaived"};
   const recent = [
     ...bookings.map((booking) => ({ kind: "booking" as const, id: booking.id, activityKey: `created:${booking.id}`, date: booking.createdAt, title: mt("activityBookingRequested"), person: chefDisplayName(booking), kitchen: booking.kitchenName || locationKitchens.find(kitchen => kitchen.id === booking.kitchenId)?.name, scheduled: listWhenLine(booking, i18n.language, { today: mt("mblToday"), tomorrow: ct("ovTomorrow") }), time: "", href: `/manager/booking/${booking.id}` })),
     // The booking row above already says "Booking requested"; its own "requested" lifecycle event is the same moment.
@@ -229,7 +227,6 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
     ...activity.storageBookings.filter(item => !!item.createdAt).map(item => ({kind:"storage" as const,id:item.id,date:item.createdAt!,title:mt("activityStorageRequested"),person:chefDisplayName(item),kitchen:item.storageName || item.kitchenName,scheduled: [item.startDate,item.endDate].filter(Boolean).map(value=>displayDate(item.pricingModel === "hourly" ? value! : value!.slice(0, 10))).join(" – "),time:""})),
     ...locationApplications.filter(item => !!(item.updatedAt || item.createdAt)).map(item => ({kind:"application" as const,id:item.id,date:item.updatedAt || item.createdAt!,title:mt("overviewApplicationActivity", {status:mt(({inReview:"overviewAwaitingReview",approved:"approved",rejected:"rejected",pending:"pending"} as Record<string,string>)[item.status] ?? "overviewStatusUpdated")}),person:chefDisplayName(item),kitchen:locations.find(location=>location.id===item.locationId)?.name,scheduled:displayDate(item.updatedAt || item.createdAt!),time:""})),
     ...activity.claims.filter(item => !!(item.updatedAt || item.createdAt)).map(item => ({kind:"claim" as const,id:item.id,date:item.updatedAt || item.createdAt!,title:mt("overviewClaimActivity",{status:mt(financialActivityStatus[item.status ?? ""] ?? "overviewStatusUpdated")}),person:chefDisplayName(item),kitchen:item.kitchenName,scheduled:displayDate(item.updatedAt || item.createdAt!),time:""})),
-    ...activity.overstays.filter(item => !!(item.updatedAt || item.detectedAt || item.createdAt)).map(item => ({kind:"overstay" as const,id:item.overstayId ?? item.id,date:item.updatedAt || item.detectedAt || item.createdAt!,title:mt("overviewOverstayActivity",{status:mt(financialActivityStatus[item.status ?? ""] ?? "overviewStatusUpdated")}),person:chefDisplayName(item),kitchen:item.kitchenName,scheduled:displayDate(item.updatedAt || item.detectedAt || item.createdAt!),time:""})),
   ].filter(item => Number.isFinite(Date.parse(item.date)) && Date.parse(item.date) <= Date.now()).sort((a, b) => Date.parse(b.date) - Date.parse(a.date)).slice(0, RECENT_ACTIVITY_LIMIT);
   const hasHistory = bookings.length > 0 || locationViewings.length > 0;
   const primaryKitchen = draftKitchens[0] ?? locationKitchens[0];
@@ -263,12 +260,11 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
   for (const storage of activity.storageBookings) {
     if (storage.status !== "confirmed") continue;
     if (storage.checkinStatus === "checkin_requested") addTask("overviewStorageCheckinReviews", { id: String(storage.id), title: recordTitle(storage), view: "storage-bookings" });
-    if (storage.checkoutStatus === "active" && storageHasEnded(storage.endDate) && !activity.overstays.some((item) => item.storageBookingId === storage.id)) addTask("overviewStorageOutcomes", { id: String(storage.id), title: recordTitle(storage), view: "storage-bookings", param: "storageBooking" });
+    if (storage.checkoutStatus === "active" && storageHasEnded(storage.endDate)) addTask("overviewStorageOutcomes", { id: String(storage.id), title: recordTitle(storage), view: "storage-bookings", param: "storageBooking" });
   }
   for (const extension of activity.extensions) addTask("overviewStorageExtensions", { id: String(extension.storageBookingId ?? extension.id), title: recordTitle(extension), view: "storage-bookings", param: "storageBooking", detail: extension.newEndDate ? mt("overviewExtensionUntil", { date: displayDate(extension.newEndDate) }) : undefined });
   for (const checkout of activity.storageCheckouts) addTask("overviewStorageCheckoutReviews", { id: String(checkout.storageBookingId ?? checkout.id), title: recordTitle(checkout), view: "storage-bookings" });
   for (const claim of activity.claims) if (["draft", "approved", "partially_approved", "chef_accepted", "charge_failed", "escalated"].includes(claim.status ?? "")) addTask("overviewClaimsToAction", { id: String(claim.id), title: recordTitle(claim), view: "damage-claims", param: "claim", detail: mt(claim.status === "draft" ? "overviewClaimComplete" : "overviewClaimCollect") });
-  for (const overstay of activity.overstays) { const action = overstayNextAction(overstay); if (action) addTask("overviewOverstaysToAction", { id: String(overstay.overstayId ?? overstay.id), title: recordTitle({ ...overstay, id: overstay.overstayId ?? overstay.id }), detail: mt(action), view: "overstays" }); }
   for (const location of locations) {
     if (selectedLocation && location.id !== selectedLocation.id) continue;
     const action = licenseNextAction(location);

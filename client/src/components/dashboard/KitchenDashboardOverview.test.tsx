@@ -10,7 +10,7 @@ const state = vi.hoisted(() => ({
   applications: [] as Array<Record<string, unknown>>,
   licenseStatus: "approved" as string,
   licenseExpiry: "2099-01-01",
-  activity: { paymentsNeedAttention: false, paymentsAction: "overviewPaymentsUpdate", unreadMessages: 0, storageBookings: [] as Array<Record<string, unknown>>, extensions: [] as Array<Record<string, unknown>>, storageCheckouts: [] as Array<Record<string, unknown>>, claims: [] as Array<Record<string, unknown>>, overstays: [] as Array<Record<string, unknown>>, visits: [], isLoading: false, isError: false },
+  activity: { paymentsNeedAttention: false, paymentsAction: "overviewPaymentsUpdate", unreadMessages: 0, storageBookings: [] as Array<Record<string, unknown>>, extensions: [] as Array<Record<string, unknown>>, storageCheckouts: [] as Array<Record<string, unknown>>, claims: [] as Array<Record<string, unknown>>, visits: [], isLoading: false, isError: false },
 }));
 
 vi.mock("@/hooks/use-auth", () => ({ useFirebaseAuth: () => ({ user: { uid: "manager-1", displayName: "Alex" } }) }));
@@ -54,7 +54,6 @@ beforeEach(() => {
   state.activity.extensions = [];
   state.activity.storageCheckouts = [];
   state.activity.claims = [];
-  state.activity.overstays = [];
 });
 
 describe("manager overview states", () => {

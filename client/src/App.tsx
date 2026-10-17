@@ -87,7 +87,6 @@ const KitchenComparisonPage = lazy(() => import("@/pages/KitchenComparisonPage")
 const KitchenRequirementsPage = lazy(() => import("@/pages/KitchenRequirementsPage"));
 const StripeConnectReturn = lazy(() => import("@/pages/StripeConnectReturn"));
 const StripeConnectRefresh = lazy(() => import("@/pages/StripeConnectRefresh"));
-const ManagerOverstaysPage = lazy(() => import("@/pages/ManagerOverstaysPage"));
 const ManagerStorageRentalPage = lazy(() => import("@/pages/ManagerStorageRentalPage"));
 const ChefResourcesPage = lazy(() => import("@/pages/ChefResourcesPage"));
 const KitchenResourcesPage = lazy(() => import("@/pages/KitchenResourcesPage"));
@@ -426,13 +425,6 @@ function Router() {
           {(subdomain === 'kitchen' || subdomain === 'admin' || !subdomain) ? (
             <ManagerProtectedRoute>
               <BookingDetailsPage />
-            </ManagerProtectedRoute>
-          ) : null}
-        </Route>
-        <Route path="/manager/overstays">
-          {(subdomain === 'kitchen' || subdomain === 'admin' || !subdomain) ? (
-            <ManagerProtectedRoute>
-              <ManagerOverstaysPage />
             </ManagerProtectedRoute>
           ) : null}
         </Route>

@@ -18,6 +18,9 @@ describe("kitchen policy inheritance", () => {
     expect(isKitchenBookingDurationValid({ minimumBookingHours: 4, defaultDailyBookingLimit: null }, location)).toBe(false);
     expect(isKitchenBookingDurationValid({ minimumBookingHours: 0 }, location)).toBe(true);
     expect(isKitchenBookingDurationValid({ minimumBookingHours: 2 }, location)).toBe(true);
+    // NULL at both levels = no cap; any minimum is allowed.
+    expect(isKitchenBookingDurationValid({ minimumBookingHours: 8, defaultDailyBookingLimit: null }, { defaultDailyBookingLimit: null })).toBe(true);
+    expect(isKitchenBookingDurationValid({ minimumBookingHours: 8 }, {})).toBe(true);
   });
   it("preserves location defaults and permits independent kitchen overrides including zero", () => {
     const defaults = { cancellationPolicyHours: 24, minimumBookingWindowHours: 2, defaultDailyBookingLimit: 8 };
@@ -25,6 +28,10 @@ describe("kitchen policy inheritance", () => {
     expect(resolveKitchenBookingPolicies({ cancellationPolicyHours: 0, minimumBookingWindowHours: 0, defaultDailyBookingLimit: 4 }, defaults))
       .toMatchObject({ cancellationPolicyHours: 0, minimumBookingWindowHours: 0, defaultDailyBookingLimit: 4 });
     expect(resolveKitchenBookingPolicies({ cancellationPolicyHours: null }, defaults)).toMatchObject(defaults);
+    // No location/kitchen longest-booking value → null (unlimited).
+    expect(resolveKitchenBookingPolicies({}, {})).toMatchObject({ defaultDailyBookingLimit: null });
+    expect(resolveKitchenBookingPolicies({ defaultDailyBookingLimit: null }, { defaultDailyBookingLimit: null }))
+      .toMatchObject({ defaultDailyBookingLimit: null });
   });
 
   it("inherits On/7 multi-day defaults and caps days per booking at the platform ceiling", () => {

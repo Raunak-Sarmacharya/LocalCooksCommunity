@@ -1830,7 +1830,8 @@ router.post("/payments/create-intent", requireChef, async (req: Request, res: Re
             cancellationPolicyHours: locations.cancellationPolicyHours,
         })
             .from(locations).where(eq(locations.id, kitchen.locationId)).limit(1);
-        if (slotCount < Number(kitchen.minimumBookingHours || 0) || slotCount > (kitchen.defaultDailyBookingLimit ?? location?.limit ?? 2)) {
+        const dailyLimit = kitchen.defaultDailyBookingLimit ?? location?.limit ?? null;
+        if (slotCount < Number(kitchen.minimumBookingHours || 0) || (dailyLimit != null && slotCount > dailyLimit)) {
             return res.status(400).json({ error: 'Selected hours do not meet this kitchen’s booking limits' });
         }
         const operatingDate = new Date(bookingDate).toISOString().slice(0, 10);
@@ -2220,8 +2221,10 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
         if (!location) {
             return res.status(404).json({ error: "Location not found" });
         }
-        if (selectedPricingMode === 'hourly' && bookingSlots.length > (location.defaultDailyBookingLimit ?? 2)) {
-            return res.status(400).json({ error: `Select no more than ${location.defaultDailyBookingLimit ?? 2} hourly slots` });
+        // Kitchen override first, then the location default; null = no longest-booking cap.
+        const hourlyLimit = (kitchenDetails as any).defaultDailyBookingLimit ?? location.defaultDailyBookingLimit ?? null;
+        if (selectedPricingMode === 'hourly' && hourlyLimit != null && bookingSlots.length > hourlyLimit) {
+            return res.status(400).json({ error: `Select no more than ${hourlyLimit} hourly slots` });
         }
 
         const timezone = 'America/St_Johns';
@@ -2491,9 +2494,10 @@ router.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req:
                 }
             }
         }
-        if ((pricingMode ?? 'hourly') === 'hourly' &&
-            (availabilityCheck.slots?.length ?? 0) > ((location as any)?.defaultDailyBookingLimit ?? 2)) {
-            return res.status(400).json({ error: `Select no more than ${(location as any)?.defaultDailyBookingLimit ?? 2} hourly slots` });
+        const checkoutDailyLimit = (kitchenDetails as any)?.defaultDailyBookingLimit ?? (location as any)?.defaultDailyBookingLimit ?? null;
+        if ((pricingMode ?? 'hourly') === 'hourly' && checkoutDailyLimit != null
+            && (availabilityCheck.slots?.length ?? 0) > checkoutDailyLimit) {
+            return res.status(400).json({ error: `Select no more than ${checkoutDailyLimit} hourly slots` });
         }
 
         // Extract date string from ISO string to avoid timezone shifts

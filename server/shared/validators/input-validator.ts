@@ -92,7 +92,7 @@ export async function validateLocationInput(data: unknown) {
     notificationPhone: z.string().optional(),
     cancellationPolicyHours: z.number().int().min(0, 'Cancellation policy hours cannot be negative').optional(),
     cancellationPolicyMessage: z.string().optional(),
-    defaultDailyBookingLimit: z.number().positive('Daily booking limit must be positive').optional(),
+    defaultDailyBookingLimit: z.number().positive('Daily booking limit must be positive').nullable().optional(),
     maxAdvanceBookingDays: z.number().int().min(1).optional(),
     turnoverBufferEnabled: z.boolean().optional(),
     maxBookingDays: z.number().int().min(1).max(14).optional(),

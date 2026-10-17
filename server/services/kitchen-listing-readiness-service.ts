@@ -172,10 +172,8 @@ export async function buildKitchenReadiness(
     hasTerms: isNonEmptyText(location?.kitchenTermsUrl),
     toursEnabled: Boolean(viewingSettings[0]?.isActive && tourReadiness(viewingSettings[0], tourHours).ready),
     /**
-     * Booking rules cannot be unset — `cancellation_policy_hours`, `default_daily_booking_limit` and
-     * `minimum_booking_window_hours` are all NOT NULL with defaults, and so is the kitchen's minimum
-     * duration. It stays on the list because the review screen should show the manager these values
-     * and where to change them; it will simply always read as done.
+     * Booking rules always count as set: cancellation and minimum booking window have defaults;
+     * longest booking may be NULL (no cap). Shown on the review screen so managers can change them.
      */
     hasBookingRules: true,
     hasEquipment: equipmentRows.length > 0,
@@ -223,7 +221,7 @@ export async function buildKitchenReadiness(
         : null,
       toursEnabled: Boolean(viewingSettings[0]?.isActive && tourReadiness(viewingSettings[0], tourHours).ready),
       cancellationPolicyHours: kitchen.cancellationPolicyHours ?? location?.cancellationPolicyHours ?? 24,
-      dailyBookingLimit: kitchen.defaultDailyBookingLimit ?? location?.defaultDailyBookingLimit ?? 2,
+      dailyBookingLimit: kitchen.defaultDailyBookingLimit ?? location?.defaultDailyBookingLimit ?? null,
       minimumBookingWindowHours: kitchen.minimumBookingWindowHours ?? location?.minimumBookingWindowHours ?? 1,
       minimumBookingHours: kitchen.minimumBookingHours ?? 1,
     },

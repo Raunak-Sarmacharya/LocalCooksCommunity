@@ -74,7 +74,7 @@ function sameCalendarDay(a: Date, b: Date) {
 
 type BookingEstimateMeta = {
   minimumBookingHours: number;
-  maxSlotsPerChef: number;
+  maxSlotsPerChef: number | null;
 };
 
 export function KitchenBookingPreferencesPanel({
@@ -118,7 +118,7 @@ export function KitchenBookingPreferencesPanel({
   const [slotsLoadError, setSlotsLoadError] = useState(false);
   const [estimateMeta, setEstimateMeta] = useState<BookingEstimateMeta>({
     minimumBookingHours: 1,
-    maxSlotsPerChef: 2,
+    maxSlotsPerChef: null,
   });
 
   const primaryDate = selectedDate;
@@ -158,9 +158,10 @@ export function KitchenBookingPreferencesPanel({
         if (!response.ok) throw new Error(kt("failedToLoadEstimate"));
         const data = await response.json();
         if (cancelled) return;
+        const rawMax = data.maxSlotsPerChef;
         setEstimateMeta({
           minimumBookingHours: Math.max(1, Number(data.minimumBookingHours) || 1),
-          maxSlotsPerChef: Math.max(1, Number(data.maxSlotsPerChef) || 2),
+          maxSlotsPerChef: typeof rawMax === "number" && rawMax > 0 ? rawMax : null,
         });
       } catch {
         /* keep defaults */
@@ -260,7 +261,7 @@ export function KitchenBookingPreferencesPanel({
             if (!availableSlots[i].isFullyBooked) slotsToSelect.push(availableSlots[i].time);
             else break;
           }
-          if (slotsToSelect.length > maxSlots) {
+          if (maxSlots != null && slotsToSelect.length > maxSlots) {
             toast({
               title: tBooking("toastCannotMeetMinTitle", "Cannot meet minimum"),
               description: tBooking("toastCannotMeetMinDesc", {
@@ -285,7 +286,7 @@ export function KitchenBookingPreferencesPanel({
             return prev;
           }
           next = slotsToSelect.sort();
-        } else if (prev.length >= maxSlots) {
+        } else if (maxSlots != null && prev.length >= maxSlots) {
           toast({
             title: tBooking("toastLimitReachedTitle", "Limit reached"),
             description: tBooking("toastLimitReachedDesc", {
@@ -458,12 +459,14 @@ export function KitchenBookingPreferencesPanel({
     />
   ) : (
     <>
-      <p className="text-[11px] text-muted-foreground">
-        {tBooking("sheetMaxHoursBadge", {
-          maxHours: estimateMeta.maxSlotsPerChef,
-          defaultValue: `Max ${estimateMeta.maxSlotsPerChef} hours`,
-        })}
-      </p>
+      {estimateMeta.maxSlotsPerChef != null && (
+        <p className="text-[11px] text-muted-foreground">
+          {tBooking("sheetMaxHoursBadge", {
+            maxHours: estimateMeta.maxSlotsPerChef,
+            defaultValue: `Max ${estimateMeta.maxSlotsPerChef} hours`,
+          })}
+        </p>
+      )}
       <div className="grid grid-cols-2 gap-1.5 min-[420px]:grid-cols-3 sm:grid-cols-4">
         {availableSlots.map((slot) => {
           const selected = selectedSlots.includes(slot.time);

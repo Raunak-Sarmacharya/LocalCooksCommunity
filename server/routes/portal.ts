@@ -430,7 +430,8 @@ router.post("/bookings", requirePortalUser, async (req: Request, res: Response) 
         const location = await locationService.getLocationById(userLocationId);
         const policies = resolveKitchenBookingPolicies(kitchen, location);
         const minimumBookingWindowHours = policies.minimumBookingWindowHours;
-        if (kitchen.pricingModel !== 'daily' && (availabilityCheck.slots?.length ?? 0) > policies.defaultDailyBookingLimit) {
+        if (kitchen.pricingModel !== 'daily' && policies.defaultDailyBookingLimit != null
+            && (availabilityCheck.slots?.length ?? 0) > policies.defaultDailyBookingLimit) {
             return res.status(400).json({ error: `Select no more than ${policies.defaultDailyBookingLimit} hourly slots` });
         }
         const locationTimezone = (location as any)?.timezone || 'America/St_Johns';

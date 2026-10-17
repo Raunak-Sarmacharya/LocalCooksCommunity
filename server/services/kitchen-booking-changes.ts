@@ -190,10 +190,12 @@ async function eligibility(tx: Tx, row: Context, now: Date, openChange: boolean)
 }
 
 /** The destination as the kitchen's real schedule allows it: free, within hours, buffers respected. */
-/** Hourly length limits, the same rule as new bookings (kitchen minimum; kitchen, else location, daily limit, else 2). */
+/** Hourly length limits, same as new bookings (kitchen minimum; kitchen else location longest; null = no cap). */
 function changeLengthLimits(row: Context) {
-  const maxHours = Math.max(1, Number(row.kitchen.defaultDailyBookingLimit ?? row.locationDailyLimit ?? 2));
-  return { minHours: Math.min(maxHours, Math.max(1, Number(row.kitchen.minimumBookingHours || 1))), maxHours };
+  const raw = row.kitchen.defaultDailyBookingLimit ?? row.locationDailyLimit ?? null;
+  const maxHours = raw == null ? null : Math.max(1, Number(raw));
+  const minHours = Math.max(1, Number(row.kitchen.minimumBookingHours || 1));
+  return { minHours: maxHours == null ? minHours : Math.min(maxHours, minHours), maxHours };
 }
 
 async function validateDestination(tx: Tx, row: Context, destination: ChangeSchedule, now: Date, holdId?: string | null) {
@@ -208,10 +210,13 @@ async function validateDestination(tx: Tx, row: Context, destination: ChangeSche
   const normalized: ChangeSchedule = { date: destination.date, slots: result.slots!, windowStart: result.windowStartTime, ...(daily ? { pricingMode: 'daily' as const } : { pricingMode: 'hourly' as const }) };
   // The kitchen's own length limits apply to a change exactly as to a new booking.
   const limits = changeLengthLimits(row);
-  if (!daily && (normalized.slots.length < limits.minHours || normalized.slots.length > limits.maxHours))
-    throw limits.minHours > 1
+  if (!daily && (normalized.slots.length < limits.minHours
+      || (limits.maxHours != null && normalized.slots.length > limits.maxHours)))
+    throw limits.maxHours != null && limits.minHours > 1
       ? new KitchenChangeError(`${row.kitchen.name} takes bookings of ${limits.minHours} to ${limits.maxHours} hours. Choose a length in that range.`, 409, 'lengthRange', { kitchen: row.kitchen.name, min: limits.minHours, max: limits.maxHours })
-      : new KitchenChangeError(`${row.kitchen.name} takes bookings of up to ${limits.maxHours} hours. Choose a shorter length.`, 409, 'lengthMax', { kitchen: row.kitchen.name, max: limits.maxHours });
+      : limits.maxHours != null
+        ? new KitchenChangeError(`${row.kitchen.name} takes bookings of up to ${limits.maxHours} hours. Choose a shorter length.`, 409, 'lengthMax', { kitchen: row.kitchen.name, max: limits.maxHours })
+        : new KitchenChangeError(`${row.kitchen.name} takes bookings of at least ${limits.minHours} hours. Choose a longer length.`, 409, 'lengthMin', { kitchen: row.kitchen.name, min: limits.minHours });
   await validateEquipment(tx, row, normalized);
   if (!row.kitchen.isActive || row.kitchen.listingStatus !== 'active') throw new KitchenChangeError('This kitchen is unavailable for a new schedule.', 409, 'kitchenUnavailable');
   const original = bookingChangeSchedule(booking);
