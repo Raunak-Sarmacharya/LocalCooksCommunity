@@ -77,6 +77,29 @@ Status: `verified` (live on dev with real sandbox money) · `built` (code + test
 | Local Cooks answers chargebacks in the Stripe Dashboard with the booking's evidence (accepted policy, check-in/out, inspection, receipt, messages); Stripe also emails the account owner deadline reminders. A won, lost or closed dispute closes the flag and tells admins the outcome. | Stripe Dashboard; `booking-support-flags.ts` | built |
 | The chef's Terms already say they agree not to charge back unless Local Cooks mishandled the payment, and fraudulent chargebacks may end the account. No automatic booking pause yet (rare; admins act case by case). | `TermsContent.tsx:694` | open (later: pause new bookings like Turo) |
 
+## 5b. Storage rentals (standalone; owner decisions plan-storage-rentals-2026-10.md §7)
+
+| Rule | Enforced in | Status |
+|---|---|---|
+| Storage is rented on its own (not inside a kitchen session). A listing is a kind of storage with a count of units (Food Corridor model); each rental takes one unit for its dates, so several chefs can rent one listing until every in-service unit is taken. The database refuses two renters on one unit for overlapping dates. | `storage-rentals.ts`, btree_gist constraint (0093) | verified (Oct 16: #43 unit 1, #44 unit 2; listing then "Available from Oct 28") |
+| Daily price only; a term is 1–30 days (platform max, admin setting; a kitchen may set lower); start within 14 days. | `shared/storage-rental.ts`, `storage-settings.ts` | verified (request page offers 1–30 days, 15 start dates) |
+| Start dates that are full are greyed out; the page starts on the first free day; a full date is refused before any card hold. | `ChefStorageRequestPage.tsx`, quote `full` | verified |
+| Only chefs approved at the kitchen can rent; others see the listing and "Apply to this kitchen first". | `storage-rentals.ts` `approval_required` | built |
+| Request = card hold for the full term; the kitchen answers within 24 h; withdraw is free while pending; decline/expiry releases the hold. Kitchen + all admins notified in-app (email per admin toggle). | `storage-rentals.ts`, `storage-rental-notices.ts` | verified (#43: $12.82 hold, kitchen + 5 admins notified; approve captured) |
+| **No automatic charges.** Nothing renews. To keep the space the chef taps Extend (only when 14 days or fewer remain) and pays now; Stripe keeps the card on file for this, charged only when the chef taps Pay; bank checks (3-D Secure) shown on the spot; a decline falls back to "Pay with another card" (Stripe Checkout). | `storage-extensions.ts` (`setup_future_usage: on_session`, `off_session: false`) | verified (Oct 16: one tap, $12.82, paid through Oct 29) |
+| Cancellation after approval and before the start follows the kitchen's booking cancellation policy (same notice/late charge), refund minus the actual card fee; the request page says it applies to storage. | `beforeStartRefund`, `stcDiscCancel` | built (copy verified) |
+| Ending early is not refunded (the kitchen may refund unused days). | `stcDiscEarly`, kitchen Refund tool | built |
+| 5 extra days after the paid-through date to extend at the same price (grace); after that the kitchen may raise a holdover charge at the daily price, or waive it; the chef pays or disputes within 72 h. Never charged automatically. | `storage-rental-lifecycle.ts` | built (unit-tested) |
+| Holdover ≥ 15 days → Local Cooks removal review (accrual frozen). After Local Cooks' final notice the kitchen may discard perishables after 48 h and other items after 7 days (photos + item list, never sold) — disposal toggle OFF until counsel signs. | `storage-rental-lifecycle.ts` | built |
+| Never moved in = like a no-show: from 7 days after the start the kitchen may release the unit; no refund; chef can dispute via "Report a problem". | `storage-rental-actions.ts` `release` | built |
+| Move in / move out with optional photos (no move-in photos → claims show "No move-in photos were taken."); the kitchen clears the move-out, or it auto-clears after the review window. | `storage-checkout-service.ts` | verified (#43 move-in; #44 move-out → kitchen "Clear move-out" → ended/cleared) |
+| Damage/cleaning claim: within 72 h of move-out, one per move-out, $250 cap, Local Cooks reviews first. | `damage-claims-v2.ts` storage branch | built |
+| Kitchen reclaim ("move out by"): not for rentals of 7 days or fewer (emergencies via Local Cooks); otherwise 7 days' notice (or the time left); unused days refunded, kitchen-funded. | `storage-rental-actions.ts` `move-out-by` | built |
+| No deposit. | — | built |
+| **Kitchen payout = end of each paid term** (each extension pays at its own end); earlier when the kitchen clears the move-out itself (it inspected, so no claim window); an auto-cleared move-out waits for the 72 h claim window. Paused while a problem/claim/flag is open; chargebacks never hold it (pilot: Local Cooks absorbs). The kitchen sees "You'll be paid $X on {date}" (its net, after the Local Cooks fee). | `storage-payouts.ts`, transfer gate | verified (#43 term 1 $12.08 on Oct 23, term 2 $12.08 on Oct 30; #44 eligible on clear) |
+| Kitchen board: every unit with status and occupant, summary "Occupied X / Y" (out-of-service units excluded from capacity), requests first. Per-unit "Take out of service / Put back" (reason required) blocks new rentals on that unit only; pausing the listing stops all new requests. | `ManagerStorageBookingsPage.tsx`, `storage-availability.ts` | verified (fridge out of service → chef "Full right now", Continue blocked; put back) |
+| Deleting a kitchen, location or account is blocked while a rental is requested/reserved/active/moving out/in removal review, or a storage payout is unreleased. | `deletion-guard.ts` | built (real-Postgres test) |
+
 ## 6. Open items before the policy page
 
 - Re-verify every `built` row live after the next deploy.
