@@ -11,6 +11,7 @@ import { logger } from "../logger";
 
 import Stripe from 'stripe';
 import { assertBookingMoneyWritable } from './booking-money-guard';
+import { assertLegacyBookingRefund } from './dated-booking-refund-guard';
 import { successfulRefundAttempt } from '@shared/cancellation-refund';
 import { assertWorkerTime, inRecurringWorker, workerRemaining } from './worker-context';
 
@@ -654,6 +655,7 @@ export async function createRefund(
     });
   }
   await assertBookingMoneyWritable({ paymentIntentId, operationKey: options.idempotencyKey }, options.sourceConnection);
+  await assertLegacyBookingRefund({ paymentIntentId }, options.sourceConnection);
   if (!stripe) {
     throw new Error('Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.');
   }
@@ -909,6 +911,7 @@ export async function reverseTransferAndRefund(
     });
   }
   await assertBookingMoneyWritable({ paymentIntentId, operationKey: options.supportOperationKey || options.idempotencyKey }, options.sourceConnection);
+  await assertLegacyBookingRefund({ paymentIntentId }, options.sourceConnection);
   const stripe = decisionStripe();
   if (!stripe) {
     throw new Error('Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.');

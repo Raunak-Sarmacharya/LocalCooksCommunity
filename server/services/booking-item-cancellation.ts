@@ -1,9 +1,10 @@
-import { and, eq } from 'drizzle-orm';
-import { equipmentBookings, storageBookings, kitchenBookings } from '@shared/schema';
+import { and, eq, inArray, or } from 'drizzle-orm';
+import { equipmentBookings, storageBookings, kitchenBookings, paymentTransactions } from '@shared/schema';
 import { calendarDateForOperatingTime } from '@shared/operating-hours';
 import { createBookingDateTime } from '@shared/timezone-utils';
 import { db } from '../db';
 import { queueBookingLifecycleEvent } from './booking-lifecycle-delivery';
+import { assertLegacyCancellation } from './dated-booking-refund-guard';
 
 export class BookingItemCancellationError extends Error {
   constructor(message: string, readonly status = 409) { super(message); }
@@ -18,6 +19,10 @@ export async function cancelBookingItem(kind: 'equipment', id: number, chefId: n
     // Same lock order as approval: parent, then item.
     const [parent] = await tx.select().from(kitchenBookings).where(and(eq(kitchenBookings.id, item.kitchenBookingId!), eq(kitchenBookings.chefId, chefId))).limit(1).for('update');
     if (!parent) throw new BookingItemCancellationError('Linked kitchen booking not found', 404);
+    const sources = await tx.select().from(paymentTransactions).where(or(
+      and(eq(paymentTransactions.bookingId, parent.id), inArray(paymentTransactions.bookingType, ['kitchen', 'bundle'])),
+      eq(paymentTransactions.paymentIntentId, item.paymentIntentId || ''), eq(paymentTransactions.paymentIntentId, parent.paymentIntentId || '')));
+    assertLegacyCancellation(parent, sources);
     if ((parent.paymentDecision as { state?: string } | null)?.state === 'pending')
       throw new BookingItemCancellationError('Payment reconciliation is in progress. Local Cooks must review this booking.');
     const [current] = await tx.select().from(table).where(and(eq(table.id, id), eq(table.chefId, chefId))).limit(1).for('update');

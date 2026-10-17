@@ -1,8 +1,9 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { PgDialect } from 'drizzle-orm/pg-core';
 const state = vi.hoisted(() => ({ source: { transferId: 'tr_one', managerRevenue: '11116', amount: '12200' } as any,
   lookupFailed: false, frozen: false, noTransfer: false, transfer: { id: 'tr_one', amount: 11116, amount_reversed: 0 }, reversals: [] as any[], refunds: [] as any[],
   reverse: vi.fn(), refund: vi.fn() }));
-vi.mock('../db', () => { const db: any = { execute: async () => ({ rows: state.frozen ? [{ id: 9 }] : [] }), transaction: async (work: any) => work(db), select: () => {
+vi.mock('../db', () => { const db: any = { execute: async (query: any) => ({ rows: state.frozen || new PgDialect().sqlToQuery(query).sql.includes('payout_partition') && state.source.payoutPartition === 'per_day' ? [{ id: 9 }] : [] }), transaction: async (work: any) => work(db), select: () => {
   const chain: any = { from: () => chain, where: () => chain, limit: () => chain, for: () => chain,
     then: (resolve: any, reject: any) => state.lookupFailed ? reject(Error('Database unavailable')) : resolve([state.source]) }; return chain;
 } }; return { db }; });
@@ -13,7 +14,8 @@ vi.mock('stripe', () => ({ default: class {
   refunds = { list: async function* () { yield* state.refunds; }, create: state.refund };
 } }));
 let reverseTransferAndRefund: typeof import('./stripe-service').reverseTransferAndRefund;
-beforeAll(async () => { vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock'); ({ reverseTransferAndRefund } = await import('./stripe-service')); });
+let createRefund: typeof import('./stripe-service').createRefund;
+beforeAll(async () => { vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock'); ({ reverseTransferAndRefund, createRefund } = await import('./stripe-service')); });
 beforeEach(() => {
   state.lookupFailed = false; state.frozen = false; state.noTransfer = false; state.source = { transferId: 'tr_one', managerRevenue: '11116', amount: '12200', serviceFee: '700' };
   state.transfer = { id: 'tr_one', amount: 11116, amount_reversed: 0 }; state.reversals = []; state.refunds = [];
@@ -26,6 +28,13 @@ beforeEach(() => {
 });
 const options = { idempotencyKey: 'operation_one', reverseTransferAmount: 2300, refundApplicationFee: false };
 describe('original reservation retry receipt adoption', () => {
+  it.each(['createRefund', 'reverseTransferAndRefund'])('%s refuses per-day sources before provider I/O, including reserved operations', async path => {
+    state.source.payoutPartition = 'per_day';
+    const run = path === 'createRefund' ? () => createRefund('pi_one', 2440, 'requested_by_customer', options)
+      : () => reverseTransferAndRefund('pi_one', 2440, 'requested_by_customer', { ...options, reservedOperation: true });
+    await expect(run()).rejects.toThrow('Dated booking cancellations and refunds');
+    expect(state.refund).not.toHaveBeenCalled(); expect(state.reverse).not.toHaveBeenCalled();
+  });
   it.each(['failed', 'canceled'])('adopts the successful retry while its older %s attempt remains', async status => {
     state.refunds = [
       { id: 're_success', charge: 'ch_one', amount: 2440, currency: 'cad', status: 'succeeded', metadata: { refund_operation_id: 'operation_one' } },

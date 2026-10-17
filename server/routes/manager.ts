@@ -1162,6 +1162,7 @@ router.post(
       if (!transaction.payment_intent_id) {
         throw new DomainError("REFUND_VALIDATION", "No payment intent linked to this transaction", 400);
       }
+      await (await import('../services/dated-booking-refund-guard')).assertLegacyBookingRefund({ paymentTransactionId: transactionId }, tx);
 
       // Only allow refunds for completed or partially refunded transactions
       if (!["succeeded", "partially_refunded"].includes(transaction.status)) {
@@ -1429,6 +1430,7 @@ router.post(
       if (transactionManagerId !== managerId) {
         throw new DomainError("REFUND_VALIDATION", "Access denied to this transaction", 403);
       }
+      await (await import('../services/dated-booking-refund-guard')).assertLegacyBookingRefund({ paymentTransactionId: transactionId }, tx);
       if (!["succeeded", "partially_refunded"].includes(transaction.status)) {
         throw new DomainError("REFUND_VALIDATION", "Only paid transactions can be refunded", 400);
       }
@@ -4589,6 +4591,8 @@ router.put(
         return res.json({ success: true, message: 'Booking is already confirmed' });
       // Compare the decision snapshot before changing parent or linked inventory.
       const changed = await db.transaction(async tx => {
+        if (status === 'cancelled' || storageActions?.some((item: any) => item.action === 'cancelled') || equipmentActions?.some((item: any) => item.action === 'cancelled'))
+          await (await import('../services/dated-booking-refund-guard')).assertLegacyBookingRefund({ bookingId: id }, tx);
         const [updated] = await tx.update(kitchenBookings).set({ status,
           ...(status === 'confirmed' && booking.paymentStatus === 'processing' ? { paymentStatus: 'paid' as const } : {}), updatedAt: new Date() })
           .where(and(eq(kitchenBookings.id, id), eq(kitchenBookings.status, booking.status), eq(kitchenBookings.updatedAt, booking.updatedAt))).returning({ id: kitchenBookings.id });

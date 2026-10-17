@@ -126,3 +126,51 @@ booking-days-validation,booking-payment-decision,cancellation-policy-settings,ki
 kitchen-checkout-incidents,kitchen-payout-service,stripe-checkout-fee-service,stripe-checkout-service,stripe-service,
 stripe-transfer-service}.ts`; `kitchen-payout-service.test.ts`, `stripe-transfer-payout-gate.test.ts`;
 `shared/{booking-response-deadline,cancellation-policy}.ts`; this report.
+
+## Fix round
+
+Oct 17, 2026: addressed the independent CP4 money review, with regressions reproduced against the original implementation
+before checking the fixes. `npm ci` installed this worktree's dependencies without links or dependency-manifest changes.
+
+- **H1:** dated checkout reads `kitchen.taxRatePercent`, matching scalar checkout. The PGlite fixture now has kitchen 15%
+  and location NULL. Regression: `charges the kitchen 15% tax when the location rate is NULL`.
+- **H2:** the shared cancellation context refuses either `scheduleRevision > 0` or any `per_day` payment source before
+  quoting, reserving, changing inventory or sending a refund. The direct-refund SQL guard also follows separately charged
+  equipment/storage to their parent and checks the parent's per-day payment. The message directs support to manual incident
+  review until CP6 supplies whole-booking deadlines. Guarded paths:
+  1. Chef cancellation quote and cancellation, including support acting for the chef.
+  2. Chef add-on removal quote/removal and their recovery; legacy equipment cancellation/withdrawal.
+  3. Manager cancellation/refund quote, acceptance and retry, for the whole booking or a selected add-on.
+  4. Kitchen-caused cancellation/refund, support-funded retry, and kitchen-caused add-on refunds.
+  5. Support goodwill, original-refund retry and receipt-only `mark_refunded` through the cancellation command.
+  6. Legacy manager status changes that cancel the booking or remove equipment/storage.
+  7. Manager direct transaction refund and full-refund request; admin full-refund decision.
+  8. Shared `createRefund` and `reverseTransferAndRefund`, including reserved/provider-only calls.
+  CP4's whole-authorization decline/withdrawal still uses its own decision engine; it has no captured refund arithmetic.
+  Provider-fact reconciliation and the existing checkout incident tools remain available for manual incident handling.
+  Regressions parameterize all cancellation commands over both discriminators, include the Mon/Wed/Fri 12-hour example,
+  exercise manager/admin HTTP handlers and shared refund helpers, and execute linked-source guard SQL in PGlite.
+- **M1:** service-fee shares use subtotal plus allocated tax, exactly as cancellation `sourceComponents` does. Regression:
+  `splits service fees by manager gross like cancellation sourceComponents: 11349/12421 -> 795/869`, with a separate
+  cancellation-engine test verifying its `[795, 869]` split. Capture writes use this same allocation helper.
+- **M2:** dated extra-time pricing, requests, offers, early starts, extra-time charges, approval, checkout and pending
+  charge recovery refuse until a later checkpoint prices from the selected visit's snapshot. Reads return empty options
+  and a clear reason. Regressions cover each kind, selected visit IDs, existing decisions and pending capture recovery.
+- **M3:** dated discovery catches each head independently and has an outer isolation boundary before legacy recovery.
+  Each tick attempts at most three heads and one provider page per head. Invalid quotes, provider failures, incomplete
+  pages, ambiguous matches and wrong metadata are logged and archived once as `unbound:<headId>` support incidents with
+  their raw quote. The incident excludes the head from later discovery and is excluded from automatic session recovery.
+  Expired holds retain evidence without occupying inventory. Regressions prove all five failures stop retrying, a poisoned
+  dated row cannot stop an unbound legacy checkout, and even a failing discovery query leaves legacy recovery running.
+- **L1:** scalar disclosure versions exclude the dated version; an explicit server-side first-day basis permits only the
+  dated version. Metadata verifies that same pairing. Regressions cover scalar refusal, existing scalar versions, dated
+  required disclosure and dated successful checkout/fulfillment.
+- **L2:** dated evidence synchronization reads the intent first and returns when it is not succeeded and nothing was
+  captured. Succeeded payments with missing sources still fail for retry. PGlite tests cover authorization, failed payment,
+  cancellation, declined requests and missing captured sources; signed `charge.updated` tests use the actual synchronizer
+  to verify acknowledgment without database writes. Added cheap signed-webhook tests for cancellation without a saved
+  decision, refund receipt reconciliation, and dispute created/updated/closed dispatch to support flags.
+
+Pre-final focused verification: **255 passed, 5 files** (CP4, cancellation commands, session extensions and refund retry).
+The implementation is committed before final regression/TypeScript checks; their results will be appended after completion.
+No push, deployment, migration application, live Stripe request, Vercel or Inngest operation was performed.

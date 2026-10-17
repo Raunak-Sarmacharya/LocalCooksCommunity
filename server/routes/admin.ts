@@ -3646,6 +3646,7 @@ router.post("/transactions/:transactionId/full-refund-request/decision", require
         const { findPaymentTransactionById, updatePaymentTransaction, addPaymentHistory } = await import("../services/payment-transactions-service");
         const transaction = await findPaymentTransactionById(transactionId, tx);
         if (!transaction) throw Object.assign(new Error("Transaction not found"), { status: 404 });
+        await (await import('../services/dated-booking-refund-guard')).assertLegacyBookingRefund({ paymentTransactionId: transactionId }, tx);
         const metadata = transaction.metadata && typeof transaction.metadata === 'object'
             ? transaction.metadata as Record<string, any>
             : {};

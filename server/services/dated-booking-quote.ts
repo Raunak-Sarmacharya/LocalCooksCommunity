@@ -105,7 +105,7 @@ export type DayComponent = { visitId: number; sessionIndex: number; componentKey
 /** One source, one aggregate tax, service fee and actual provider fee. Stable date then component order breaks ties. */
 export function allocateDatedCapture(components: DayComponent[], m: DatedBookingManifest, actualFee: number | null) {
   const tax = capturedComponentAllocations(components, m.taxCents);
-  const service = allocateCents(m.serviceFeeCents, components.map(item => item.subtotalCents));
+  const service = allocateCents(m.serviceFeeCents, tax.map(item => item.managerGrossCents));
   const fees = actualFee === null ? components.map(() => null) : allocateCents(cents(actualFee), tax.map(item => item.managerGrossCents));
   const result = components.map((item, i) => ({ ...item, taxCents: tax[i].taxCents, managerGrossCents: tax[i].managerGrossCents,
     serviceFeeCents: service[i], stripeFeeCents: fees[i] }));
