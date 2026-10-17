@@ -781,6 +781,7 @@ export async function getChefAllPenalties(chefId: number) {
       chefDisputeDeadline: storageOverstayRecords.chefDisputeDeadline,
       chefDisputedAt: storageOverstayRecords.chefDisputedAt,
       disputeReviewedAt: storageOverstayRecords.disputeReviewedAt,
+      idempotencyKey: storageOverstayRecords.idempotencyKey,
       stripePaymentIntentId: storageOverstayRecords.stripePaymentIntentId,
       stripeChargeId: storageOverstayRecords.stripeChargeId,
       resolutionType: storageOverstayRecords.resolutionType,

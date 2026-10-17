@@ -10,4 +10,9 @@ describe('overstay collection eligibility', () => {
   it('pauses collection throughout an unresolved dispute', () => expect(overstayCollectionError({ ...record, chefDisputedAt: new Date('2026-10-01T10:00:00Z') }, now)).toMatch(/paused/));
   it('allows collection after the deadline', () => expect(overstayCollectionError(record, now)).toBeUndefined());
   it('allows collection after an admin resolves the dispute', () => expect(overstayCollectionError({ ...record, chefDisputedAt: new Date(), disputeReviewedAt: new Date() }, now)).toBeUndefined());
+  it('lets the chef pay a storage holdover request at once, unless a dispute is under review', () => {
+    const holdover = { ...record, itemsRemovedAt: null, chefDisputeDeadline: new Date('2026-10-01T13:00:00Z'), idempotencyKey: 'holdover:43:2026-10-09:3' };
+    expect(overstayCollectionError(holdover, now)).toBeUndefined();
+    expect(overstayCollectionError({ ...holdover, chefDisputedAt: new Date('2026-10-01T10:00:00Z') }, now)).toMatch(/paused/);
+  });
 });
