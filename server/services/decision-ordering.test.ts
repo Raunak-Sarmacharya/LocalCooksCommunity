@@ -8,6 +8,10 @@ import { deliverBookingLifecycleEvents } from './booking-lifecycle-delivery';
 import { deliverTourEvents, tourEventMessages } from './tour-delivery-service';
 const dialect = new PgDialect();
 const name = (table: any) => table[Symbol.for('drizzle:Name')];
+// The tour being dispatched is the one holding a lease; its saved people are the live authority for the fixture.
+const processingTour = () => state.tours.find(row => row.leaseUntil > new Date());
+const livePeople = () => { const { chef, manager, admins } = processingTour()!.payload;
+  return [{ id: chef.id, email: chef.email, role: 'chef' }, { id: manager.id, email: manager.email, role: 'manager' }, { id: admins[0].id, email: admins[0].email, role: 'admin' }]; };
 beforeEach(() => {
   vi.clearAllMocks(); state.bookings = []; state.tours = []; state.alerts = []; state.queries = []; state.owners = [{ id: 1 }];
   vi.stubEnv('E2E_SUPPRESS_OUTBOUND', '0');
@@ -18,9 +22,12 @@ beforeEach(() => {
       let table = '', condition: any;
       const chain: any = { from: (t: any) => { table = name(t); return chain; }, where: (c: any) => { condition = c; return chain; },
         orderBy: () => chain, limit: () => chain, for: () => chain, then: (resolve: any) => {
+          if (table === 'users' && /\bin \(/i.test(dialect.sqlToQuery(condition).sql)) return resolve(livePeople()); // tour recipients
+          if (table === 'locations') return resolve([{ managerId: 2 }]);
+          if (table === 'kitchen_viewings') return resolve([{ ...processingTour()?.payload.after, chefId: 3, locationId: 5 }]);
           if (table === 'users') return resolve(state.owners);
           if (table === 'email_logs') return resolve([]);
-          if (table === 'kitchen_bookings' || table === 'kitchen_viewings') return resolve([{ status: 'cancelled' }]);
+          if (table === 'kitchen_bookings') return resolve([{ status: 'cancelled' }]);
           const all = table === 'booking_lifecycle_events' ? state.bookings : state.tours;
           const query = dialect.sqlToQuery(condition); state.queries.push(query.sql);
           const rows = all.filter(row => {

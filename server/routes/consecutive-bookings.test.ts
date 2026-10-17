@@ -72,7 +72,7 @@ describe('actual fresh booking boundaries', () => {
     expect(await fulfillKitchenCheckout('held', 'saved', 4, '2099-10-04', gap, '08:00', create)).toEqual({ id: 10, totalPrice: '1234' });
     create.mockClear();
     await expect(fulfillKitchenCheckout('held', 'saved', 4, '2099-10-04', [gap[0]], '08:00', create)).rejects.toThrow('does not match');
-    state.rows.kitchen_bookings = [{ bookingDate: new Date('2099-10-04'), status: 'confirmed', startTime: '11:00', endTime: '12:00', operatingWindowStartTime: '08:00' }];
+    state.rows.kitchen_bookings = [{ id: 1, bookingDate: new Date('2099-10-04'), status: 'confirmed', startTime: '11:00', endTime: '12:00', operatingWindowStartTime: '08:00' }];
     await expect(fulfillKitchenCheckout('held', 'saved', 4, '2099-10-04', gap, '08:00', create)).rejects.toThrow('no longer available');
     expect(create).not.toHaveBeenCalled();
   });
