@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatTime } from "@/lib/formatters";
@@ -80,6 +81,7 @@ export function TimeSelect({
   "aria-label": ariaLabel,
   className,
 }: TimeSelectProps) {
+  const { i18n } = useTranslation();
   const options = React.useMemo(
     () => timeOptions(stepMinutes, min, max, value),
     [stepMinutes, min, max, value],
@@ -93,7 +95,7 @@ export function TimeSelect({
       <SelectContent>
         {options.map((option) => (
           <SelectItem key={option} value={option}>
-            {formatTime(option)}
+            {formatTime(option, i18n?.language)}
           </SelectItem>
         ))}
       </SelectContent>
