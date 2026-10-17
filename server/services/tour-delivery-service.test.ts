@@ -662,7 +662,8 @@ describe('durable tour delivery', () => {
       expect(content).toContain('TOUR-10');
       expect(content).toContain('View details');
       expect(content).toContain(accepted ? 'Oct 9, 2026' : 'Oct 7, 2026');
-      expect(content).toMatch(/N[DS]T/);
+      expect(content).toContain(accepted ? '9:00 AM' : '11:45 PM');
+      expect(content).not.toMatch(/\bN[DS]T\b/);
       expect(content).toContain(accepted ? 'Previous time' : 'original confirmed time remains booked');
       if (!accepted) { expect(content).not.toContain('Oct 9, 2026'); expect(content).not.toContain('was approved'); }
     }
@@ -694,7 +695,7 @@ describe('durable tour delivery', () => {
       expect(email.html).toContain(path.replace(/&/g, '&amp;'));
       for (const content of [email.text!, email.html!]) {
         expect(content).toContain('TOUR-10'); expect(content).toContain('Oct 7, 2026');
-        expect(content).toContain('11:45 PM'); expect(content).toMatch(/N[DS]T/);
+        expect(content).toContain('11:45 PM'); expect(content).not.toMatch(/\bN[DS]T\b/);
         expect(content).toContain('View cancelled tour'); expect(content).toMatch(/remove.*tour.*calendar/i);
         expect(content).not.toContain('ADMIN PRIVATE');
       }
@@ -702,7 +703,8 @@ describe('durable tour delivery', () => {
       expect(email.html).toContain('class="email-brand"');
       if (role === 'admin') expect(email.text).toContain(actorRole === 'chef' ? 'Fixture chef' : actorRole === 'admin' ? 'cancelled by Local Cooks' : 'cancelled by the manager');
       else {
-        expect(email.text).toContain('This confirmed kitchen tour was cancelled.');
+        expect(email.text).toContain(role === 'chef' ? 'Your confirmed kitchen tour was cancelled.'
+          : 'Fixture chef’s confirmed tour of Fixture room was cancelled.');
         expect(email.text + email.html).not.toMatch(/cancelled by|You cancelled|Fixture chef cancelled|\badmin\b/i);
       }
     }
@@ -714,8 +716,8 @@ describe('durable tour delivery', () => {
     for (const content of [email.text!, email.html!]) {
       expect(content).toContain('Original time'); expect(content).toContain('Oct 7, 2026');
       expect(content).toContain('Proposed time'); expect(content).toContain('Oct 9, 2026');
-      expect(content).toContain('original slot remains booked until you decide');
-      expect(content).toContain('TOUR-10'); expect(content).toMatch(/N[DS]T/);
+      expect(content).toContain('The original time remains confirmed until the change is accepted');
+      expect(content).toContain('TOUR-10'); expect(content).not.toMatch(/\bN[DS]T\b/);
       expect(content).toContain('Review reschedule request'); expect(content).not.toContain('ADMIN PRIVATE');
     }
     expect(email.html).toContain('/manager/dashboard?view=viewings&amp;viewing=10');
@@ -811,7 +813,7 @@ describe('durable tour delivery', () => {
   });
   it('keeps disruptions distinct from visitor non-attendance', () => {
     const event = payload(); event.after.disruptionReason = 'manager_absent';
-    expect(tourEventMessages(event)[0].notification?.title).toBe('Your kitchen tour couldn’t go ahead');
+    expect(tourEventMessages(event)[0].notification?.title).toBe('The kitchen tour couldn’t go ahead');
     expect(tourEventMessages(event)[0].notification?.message).toContain('Manager did not attend');
   });
   it('continues independent channels and retries only the failed channel', async () => {
@@ -857,7 +859,8 @@ describe('durable tour delivery', () => {
   it('renders a persisted Newfoundland time change across midnight', () => {
     const event = payload('reschedule_accepted', 'confirmed');
     const email = tourEventMessages(event).find(message => message.email)?.email;
-    expect(email?.text).toContain('11:45'); expect(email?.text).toMatch(/N[DS]T/);
+    expect(email?.text).toContain('11:45 PM'); expect(email?.text).toContain('Oct 8, 2026, 12:15 AM');
+    expect(email?.text).not.toMatch(/\bN[DS]T\b/);
   });
 });
 
@@ -871,7 +874,7 @@ it('delivers the real confirmed rich tour itinerary and stable ICS from the pers
   const manager = calls.find(email => email.to === 'manager@example.test');
   expect(chef.text).toContain('/dashboard?view=viewings&viewing=10');
   expect(manager.text).toContain('/manager/dashboard?view=viewings&viewing=10');
-  expect(chef.text).toContain('Arrival help: manager@example.test');
+  expect(chef.text).toContain('Arrival contact: manager@example.test');
   expect(chef.text).toContain('Fixture room at Fixture kitchen');
   expect(chef.text).toContain('Shared entrance instructions');
   expect(chef.text).not.toContain('ADMIN PRIVATE');
@@ -1264,7 +1267,7 @@ describe('single completion application receipt', () => {
     expect(mail.text).toContain('/apply-kitchen/33?tourId=10&kitchenId=40');
     expect(mail.text).toContain('viewing=10&action=message');
     expect(mail.text).toContain('View tour:');
-    expect(mail.text).toContain('dashboard?view=support');
+    expect(mail.text).toContain('Support'); expect(mail.text).toContain('support@localcooks.ca');
     expect(mail.text).not.toMatch(/due date|deadline|must apply|by tomorrow/i);
   });
   it.each(['continue', 'view'] as const)('resolves an existing application to its current %s action immediately before delivery', async action => {
@@ -1283,7 +1286,7 @@ describe('single completion application receipt', () => {
     const mail = state.email.mock.calls.find(call => call[0].to === 'chef@example.test')![0];
     expect(mail.text).not.toMatch(/apply-kitchen|Apply when you're ready|Continue application:/);
     expect(mail.text).toContain('View tour:');
-    expect(mail.text).toContain('action=message'); expect(mail.text).toContain('view=support');
+    expect(mail.text).toContain('action=message'); expect(mail.text).toContain('Support');
   });
   it('labels existing access truthfully when there is no application to view', async () => {
     completed(); state.applicationNextStep.mockResolvedValue({ action: 'view', applicationId: null, href: '/apply-kitchen/33?tourId=10&kitchenId=40' });
@@ -1395,7 +1398,7 @@ describe('Tour C outcomes and factual retry recovery', () => {
     expect(mail.html).toContain('class="email-brand"'); expect(mail.text).not.toContain('Arrived: Not recorded');
     expect(mail.text).not.toContain('Outcome recorded by'); expect(mail.text).not.toContain('Update recorded at');
     expect(mail.text).not.toMatch(/attendance/i);
-    expect(mail.text).toContain('dashboard?view=support'); expect(mail.text).toContain('viewing=10');
+    expect(mail.text).toContain('Support'); expect(mail.text).toContain('support@localcooks.ca'); expect(mail.text).toContain('viewing=10');
     expect(mail.html).toContain('&lt;closed&gt; &amp;'); expect(JSON.stringify(mail)).not.toContain('ADMIN PRIVATE');
     expect(mail.attachments).toBeUndefined();
     if (branch === 'unknown') expect(mail.subject).not.toContain('visitor no-show');
@@ -1434,7 +1437,7 @@ it.each(['status', 'reschedule_proposal_accepted', 'reschedule_accepted'])('publ
   const mail = tourEventMessages(event).find(message => message.key === 'chef-email')!.email!;
   expect(mail.text).toContain('Arrival instructions: Side entrance Олена <&>');
   expect(mail.text).toContain('Departure instructions: Return badge');
-  expect(mail.text).toContain('Message from the kitchen manager: Shared entrance instructions');
+  expect(mail.text).toContain('Manager notes: Shared entrance instructions');
   expect(mail.text).not.toContain('ADMIN PRIVATE');
   expect(String(mail.attachments![0].content)).toContain('Arrival instructions:');
 });

@@ -41,7 +41,7 @@ describe('tour email preview harness', () => {
       const email = samples.find(sample => sample.scenario === 'Tour confirmed' && sample.role === role)!;
       expect(email.text).toContain(role === 'Chef' ? 'Message manager:' : 'Message chef:');
       expect(email.text).toContain('viewing=42&action=message');
-      expect(email.text).toContain('Get directions: https://www.google.com/maps/dir/');
+      expect(email.text).toContain('https://www.google.com/maps/search/?api=1&query=');
       expect(email.html).toContain('class="email-brand"');
       expect(email.html).not.toContain('emailHeader.png');
       expect(email.html).toContain('.email-outer{padding:0 !important}');

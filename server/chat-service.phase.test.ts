@@ -34,8 +34,8 @@ describe("generateKitchenCoordinationSubmittedManagerEmail", () => {
     });
 
     expect(email.to).toBe("manager@example.com");
-    expect(email.subject).toContain("Chef Application Requirements Ready for Review");
+    expect(email.subject).toContain("Kitchen documents submitted");
     expect(email.text).toContain("Test Kitchen");
-    expect(email.html).toContain("Review Chef Application Requirements");
+    expect(email.html).toContain("View kitchen documents");
   });
 });
