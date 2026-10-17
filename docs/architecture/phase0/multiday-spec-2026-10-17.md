@@ -36,7 +36,7 @@ message, admins override).
 |---|---|
 | Allow multi-day bookings | Switch. **On for every kitchen at launch**, "Up to [7] days per booking" (cap 14). Off = one day per booking. Kitchens told in the app. |
 | Buffer between bookings | Off / 1 h / 2 h, **default Off**. Kept free between two different bookings; chefs can't pick hours inside it; existing bookings unaffected; the kitchen itself can still book inside it. |
-| Longest booking | Today's "Max hours per day" renamed honestly: "Longest booking: [N] hours per day" (caps one booking's hours on a day). Applies to **hourly** bookings; full days stay allowed at the daily rate (as today), and the screen says so. |
+| Longest booking | Today's "Max hours per day" renamed honestly: "Longest booking: [N] hours per day" (caps one booking's hours on a day). Applies to **hourly** bookings; full days stay allowed at the daily rate (as today), and the screen says so. **No cap by default** (owner, Oct 17): up to the kitchen's opening hours unless the kitchen sets a limit; existing settings kept. |
 | Limit per chef | Optional "[N] hours per week" per chef at this kitchen. Counts **the whole calendar week, Monday–Sunday in the kitchen's time zone**, including days already used (Skedda-style); cancelled hours don't count; full days count as that day's opening hours. Blocked with a clear message; the kitchen can override. |
 | Trusted-chef auto-approval | Not now (owner). |
 
@@ -49,3 +49,11 @@ low-friction from day 2 ("Same as previous visit" — days may not be adjacent);
 ## Not in scope now
 Recurring/weekly bookings, days more than 14 days apart in one booking, partial acceptance, length discounts,
 hourly "same hours" templates across weeks.
+
+## Manager settings audit (owner, Oct 17)
+Every booking setting a kitchen manager sees was reviewed for intent and peer parity. Kept: advance notice, how far ahead
+(cap 90), shortest booking, cancellation policy, extra time (auto-approve), damage & cleaning info, pricing (hourly, daily,
+tax %), arrival timing. Changed: longest booking (no default cap), buffer (Off/1 h/2 h), kitchen "Terms and conditions" PDF
+keeps its title with a subheading that it holds house rules and can't change Local Cooks booking/refund/payment/claim rules.
+Removed: the legacy "Storage Overstay Penalties" page and its dashboard items (retired storage model; its charge action was
+already refused server-side), and dead unrouted location-settings screens holding stale duplicate booking fields.
