@@ -98,7 +98,8 @@ export function verifyDatedCheckout(quote: DatedQuote, session: Stripe.Checkout.
     || intent.capture_method !== 'manual' || !(['requires_capture', 'succeeded'].includes(intent.status)
       || allowReleased && intent.status === 'canceled' && intent.amount_received === 0)
     || intent.status === 'requires_capture' && intent.amount_capturable !== m.totalCents
-    || intent.status === 'succeeded' && intent.amount_received !== m.totalCents) throw Error('Dated checkout payment evidence needs review');
+    // After acceptance the capture may be the chef-approved smaller total; its exact amount is verified with the allocation source.
+    || intent.status === 'succeeded' && !(intent.amount_received > 0 && intent.amount_received <= m.totalCents)) throw Error('Dated checkout payment evidence needs review');
 }
 
 export type DayComponent = { visitId: number; sessionIndex: number; componentKey: string; kind: 'kitchen' | 'equipment'; bookingId: number; subtotalCents: number };

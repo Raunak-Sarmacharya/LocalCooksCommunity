@@ -15,7 +15,7 @@ import { StatusPill } from "@/components/booking/BookingNowCard";
 import type { BookingHeaderPhase } from "@/lib/booking-header-state";
 import { bookingCancelCause } from "@/lib/booking-cancel-cause";
 import {
-  bookingListPill, listTimezone, listWhenLine, managerBookingGroups, managerRowAction, showArrivalLine,
+  bookingListPill, listTimezone, listWhenLine, managerBookingGroups, managerRowAction, showArrivalLine, waitingForChef,
   type ListedBooking, type ManagerListGroup, type ManagerRowAction,
 } from "@/lib/booking-list-status";
 import { friendlyTimezoneName } from "@shared/timezone-utils";
@@ -117,7 +117,7 @@ export function ManagerBookingsAgenda({ bookings, onReviewRequest }: {
                   const { row, phase } = item;
                   const action = managerRowAction(row, phase);
                   const cause = bookingCancelCause({ status: row.status, chefId: row.chefId, paymentDecision: row.paymentDecision });
-                  const pill = bookingListPill(phase, true, cause);
+                  const pill = waitingForChef(row) ? { key: "paPillKitchen", tone: bookingListPill(phase, true, cause).tone } : bookingListPill(phase, true, cause);
                   const line = statusLine(row, phase, locale);
                   const actionLabel = action ? ct(ACTION_LABEL[action]) : "";
                   return (

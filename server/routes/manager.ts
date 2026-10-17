@@ -33,7 +33,7 @@ import {
 import { format } from "date-fns";
 import { db } from "../db";
 import { buildKitchenReadiness } from "../services/kitchen-listing-readiness-service";
-import { getBookingResponseDeadlineAt } from '../services/booking-response-deadline';
+import { getBookingResponseDeadlineAt, getPartialAcceptanceWindow } from '../services/booking-response-deadline';
 import { normalizeTrackingSetup } from '@shared/tracking-setup';
 import { managerWorkspaceVisibility } from "../domains/managers/manager-workspace-visibility";
 import { includeCancelledStorageHistory } from "../domains/managers/storage-booking-history";
@@ -108,6 +108,7 @@ import {
   storageListings,
   equipmentListings,
   kitchenBookings,
+  kitchenBookingVisits,
   paymentTransactions,
   storageOverstayRecords,
 } from "@shared/schema";
@@ -4254,9 +4255,13 @@ router.get(
             .from(equipmentListings)
             .where(eq(equipmentListings.id, eb.equipmentListingId))
             .limit(1);
+          // A dated booking books equipment per day: the review names the day so the kitchen can decline one day's item.
+          const [visit] = booking.scheduleRevision > 0 && eb.kitchenBookingVisitId ? await db.select({ visitDate: kitchenBookingVisits.visitDate })
+            .from(kitchenBookingVisits).where(eq(kitchenBookingVisits.id, eb.kitchenBookingVisitId)).limit(1) : [];
           return {
             ...eb,
             equipmentListing: listing || null,
+            visitDate: visit?.visitDate ?? null,
           };
         }),
       );
@@ -4430,6 +4435,9 @@ router.get(
         // Read-only: extra time and claim payments on this booking, with the kitchen's share of each.
         additionalCharges: await (await import('../services/booking-additional-charges')).readAdditionalCharges(db, id, 'manager', booking.paymentIntentId).catch(() => []),
         responseDeadlineAt: await getBookingResponseDeadlineAt(booking, undefined, location.timezone),
+        // Owner (Oct 17): too close to the start (< 3 h for the chef to answer) means accept everything or decline; the dialog mirrors this.
+        partialAcceptanceAvailable: booking.status === 'pending' && booking.paymentStatus === 'authorized'
+          ? await getPartialAcceptanceWindow(booking, new Date(), undefined, location.timezone).then(window => window.allowed, () => false) : false,
         visitCode: visitCodeFor(null),
         inspection: {
           duties: inspectionDuties,
@@ -4467,6 +4475,32 @@ router.get(
       res
         .status(500)
         .json({ error: e.message || "Failed to fetch booking details" });
+    }
+  },
+);
+
+// The review dialog's new total when the kitchen declines items: computed by the same function the capture uses, plus
+// whether there is still time to ask the chef (owner, Oct 17). Read-only.
+router.post(
+  "/bookings/:id/partial-acceptance/preview",
+  requireFirebaseAuthWithUser,
+  requireManager,
+  async (req: Request, res: Response) => {
+    const id = Number(req.params.id);
+    const ids = req.body?.equipmentBookingIds;
+    if (!Number.isSafeInteger(id) || id <= 0 || !Array.isArray(ids) || ids.length > 100 || ids.some((value: unknown) => !Number.isSafeInteger(value) || (value as number) <= 0))
+      return res.status(400).json({ error: 'Invalid booking items' });
+    try {
+      const booking = await bookingService.getBookingById(id);
+      const kitchen = booking ? await kitchenService.getKitchenById(booking.kitchenId) : null;
+      const location = kitchen ? await locationService.getLocationById(kitchen.locationId) : null;
+      if (!booking || !location || location.managerId !== req.neonUser!.id) return res.status(404).json({ error: 'Booking not found' });
+      const { previewPartialAcceptance } = await import('../services/booking-payment-decision');
+      res.json(await previewPartialAcceptance(id, ids));
+    } catch (e: any) {
+      if (e instanceof BookingTermsReviewRequired) return res.status(e.status).json({ error: e.message, code: e.code });
+      logger.error('Partial acceptance preview failed', { bookingId: id, error: e });
+      res.status(500).json({ error: 'Couldn’t calculate the new total. Try again.' });
     }
   },
 );
@@ -4586,7 +4620,8 @@ router.put(
             || session.metadata?.kitchen_id !== String(booking.kitchenId)
             || session.metadata?.type !== 'kitchen_booking' || session.status !== 'complete' || session.currency?.toLowerCase() !== 'cad'
             || session.amount_total !== paymentIntent.amount) throw new BookingTermsReviewRequired();
-          checkoutTerms = bookingCaptureTerms(session.metadata, paymentIntent.amount);
+          // A dated booking's frozen quote is verified by the decision command itself (CP4); its metadata has no scalar fee model.
+          if (!(booking.scheduleRevision > 0)) checkoutTerms = bookingCaptureTerms(session.metadata, paymentIntent.amount);
         }
         // AUTH-THEN-CAPTURE: If payment is authorized, capture is deferred until AFTER
         // storage/equipment actions are determined, so we can do PARTIAL capture.

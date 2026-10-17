@@ -118,7 +118,7 @@ describe('finishing a replacement after the new request exists', () => {
   it('withdraws the earlier request through the chef-withdraw path and records both history links once', async () => {
     withdrawOk();
     expect(await completeReplacement(11, 10)).toBe('withdrawn');
-    expect(h.decide).toHaveBeenCalledWith(10, 'cancelled', [], [], 3, undefined, { replacedBy: { bookingId: 11, reference: 'KB-NEW', deadlineAt: '2099-01-01T15:00:00.000Z' } });
+    expect(h.decide).toHaveBeenCalledWith(10, 'cancelled', [], [], 3, undefined, { replacedBy: { bookingId: 11, reference: 'KB-NEW', deadlineAt: '2099-01-01T15:00:00.000Z' }, proposalOutcome: 'closed' });
     // The same cancellation fields as the chef's own withdraw, with a stable operation key.
     expect(h.rows.kitchen_bookings[0]).toMatchObject({ status: 'cancelled', cancellationCause: 'chef', cancellationOperationKey: 'chef-withdraw-10-replaced-11' });
     const links = h.rows.booking_lifecycle_events.filter(row => ['replaced_by', 'replaces'].includes(row.kind));

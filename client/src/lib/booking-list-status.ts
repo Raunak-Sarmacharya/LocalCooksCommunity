@@ -5,6 +5,7 @@ import { kitchenBookingBlocks } from './kitchen-booking-blocks';
 import { formatTime } from './formatters';
 import { calendarDateForBookingTime } from '@shared/operating-hours';
 import { createBookingDateTime, DEFAULT_TIMEZONE } from '@/utils/timezone-utils';
+import { waitingPartialAcceptance } from '@shared/partial-acceptance';
 
 /**
  * Booking lists (chef "My bookings", manager bookings, dashboard tiles) speak the booking page's language: the same
@@ -29,7 +30,12 @@ export interface BookingListRow {
   /** The kitchen's check-in window (minutes before start); the page's default is 15. */
   checkinWindowMinutesBefore?: number | null;
   checkoutRequestedAt?: string | null;
+  /** The kitchen's new total waiting for the chef (accepted without some equipment). */
+  partialAcceptance?: unknown;
 }
+
+/** The request waits for the chef's answer to the kitchen's new total: nothing is left for the kitchen to do. */
+export const waitingForChef = (row: BookingListRow) => !!waitingPartialAcceptance(row);
 
 export const listTimezone = (row: Pick<BookingListRow, 'timezone' | 'locationTimezone'>) => row.timezone || row.locationTimezone || DEFAULT_TIMEZONE;
 
@@ -179,6 +185,7 @@ export type ManagerRowAction = BookingPrimaryAction | 'record_left';
  */
 export function managerRowAction(row: BookingListRow, phase: BookingHeaderPhase): ManagerRowAction {
   if (phase === 'time_ended_in_session') return 'record_left';
+  if (waitingForChef(row)) return null;
   return bookingPrimaryAction(phase, true, listInspectionCanRespond(row));
 }
 
@@ -195,7 +202,7 @@ export function managerBookingGroups<T extends BookingListRow>(rows: T[], now = 
     if (phase === 'cancelled') groups.cancelled.push(listed);
     else if (managerRowAction(row, phase)) groups.needs_action.push(listed);
     else if (['today', 'checkin_open', 'in_session'].includes(phase)) groups.today.push(listed);
-    else if (phase === 'confirmed') groups.upcoming.push(listed);
+    else if (phase === 'confirmed' || waitingForChef(row)) groups.upcoming.push(listed);
     else groups.past.push(listed);
   }
   groups.needs_action.sort(byStart);

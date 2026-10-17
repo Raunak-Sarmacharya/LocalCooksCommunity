@@ -1385,6 +1385,27 @@ router.put("/chef/bookings/:id/cancel", requireChef, async (req: Request, res: R
 // ═══════════════════════════════════════════════════════════════════════════
 
 // Chef checks in to kitchen booking
+// The chef answers the kitchen's new total (accepted without some equipment). Nothing is captured before "accept".
+router.post("/chef/bookings/:id/partial-acceptance", requireChef, async (req: Request, res: Response) => {
+    const id = Number(req.params.id);
+    const { proposalId, answer } = req.body ?? {};
+    if (!Number.isSafeInteger(id) || id <= 0 || typeof proposalId !== 'string' || !/^[0-9a-f-]{36}$/.test(proposalId) || !['accept', 'decline'].includes(answer))
+        return res.status(400).json({ error: 'Choose accept or decline for this offer.' });
+    try {
+        const [owner] = await db.select({ chefId: kitchenBookings.chefId }).from(kitchenBookings).where(eq(kitchenBookings.id, id)).limit(1);
+        if (!owner || owner.chefId !== req.neonUser!.id) return res.status(404).json({ error: 'Booking not found' });
+        const { answerPartialAcceptance } = await import('../services/booking-payment-decision');
+        const result = await answerPartialAcceptance(id, proposalId, answer, req.neonUser!.id);
+        const { deliverBookingLifecycleEvents } = await import('../services/booking-lifecycle-delivery');
+        await deliverBookingLifecycleEvents(10, 20_000, id).catch(error => logger.warn('Booking email delivery pending retry', error));
+        return res.json(result);
+    } catch (error: any) {
+        if (typeof error?.status === 'number' && error.code === 'BOOKING_PAYMENT_REVIEW_REQUIRED') return res.status(error.status).json({ error: error.message, code: error.code });
+        logger.error('Partial acceptance answer failed', { bookingId: id, error });
+        return res.status(500).json({ error: 'We couldn’t finish recording your answer. Please don’t pay again; open the booking for the latest update.' });
+    }
+});
+
 router.post("/chef/bookings/:id/checkin", requireChef, async (req: Request, res: Response) => {
     try {
         const id = parseInt(req.params.id);

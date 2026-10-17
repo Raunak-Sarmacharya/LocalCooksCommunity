@@ -26,6 +26,7 @@ import {
 import { friendlyTimezoneName } from "@shared/timezone-utils"
 import { getR2ProxyUrl } from "@/utils/r2-url-helper"
 import { bt } from "@/i18n/booking-ns"
+import { partialAcceptanceDeadlineText, waitingPartialAcceptance } from "@shared/partial-acceptance"
 import { cn } from "@/lib/utils"
 
 export interface ChefListBooking extends BookingListRow {
@@ -138,9 +139,12 @@ function BookingCard({ item, kitchenName, t, locale, words, primary, showZone }:
 }) {
   const booking = item.row
   const cause = bookingCancelCause({ status: booking.status, chefId: booking.chefId, paymentDecision: booking.paymentDecision })
-  const pill = bookingListPill(item.phase, false, cause)
-  const line = chefListLine(booking, item, t, locale)
-  const action = chefListAction(booking, item, t, locale)
+  // The kitchen offered a new total: the chef's answer is due (owner, Oct 17), with the deadline in the kitchen's zone.
+  const proposal = waitingPartialAcceptance(booking)
+  const pill = proposal ? { key: "paListAnswerNeeded", tone: "amber" as const } : bookingListPill(item.phase, false, cause)
+  const line = proposal ? t("paListAnswerBy", { deadline: partialAcceptanceDeadlineText(proposal.deadlineAt, locale, listTimezone(booking)) })
+    : chefListLine(booking, item, t, locale)
+  const action = proposal ? { label: bt("paChefProposedAction"), href: `/booking/${booking.id}` } : chefListAction(booking, item, t, locale)
   const when = listWhenLine(booking, locale, words)
   const zone = showZone ? friendlyTimezoneName(listTimezone(booking), locale) : ""
   return (

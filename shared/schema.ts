@@ -705,6 +705,8 @@ export const kitchenBookings = pgTable("kitchen_bookings", {
   paymentStatus: paymentStatusEnum("payment_status").default("pending"), // Payment status
   paymentIntentId: text("payment_intent_id"), // Stripe PaymentIntent ID (nullable, unique)
   paymentDecision: jsonb('payment_decision'), // Durable authorized-payment decision; retained for recovery/audit
+  /** Kitchen accepted without some equipment: the chef's answer is pending (or recorded). Nothing is captured until they accept. */
+  partialAcceptance: jsonb('partial_acceptance'),
   cancellationPolicyHours: integer("cancellation_policy_hours"), // Frozen when the booking is created.
   cancellationPolicySnapshot: jsonb('cancellation_policy_snapshot'),
   cancellationEffectiveAt: timestamp('cancellation_effective_at', { withTimezone: true }),
@@ -1258,6 +1260,7 @@ export const insertKitchenBookingSchema = createInsertSchema(kitchenBookings, {
 }).omit({
   id: true,
   paymentDecision: true,
+  partialAcceptance: true,
   createdAt: true,
   updatedAt: true,
 });

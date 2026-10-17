@@ -48,6 +48,15 @@ describe('R5 authorization enforcement (all external effects mocked)', () => {
     expect(await processExpiredAuthorizations()).toEqual([expect.objectContaining({ id: 1, action: 'canceled' })]);
     expect(state.queries.filter(q => q.sql.includes('"payment_status"')).every(q => !q.sql.includes('"created_at"'))).toBe(true);
   });
+  it('a waiting proposal expires at the chef’s deadline, not the kitchen’s response deadline', async () => {
+    state.booking.partialAcceptance = { id: 'p1', state: 'waiting', deadlineAt: '2026-10-14T19:30:00.000Z' };
+    vi.setSystemTime(new Date('2026-10-14T19:29:59Z'));
+    expect(await lazyExpireKitchenBookingAuth(state.booking)).toBe(false);
+    expect(state.decide).not.toHaveBeenCalled();
+    vi.setSystemTime(new Date('2026-10-14T19:30:00Z'));
+    expect(await lazyExpireKitchenBookingAuth(state.booking)).toBe(true);
+    expect(state.decide).toHaveBeenCalledWith(1, 'cancelled', [], [], undefined, undefined, { proposalOutcome: 'expired' });
+  });
   it('uses saved settings and keeps a decision already in progress', async () => {
     state.settings = [{ key: 'manager_response_buffer_hours', value: '2' }];
     expect((await getBookingResponseDeadline(state.booking)).toISOString()).toBe('2026-10-14T18:00:00.000Z');

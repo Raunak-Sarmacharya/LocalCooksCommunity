@@ -25,6 +25,7 @@ import { calculateRefundBreakdown } from "../../services/stripe-service";
 import { resolveKitchenTransactionTaxAndSubtotal } from "../../services/revenue-transaction-tax";
 import { resolveDisplayedKitchenNetPayoutCents, estimateManagerPayoutFeesCents } from "@shared/booking-pricing-breakdown";
 import { getFeeConfig } from "../../services/stripe-checkout-fee-service";
+import { publicPartialAcceptance } from "@shared/partial-acceptance";
 
 export class BookingRepository {
 
@@ -41,6 +42,8 @@ export class BookingRepository {
             durationHours: row.durationHours ? parseFloat(row.durationHours) : null,
             serviceFee: row.serviceFee ? parseFloat(row.serviceFee) : null,
             damageDeposit: row.damageDeposit ? parseFloat(row.damageDeposit) : null,
+            // Chef and kitchen responses never carry who acted or Local Cooks' internal support note (admin reads the row).
+            partialAcceptance: publicPartialAcceptance(row.partialAcceptance),
         };
     }
 

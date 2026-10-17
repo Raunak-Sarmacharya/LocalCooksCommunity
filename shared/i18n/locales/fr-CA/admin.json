@@ -305,5 +305,18 @@
   "bsChangeConfirm_close_keep_refund": "Garder la réservation à {current}. Le chef conserve le remboursement de {amount} déjà envoyé; Local Cooks le finance. L’horaire demandé {requested} n’est pas appliqué.",
   "bsChangeConfirmDo": "Confirmer",
   "bsChangeWorking": "En cours…",
-  "bsChangeStale": "Cette demande a changé. Actualisez et réessayez."
+  "bsChangeStale": "Cette demande a changé. Actualisez et réessayez.",
+  "bsAction_accept_proposal_for_chef": "Accepter le nouveau total pour le chef",
+  "bsProposal": "Nouveau total de la cuisine",
+  "bsProposalState_waiting": "En attente du chef",
+  "bsProposalState_accepted": "Accepté",
+  "bsProposalState_declined": "Refusé par le chef",
+  "bsProposalState_expired": "Sans réponse à temps",
+  "bsProposalState_withdrawn": "Retiré par la cuisine",
+  "bsProposalState_closed": "Fermé",
+  "bsProposalTerms": "Offre",
+  "bsProposalTermsValue": "{newTotal} (au lieu de {oldTotal}) sans {items}",
+  "bsDeadlineChefAnswer": "Réponse du chef d’ici le",
+  "bsProposalSupportReason": "Note du soutien",
+  "bsProposalState_hold_ended": "Blocage sur la carte terminé"
 }

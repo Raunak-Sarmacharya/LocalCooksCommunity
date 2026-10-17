@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { tt } from "@/i18n/common-ns";
 import { mt } from "@/i18n/manager";
 import { useState, useMemo } from "react";
+import { ct } from "@/i18n/chef-ns";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { ManagerShell } from "@/layouts/ManagerShell";
@@ -138,7 +139,10 @@ export default function ManagerBookingsPanel({ embedded = false, onGoToKitchens 
       queryClient.invalidateQueries({ queryKey: ['managerBookings'] });
       
       // Handle different response scenarios
-      if (data?.requiresManualRefund) {
+      if (data?.proposal) {
+        // Accepted without some equipment: nothing is charged until the chef accepts the new total.
+        toast({ title: ct("paSentTitle"), description: ct("paSentBody") });
+      } else if (data?.requiresManualRefund) {
         // Cancellation of confirmed booking - needs manual refund
         toast({ title: t("bookingCancelled"),
           description: mt("useIssueRefundFromMenu"),
@@ -229,8 +233,10 @@ export default function ManagerBookingsPanel({ embedded = false, onGoToKitchens 
           name: e.equipmentListing?.equipmentType || `Equipment #${e.equipmentListingId}`,
           totalPrice: e.totalPrice,
           rejected: e.paymentStatus === 'failed' || e.status === 'cancelled',
+          visitDate: e.visitDate ?? null,
         })),
       paymentStatus: details.paymentStatus,
+      canAskChef: details.partialAcceptanceAvailable !== false,
     };
   };
 

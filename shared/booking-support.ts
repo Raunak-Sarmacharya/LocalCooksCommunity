@@ -4,7 +4,7 @@ export const supportActionTypes = ['confirm_for_manager', 'decline_for_manager',
   'replay_payment_decision', 'cancel_kitchen_caused', 'request_cancellation_for_chef', 'accept_cancellation_for_manager',
   'issue_visit_code', 'set_arrival_mode', 'record_assisted_arrival', 'correct_attendance',
   'clear_checkout_for_manager', 'report_issue_for_manager', 'goodwill_refund', 'resend_notice', 'open_flag', 'resolve_flag', 'release_payout', 'resolve_money_attempt',
-  'finish_kitchen_refund', 'refund_captured_request', 'retry_refund', 'mark_refunded'] as const;
+  'finish_kitchen_refund', 'refund_captured_request', 'retry_refund', 'mark_refunded', 'accept_proposal_for_chef'] as const;
 const item = z.object({ id: z.number().int().positive(), action: z.enum(['confirmed', 'cancelled']) }).strict();
 export const supportActionInput = z.object({
   type: z.enum(supportActionTypes), actingFor: z.enum(['chef', 'manager', 'local_cooks']),

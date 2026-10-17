@@ -7,11 +7,14 @@ vi.mock('./stripe-service', () => ({ getBookingPaymentIntent: mocks.intent, getB
 vi.mock('./booking-lifecycle-delivery', () => ({ queueBookingLifecycleEvent: vi.fn() }));
 vi.mock('./booking-linked-cancellation', () => ({ cancelLinkedBookingDates: vi.fn() }));
 const expiry = vi.hoisted(() => ({ lazy: vi.fn() }));
+const guard = vi.hoisted(() => ({ allowed: true }));
+vi.mock('./advance-reminders', () => ({ scheduleAdvanceReminders: vi.fn() }));
 vi.mock('./auth-expiry-service', () => ({ AUTH_EXPIRY_HOURS: 24, lazyExpireKitchenBookingAuth: expiry.lazy }));
 vi.mock('./booking-response-deadline', async () => {
   const { responseDeadlineForBooking } = await import('@shared/booking-response-deadline');
   return { getBookingResponseDeadline: async (booking: any) => booking.bookingDate
-    ? responseDeadlineForBooking(booking, 'UTC') : new Date(booking.createdAt.getTime() + 24 * 3_600_000) };
+    ? responseDeadlineForBooking(booking, 'UTC') : new Date(booking.createdAt.getTime() + 24 * 3_600_000),
+    getPartialAcceptanceWindow: async (_booking: any, now: Date) => ({ deadline: new Date(now.getTime() + 24 * 3_600_000), allowed: guard.allowed }) };
 });
 vi.mock('../db', () => {
   const name = (table: any) => table[Symbol.for('drizzle:Name')];
@@ -19,7 +22,7 @@ vi.mock('../db', () => {
     const db: any = {
       select: () => ({ from: (table: any) => {
         const rows = () => state[name(table)] || [];
-        const chain: any = { where: () => chain, limit: () => chain, for: () => chain,
+        const chain: any = { where: () => chain, limit: () => chain, for: () => chain, innerJoin: () => chain, leftJoin: () => chain,
           then: (resolve: any, reject: any) => Promise.resolve(rows()).then(resolve, reject) };
         return chain;
       } }),
@@ -39,12 +42,20 @@ vi.mock('../db', () => {
   return { db: database(mocks.state) };
 });
 vi.mock('../utils/user-display', () => ({ getUserDisplayName: vi.fn(async () => 'Sam Taylor') }));
-import { decideAuthorizedBooking, recordReplacementWithdrawal, BookingRequestExpired } from './booking-payment-decision';
+import { decideAuthorizedBooking, recordReplacementWithdrawal, BookingRequestExpired, answerPartialAcceptance, LAST_MINUTE_MESSAGE } from './booking-payment-decision';
 import { db } from '../db';
 import { queueBookingLifecycleEvent } from './booking-lifecycle-delivery';
+// Owner (Oct 17): a partial capture now follows the chef's acceptance of the kitchen's waiting proposal.
+const PROPOSAL = '11111111-1111-4111-8111-111111111111';
+function waitingProposal() {
+  mocks.state.kitchen_bookings[0].partialAcceptance = { id: PROPOSAL, state: 'waiting', intentId: 'pi_fixture', actorId: 2,
+    proposedAt: new Date().toISOString(), deadlineAt: new Date(Date.now() + 3_600_000).toISOString(),
+    equipment: [{ id: 2, status: 'cancelled' }], declined: [{ id: 2, name: 'Mixer', cents: 1000 }], oldTotalCents: 2440, newTotalCents: 1220 };
+}
+const acceptProposal = () => decideAuthorizedBooking(1, 'confirmed', [], [{ equipmentBookingId: 2, action: 'cancelled' }], 3, undefined, { proposalId: PROPOSAL });
 describe('durable booking capture recovery (isolated Stripe and transaction model)', () => {
   beforeEach(() => {
-    vi.resetAllMocks(); mocks.failFinalize = false;
+    vi.resetAllMocks(); mocks.failFinalize = false; guard.allowed = true;
     Object.assign(mocks.state, { kitchen_bookings: [{ id: 1, chefId: 3, kitchenId: 4, status: 'pending', paymentStatus: 'authorized',
       paymentIntentId: 'pi_fixture', updatedAt: new Date('2026-10-02'), storageItems: [], equipmentItems: [{ equipmentBookingId: 2 }] }],
       equipment_bookings: [{ id: 2, chefId: 3, kitchenBookingId: 1, totalPrice: '1000', status: 'pending', equipmentListingId: 8 }],
@@ -56,7 +67,8 @@ describe('durable booking capture recovery (isolated Stripe and transaction mode
   });
   it('leaves the booking pending and retains its frozen decision after capture timeout', async () => {
     mocks.capture.mockRejectedValue(new Error('timeout'));
-    await expect(decideAuthorizedBooking(1, 'confirmed', [], [{ equipmentBookingId: 2, action: 'cancelled' }])).rejects.toThrow('timeout');
+    waitingProposal();
+    await expect(acceptProposal()).rejects.toThrow('timeout');
     expect(mocks.state.kitchen_bookings[0]).toMatchObject({ status: 'pending', paymentStatus: 'authorized',
       paymentDecision: { state: 'pending', amount: 1220, subtotal: 1000, commission: 70, tax: 150 } });
     expect(mocks.state.equipment_bookings[0].status).toBe('pending');
@@ -78,7 +90,8 @@ describe('durable booking capture recovery (isolated Stripe and transaction mode
       .mockResolvedValueOnce({ id: 'pi_fixture', status: 'requires_capture', amount: 2440 })
       .mockResolvedValue({ id: 'pi_fixture', status: 'succeeded', amount_received: 1220 });
     mocks.failFinalize = true;
-    await expect(decideAuthorizedBooking(1, 'confirmed', [], [{ equipmentBookingId: 2, action: 'cancelled' }])).rejects.toThrow('DB unavailable');
+    waitingProposal();
+    await expect(acceptProposal()).rejects.toThrow('DB unavailable');
     expect(mocks.state.kitchen_bookings[0].status).toBe('pending');
     mocks.failFinalize = false;
     await expect(decideAuthorizedBooking(1, 'confirmed')).resolves.toMatchObject({ success: true });
@@ -109,8 +122,10 @@ describe('durable booking capture recovery (isolated Stripe and transaction mode
       expect(payment).toMatchObject({ status: 'succeeded', amount: '1220', managerRevenue: '1150' });
       expect(equipment).toMatchObject({ status: 'cancelled', paymentStatus: 'failed' });
     });
-    await decideAuthorizedBooking(1, 'confirmed', [], [{ equipmentBookingId: 2, action: 'cancelled' }]);
-    expect(queueBookingLifecycleEvent).toHaveBeenCalledWith(expect.anything(), 1, 'confirmed', expect.any(String), expect.any(String), undefined, expect.objectContaining({ decisionId: expect.any(String) }));
+    waitingProposal();
+    await acceptProposal();
+    expect(mocks.state.kitchen_bookings[0].partialAcceptance).toMatchObject({ state: 'accepted', answeredBy: 3 });
+    expect(queueBookingLifecycleEvent).toHaveBeenCalledWith(expect.anything(), 1, 'confirmed', expect.any(String), expect.any(String), 2, expect.objectContaining({ decisionId: expect.any(String) }));
   });
   it('does not change a persisted approval into rejection', async () => {
     mocks.capture.mockRejectedValue(new Error('timeout'));
@@ -159,7 +174,8 @@ describe('durable booking capture recovery (isolated Stripe and transaction mode
   it('blocks partial capture when original item prices are missing', async () => {
     const session = await mocks.session(); delete session.metadata.addon_prices;
     mocks.session.mockResolvedValue(session);
-    await expect(decideAuthorizedBooking(1, 'confirmed', [], [{ equipmentBookingId: 2, action: 'cancelled' }])).rejects.toThrow('original checkout terms');
+    waitingProposal();
+    await expect(acceptProposal()).rejects.toThrow('original checkout terms');
     expect(mocks.capture).not.toHaveBeenCalled();
   });
   it('sends a checkout that priced storage before the cutover to review instead of capturing it', async () => {
@@ -247,6 +263,74 @@ describe('durable booking capture recovery (isolated Stripe and transaction mode
       expect(metadata.requestOutcome).toBe('withdrawn');
       expect(metadata.roleText.manager.title).toContain('withdrew their request');
       expect(metadata.replacementNotice).toBeUndefined();
+    });
+  });
+  describe('single-day partial acceptance (owner, Oct 17)', () => {
+    it('declining an item saves a proposal for the chef: nothing captured or released, hold and pending state kept', async () => {
+      const result: any = await decideAuthorizedBooking(1, 'confirmed', [], [{ equipmentBookingId: 2, action: 'cancelled' }], 2);
+      expect(result).toMatchObject({ success: true, status: 'pending', proposal: { state: 'waiting', oldTotalCents: 2440, newTotalCents: 1220,
+        equipment: [{ id: 2, status: 'cancelled' }], declined: [{ id: 2, cents: 1000 }] } });
+      // The kitchen's response never carries who acted or support notes.
+      expect(result.proposal).not.toHaveProperty('actorId');
+      expect(mocks.state.kitchen_bookings[0].partialAcceptance.actorId).toBe(2);
+      expect(mocks.capture).not.toHaveBeenCalled(); expect(mocks.cancel).not.toHaveBeenCalled();
+      expect(mocks.state.kitchen_bookings[0]).toMatchObject({ status: 'pending', paymentStatus: 'authorized', partialAcceptance: { state: 'waiting' } });
+      expect(mocks.state.kitchen_bookings[0].paymentDecision).toBeUndefined();
+      expect(mocks.state.equipment_bookings[0].status).toBe('pending');
+      expect(queueBookingLifecycleEvent).toHaveBeenCalledWith(expect.anything(), 1, 'partial_acceptance_proposed', expect.any(String), expect.any(String), 2,
+        expect.objectContaining({ recipientPolicy: 'chef' }));
+    });
+    it('last-minute guard: refuses the proposal with a clear 409 and leaves the request untouched', async () => {
+      guard.allowed = false;
+      const error = await decideAuthorizedBooking(1, 'confirmed', [], [{ equipmentBookingId: 2, action: 'cancelled' }], 2).catch(e => e);
+      expect(error).toMatchObject({ status: 409, message: LAST_MINUTE_MESSAGE });
+      expect(mocks.state.kitchen_bookings[0].partialAcceptance).toBeUndefined();
+      expect(mocks.capture).not.toHaveBeenCalled(); expect(queueBookingLifecycleEvent).not.toHaveBeenCalled();
+    });
+    it('the guard never blocks accepting everything or declining (unchanged behaviour)', async () => {
+      guard.allowed = false;
+      mocks.capture.mockRejectedValue(new Error('timeout'));
+      await expect(decideAuthorizedBooking(1, 'confirmed', [], [{ equipmentBookingId: 2, action: 'confirmed' }], 2)).rejects.toThrow('timeout');
+      expect(mocks.capture).toHaveBeenCalledWith('pi_fixture', 2440, undefined, expect.any(String));
+    });
+    it('the chef declines: the whole hold is released and the proposal records the answer', async () => {
+      waitingProposal();
+      mocks.intent.mockResolvedValueOnce({ id: 'pi_fixture', status: 'requires_capture', amount: 2440 })
+        .mockResolvedValueOnce({ id: 'pi_fixture', status: 'requires_capture', amount: 2440 })
+        .mockResolvedValue({ id: 'pi_fixture', status: 'canceled', amount: 2440 });
+      await answerPartialAcceptance(1, PROPOSAL, 'decline', 3);
+      expect(mocks.cancel).toHaveBeenCalledOnce(); expect(mocks.capture).not.toHaveBeenCalled();
+      expect(mocks.state.kitchen_bookings[0]).toMatchObject({ status: 'cancelled', partialAcceptance: { state: 'declined', answeredBy: 3 },
+        paymentDecision: { target: 'cancelled', proposal: { id: PROPOSAL, outcome: 'declined' } } });
+      expect(vi.mocked(queueBookingLifecycleEvent).mock.calls.at(-1)![6]).toMatchObject({ partialAcceptance: { variant: 'declined', newCents: 1220, oldCents: 2440 } });
+    });
+    it('the kitchen cannot confirm (or re-propose) while the chef has not answered', async () => {
+      waitingProposal();
+      await expect(decideAuthorizedBooking(1, 'confirmed', [], [], 2)).rejects.toThrow('Waiting for the chef');
+      await expect(decideAuthorizedBooking(1, 'confirmed', [], [{ equipmentBookingId: 2, action: 'cancelled' }], 2)).rejects.toThrow('Waiting for the chef');
+      expect(mocks.capture).not.toHaveBeenCalled();
+    });
+    it('a change request (replacement) closes a waiting offer as replaced: no "New total declined" notice', async () => {
+      waitingProposal();
+      mocks.state.kitchen_bookings[0].referenceCode = 'KB-OLD111';
+      mocks.intent.mockResolvedValueOnce({ id: 'pi_fixture', status: 'requires_capture', amount: 2440 })
+        .mockResolvedValueOnce({ id: 'pi_fixture', status: 'requires_capture', amount: 2440 })
+        .mockResolvedValue({ id: 'pi_fixture', status: 'canceled', amount: 2440 });
+      // booking-replacement's fallback path: the chef is the actor and only `replacedBy` is passed.
+      await decideAuthorizedBooking(1, 'cancelled', [], [], 3, undefined, { replacedBy: { bookingId: 11, reference: 'KB-NEW222' } });
+      expect(mocks.state.kitchen_bookings[0]).toMatchObject({ partialAcceptance: { state: 'closed' }, paymentDecision: { proposal: { outcome: 'closed' } } });
+      const cancelled = vi.mocked(queueBookingLifecycleEvent).mock.calls.find(entry => entry[2] === 'cancelled')!;
+      expect(cancelled[3]).not.toBe('New total declined');
+      expect(cancelled[6]).toMatchObject({ requestOutcome: 'replaced' });
+      expect(cancelled[6]).not.toHaveProperty('partialAcceptance');
+    });
+    it('the chef withdrawing the request closes the proposal as declined', async () => {
+      waitingProposal();
+      mocks.intent.mockResolvedValueOnce({ id: 'pi_fixture', status: 'requires_capture', amount: 2440 })
+        .mockResolvedValueOnce({ id: 'pi_fixture', status: 'requires_capture', amount: 2440 })
+        .mockResolvedValue({ id: 'pi_fixture', status: 'canceled', amount: 2440 });
+      await decideAuthorizedBooking(1, 'cancelled', [], [], 3);
+      expect(mocks.state.kitchen_bookings[0].partialAcceptance).toMatchObject({ state: 'declined' });
     });
   });
 });

@@ -4222,5 +4222,11 @@
   "thisLocation": "this location",
   "thisKitchen": "this kitchen",
   "bpMaxDaysHint": "The days can be any dates within 14 days of the first one.",
-  "bpTaxLabel": "Tax rate (HST %)"
+  "bpTaxLabel": "Tax rate (HST %)",
+  "reviewAcceptWithout": "Accept without {items}",
+  "reviewAsksChefLine": "We’ll ask the chef to confirm the new total. Nothing is charged until they do.",
+  "reviewNewTotalReleasedNote": "If the chef accepts, only the new total is charged and the rest of the hold is released.",
+  "reviewNewTotalAmount": "New total: {amount}",
+  "reviewLastMinuteLine": "This booking starts soon, so there isn’t time to ask the chef about a change. Accept the full request, or decline it and message the chef.",
+  "reviewMessageChef": "Message the chef"
 }

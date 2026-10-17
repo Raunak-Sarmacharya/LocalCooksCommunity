@@ -1,6 +1,7 @@
 import { EquipmentIcon as Package, StorageIcon as Boxes } from "@/components/ui/inventory-icons";
 import { bookingStartDateKey } from '@/lib/calendar-date';
-import { useState, useMemo, useRef, type ReactNode } from "react";
+import { useState, useMemo, useRef, useEffect, type ReactNode } from "react";
+import { getAuthHeaders } from "@/lib/api";
 import { mt } from "@/i18n/manager";
 import { Dialog } from "@/components/ui/dialog";
 import { AppDialogContent, AppDialogHeader, AppDialogBody, AppDialogFooter } from "@/components/ui/app-dialog";
@@ -38,6 +39,8 @@ export interface EquipmentItemForAction {
   name: string;
   totalPrice: number; // in cents
   rejected?: boolean; // true if already rejected (read-only in action dialog)
+  /** The day this item is booked for (dated multi-day bookings book equipment per day). */
+  visitDate?: string | null;
 }
 
 export interface BookingForAction {
@@ -61,17 +64,20 @@ export interface BookingForAction {
   managerRevenue?: number; // manager received in cents
   taxRatePercent?: number; // tax rate (e.g. 13 for 13%)
   paymentStatus?: string; // 'authorized' | 'paid' | etc.
+  /** False when the chef would have under 3 h to answer a new total (owner, Oct 17): accept everything or decline only. */
+  canAskChef?: boolean;
 }
 
 type ItemAction = "confirmed" | "cancelled";
 
-function BookingItemDecision({ name, details, price, icon, decision, disabled, onDecision }: {
+function BookingItemDecision({ name, details, price, icon, decision, disabled, declineDisabled, onDecision }: {
   name: string;
   details?: ReactNode;
   price?: number;
   icon: ReactNode;
   decision: ItemAction;
   disabled: boolean;
+  declineDisabled?: boolean;
   onDecision: (decision: ItemAction) => void;
 }) {
   return (
@@ -92,7 +98,7 @@ function BookingItemDecision({ name, details, price, icon, decision, disabled, o
             size="sm"
             variant="ghost"
             aria-pressed={decision === value}
-            disabled={disabled}
+            disabled={disabled || (value === "cancelled" && declineDisabled)}
             onClick={() => onDecision(value)}
             className={cn("flex-1 px-3 sm:flex-none", decision === value && (value === "confirmed"
               ? "bg-success/10 text-success hover:bg-success/15 hover:text-success"
@@ -397,76 +403,49 @@ function BookingActionDialogContent({
     };
   }, [kitchenAction, storageDecisions, equipmentDecisions, booking, actionableStorageItems.length, actionableEquipmentItems.length]);
 
+  // Owner (Oct 17): accepting without some equipment asks the chef to approve the new total; nothing is captured before.
+  const declinedEquipment = isAuthorized && !kitchenIsRejected
+    ? actionableEquipmentItems.filter((i) => equipmentDecisions.get(i.equipmentBookingId) === "cancelled") : [];
+  const asksChef = declinedEquipment.length > 0;
+  const declinedKey = declinedEquipment.map((item) => item.equipmentBookingId).join(",");
+  // The new total comes from the server (the same function the capture uses: frozen tax rate and dated quote); never recomputed here.
+  const [preview, setPreview] = useState<{ key: string; newTotalCents: number; serviceFeeCents: number } | null>(null);
+  useEffect(() => {
+    if (!declinedKey) return;
+    let live = true;
+    void (async () => {
+      try {
+        const response = await fetch(`/api/manager/bookings/${booking.id}/partial-acceptance/preview`, { method: "POST", credentials: "include",
+          headers: await getAuthHeaders(), body: JSON.stringify({ equipmentBookingIds: declinedKey.split(",").map(Number) }) });
+        const data = await response.json().catch(() => null);
+        if (live && response.ok && data) setPreview({ key: declinedKey, newTotalCents: data.newTotalCents, serviceFeeCents: data.serviceFeeCents });
+      } catch { /* The total stays hidden; the server still computes it on submit. */ }
+    })();
+    return () => { live = false; };
+  }, [booking.id, declinedKey]);
+
   // ── Capture Calculation (for authorized bookings only) ───────────────────
-  // Calculates what will be captured vs released when manager partially approves
+  // Full approval captures the whole hold; a new total is the server's preview; a declined request captures nothing.
   const captureCalc = useMemo(() => {
     if (!isAuthorized) return null;
-
-    const kitchenPriceCents = booking.totalPrice || 0;
     const transactionAmount = booking.transactionAmount || 0;
-    const originalServiceFee = booking.serviceFee || 0;
-    const taxRatePercent = booking.taxRatePercent || 0;
-
-    // Kitchen is approved when kitchenAction === 'confirmed'
-    const approvedKitchenCents = kitchenAction === "confirmed" ? kitchenPriceCents : 0;
-
-    // Approved storage (skip already-rejected)
-    let approvedStorageCents = 0;
-    if (booking.storageItems) {
-      for (const item of booking.storageItems) {
-        if (item.rejected) continue;
-        const decision = storageDecisions.get(item.storageBookingId) || "confirmed";
-        if (decision === "confirmed") approvedStorageCents += item.totalPrice;
-      }
-    }
-
-    // Approved equipment (skip already-rejected)
-    let approvedEquipmentCents = 0;
-    if (booking.equipmentItems) {
-      for (const item of booking.equipmentItems) {
-        if (item.rejected) continue;
-        const decision = equipmentDecisions.get(item.equipmentBookingId) || "confirmed";
-        if (decision === "confirmed") approvedEquipmentCents += item.totalPrice;
-      }
-    }
-
-    const approvedSubtotal = approvedKitchenCents + approvedStorageCents + approvedEquipmentCents;
-    const approvedTax = Math.round((approvedSubtotal * taxRatePercent) / 100);
-    const originalSubtotal = Math.max(
-      0,
-      kitchenPriceCents
-        + (booking.storageItems || []).reduce((sum, item) => sum + (item.rejected ? 0 : item.totalPrice), 0)
-        + (booking.equipmentItems || []).reduce((sum, item) => sum + (item.rejected ? 0 : item.totalPrice), 0),
-    );
-    const approvedServiceFee = originalSubtotal > 0
-      ? Math.round(originalServiceFee * approvedSubtotal / originalSubtotal)
-      : 0;
-    const captureAmount = approvedSubtotal + approvedTax + approvedServiceFee;
-    const releaseAmount = Math.max(0, transactionAmount - captureAmount);
-
+    const figures = kitchenIsRejected ? { amount: 0, fee: 0 }
+      : asksChef ? (preview && preview.key === declinedKey ? { amount: preview.newTotalCents, fee: preview.serviceFeeCents } : null)
+      : { amount: transactionAmount, fee: booking.serviceFee || 0 };
+    if (!figures) return null;
+    const captureAmount = figures.amount;
     // Estimated Stripe fee on capture amount (2.9% + $0.30)
-    const estimatedStripeFee = captureAmount > 0
-      ? Math.round(captureAmount * 0.029 + 30)
-      : 0;
-    const estimatedManagerNet = Math.max(0, approvedSubtotal + approvedTax - estimatedStripeFee);
-    const isPartialCapture = captureAmount > 0 && captureAmount < transactionAmount;
-
+    const estimatedStripeFee = captureAmount > 0 ? Math.round(captureAmount * 0.029 + 30) : 0;
     return {
-      approvedKitchenCents,
-      approvedStorageCents,
-      approvedEquipmentCents,
-      approvedSubtotal,
-      approvedTax,
-      approvedServiceFee,
+      approvedServiceFee: figures.fee,
       captureAmount,
-      releaseAmount,
+      releaseAmount: Math.max(0, transactionAmount - captureAmount),
       estimatedStripeFee,
-      estimatedManagerNet,
-      isPartialCapture,
-      taxRatePercent,
+      estimatedManagerNet: Math.max(0, captureAmount - figures.fee - estimatedStripeFee),
+      isPartialCapture: captureAmount > 0 && captureAmount < transactionAmount,
       transactionAmount,
     };
-  }, [isAuthorized, kitchenAction, storageDecisions, equipmentDecisions, booking]);
+  }, [isAuthorized, kitchenIsRejected, asksChef, preview, declinedKey, booking]);
 
   // Custom refund amount (user-editable, capped at max)
   const effectiveRefundAmount = useMemo(() => {
@@ -540,6 +519,9 @@ function BookingActionDialogContent({
 
   const allApproved = rejectedCount === 0;
   const allRejected = approvedCount === 0;
+  const lastMinute = isAuthorized && booking.canAskChef === false;
+  const itemLabel = (item: EquipmentItemForAction) => item.visitDate ? `${item.name} (${formatDate(item.visitDate)})` : item.name;
+  const declinedNames = new Intl.ListFormat(i18n.language || "en-CA", { type: "conjunction" }).format(declinedEquipment.map(itemLabel));
   const titleRef = useRef<HTMLSpanElement>(null);
 
   return (
@@ -687,14 +669,24 @@ function BookingActionDialogContent({
                   <BookingItemDecision
                     key={item.equipmentBookingId}
                     name={item.name}
+                    details={item.visitDate ? formatDate(item.visitDate) : undefined}
                     price={item.totalPrice}
                     icon={<Package className="h-4 w-4" />}
                     decision={decision}
                     disabled={isDisabled || isLoading}
+                    declineDisabled={lastMinute}
                     onDecision={value => { if (value !== decision) toggleEquipmentDecision(item.equipmentBookingId); }}
                   />
                 );
               })}
+              {lastMinute && actionableEquipmentItems.length > 0 && !kitchenIsRejected && (
+                <div className="space-y-2 rounded-lg border bg-muted/30 p-3 text-sm leading-6" data-testid="review-last-minute">
+                  <p>{mt("reviewLastMinuteLine")}</p>
+                  <Button asChild variant="outline" size="sm" className="min-h-11 sm:min-h-9">
+                    <a href={`/manager/booking/${booking.id}?action=message`}>{mt("reviewMessageChef")}</a>
+                  </Button>
+                </div>
+              )}
 
               {/* Already-rejected equipment items — read-only */}
               {rejectedEquipmentItems.map((item) => (
@@ -815,6 +807,13 @@ function BookingActionDialogContent({
           </>
         )}
 
+        {asksChef && (
+          <div className="flex items-start gap-2 rounded-lg border border-blue-200 bg-background p-3" data-testid="review-asks-chef">
+            <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
+            <p className="text-sm leading-6">{mt("reviewAsksChefLine")}</p>
+          </div>
+        )}
+
         {/* ── Auth-Then-Capture: Partial Approval ──────────────────────────── */}
         {isAuthorized && captureCalc && captureCalc.isPartialCapture && (
           <>
@@ -828,7 +827,7 @@ function BookingActionDialogContent({
               </div>
               <p className="text-sm leading-6 text-muted-foreground">
                 {mt("chefCardHoldAmount", { amount: formatPrice(captureCalc.transactionAmount) })}{" "}
-                {mt("partialCaptureReleasedNote")}
+                {mt(asksChef ? "reviewNewTotalReleasedNote" : "partialCaptureReleasedNote")}
               </p>
 
               {/* Capture Breakdown */}
@@ -1022,7 +1021,7 @@ function BookingActionDialogContent({
             <span className="font-medium text-foreground sm:ml-auto">{mt("reviewRefundAmount", { amount: formatPrice(effectiveRefundAmount) })}</span>
           )}
           {isAuthorized && captureCalc && (
-            <span className="font-medium text-foreground sm:ml-auto">{mt("reviewChargeAmount", { amount: formatPrice(captureCalc.captureAmount) })}</span>
+            <span className="font-medium text-foreground sm:ml-auto">{mt(asksChef ? "reviewNewTotalAmount" : "reviewChargeAmount", { amount: formatPrice(captureCalc.captureAmount) })}</span>
           )}
         </div>
 
@@ -1053,6 +1052,8 @@ function BookingActionDialogContent({
               ? mt("processingEllipsis")
               : kitchenIsRejected
               ? mt("reviewDeclineRequest")
+              : asksChef
+              ? mt("reviewAcceptWithout", { items: declinedNames })
               : allApproved
               ? mt("reviewApproveBooking")
               : mt("reviewApproveSelected")}

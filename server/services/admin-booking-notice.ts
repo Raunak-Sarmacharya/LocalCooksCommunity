@@ -31,6 +31,8 @@ export type AdminBookingFacts = {
   cancellation?: Cancellation; addon?: Addon; requestExpired?: boolean; requestOutcome?: 'declined' | 'withdrawn' | 'support' | 'replaced'; payoutCents?: number;
   /** A new request that replaces an earlier one of the same chef ("Change request"). */ replacesRef?: string; replacedByRef?: string; holdReason?: string | null;
   /** Paid through a kitchen's invitation: its kitchen-time price and the listed price. */ invitation?: { listCents?: number; offeredCents?: number };
+  /** The chef's answer to the kitchen's new total (accepted without some equipment). */
+  partialAcceptance?: { variant?: string; items?: Array<{ name: string }>; newCents?: number; oldCents?: number };
 };
 
 export function adminBookingNotice(kind: string, facts: AdminBookingFacts): { title: string; message: string } | undefined {
@@ -44,6 +46,15 @@ export function adminBookingNotice(kind: string, facts: AdminBookingFacts): { ti
       if (facts.invitation) return { title: `Booking confirmed · ${facts.chef}`, message: `${who}. Booked through the kitchen's invitation (kitchen time ${money(facts.invitation.offeredCents)}${facts.invitation.listCents && facts.invitation.listCents !== facts.invitation.offeredCents ? `, listed ${money(facts.invitation.listCents)}` : ''}); the chef paid and their card was charged.` };
       return { title: `Booking confirmed · ${facts.chef}`, message: `${who}. The kitchen accepted and the chef's card was charged.` };
     case 'cancelled': {
+      const offer = facts.partialAcceptance;
+      if (offer?.variant === 'hold_ended') return { title: `Card hold ended · ${facts.chef}`,
+        message: `${who}. The card hold ended before the booking could be confirmed (the kitchen's new total was waiting for the chef). Nothing was charged.` };
+      if (offer?.variant === 'declined' || offer?.variant === 'expired') {
+        const terms = `${facts.kitchen} offered to host without ${(offer.items || []).map(item => item.name).join(', ')} for ${money(offer.newCents)} (was ${money(offer.oldCents)})`;
+        return offer.variant === 'declined'
+          ? { title: `New total declined · ${facts.chef}`, message: `${who}. ${terms}; the chef declined. The card hold was released.` }
+          : { title: `New total not answered · ${facts.chef}`, message: `${who}. ${terms}; the chef didn't answer in time. The card hold was released.` };
+      }
       if (facts.requestExpired) return { title: `Request expired · ${facts.chef}`, message: `${who}. The kitchen didn't respond in time; the card hold was released.` };
       if (facts.requestOutcome === 'declined') return { title: `Request declined · ${facts.chef}`, message: `${who}. ${facts.kitchen} declined the request; the card hold was released.` };
       if (facts.requestOutcome === 'replaced') return { title: `Request replaced · ${facts.chef}`, message: `${who}. The chef sent a new request${facts.replacedByRef ? ` (${facts.replacedByRef})` : ''} in its place; the card hold was released.` };

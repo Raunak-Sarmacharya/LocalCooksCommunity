@@ -141,6 +141,15 @@ describe('manager groups', () => {
     expect(groups.cancelled.map(item => item.row.id)).toEqual([8]);
     expect(groups.needs_action.map(item => managerRowAction(item.row, item.phase))).toEqual(['review_checkout', 'record_left', 'review_request', 'review_cancellation']);
   });
+  it('a request waiting for the chef’s answer to a new total has no kitchen action and sits under Upcoming', () => {
+    const waiting = row(10, { status: 'pending', paymentStatus: 'authorized', bookingDate: '2026-10-22T00:00:00Z', partialAcceptance: { id: 'p', state: 'waiting' } });
+    const groups = managerBookingGroups([waiting], NOW);
+    expect(groups.needs_action).toHaveLength(0);
+    expect(groups.upcoming.map(item => item.row.id)).toEqual([10]);
+    expect(managerRowAction(waiting, groups.upcoming[0].phase)).toBeNull();
+    // Once answered (or released) it is an ordinary request again.
+    expect(managerBookingGroups([{ ...waiting, partialAcceptance: { id: 'p', state: 'declined' } }], NOW).needs_action).toHaveLength(1);
+  });
 });
 
 // Lead review, round 2: the clock closeout sets status "completed" but leaves the raw check-in column as it was
