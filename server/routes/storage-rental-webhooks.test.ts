@@ -23,7 +23,8 @@ vi.mock('../firebase-auth-middleware', () => ({ requireFirebaseAuthWithUser: vi.
 vi.mock('../services/storage-rentals', () => ({ fulfillRentalCheckout: h.fulfill, rentalIntentCanceled: h.canceled, storageTermStillEligible: async () => false }));
 vi.mock('../services/stripe-webhook-events', () => ({ claimStripeWebhookEvent: h.claim, markStripeWebhookEventProcessed: h.done }));
 vi.mock('../services/payment-transactions-service', () => ({ findPaymentTransactionByIntentId: async () => h.source,
-  createPaymentTransaction: vi.fn(), updatePaymentTransaction: h.update, syncStripeAmountsToBookings: vi.fn() }));
+  createPaymentTransaction: vi.fn(), updatePaymentTransaction: h.update, syncStripeAmountsToBookings: vi.fn(),
+  findOrCreatePaymentTransactionByIntent: vi.fn(async () => ({ record: undefined, created: false })) }));
 vi.mock('../services/stripe-service', () => ({ getStripePaymentAmounts: async () => ({ stripeAmount: 3550, stripeProcessingFee: 133, stripeNetAmount: 3417, stripePlatformFee: 100, chargeId: 'ch_fixture' }) }));
 vi.mock('../services/obligation-payment-service', () => ({ reconcileObligationPayment: async () => null }));
 import router from './webhooks';

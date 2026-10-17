@@ -1377,7 +1377,7 @@ async function handlePaymentIntentSucceeded(
   }
 
   try {
-    const { findPaymentTransactionByIntentId, updatePaymentTransaction, createPaymentTransaction } =
+    const { findPaymentTransactionByIntentId, updatePaymentTransaction, createPaymentTransaction, findOrCreatePaymentTransactionByIntent } =
       await import("../services/payment-transactions-service");
     const { getStripePaymentAmounts } = await import(
       "../services/stripe-service"
@@ -1390,7 +1390,7 @@ async function handlePaymentIntentSucceeded(
     );
     const { reconcileObligationPayment } = await import('../services/obligation-payment-service');
     const obligationTransaction = await reconcileObligationPayment(paymentIntent);
-    if (!transaction && obligationTransaction) transaction = await createPaymentTransaction(obligationTransaction, db);
+    if (!transaction && obligationTransaction) transaction = (await findOrCreatePaymentTransactionByIntent(obligationTransaction, db)).record;
     if (!transaction) {
       const [booking] = await db
         .select({
@@ -2423,10 +2423,10 @@ async function handleOverstayPenaltyPaymentCompleted(
 
     // Create payment_transactions record so it shows in manager payments view
     try {
-      const { createPaymentTransaction, updatePaymentTransaction } = await import("../services/payment-transactions-service");
+      const { findOrCreatePaymentTransactionByIntent, updatePaymentTransaction } = await import("../services/payment-transactions-service");
       const { getStripePaymentAmounts } = await import("../services/stripe-service");
       
-      const ptRecord = await createPaymentTransaction({
+      const ledger = await findOrCreatePaymentTransactionByIntent({
         bookingId: isNaN(storageBookingId) ? overstayRecordId : storageBookingId,
         bookingType: "storage", // Overstay penalties are related to storage bookings
         chefId: isNaN(chefId) ? null : chefId,
@@ -2447,6 +2447,8 @@ async function handleOverstayPenaltyPaymentCompleted(
           charge_id: chargeId || "",
         },
       }, db);
+      // A row already recorded by payment_intent.succeeded owns its fee sync and transfer there.
+      const ptRecord = ledger.created ? ledger.record : null;
 
       // Fetch and sync actual Stripe fees
       if (ptRecord && paymentIntentId) {
@@ -2721,10 +2723,10 @@ async function handleDamageClaimPaymentCompleted(
 
     // Create payment_transactions record
     try {
-      const { createPaymentTransaction, updatePaymentTransaction } = await import("../services/payment-transactions-service");
+      const { findOrCreatePaymentTransactionByIntent, updatePaymentTransaction } = await import("../services/payment-transactions-service");
       const { getStripePaymentAmounts } = await import("../services/stripe-service");
 
-      const ptRecord = await createPaymentTransaction({
+      const ledger = await findOrCreatePaymentTransactionByIntent({
         bookingId: claim.bookingType === 'storage' ? (claim.storageBookingId || claimId) : (claim.kitchenBookingId || claimId),
         bookingType: claim.bookingType as 'kitchen' | 'storage',
         chefId: isNaN(chefId) ? null : chefId,
@@ -2744,6 +2746,8 @@ async function handleDamageClaimPaymentCompleted(
           charge_id: chargeId || "",
         },
       }, db);
+      // A row already recorded by payment_intent.succeeded owns its fee sync and transfer there.
+      const ptRecord = ledger.created ? ledger.record : null;
 
       // Fetch and sync actual Stripe fees, then trigger manager Transfer
       if (ptRecord && paymentIntentId) {

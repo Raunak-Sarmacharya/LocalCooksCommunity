@@ -936,6 +936,23 @@ export async function syncExistingPaymentTransactionsFromStripe(
 /**
  * Find payment transaction by payment intent ID
  */
+/**
+ * Find-or-create the one ledger row of a payment intent. Stripe's checkout.session.completed and payment_intent.succeeded
+ * can confirm the same obligation payment together and payment_intent_id has no unique index, so a transaction-scoped
+ * advisory lock serializes them: the second caller re-reads after the first committed and finds its row.
+ */
+export async function findOrCreatePaymentTransactionByIntent(
+  params: CreatePaymentTransactionParams & { paymentIntentId: string },
+  db: any
+): Promise<{ record: PaymentTransactionRecord; created: boolean }> {
+  return db.transaction(async (tx: any) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`payment-intent:${params.paymentIntentId}`}))`);
+    const existing = await findPaymentTransactionByIntentId(params.paymentIntentId, tx);
+    if (existing) return { record: existing, created: false };
+    return { record: await createPaymentTransaction(params, tx), created: true };
+  });
+}
+
 export async function findPaymentTransactionByIntentId(
   paymentIntentId: string,
   db: any
