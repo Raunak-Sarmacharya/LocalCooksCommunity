@@ -425,7 +425,9 @@ export async function readRental(id: number, actor: RentalActor, now = new Date(
       const payout = paymentTransactionId ? payoutById.get(paymentTransactionId) : undefined;
       return { id, seq, kind, startsOn, endsOn, days, dailyPriceCents, subtotalCents, taxCents, serviceFeeCents, totalCents, status, paidAt,
         payoutEligibleAt: payout?.payoutEligibleAt ?? null, payoutReleasedAt: payout?.payoutReleasedAt ?? null, payoutHoldReason: payout?.payoutHoldReason ?? null,
-        payoutCents: payout ? Math.round(Number(payout.managerRevenue)) : null };
+        // Same net the transfer uses: kitchen-funded refunds (reclaim, kitchen refund) come out of the payout.
+        payoutCents: payout ? Math.round(Number(payout.managerRevenue)
+          - ((payout.metadata as { refunds?: Array<{ managerDebited?: number }> } | null)?.refunds ?? []).reduce((sum, receipt) => sum + Number(receipt.managerDebited || 0), 0)) : null };
     }),
     noBaseline: (rental.rentalTerms as { noBaseline?: boolean })?.noBaseline ?? false, needsCleaning: rental.needsCleaning, releasedOn: rental.releasedOn,
     evidence: { checkinPhotoUrls: rental.checkinPhotoUrls, handoverPhotoUrls: rental.handoverPhotoUrls, checkoutPhotoUrls: rental.checkoutPhotoUrls } };

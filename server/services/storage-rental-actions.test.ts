@@ -129,6 +129,9 @@ describe('kitchen storage tools', () => {
     await expect(runStorageTool(7, manager, 'refund', { amountCents: 34369, reason: 'Courtesy refund', operationKey: 'refund-too-large' })).rejects.toThrow('refund_too_large');
     await runStorageTool(7, manager, 'refund', { amountCents: 501, reason: 'Courtesy refund', operationKey: 'refund-fixture' });
     expect(h.refund).toHaveBeenCalledWith(7, expect.objectContaining({ cause: 'goodwill_kitchen', amountCents: 501 }));
+    // The kitchen sees the same net the transfer will send: kitchen-funded refunds come out of it.
+    await h.db.update(paymentTransactions).set({ metadata: { refunds: [{ managerDebited: 1035 }] } }).where(eq(paymentTransactions.id, 1));
+    expect((await readRental(7, manager, now)).terms[0].payoutCents).toBe(34368 - 1035);
   });
   it('offers a fully priced extension by notice, without charging', async () => {
     await h.db.update(storageBookings).set({ paidThrough: '2026-10-12' }).where(eq(storageBookings.id, 7));
