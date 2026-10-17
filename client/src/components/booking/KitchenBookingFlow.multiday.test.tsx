@@ -132,6 +132,7 @@ describe('the existing flow with more days', () => {
     fireEvent.change(screen.getByLabelText('Change one day'), { target: { value: '2030-10-11' } });
     fireEvent.click(screen.getByRole('button', { name: /Full day/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Change date' })); fireEvent.click(day(7));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Choose hours' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: 'Choose hours' }));
     expect(screen.queryByText('Same hours every day')).toBeNull();
     await waitFor(() => expect(screen.getByRole('button', { name: /Full day/ })).toHaveAttribute('aria-pressed', 'true'));
@@ -147,5 +148,17 @@ describe('the existing flow with more days', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Choose hours' }));
     fireEvent.change(screen.getByLabelText('Change one day'), { target: { value: '2030-10-09' } });
     await waitFor(() => expect(hour(10).className).toContain('bg-[#E10939]'));
+  });
+  it('applies the kitchen hourly cap to a restored multi-day draft before checkout', async () => {
+    sessionStorage.setItem('kitchen_booking_days_4', JSON.stringify({ version: 1, dates: ['2030-10-07', '2030-10-11'],
+      template: { pricingMode: 'hourly', times: ['09:00', '10:00', '11:00', '12:00'] }, hours: {}, equipmentIds: [], excluded: {}, notes: '' }));
+    await open();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Choose hours' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Choose hours' }));
+    await waitFor(() => expect(hour(9)).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(screen.getByText(/Check your hours for Oct 7/, { selector: 'p[role="status"]' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Change one day')).toHaveValue('2030-10-07');
+    expect(f.payload).toBeNull();
   });
 });

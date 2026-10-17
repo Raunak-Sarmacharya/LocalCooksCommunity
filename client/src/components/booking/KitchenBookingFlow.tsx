@@ -405,6 +405,8 @@ export default function KitchenBookingFlow({
     void apiGet(`/chef/kitchens/${selectedKitchen.id}/policy`).then(policy => {
       if (!stale) {
         setDayRules(policy ?? {});
+        const maximum = policy?.maxSlotsPerChef ?? policy?.defaultDailyBookingLimit;
+        setMaxSlotsPerChef(typeof maximum === 'number' && maximum > 0 ? maximum : null);
         if (typeof policy?.bookableThrough === 'string') setBookableThrough(policy.bookableThrough);
       }
     }).catch(() => {});
@@ -452,6 +454,7 @@ export default function KitchenBookingFlow({
   const pickerDate = isMultiDay && editingDay ? new Date(`${editingDay}T12:00:00`) : selectedDate;
   const [dateAvailability, setDateAvailability] = useState<Record<string, boolean>>({});
   const [isLoadingAvailability, setIsLoadingAvailability] = useState(false);
+  const availabilityRequest = useRef(0);
 
   // Slots state
   const [singleSlots, setAllSlots] = useState<Array<{
@@ -732,6 +735,7 @@ export default function KitchenBookingFlow({
     kitchenId: number,
     months: Array<{ year: number; month: number }>
   ) => {
+    const request = ++availabilityRequest.current;
     setIsLoadingAvailability(true);
     // Clear so the loader shows and we never mix stale months into the new window
     setDateAvailability({});
@@ -770,7 +774,7 @@ export default function KitchenBookingFlow({
             throw new Error(`Failed to load month availability (status ${response.status})`);
           }
           const result = await response.json();
-          if (multipleAllowed) setDateStatuses(current => ({ ...current, ...result }));
+          if (multipleAllowed && request === availabilityRequest.current) setDateStatuses(current => ({ ...current, ...result }));
           const serverAvailability: Record<string, boolean> = multipleAllowed
             ? Object.fromEntries(Object.entries(result as Record<string, DateStatus>).map(([date, status]) => [date, status.hourly || status.fullDay])) : result;
           const availability: Record<string, boolean> = {};
@@ -785,13 +789,14 @@ export default function KitchenBookingFlow({
         })
       );
 
-      setDateAvailability(Object.assign({}, ...chunks));
+      if (request === availabilityRequest.current) setDateAvailability(Object.assign({}, ...chunks));
     } catch (error) {
+      if (request !== availabilityRequest.current) return;
       logger.error('Error loading month availability:', error);
       setDateAvailability({});
       setLoadError(t("bookingErrorLoadAvailability", "We could not load availability. Please check your connection and try again."));
     } finally {
-      setIsLoadingAvailability(false);
+      if (request === availabilityRequest.current) setIsLoadingAvailability(false);
     }
   };
 
