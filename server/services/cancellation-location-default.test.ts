@@ -27,8 +27,9 @@ describe('cancellation follow contracts', () => {
     expect(source).toContain('cancellationFollowsLocation');
     expect(source).toContain('publishLocationCancellationPolicy');
     expect(source).toContain('insertKitchenPolicyVersion');
-    // Admin override never follows; initial publish and re-follow do.
+    // Admin override never follows; re-follow does.
     expect(source).toMatch(/if \(admin && !initialPublication\) follows = false/);
-    expect(source).toMatch(/let follows = followLocation \|\| initialPublication/);
+    // A first policy only follows when it matches the location default (covered in the PGlite fan-out test).
+    expect(source).toMatch(/let follows = followLocation \|\| \(initialPublication && noticeHours === row\.locationNotice/);
   });
 });

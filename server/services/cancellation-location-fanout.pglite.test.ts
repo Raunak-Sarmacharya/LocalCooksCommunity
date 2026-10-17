@@ -107,6 +107,20 @@ describe('location cancellation fan-out (PGlite)', () => {
     expect(afterFollow).toMatchObject({ noticeHours: 48, lateChargePercent: 50, version: policy.version });
   });
 
+  it("a kitchen's first policy follows the location only when it matches the location default", async () => {
+    await h.db.insert(kitchens).values([
+      { id: 42, locationId: 9, name: 'Own', cancellationFollowsLocation: true },
+      { id: 43, locationId: 9, name: 'Same', cancellationFollowsLocation: true },
+    ] as any);
+    await publishCancellationPolicy(42, 2, { noticeHours: 72, lateChargePercent: 50 }, false, true);
+    await publishCancellationPolicy(43, 2, { noticeHours: 24, lateChargePercent: 100 }, false, true);
+    expect((await h.db.select().from(kitchens).where(eq(kitchens.id, 42)))[0].cancellationFollowsLocation).toBe(false);
+    expect((await h.db.select().from(kitchens).where(eq(kitchens.id, 43)))[0].cancellationFollowsLocation).toBe(true);
+    await publishLocationCancellationPolicy(9, 2, { noticeHours: 48, lateChargePercent: 50 });
+    expect(await latest(42)).toMatchObject({ noticeHours: 72, lateChargePercent: 50, version: 1 });
+    expect(await latest(43)).toMatchObject({ noticeHours: 48, lateChargePercent: 50, version: 2 });
+  });
+
   it('admin override leaves the kitchen not following', async () => {
     await publishCancellationPolicy(40, 2, { noticeHours: 72, lateChargePercent: 50, reason: 'Pilot agreement' }, true);
     expect((await h.db.select().from(kitchens).where(eq(kitchens.id, 40)))[0].cancellationFollowsLocation).toBe(false);

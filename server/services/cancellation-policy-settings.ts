@@ -133,7 +133,8 @@ export async function publishCancellationPolicy(kitchenId: number, actorId: numb
     if (initialPublication && before) throw Error('This kitchen already has a cancellation policy');
     if (before?.adminOverrideReason && !admin) throw Error('Local Cooks set an override for this kitchen. Contact support to change it.');
     // Initial publish and re-follow keep following; a kitchen/admin edit stops following.
-    let follows = followLocation || initialPublication;
+    // A first policy that differs from the location default is the kitchen's own choice, so it stops following.
+    let follows = followLocation || (initialPublication && noticeHours === row.locationNotice && lateChargePercent === row.locationCharge);
     if (admin && !initialPublication) follows = false;
     await tx.update(kitchens).set({ cancellationFollowsLocation: follows, updatedAt: new Date() }).where(eq(kitchens.id, kitchenId));
     const policy = await insertKitchenPolicyVersion(
