@@ -1292,11 +1292,14 @@
   "paKitchenWaitingBody": "Vous avez accepté sans {items}. Nouveau total : {newTotal} (au lieu de {oldTotal}). {chef} a jusqu’au {deadline} pour répondre.",
   "paKitchenWaitingNote": "Rien n’est débité avant son acceptation. Sans réponse, la demande est fermée et le blocage sur sa carte est libéré.",
   "paKitchenWithdraw": "Retirer et refuser la demande",
-  "paAcceptedToast": "Accepté. Votre réservation est confirmée.",
-  "paDeclinedToast": "Refusé. Le blocage sur votre carte a été libéré.",
+  "paAcceptedToast": "Réservation confirmée. On vous a facturé {amount}.",
+  "paDeclinedToast": "Vous avez refusé le nouveau total. Le blocage sur votre carte a été libéré.",
   "paAnswerFailed": "Nous n’avons pas pu enregistrer votre réponse",
   "paChefHoldEndedTitle": "Demande fermée",
   "paChefHoldEndedBody": "Le blocage sur votre carte pour votre demande chez {kitchen} a pris fin avant que la réservation puisse être confirmée. Rien n’a été débité.",
   "paKitchenHoldEndedTitle": "Demande fermée",
-  "paKitchenHoldEndedBody": "Le blocage sur la carte pour la demande de {chef} a pris fin avant que la réservation puisse être confirmée. Rien n’a été débité."
+  "paKitchenHoldEndedBody": "Le blocage sur la carte pour la demande de {chef} a pris fin avant que la réservation puisse être confirmée. Rien n’a été débité.",
+  "historyCancelled_pa_declined_chef": "Vous avez refusé le nouveau total",
+  "historyCancelled_pa_declined_kitchen": "{chef} a refusé le nouveau total",
+  "historyCancelled_pa_expired": "Demande fermée — aucune réponse avant la limite"
 }

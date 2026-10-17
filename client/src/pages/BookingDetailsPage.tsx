@@ -361,12 +361,14 @@ export default function BookingDetailsPage() {
         const response = await fetch(endpoint, {
           credentials: "include",
           headers,
+          // Same as reloadBookingDetails: never reuse a cached waiting payload after the chef answered.
+          cache: "no-store",
         });
 
         if (!response.ok) {
           // A manager who opened a chef link (e.g. a shared URL) belongs on the manager page for this booking.
           if (!isManagerView && (response.status === 403 || response.status === 404)) {
-            const asManager = await fetch(`/api/manager/bookings/${bookingId}/details`, { credentials: "include", headers }).catch(() => null);
+            const asManager = await fetch(`/api/manager/bookings/${bookingId}/details`, { credentials: "include", headers, cache: "no-store" }).catch(() => null);
             if (asManager?.ok) {
               if (!cancelled) navigate(`/manager/booking/${bookingId}`, { replace: true });
               return;
@@ -412,7 +414,8 @@ export default function BookingDetailsPage() {
       const endpoint = isManagerView
         ? `/api/manager/bookings/${bookingId}/details`
         : `/api/chef/bookings/${bookingId}/details`;
-      const response = await fetch(endpoint, { credentials: "include", headers });
+      // no-store: after accept/decline the previous waiting payload must not be reused from the browser cache.
+      const response = await fetch(endpoint, { credentials: "include", headers, cache: "no-store" });
       if (!response.ok) return;
       const data = await response.json();
       setBooking(data);
@@ -1264,7 +1267,7 @@ export default function BookingDetailsPage() {
     status: booking.status, checkinStatus: booking.checkinStatus, visits: booking.visits, closeoutPhase: booking.closeout?.phase,
     visitAttendance: booking.closeout?.legacy ? undefined : booking.closeout?.visits?.map(visit => visit.attendance), inspectionCanRespond, startAt: visitBounds?.startAt, endAt: visitBounds?.endAt, checkinOpensAt: visitBounds?.opensAt, timezone: tz,
   }) : 'confirmed';
-  const cancelCause = booking ? bookingCancelCause({ status: booking.status, chefId: booking.chefId, paymentDecision: booking.paymentDecision }) : null;
+  const cancelCause = booking ? bookingCancelCause({ status: booking.status, chefId: booking.chefId, paymentDecision: booking.paymentDecision, partialAcceptance: booking.partialAcceptance }) : null;
   const findAnotherTimeHref = booking && !isManagerView && (cancelCause === 'declined' || cancelCause === 'expired') && (booking.location?.id ?? booking.kitchen?.locationId)
     ? `/book/${booking.location?.id ?? booking.kitchen?.locationId}?kitchenId=${booking.kitchenId}` : null;
   // A request the chef changed: its replacement is where things continue.
@@ -1810,9 +1813,7 @@ export default function BookingDetailsPage() {
       </div>
       {booking.paymentTransaction && pricingBreakdownInput && (
         isManagerView ? (
-          proposal ? (
-            <p className="text-sm text-muted-foreground" data-testid="pa-payout-depends">{t('paPayoutDependsOnChef')}</p>
-          ) : (
+          proposal ? null : (
           <KitchenPayoutStatementBreakdown
             {...pricingBreakdownInput}
             currency={booking.currency || "CAD"}

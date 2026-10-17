@@ -65,7 +65,11 @@ export function BookingHistoryPanel({ id, version, reference, role, timezone, ca
               {index === events.length - 1 && <span aria-hidden="true" className="pointer-events-none absolute bottom-0 left-0 top-2 w-3 bg-card" />}
               <span data-testid="booking-history-dot" aria-hidden="true" className={`absolute left-0.5 top-1 z-10 h-2 w-2 rounded-full ${index === events.length - 1 ? 'bg-foreground/70' : 'bg-muted-foreground/40'}`} />
               <div className="grid min-w-0 items-start gap-1 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-2">
-                <p className="min-w-0 break-words font-medium leading-4">{event.kind === 'cancelled' && cancelCause && ['declined', 'expired', 'withdrawn', 'replaced'].includes(cancelCause)
+                <p className="min-w-0 break-words font-medium leading-4">{event.kind === 'cancelled' && cancelCause === 'pa_declined'
+                  ? t(role === 'chef' ? 'historyCancelled_pa_declined_chef' : 'historyCancelled_pa_declined_kitchen', { chef: chefName || t('historyChefFallback') })
+                  : event.kind === 'cancelled' && cancelCause === 'pa_expired'
+                  ? t('historyCancelled_pa_expired')
+                  : event.kind === 'cancelled' && cancelCause && ['declined', 'expired', 'withdrawn', 'replaced'].includes(cancelCause)
                   ? t(`historyCancelled_${cancelCause}` as 'historyCancelled_declined')
                   : event.kind === 'goodwill_refunded' && event.amountCents
                     ? t(role === 'manager' ? 'historyGoodwill_manager' : 'historyGoodwill_chef', { amount: money(event.amountCents), chef: chefName || t('historyChefFallback') })

@@ -34,12 +34,15 @@ export function PartialAcceptanceCard({ bookingId, proposal, manager, kitchenNam
         headers: await getAuthHeaders(), body: JSON.stringify({ proposalId: proposal.id, answer: choice }) });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error || t('paAnswerFailed'));
-      toast({ title: t(choice === 'accept' ? 'paAcceptedToast' : 'paDeclinedToast') });
+      toast({ title: t(choice === 'accept' ? 'paAcceptedToast' : 'paDeclinedToast',
+        choice === 'accept' ? { amount: money(proposal.newTotalCents) } : undefined) });
+      // Refresh before clearing busy so the waiting card/pill don't flash after the server already closed the offer.
+      await onChanged();
     } catch (error) {
       toast({ title: t('paAnswerFailed'), description: error instanceof Error ? error.message : undefined, variant: 'destructive' });
+      await onChanged();
     } finally {
       setBusy(null); setConfirmDecline(false);
-      await onChanged();
     }
   };
 
