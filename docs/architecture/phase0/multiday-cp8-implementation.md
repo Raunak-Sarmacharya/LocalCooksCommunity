@@ -99,8 +99,12 @@ rollout-setting change was performed. The local fixture server was stopped and i
   test. Existing single-day booking/page tests passed, including the original scalar checkout shape and disclosure.
 - `node scripts/i18n-lint.mjs` — passed after final copy changes; 15 namespaces synced for fr-CA and uk.
 - `git diff --check` — passed.
-- `npx tsc --noEmit -p tsconfig.json` — one foreground invocation started after the last application commit;
-  final result follows below.
+- `npx tsc --noEmit -p tsconfig.json` — invoked once in the foreground after application commit `76c887e2`.
+  It finished with **7 errors**, all in new `KitchenBookingFlow` i18n typing: widened reason-map keys and a fallback key
+  used without its default text, plus their inferred-return-type errors. Commit `5dbab048` retains literal translation
+  keys and uses an existing localized fallback key. The full compiler has **not** been rerun: the task explicitly permits
+  one invocation. A verified zero-error result remains outstanding; approval for one verification rerun was requested.
+  The picker regression suite is rerun after this correction; its result is recorded in the final handoff.
 
 ## Files
 
