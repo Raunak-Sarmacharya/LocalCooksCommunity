@@ -15,6 +15,7 @@ vi.mock('./tour-delivery-service', () => ({ deliverTourEvents: state.tour,
   tourEventMessages: (payload: any) => payload.messages }));
 vi.mock('../email', () => ({ sendEmail: vi.fn() }));
 vi.mock('./notification.service', () => ({ notificationService: {} }));
+import { selectedReminderPolicy } from './advance-reminders';
 import { describeDelivery, visibleEmailLogs, pendingDecisionDeliveries, retryDecisionDelivery, reconcileTourDelivery } from './delivery-visibility';
 const now = new Date('2026-10-04T08:00:00Z');
 const log = (extra: any = {}) => ({ id: 1, createdAt: now, category: 'lifecycle_outcome', status: 'failed',
@@ -77,10 +78,13 @@ describe('operator delivery summaries', () => {
     row.status = 'sent'; expect(describeDelivery(row, row, undefined, now).state).toContain('SMTP acceptance');
     row.textBody = JSON.stringify({ reminder, channel: 'notification' });
     expect(describeDelivery(row, row, undefined, now).state).toBe('In-app acknowledgment recorded');
-    row.status = 'scheduled'; row.textBody = JSON.stringify({ reminder: { ...reminder, kind: 'departure' }, channel: 'email' });
+    row.status = 'scheduled'; row.textBody = JSON.stringify({ reminder: { ...reminder, kind: 'preparation' }, channel: 'email' });
     expect(describeDelivery(row, row, undefined, now)).toMatchObject({ state: 'Scheduled', canRetry: false });
-    row.textBody = JSON.stringify({ reminder: { ...reminder, source: 'booking', kind: 'departure' }, channel: 'email' });
-    expect(describeDelivery(row, row, undefined, now)).toMatchObject({ state: 'Policy pending', canRetry: false });
+    row.textBody = JSON.stringify({ reminder, channel: 'email' });
+    // Tour reminders are policy-pending while the tour reminder policy is switched off.
+    const tourEnabled = selectedReminderPolicy.tourEnabled; selectedReminderPolicy.tourEnabled = false;
+    try { expect(describeDelivery(row, row, undefined, now)).toMatchObject({ state: 'Policy pending', canRetry: false }); }
+    finally { selectedReminderPolicy.tourEnabled = tourEnabled; }
   });
   it('does not promise retry for a leased or acknowledged original decision or legacy action', () => {
     const original = log({ category: 'booking', trackingId: 'booking-event:9:3' });

@@ -403,7 +403,7 @@ describe('actual producer → persisted intent → worker → admin replay', () 
   });
   it('persists standalone storage penalty decision, dispute deadline and intent in one transaction', async () => {
     state.tables.storage_bookings = [{ id: 8, chefId: 3, managerId: 2, kitchenBookingId: null }];
-    state.tables.storage_overstay_records = [{ id: 9, storageBookingId: 8, status: 'pending_review', itemsRemovedAt: new Date(), calculatedPenaltyCents: 500 }];
+    state.tables.storage_overstay_records = [{ id: 9, idempotencyKey: 'overstay:9', storageBookingId: 8, status: 'pending_review', itemsRemovedAt: new Date(), calculatedPenaltyCents: 500 }];
     state.tables.storage_overstay_history = [];
     expect(await processManagerDecision({ overstayRecordId: 9, managerId: 2, action: 'approve' })).toEqual({ success: true });
     const record = state.tables.storage_overstay_records[0];
