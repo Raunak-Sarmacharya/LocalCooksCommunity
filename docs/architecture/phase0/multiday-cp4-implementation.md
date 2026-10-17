@@ -80,11 +80,16 @@ incident manifest only after all dates revalidate. Compensation replays reconcil
 ## Verification
 
 `npm ci` completed locally; no dependency manifests changed and no node_modules junction/symlink was created.
-Development checks passed the CP4 PGlite suite and the signed-webhook/payout suites; the related legacy regression run
-passed **177 tests across 19 files** before the final additions.
+The implementation was committed as `4a6a0acd` before final checks. Final server verification: **289 passed, 26 files**,
+including **37 CP4 PGlite/unit tests**, **8 signed dated-webhook tests**, and the new legacy dispatcher/release guard tests.
+`git diff --check` passed. The one foreground `npx tsc --noEmit -p tsconfig.json` invocation completed with **3 TS2802
+errors**, all in new code: two `days.entries()` loops and one Set spread were incompatible with this project's default
+ES5 target. Each was changed to `Array.from(...)`, following the existing repository convention. The full compiler was
+**not rerun**, respecting the explicit one-run limit; a verified zero-error full pass is therefore still outstanding.
 
-Final verification is pending the required implementation commit. After that commit, run the focused regression suite
-and `npx tsc --noEmit -p tsconfig.json` exactly once in the foreground; record the results here and commit any fixes.
+```powershell
+npx vitest run --config vitest.config.server.ts dated-booking booking-checkout-fulfillment booking-checkout-replacement booking-checkout-guards booking-payment-decision booking-invitation-decision consecutive-checkout-session checkout-metadata cancellation-policy-settings kitchen-checkout-incidents kitchen-checkout-holds kitchen-payout-service stripe-transfer-payout-gate stripe-transfer-recovery booking-days-validation booking-response-deadline captured-component-allocations cancellation-policy booking-capture-terms booking-pricing-breakdown kitchen-booking-rate webhook-payment-intent-integrity storage-rental-webhooks --maxWorkers=3
+```
 
 The CP4 PGlite suite executes the actual 0099 allocation table DDL (including FKs, CHECKs and uniqueness), the actual
 0043 visit trigger body with its 0099 guard, and the actual 0098 policy protection function/trigger. This is SQL execution

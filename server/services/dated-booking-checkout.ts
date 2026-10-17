@@ -35,7 +35,7 @@ export async function checkoutDatedBooking(chefId: number, input: {
   const [manager] = await db.select().from(users).where(eq(users.id, row.location.managerId)).limit(1);
   const [chef] = await db.select().from(users).where(eq(users.id, chefId)).limit(1);
   if (!manager?.stripeConnectAccountId || !chef?.username) throw new DatedCheckoutRefused(400, { error: 'Kitchen payments or chef email are unavailable' });
-  const ids = [...new Set(check.days.flatMap(day => day.equipmentIds))];
+  const ids = Array.from(new Set(check.days.flatMap(day => day.equipmentIds)));
   const listings = ids.length ? await db.select().from(equipmentListings).where(and(inArray(equipmentListings.id, ids),
     eq(equipmentListings.kitchenId, input.kitchenId), eq(equipmentListings.isActive, true), isNull(equipmentListings.archivedAt))) : [];
   const days = priceBookingDays(check.days, { hourlyRate: Number(row.kitchen.hourlyRate ?? 0), dailyRate: Number(row.kitchen.dailyRate ?? 0) }, listings);

@@ -74,7 +74,7 @@ export async function fulfillDatedKitchenBooking(session: Stripe.Checkout.Sessio
         operatingWindowStartTime: day.windowStartTime, selectedSlots: day.slots, priceSnapshot: { contract: m.contract, hash: quote.hash,
           rateCents: day.rateCents, kitchenCents: day.kitchenCents, equipment: day.equipment } })));
       const equipmentItems: Record<string, unknown>[] = [], components: DayComponent[] = [];
-      for (const [sessionIndex, day] of m.days.entries()) {
+      for (const [sessionIndex, day] of Array.from(m.days.entries())) {
         const visit = visits.find(row => row.visitDate === day.date)!;
         components.push({ visitId: visit.id, sessionIndex, componentKey: 'kitchen', kind: 'kitchen', bookingId: parent.id, subtotalCents: day.kitchenCents });
         const startDate = new Date(policySessionStart(day.date, day.startTime, day.windowStartTime, m.timezone));

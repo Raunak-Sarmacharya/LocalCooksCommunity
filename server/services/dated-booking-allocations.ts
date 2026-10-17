@@ -40,7 +40,7 @@ export async function datedSourceComponents(tx: Tx, source: typeof paymentTransa
   const visits = await tx.select().from(kitchenBookingVisits).where(eq(kitchenBookingVisits.bookingId, source.bookingId));
   const equipment = await tx.select().from(equipmentBookings).where(eq(equipmentBookings.kitchenBookingId, source.bookingId));
   const expected: DayComponent[] = [];
-  for (const [sessionIndex, day] of m.days.entries()) {
+  for (const [sessionIndex, day] of Array.from(m.days.entries())) {
     const visit = visits.find(row => row.visitDate === day.date && row.scheduleRevision === 1);
     if (!visit) throw Error('Dated allocation visit is missing');
     expected.push({ visitId: visit.id, sessionIndex, componentKey: 'kitchen', kind: 'kitchen', bookingId: source.bookingId, subtotalCents: day.kitchenCents });
