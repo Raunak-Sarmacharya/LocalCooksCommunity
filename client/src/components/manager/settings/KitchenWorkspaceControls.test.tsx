@@ -37,8 +37,8 @@ function mount() {
 describe("kitchen policy write scope", () => {
   it("has no kitchen arrival/departure switch or checklist fetch", () => {
     const { client } = mount();
-    // The only switch here is the extra-time auto-approval (build-session-extensions.md); never an arrival/departure one.
-    expect(screen.queryAllByRole('switch').filter(element => !element.id.startsWith('auto-extend-') && element.id !== 'turnover-buffer')).toHaveLength(0);
+    // Switches here are booking rules and extra-time auto-approval; never an arrival/departure one.
+    expect(screen.queryAllByRole('switch').filter(element => !element.id.startsWith('auto-extend-') && !['turnover-buffer', 'daily-limit', 'allow-multiday', 'weekly-chef-limit'].includes(element.id))).toHaveLength(0);
     expect(api.get).not.toHaveBeenCalledWith('/manager/locations/33/checkin-checkout-settings');
     expect(api.put).not.toHaveBeenCalled(); client.clear();
   });
@@ -83,7 +83,7 @@ describe("kitchen policy write scope", () => {
     client.setQueryData(kitchenWorkspaceSettingsKey(40), { ...original,
       kitchen: { ...original.kitchen, minimumBookingWindowHours: 0 }, effective: { ...defaults, minimumBookingWindowHours: 0 } });
     await screen.findByRole("button", { name: "kitchenPolicyReset" });
-    fireEvent.change(screen.getByRole("textbox", { name: "bpLongestLabel" }), { target: { value: "3" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "bpShortestLabel" }), { target: { value: "2" } });
     expect(screen.getByRole("button", { name: "kitchenPolicyReset" })).toBeDisabled();
     expect(screen.getByText("kitchenPolicyResetAfterSave")).toBeInTheDocument();
     expect(api.put).not.toHaveBeenCalled();
