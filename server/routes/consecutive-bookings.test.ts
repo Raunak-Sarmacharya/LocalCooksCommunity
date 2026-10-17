@@ -91,7 +91,7 @@ describe('actual self-serve cancellation route boundary', () => {
     const route = (router as any).stack.find((entry: any) => Array.isArray(entry.route?.path) && entry.route.path.includes('/bookings/:id/cancellation-quote')).route;
     const res = { status: vi.fn().mockReturnThis(), json: vi.fn() };
     await route.stack.at(-1).handle({ params: { id: '10' }, neonUser: { id: 3 }, body: { chefId: 999 } }, res);
-    expect(state.quote).toHaveBeenCalledWith(10, 3); expect(res.json).toHaveBeenCalledWith({ quoteReady: true, chefRefundCents: 0 });
+    expect(state.quote).toHaveBeenCalledWith(10, 3, {}); expect(res.json).toHaveBeenCalledWith({ quoteReady: true, chefRefundCents: 0 });
   });
   it('a late paid cancellation calls the idempotent command directly without manager approval', async () => {
     state.rows.kitchen_bookings = [{ id: 10, kitchenId: 4, chefId: 3, status: 'confirmed', paymentStatus: 'paid', bookingDate: new Date('2020-01-01'), startTime: '09:00', paymentIntentId: 'pi_fixture' }];

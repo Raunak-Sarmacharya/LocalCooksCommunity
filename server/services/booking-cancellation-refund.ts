@@ -15,7 +15,7 @@ import { logger } from '../logger';
 import { allocateCents, legacyCancellationSnapshot, quoteCancellation, type CancellationPolicySnapshot } from '@shared/cancellation-policy';
 import { getUserDisplayName } from '../utils/user-display';
 import { policySessionStart } from './cancellation-policy-settings';
-import { isDatedBooking, type DayActor, type DayTarget } from './dated-booking-cancellation';
+import { isDatedBooking, type DayTarget } from './dated-booking-cancellation';
 
 /** Staff use the same instant frozen-policy command as the chef. */
 export async function requestChefCancellation(bookingId: number, chefId: number, actorId: number, publicMessage?: string, operationKey = `support-chef-cancel-${bookingId}`, visitIds?: number[]) {
@@ -645,10 +645,12 @@ export async function removeChefAddon(bookingId: number, chefId: number, scope: 
   if (days) {
     const result = await days.cancelDatedDays(bookingId, { role: 'chef', id: chefId }, { target: { equipmentIds: [scope.id] }, operationKey: input.operationKey,
       expectedRefundCents: input.expectedRefundCents, reason: input.reason });
-    const state = result.state === 'refunded' ? 'removed' as const : 'processing' as const, refund = result.refundCents;
-    return { success: true, action: 'removed' as const, state, refundCents: refund, kitchenDebtCents: 0,
-      message: !refund ? 'Equipment removed. Under the cancellation policy it isn’t refundable.' : state === 'removed' ? `Equipment removed. Your $${(refund / 100).toFixed(2)} refund is on its way.`
-        : `Equipment removed. Your $${(refund / 100).toFixed(2)} refund is being processed — we’ll confirm when it’s sent.` };
+    const state = result.state === 'refunded' ? 'removed' as const : 'processing' as const, refund = result.refundCents, name = result.itemName || 'Equipment';
+    return { success: true, action: 'removed' as const, state, itemName: name, free: result.paidCents === 0, lateCancel: result.refundPercent !== 100,
+      refundCents: refund, kitchenDebtCents: 0,
+      message: result.paidCents === 0 ? `${name} removed. It wasn’t charged.` : !refund ? `${name} removed. Under the cancellation policy it isn’t refundable.`
+        : state === 'removed' ? `${name} removed. Your $${(refund / 100).toFixed(2)} refund is on its way.`
+        : `${name} removed. Your $${(refund / 100).toFixed(2)} refund is being processed — we’ll confirm when it’s sent.` };
   }
   const prepared = await prepareAddon(bookingId, chefId, scope);
   const reserved = await db.transaction(tx => reserveAddonRemoval(tx, bookingId, chefId, scope, input, prepared));

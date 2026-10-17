@@ -256,6 +256,8 @@ export async function readDatedOperation(bookingId: number, operationId: string,
     managerPaysCents: operation.managerRefund, localCooksPaysCents: operation.platformRefund + operation.platformProcessingCost,
     processingCostAbsorbedCents: operation.platformProcessingCost, amountCents: operation.customerRefund, paymentIntentId: operation.intentId,
     refundId: operation.refundId ?? null, visitIds: operation.visitIds, equipmentIds: operation.equipmentIds, days: operation.days,
+    itemName: operation.itemName as string, refundPercent: operation.refundPercent as number | null,
+    paidCents: (operation.lines as DayRefundLine[]).reduce((total, line) => total + line.paidCents, 0),
     offer: (ctx.booking.kitchenDayCancellationOffer as DayCancellationOffer | null) ?? null, ...(replayed ? { replayed } : {}) };
 }
 
