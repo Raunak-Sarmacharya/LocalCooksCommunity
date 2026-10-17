@@ -111,6 +111,19 @@ for (const ns of sourceNs) {
       }
     }
   }
+  // Text saved through a non-UTF-8 shell turns ’ · and Cyrillic into "?"; French keeps its spaced " ?".
+  for (const locale of [SOURCE, ...TARGETS]) {
+    const catalog = loadJson(locale, ns);
+    const garbled = locale === "fr-CA" ? /\?{2,}(?!$)|\p{L}\?\p{L}/u : /\?{2,}(?!$)|\p{L}\?\p{L}|\s\?\s/u;
+    for (const key of sourceKeys) {
+      let cur = catalog;
+      for (const p of key.split(".")) cur = cur?.[p];
+      if (typeof cur === "string" && garbled.test(cur)) {
+        console.error(`[garbled text] ${locale}/${ns}.json → ${key}`);
+        errors++;
+      }
+    }
+  }
 }
 
 // ── 2. Used keys must exist in en-CA catalogs ─────────────────────────────
