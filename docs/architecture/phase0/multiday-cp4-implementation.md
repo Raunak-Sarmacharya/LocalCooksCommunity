@@ -86,6 +86,8 @@ including **37 CP4 PGlite/unit tests**, **8 signed dated-webhook tests**, and th
 errors**, all in new code: two `days.entries()` loops and one Set spread were incompatible with this project's default
 ES5 target. Each was changed to `Array.from(...)`, following the existing repository convention. The full compiler was
 **not rerun**, respecting the explicit one-run limit; a verified zero-error full pass is therefore still outstanding.
+The fixes were committed as `99b35143` before rerunning the affected CP4 suite: **37 passed, 1 file**. No further
+application code changed after that passing run.
 
 ```powershell
 npx vitest run --config vitest.config.server.ts dated-booking booking-checkout-fulfillment booking-checkout-replacement booking-checkout-guards booking-payment-decision booking-invitation-decision consecutive-checkout-session checkout-metadata cancellation-policy-settings kitchen-checkout-incidents kitchen-checkout-holds kitchen-payout-service stripe-transfer-payout-gate stripe-transfer-recovery booking-days-validation booking-response-deadline captured-component-allocations cancellation-policy booking-capture-terms booking-pricing-breakdown kitchen-booking-rate webhook-payment-intent-integrity storage-rental-webhooks --maxWorkers=3
