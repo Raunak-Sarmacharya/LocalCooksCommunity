@@ -116,6 +116,23 @@ it.each([['declined', 'Request declined'], ['expired', 'Request expired'], ['wit
   expect(screen.queryByText('Booking cancelled')).not.toBeInTheDocument();
   expect(screen.getByText('#152')).toBeInTheDocument();
 });
+it.each([
+  ['chef', 'pa_declined', 'You declined the new total'] as const,
+  ['manager', 'pa_declined', 'Alex declined the new total'] as const,
+  ['chef', 'pa_expired', 'Request closed — no answer by the deadline'] as const,
+  ['manager', 'pa_expired', 'Request closed — no answer by the deadline'] as const,
+])('labels a partial-acceptance close for the %s as %s', async (role, cause, label) => {
+  vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ complete: true, events: [
+    { key: '1', kind: 'requested', recordedAt: '2026-10-01T12:00:00Z' },
+    { key: '2', kind: 'cancelled', recordedAt: '2026-10-02T12:00:00Z' },
+  ] }) })));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(<QueryClientProvider client={client}><BookingHistoryPanel timezone="America/St_Johns" id={152} version="v" role={role}
+    cancelCause={cause} chefName="Alex" /></QueryClientProvider>);
+  expect(await screen.findByText(label)).toBeInTheDocument();
+  expect(screen.queryByText('Request withdrawn')).not.toBeInTheDocument();
+  expect(screen.queryByText('Booking cancelled')).not.toBeInTheDocument();
+});
 it('keeps "Booking cancelled" when the cause is unknown or a post-confirmation cancellation', async () => {
   vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ complete: true, events: [
     { key: '1', kind: 'requested', recordedAt: '2026-10-01T12:00:00Z' },

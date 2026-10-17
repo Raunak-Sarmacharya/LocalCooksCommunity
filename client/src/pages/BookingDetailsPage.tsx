@@ -412,7 +412,8 @@ export default function BookingDetailsPage() {
       const endpoint = isManagerView
         ? `/api/manager/bookings/${bookingId}/details`
         : `/api/chef/bookings/${bookingId}/details`;
-      const response = await fetch(endpoint, { credentials: "include", headers });
+      // no-store: after accept/decline the previous waiting payload must not be reused from the browser cache.
+      const response = await fetch(endpoint, { credentials: "include", headers, cache: "no-store" });
       if (!response.ok) return;
       const data = await response.json();
       setBooking(data);
@@ -1264,7 +1265,7 @@ export default function BookingDetailsPage() {
     status: booking.status, checkinStatus: booking.checkinStatus, visits: booking.visits, closeoutPhase: booking.closeout?.phase,
     visitAttendance: booking.closeout?.legacy ? undefined : booking.closeout?.visits?.map(visit => visit.attendance), inspectionCanRespond, startAt: visitBounds?.startAt, endAt: visitBounds?.endAt, checkinOpensAt: visitBounds?.opensAt, timezone: tz,
   }) : 'confirmed';
-  const cancelCause = booking ? bookingCancelCause({ status: booking.status, chefId: booking.chefId, paymentDecision: booking.paymentDecision }) : null;
+  const cancelCause = booking ? bookingCancelCause({ status: booking.status, chefId: booking.chefId, paymentDecision: booking.paymentDecision, partialAcceptance: booking.partialAcceptance }) : null;
   const findAnotherTimeHref = booking && !isManagerView && (cancelCause === 'declined' || cancelCause === 'expired') && (booking.location?.id ?? booking.kitchen?.locationId)
     ? `/book/${booking.location?.id ?? booking.kitchen?.locationId}?kitchenId=${booking.kitchenId}` : null;
   // A request the chef changed: its replacement is where things continue.
@@ -1616,7 +1617,12 @@ export default function BookingDetailsPage() {
         {/* "Can't get in" / safety reports surface here while the visit is on; the support list below keeps the thread. */}
         {proposal && <PartialAcceptanceCard bookingId={booking.id} proposal={proposal} manager={isManagerView} kitchenName={kitchenName} chefName={chefName}
           timezone={booking.location?.timezone || undefined} withdrawing={isUpdatingStatus}
-          onChanged={async () => { await reloadBookingDetails(); await queryClient.invalidateQueries(); }}
+          onChanged={async () => {
+            await reloadBookingDetails();
+            await queryClient.invalidateQueries({ queryKey: ['booking-history'] });
+            await queryClient.invalidateQueries({ queryKey: ['managerBookings'] });
+            await queryClient.invalidateQueries({ queryKey: ['chefBookings'] });
+          }}
           onWithdraw={isManagerView ? () => void handleApprovalSubmit({ bookingId: booking.id, status: 'cancelled' }) : undefined} />}
         <OpenProblemAlert bookingId={booking.id} role={isManagerView ? 'manager' : 'chef'} chefName={chefName} kitchenName={kitchenName}
           timezone={tz || 'America/St_Johns'} active={booking.status === 'confirmed' && !!visitBounds && nowMs < visitBounds.endAt.getTime()}
@@ -1810,9 +1816,7 @@ export default function BookingDetailsPage() {
       </div>
       {booking.paymentTransaction && pricingBreakdownInput && (
         isManagerView ? (
-          proposal ? (
-            <p className="text-sm text-muted-foreground" data-testid="pa-payout-depends">{t('paPayoutDependsOnChef')}</p>
-          ) : (
+          proposal ? null : (
           <KitchenPayoutStatementBreakdown
             {...pricingBreakdownInput}
             currency={booking.currency || "CAD"}

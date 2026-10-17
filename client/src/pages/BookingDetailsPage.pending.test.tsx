@@ -163,7 +163,7 @@ describe("partial acceptance: waiting on the chef", () => {
     expect(card).not.toHaveTextContent("You’re only charged if Harbour Kitchen accepts.");
   });
 
-  it("kitchen payment card: hides the original estimated payout", async () => {
+  it("kitchen payment card: hides the original estimated payout and says payout depends once", async () => {
     h.manager = true;
     h.booking = waitingOffer();
     render(<BookingDetailsPage />);
@@ -171,7 +171,8 @@ describe("partial acceptance: waiting on the chef", () => {
     expect(within(card).queryByTestId("payment-headline")).not.toBeInTheDocument();
     expect(within(card).getByTestId("payment-status-line")).toHaveTextContent("Payout depends on the chef’s answer");
     expect(card).not.toHaveTextContent("$55.43");
-    expect(within(card).getByTestId("pa-payout-depends")).toHaveTextContent("Payout depends on the chef’s answer");
+    expect(within(card).queryByTestId("pa-payout-depends")).not.toBeInTheDocument();
+    expect(card.textContent?.split("Payout depends on the chef’s answer")).toHaveLength(2);
   });
 
   it.each([

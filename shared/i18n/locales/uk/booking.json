@@ -1292,11 +1292,14 @@
   "paKitchenWaitingBody": "Ви прийняли без {items}. Нова сума: {newTotal} (було {oldTotal}). {chef} має час відповісти до {deadline}.",
   "paKitchenWaitingNote": "Нічого не списується до прийняття. Якщо відповіді не буде, запит закриється, а блокування на картці буде знято.",
   "paKitchenWithdraw": "Відкликати й відхилити запит",
-  "paAcceptedToast": "Прийнято. Ваше бронювання підтверджено.",
-  "paDeclinedToast": "Відхилено. Блокування на картці знято.",
+  "paAcceptedToast": "Бронювання підтверджено. З вас списано {amount}.",
+  "paDeclinedToast": "Ви відхилили нову суму. Блокування на картці знято.",
   "paAnswerFailed": "Не вдалося зберегти вашу відповідь",
   "paChefHoldEndedTitle": "Запит закрито",
   "paChefHoldEndedBody": "Блокування на картці для вашого запиту в {kitchen} закінчилося до того, як бронювання вдалося підтвердити. Нічого не списано.",
   "paKitchenHoldEndedTitle": "Запит закрито",
-  "paKitchenHoldEndedBody": "Блокування на картці для запиту {chef} закінчилося до того, як бронювання вдалося підтвердити. Нічого не списано."
+  "paKitchenHoldEndedBody": "Блокування на картці для запиту {chef} закінчилося до того, як бронювання вдалося підтвердити. Нічого не списано.",
+  "historyCancelled_pa_declined_chef": "Ви відхилили нову суму",
+  "historyCancelled_pa_declined_kitchen": "{chef} відхилив нову суму",
+  "historyCancelled_pa_expired": "Запит закрито — немає відповіді до строку"
 }
