@@ -3704,5 +3704,10 @@
   "paSentenceKitchen": "{chef} переглядає вашу нову суму.",
   "paListAnswerNeeded": "Потрібна відповідь",
   "paListAnswerBy": "Кухня пропонує нову суму. Дайте відповідь до {deadline}.",
-  "assistTimeOfDay": "Час"
+  "assistTimeOfDay": "Час",
+  "paChargedIfYouAccept": "Якщо ви погодитесь, спишуть {amount}, а решту звільнять.",
+  "paPayoutDependsOnChef": "Виплата залежить від відповіді кухаря",
+  "paItemKitchenDeciding": "Кухня не може надати · кухар вирішує",
+  "paItemChefIfAccept": "Не входить, якщо ви погодитесь",
+  "paItemNotIncluded": "Не входить"
 }

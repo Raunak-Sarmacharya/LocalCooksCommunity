@@ -834,7 +834,7 @@ function BookingActionDialogContent({
               <div className="space-y-2 text-sm p-3 rounded-lg bg-background border">
                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">{mt("captureBreakdown")}</p>
                 <div className="flex justify-between font-medium text-foreground">
-                  <span>{mt("totalCharged3")}</span>
+                  <span>{mt(asksChef ? "reviewChargedIfChefAccepts" : "totalCharged3")}</span>
                   <span className="font-mono">{formatPrice(captureCalc.captureAmount)}</span>
                 </div>
                 {captureCalc.approvedServiceFee > 0 && (

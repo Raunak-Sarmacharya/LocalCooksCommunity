@@ -1,5 +1,5 @@
 vi.mock('@/i18n/chef-ns', async () => ({ ct: (await import('@/test/booking-i18n')).useBookingTranslation('chef').t }));
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import chef from "@shared/i18n/locales/en-CA/chef.json";
 import bookingCopy from "@shared/i18n/locales/en-CA/booking.json";
@@ -136,5 +136,72 @@ describe("pending booking page", () => {
     // A localized time ending in "p.m." must not leave a double period.
     expect(next.textContent).not.toMatch(/\.\.$/);
     expect(screen.queryByText("What to expect")).not.toBeInTheDocument();
+  });
+});
+
+const waitingOffer = () => ({
+  ...base(),
+  paymentTransaction: { amount: 6100, serviceFee: 350, managerRevenue: 5543, estimatedStripeProcessingFee: 207, status: "authorized" },
+  equipmentBookings: [{ id: 31, equipmentListingId: 9, status: "pending", totalPrice: 2500,
+    equipmentListing: { equipmentType: "Mixer", brand: null } }],
+  partialAcceptance: {
+    id: "p1", state: "waiting", intentId: "pi_1", proposedAt: "2030-01-10T12:00:00Z", deadlineAt: "2030-01-11T12:00:00Z",
+    equipment: [{ id: 31, status: "cancelled" }], declined: [{ id: 31, name: "Mixer", cents: 2500 }],
+    oldTotalCents: 6100, newTotalCents: 3050,
+  },
+});
+
+describe("partial acceptance: waiting on the chef", () => {
+  it("chef payment card: card hold stays, status names the new total if they accept", async () => {
+    h.manager = false;
+    h.booking = waitingOffer();
+    render(<BookingDetailsPage />);
+    const card = await screen.findByTestId("payment-card");
+    expect(card).toHaveTextContent("Card hold$61.00");
+    expect(within(card).getByTestId("payment-status-line")).toHaveTextContent(
+      "If you accept, you’re charged $30.50 and the rest is released.");
+    expect(card).not.toHaveTextContent("You’re only charged if Harbour Kitchen accepts.");
+  });
+
+  it("kitchen payment card: hides the original estimated payout", async () => {
+    h.manager = true;
+    h.booking = waitingOffer();
+    render(<BookingDetailsPage />);
+    const card = await screen.findByTestId("payment-card");
+    expect(within(card).queryByTestId("payment-headline")).not.toBeInTheDocument();
+    expect(within(card).getByTestId("payment-status-line")).toHaveTextContent("Payout depends on the chef’s answer");
+    expect(card).not.toHaveTextContent("$55.43");
+    expect(within(card).getByTestId("pa-payout-depends")).toHaveTextContent("Payout depends on the chef’s answer");
+  });
+
+  it.each([
+    [false, "Not included if you accept"],
+    [true, "Kitchen can’t provide · chef deciding"],
+  ] as const)("add-on chip while waiting (manager=%s)", async (manager, chip) => {
+    h.manager = manager;
+    h.booking = waitingOffer();
+    render(<BookingDetailsPage />);
+    expect(await screen.findByTestId("pa-declined-item-chip")).toHaveTextContent(chip);
+    expect(screen.queryByText(/^Pending$/i)).not.toBeInTheDocument();
+  });
+
+  it("after accept: kitchen shows Not included on a voided declined item; chef keeps Not charged", async () => {
+    const accepted = {
+      ...waitingOffer(),
+      status: "confirmed",
+      paymentStatus: "paid",
+      paymentTransaction: { amount: 3050, serviceFee: 200, managerRevenue: 2750, stripeProcessingFee: 118, status: "succeeded" },
+      equipmentBookings: [{ id: 31, equipmentListingId: 9, status: "cancelled", paymentStatus: "failed", totalPrice: 2500,
+        equipmentListing: { equipmentType: "Mixer", brand: null } }],
+      partialAcceptance: { ...waitingOffer().partialAcceptance, state: "accepted" },
+    };
+    h.manager = true; h.booking = accepted;
+    const { unmount } = render(<BookingDetailsPage />);
+    expect(await screen.findByText("Not included")).toBeInTheDocument();
+    expect(screen.queryByText(/not charged/i)).not.toBeInTheDocument();
+    unmount();
+    h.manager = false; h.booking = accepted;
+    render(<BookingDetailsPage />);
+    expect(await screen.findByText(/not charged/i)).toBeInTheDocument();
   });
 });

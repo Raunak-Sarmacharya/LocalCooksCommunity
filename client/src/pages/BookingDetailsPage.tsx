@@ -601,6 +601,8 @@ export default function BookingDetailsPage() {
 
   const responseDeadline = booking ? bookingResponseDeadline(booking) : null;
   const responseDeadlineText = responseDeadline ? friendlyDateTime(responseDeadline, i18n.language, booking?.location?.timezone || undefined) : null;
+  // The kitchen accepted without some equipment; the chef still has to answer the new total (nothing charged yet).
+  const proposal = booking ? waitingPartialAcceptance(booking) : null;
 
   const paymentMessage = (() => {
     if (!booking) return null;
@@ -610,7 +612,11 @@ export default function BookingDetailsPage() {
     const ended = ['cancelled', 'rejected', 'expired', 'declined'].includes(booking.status);
     if (!isManagerView && !captured && ended) return { summary: t('bnHoldReleased'), detail: t('bdAuthVoidedChef') };
     if (!isManagerView && !captured && booking.status === 'pending')
-      return { summary: t('bnChargedOnlyIfAccepts', { kitchen: booking.kitchen?.name || t('bdKitchenBookingFallback') }), detail: t('bdPaymentHeldChef') };
+      return proposal
+        ? { summary: t('paChargedIfYouAccept', { amount: formatCurrency(proposal.newTotalCents) }), detail: t('bdPaymentHeldChef') }
+        : { summary: t('bnChargedOnlyIfAccepts', { kitchen: booking.kitchen?.name || t('bdKitchenBookingFallback') }), detail: t('bdPaymentHeldChef') };
+    // While the chef answers a new total, the kitchen's payout is unknown — never show the original hold's estimate.
+    if (isManagerView && proposal) return { summary: t('paPayoutDependsOnChef'), detail: t('paPayoutDependsOnChef') };
     if (status === 'authorized') return { summary: isManagerView ? t('bdPaymentHeldSummaryManager') : t('bdPaymentHeldSummary', { defaultValue: 'Your payment is on hold.' }), detail: t(isManagerView ? 'bdPaymentHeldManager' : 'bdPaymentHeldChef') };
     if (status === 'failed' && booking.status === 'cancelled') return { summary: isManagerView ? t('bdAuthVoidedSummaryManager') : t('bdAuthVoidedSummary', { defaultValue: 'Your payment hold was released.' }), detail: t(isManagerView ? 'bdAuthVoidedManager' : 'bdAuthVoidedChef') };
     const refundedCents = (booking.paymentTransaction?.refundAmount || 0)
@@ -1196,11 +1202,17 @@ export default function BookingDetailsPage() {
   );
 
   const cap = (value?: string | null) => value ? value.charAt(0).toUpperCase() + value.slice(1) : '';
-  const itemChip = (item: { status: string; paymentStatus?: string }, storage: boolean) => {
+  const itemChip = (item: { id: number; status: string; paymentStatus?: string }, storage: boolean) => {
     const voided = isItemVoided(item), refunded = isItemRefunded(item);
+    // Declined in a waiting new-total offer: the row stays pending until the chef answers.
+    const declinedInOffer = !storage && !!proposal && (proposal.declined.some(d => d.id === item.id)
+      || proposal.equipment.some(e => e.id === item.id && e.status === 'cancelled'));
     if (storage && item.status === 'completed') return <InfoChip variant="success" icon={<CheckCircle2 className="h-2.5 w-2.5" />}>{cap(t('bdStatusCleared'))}</InfoChip>;
     if (refunded) return <InfoChip variant="warning" icon={<Receipt className="h-2.5 w-2.5" />}>{cap(t('bdStatusRefunded'))}</InfoChip>;
-    if (voided) return <InfoChip variant="outline" icon={<XCircle className="h-2.5 w-2.5" />}>{cap(t('bdStatusNotCharged'))}</InfoChip>;
+    if (declinedInOffer) return <InfoChip variant="outline" icon={<XCircle className="h-2.5 w-2.5" />} data-testid="pa-declined-item-chip">
+      {t(isManagerView ? 'paItemKitchenDeciding' : 'paItemChefIfAccept')}</InfoChip>;
+    // After the chef accepts, declined equipment is voided: chef keeps "Not charged"; kitchen says "Not included".
+    if (voided) return <InfoChip variant="outline" icon={<XCircle className="h-2.5 w-2.5" />}>{cap(t(isManagerView ? 'paItemNotIncluded' : 'bdStatusNotCharged'))}</InfoChip>;
     if (item.status === 'cancelled') return <InfoChip variant="outline" icon={<XCircle className="h-2.5 w-2.5" />}>{cap(t('bdStatusCancelled'))}</InfoChip>;
     if (item.status === 'confirmed' || item.status === 'active') return <InfoChip variant="success" icon={<CheckCircle2 className="h-2.5 w-2.5" />}>{cap(t('bdStatusConfirmed'))}</InfoChip>;
     return <InfoChip variant="warning" icon={<AlertCircle className="h-2.5 w-2.5" />}>
@@ -1221,6 +1233,8 @@ export default function BookingDetailsPage() {
   const paymentHeadline = (() => {
     if (!booking?.paymentTransaction || !pricingBreakdownInput || booking.paymentDecision?.state === 'pending'
       || (!paymentCaptured && bookingEnded)) return null;
+    // Waiting on the chef's answer: hide the original-hold payout estimate (see payment status line).
+    if (isManagerView && proposal) return null;
     if (isManagerView) return { label: payoutTitle, struck: false,
       // The booking's own net plus each extra charge's net. (The payout snapshot already includes the extras: never add them to it.)
       cents: (booking.paymentTransaction.kitchenShareCents ?? (extraCharges.length ? buildKitchenPayoutStatementBreakdown(pricingBreakdownInput).kitchenNetPayoutCents
@@ -1352,7 +1366,6 @@ export default function BookingDetailsPage() {
     replacedByRef: newRequestHref ? replacedBy?.reference || `#${replacedBy?.bookingId}` : null,
   } });
   // Waiting for the chef's answer to the kitchen's new total: the kitchen has nothing to review; the card below carries the answer.
-  const proposal = booking ? waitingPartialAcceptance(booking) : null;
   const primary = proposal && now.primary === 'review_request' ? null : now.primary;
 
   const payableClaim = !isManagerView ? nowClaims(claims, false).find(chefCanPayClaim) : undefined;
@@ -1797,6 +1810,9 @@ export default function BookingDetailsPage() {
       </div>
       {booking.paymentTransaction && pricingBreakdownInput && (
         isManagerView ? (
+          proposal ? (
+            <p className="text-sm text-muted-foreground" data-testid="pa-payout-depends">{t('paPayoutDependsOnChef')}</p>
+          ) : (
           <KitchenPayoutStatementBreakdown
             {...pricingBreakdownInput}
             currency={booking.currency || "CAD"}
@@ -1811,6 +1827,7 @@ export default function BookingDetailsPage() {
             hstLabel={t("bdHstPercent", { percent: pricingBreakdownInput.kitchenHstRatePercent ?? 0 })}
             hstCollectedLabel={t("bdHstCollectedLine")}
           />
+          )
         ) : (
           <ChefBookingReceiptBreakdown
             {...pricingBreakdownInput}

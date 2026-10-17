@@ -143,6 +143,7 @@ describe('chef My bookings', () => {
 });
 
 describe('chef My bookings: the kitchen offered a new total', () => {
+  // Rendered from ApplicantDashboard (chef shell → Kitchen bookings tab) via useKitchenBookings.
   it('shows "Answer needed" with the deadline in the kitchen zone and a link to answer', () => {
     mount([row({ id: 301, kitchenName: 'Offer Kitchen', status: 'pending', paymentStatus: 'authorized', bookingDate: '2026-10-18T00:00:00.000Z',
       partialAcceptance: { id: 'p1', state: 'waiting', deadlineAt: '2026-10-15T23:30:00.000Z' } })]);
