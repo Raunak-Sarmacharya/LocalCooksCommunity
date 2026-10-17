@@ -162,7 +162,7 @@ async function validateClaimBooking(bookingType: 'kitchen' | 'storage', bookingI
     if (!['confirmed', 'completed'].includes(booking.status)) return 'Only confirmed or completed bookings are eligible';
     if (Date.now() > new Date(booking.endDate).getTime() + deadlineDays * 86400000) return 'Damage claim filing deadline has passed';
   } else {
-    const [booking] = await db.select({ status: kitchenBookings.status, bookingDate: kitchenBookings.bookingDate,
+    const [booking] = await db.select({ status: kitchenBookings.status, scheduleRevision: kitchenBookings.scheduleRevision, bookingDate: kitchenBookings.bookingDate,
       startTime: kitchenBookings.startTime, endTime: kitchenBookings.endTime,
       operatingWindowStartTime: kitchenBookings.operatingWindowStartTime,
       managerId: locations.managerId, timezone: locations.timezone })
@@ -171,6 +171,7 @@ async function validateClaimBooking(bookingType: 'kitchen' | 'storage', bookingI
       .where(eq(kitchenBookings.id, bookingId)).limit(1);
     if (!booking || booking.managerId !== managerId) return 'Booking location not found or unauthorized';
     if (!['confirmed', 'completed'].includes(booking.status)) return 'Only confirmed or completed bookings are eligible';
+    if (booking.scheduleRevision) return 'Use the visit damage report for dated bookings';
     const date = new Date(booking.bookingDate).toISOString().slice(0, 10);
     if (visitId) {
       const [visit] = await db.select({ endTime: kitchenBookingVisits.endTime }).from(kitchenBookingVisits)

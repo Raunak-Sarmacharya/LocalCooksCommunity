@@ -40,7 +40,7 @@ async function payoutContext(bookingId: number, tx: Tx, now: Date, released: boo
   if (!row?.timezone) throw Error('Booking timezone is required before releasing a kitchen payout.');
   const visits = await tx.select().from(kitchenBookingVisits).where(eq(kitchenBookingVisits.bookingId, bookingId));
   const saved = savedCloseout(row.booking.visitDuties)
-    || makeCloseoutSnapshot(row.booking, row.timezone, await closeoutTiming(row.locationId, tx));
+    || makeCloseoutSnapshot(row.booking, row.timezone, await closeoutTiming(row.locationId, tx), visits);
   const closeout = reduceClockCloseout(row.booking, visits, saved, now);
   const result = await tx.execute(sql`SELECT
     -- Pilot policy (Oct 16): Local Cooks absorbs chargebacks, so a dispute never holds a delivered session's payout.

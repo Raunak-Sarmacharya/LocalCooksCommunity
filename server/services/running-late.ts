@@ -1,3 +1,4 @@
+import { isCurrentVisit } from '@shared/dated-visits';
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '../db';
 import { bookingLifecycleEvents, kitchenBookings, kitchenBookingVisits, kitchens, locations } from '@shared/schema';
@@ -23,10 +24,21 @@ const stateFromEvent = (event: { metadata: unknown; createdAt: Date | string }, 
 
 /** The chef's latest heads-up for this booking, or null. Stored as lifecycle events (kind 'running_late'); no schema change. */
 export async function readRunningLate(bookingId: number, reader: Reader = db): Promise<RunningLateState | null> {
-  const rows = await reader.select({ metadata: bookingLifecycleEvents.metadata, createdAt: bookingLifecycleEvents.createdAt }).from(bookingLifecycleEvents)
+  let rows = await reader.select({ metadata: bookingLifecycleEvents.metadata, createdAt: bookingLifecycleEvents.createdAt }).from(bookingLifecycleEvents)
     .where(and(eq(bookingLifecycleEvents.bookingId, bookingId), eq(bookingLifecycleEvents.kind, 'running_late')))
     .orderBy(desc(bookingLifecycleEvents.id));
-  return rows.length ? stateFromEvent(rows[0], rows.length) : null;
+  if ((rows[0]?.metadata as { scheduleRevision?: number } | undefined)?.scheduleRevision) {
+    const [booking] = await reader.select({ scheduleRevision: kitchenBookings.scheduleRevision }).from(kitchenBookings).where(eq(kitchenBookings.id, bookingId)).limit(1);
+    if (!booking) return null;
+    const visits = await reader.select().from(kitchenBookingVisits).where(eq(kitchenBookingVisits.bookingId, bookingId));
+    rows = rows.filter(event => {
+      const target = event.metadata as { scheduleRevision?: number; visitId?: number };
+      return target?.scheduleRevision === booking.scheduleRevision && visits.some(visit => visit.id === target.visitId && isCurrentVisit(booking, visit));
+    });
+  }
+  const latest = rows[0]?.metadata as { scheduleRevision?: number; visitId?: number } | undefined;
+  const count = latest?.scheduleRevision ? rows.filter(event => (event.metadata as { visitId?: number })?.visitId === latest.visitId).length : rows.length;
+  return rows.length ? stateFromEvent(rows[0], count) : null;
 }
 
 /**
@@ -44,7 +56,8 @@ export async function reportRunningLate(input: { bookingId: number; chefId: numb
     if (!row || row.booking.chefId !== input.chefId) throw new RunningLateError(404, 'NOT_FOUND', 'Booking not found');
     const timezone = row.timezone || DEFAULT_TIMEZONE;
     const visits = await tx.select().from(kitchenBookingVisits).where(eq(kitchenBookingVisits.bookingId, input.bookingId));
-    const target = reminderVisitTimes(row.booking, timezone).map(block => {
+    if (row.booking.scheduleRevision && !input.visitId) throw new RunningLateError(409, 'RUNNING_LATE_UNAVAILABLE', 'Choose the affected visit');
+    const target = reminderVisitTimes(row.booking, timezone, visits).map(block => {
       const visit = visits.find(item => item.blockIndex === block.index);
       return { block, visit, checkedIn: (visit ? visit.checkinStatus : row.booking.checkinStatus || 'not_checked_in') !== 'not_checked_in' };
     }).filter(item => input.visitId == null || item.visit?.id === input.visitId)
@@ -52,9 +65,10 @@ export async function reportRunningLate(input: { bookingId: number; chefId: numb
     if (!target) throw new RunningLateError(409, 'RUNNING_LATE_UNAVAILABLE', 'Running late is not available for this booking right now.');
     const visitId = target.visit?.id ?? null;
 
-    const previous = await tx.select({ metadata: bookingLifecycleEvents.metadata, createdAt: bookingLifecycleEvents.createdAt }).from(bookingLifecycleEvents)
+    const allPrevious = await tx.select({ metadata: bookingLifecycleEvents.metadata, createdAt: bookingLifecycleEvents.createdAt }).from(bookingLifecycleEvents)
       .where(and(eq(bookingLifecycleEvents.bookingId, input.bookingId), eq(bookingLifecycleEvents.kind, 'running_late')))
       .orderBy(desc(bookingLifecycleEvents.id));
+    const previous = row.booking.scheduleRevision ? allPrevious.filter(event => (event.metadata as any)?.visitId === visitId) : allPrevious;
     const latest = previous.length ? stateFromEvent(previous[0], previous.length) : null;
     if (latest && latest.minutes === minutes && latest.visitId === visitId && Date.parse(latest.expectedAt) > now.getTime())
       return { created: false as const, runningLate: latest, endsAt: target.block.end };
@@ -66,7 +80,7 @@ export async function reportRunningLate(input: { bookingId: number; chefId: numb
     const duration = minutes === 60 ? 'an hour' : `${minutes} minutes`;
     await queueBookingLifecycleEvent(tx, input.bookingId, 'running_late', `${chef} is running late`,
       `${chef} is running about ${duration} late. Their booking still ends at ${kitchenClockWithZone(target.block.end, timezone)}.`, input.chefId,
-      { recipientPolicy: 'manager', minutes, reportedAt, expectedAt, note: input.note, visitId, endsAt: target.block.end.toISOString(), timezone, count: previous.length + 1 });
+      { recipientPolicy: 'manager', ...(row.booking.scheduleRevision ? { scheduleRevision: row.booking.scheduleRevision } : {}), minutes, reportedAt, expectedAt, note: input.note, visitId, endsAt: target.block.end.toISOString(), timezone, count: previous.length + 1 });
     const runningLate: RunningLateState = { minutes, reportedAt, expectedAt, note: input.note, visitId, count: previous.length + 1 };
     return { created: true as const, runningLate, endsAt: target.block.end };
   });

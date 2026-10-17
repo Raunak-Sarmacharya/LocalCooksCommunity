@@ -1,3 +1,4 @@
+import { isCurrentVisit, type VisitSchedule } from '@shared/dated-visits';
 import { getCheckinSettings } from './kitchen-checkout-service';
 import { and, eq, isNull } from 'drizzle-orm';
 import { db } from '../db';
@@ -33,12 +34,14 @@ export function changedKitchenSections(before: Checklist, after: Checklist): Kit
 
 /** Closed/pending checkout visits never receive these notices, including split visits. */
 export function eligibleInstructionSections(booking: typeof kitchenBookings.$inferSelect, timezone: string,
-  visits: Array<Pick<typeof kitchenBookingVisits.$inferSelect, 'checkinStatus' | 'startTime' | 'endTime'> & { blockIndex?: number }>,
+  visits: Array<Pick<typeof kitchenBookingVisits.$inferSelect, 'checkinStatus' | 'startTime' | 'endTime'> & VisitSchedule>,
   sections: KitchenChecklistSection[], now = new Date(), preparationHours = lifecycleSettings.preparationReminderHours.defaultValue, checkinWindowMinutesBefore = 15): KitchenChecklistSection[] {
   if (booking.status !== 'confirmed' || !booking.chefId) return [];
   if (!bookingInstructionRelease(booking, timezone, visits, preparationHours, checkinWindowMinutesBefore, now).instructionsReleased) return [];
+  visits = visits.filter(visit => isCurrentVisit(booking, visit));
   if (visits.length) {
-    const blocks = reminderVisitTimes(booking, timezone);
+    const blocks = reminderVisitTimes(booking, timezone, visits);
+    if (booking.scheduleRevision && blocks.some(block => block.end > now && visits.some(visit => visit.blockIndex === block.index && visit.checkinStatus === 'not_checked_in'))) return sections;
     const upcoming = blocks[0]?.start > now && visits.every(visit => visit.checkinStatus === 'not_checked_in');
     if (upcoming) return sections;
     return visits.some(visit => visit.checkinStatus === 'checked_in') ? sections.filter(section => section.startsWith('departure')) : [];
@@ -110,7 +113,7 @@ export async function currentKitchenInstructionEmail(bookingId: number, metadata
   if (!sections.length) return null;
   const titles: Record<KitchenChecklistSection, string> = { arrivalInstructions: 'Arrival instructions', departureInstructions: 'Departure instructions',
     arrivalTasks: 'Arrival tasks and photos', departureTasks: 'Departure tasks and photos' };
-  const blocks = reminderVisitTimes(row.booking, timezone);
+  const blocks = reminderVisitTimes(row.booking, timezone, row.visits);
   const updates = sections.map(section => {
     const fields = kitchenChecklistSections[section];
     const facts = fields.flatMap(field => {

@@ -1,3 +1,4 @@
+import { ensureKitchenBookingVisits } from './kitchen-booking-visits';
 import type Stripe from 'stripe';
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db';
@@ -123,6 +124,7 @@ export async function fulfillQuotedKitchenBooking(session: Stripe.Checkout.Sessi
           cancellationPolicyHours: parseCheckoutCancellationPolicy(metadata.cancellation_policy_hours),
           cancellationPolicySnapshot: cancellationSnapshotFromMetadata(metadata),
           specialNotes: metadata.special_notes || null, stripeCustomerId: customerId, stripePaymentMethodId: paymentMethodId }).returning();
+        await ensureKitchenBookingVisits(parent.id, tx);
         const equipmentItems: Record<string, unknown>[] = [];
         for (const [listingId, price] of prices.e) {
           const [listing] = await tx.select().from(equipmentListings).where(and(eq(equipmentListings.id, listingId), eq(equipmentListings.kitchenId, kitchenId))).limit(1);

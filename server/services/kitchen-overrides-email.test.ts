@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { PgDialect } from 'drizzle-orm/pg-core';
-import { createBookingDateTime } from '@shared/timezone-utils';
 
 const state = vi.hoisted(() => ({ defaults: {} as any, overrides: new Map<number, any>(), kitchens: [] as any[],
   bookings: [] as any[], visits: [] as any[], events: [] as any[], chef: {} as any, notifications: [] as any[], writes: [] as string[], wakeup: vi.fn() }));
@@ -61,11 +60,6 @@ vi.mock('../db', () => {
 });
 vi.mock('./notification.service', () => ({ notificationService: { create: async (notice: any) => { state.notifications.push(notice); } } }));
 vi.mock('../utils/user-display', () => ({ getUserDisplayName: async () => 'Alex' }));
-vi.mock('./advance-reminders', () => ({
-  reminderVisitTimes: (booking: any, timezone: string) => [{ startTime: booking.startTime, endTime: booking.endTime,
-    start: createBookingDateTime(booking.bookingDate.toISOString().slice(0, 10), booking.startTime, timezone),
-    end: createBookingDateTime(booking.bookingDate.toISOString().slice(0, 10), booking.endTime, timezone) }],
-}));
 import { db } from '../db';
 import { kitchenChecklistSetup, setKitchenChecklistOverrides, queueLocationInstructionUpdates, validateKitchenOverridePatch } from './kitchen-checklist-overrides';
 import { changedKitchenSections, eligibleInstructionSections, queueKitchenInstructionUpdates, currentKitchenInstructionEmail } from './kitchen-instructions-updated';
@@ -205,4 +199,14 @@ it('skips reverted edits and recipients who no longer own the booking', async ()
   state.overrides.clear();
   expect(await currentKitchenInstructionEmail(10, state.events[0].metadata, 3, state.chef.username)).toBeNull();
   expect(await currentKitchenInstructionEmail(10, state.events[0].metadata, 2, 'manager@test.ca')).toBeNull();
+});
+
+it('keeps shared instruction updates available to remaining dated days after the first visit', () => {
+  const booking = { ...state.bookings[0], scheduleRevision: 1, bookingDate: new Date('2026-10-12'), startTime: '09:00', endTime: '11:00' };
+  const visits = ['2026-10-12', '2026-10-16'].map((visitDate, blockIndex) => ({ id: 10 + blockIndex, blockIndex,
+    visitDate, scheduleRevision: 1, scheduleState: 'active', startTime: '09:00', endTime: '11:00',
+    operatingWindowStartTime: '08:00', checkinStatus: blockIndex ? 'not_checked_in' : 'checked_out' }));
+  expect(eligibleInstructionSections(booking, 'UTC', visits, [...all], new Date('2026-10-14T12:00Z'))).toEqual(all);
+  visits[1].scheduleState = 'cancelled';
+  expect(eligibleInstructionSections(booking, 'UTC', visits, [...all], new Date('2026-10-14T12:00Z'))).toEqual([]);
 });

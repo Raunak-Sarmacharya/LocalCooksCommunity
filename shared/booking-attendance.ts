@@ -1,3 +1,4 @@
+import { type VisitSchedule } from './dated-visits';
 import { calendarDateForBookingTime } from './operating-hours';
 import { DEFAULT_TIMEZONE } from './timezone-utils';
 import { matchingLocalInstants } from './booking-dst';
@@ -23,11 +24,11 @@ export function bookingOperationsComplete(booking: Parameters<typeof bookingAtte
 }
 
 /** A separated visit ends independently, using the reservation's operating day. */
-export function visitAttendanceEnd(booking: Parameters<typeof bookingAttendanceEnd>[0], visit: { startTime: string; endTime: string; blockIndex?: number | null }) {
+export function visitAttendanceEnd(booking: Parameters<typeof bookingAttendanceEnd>[0], visit: VisitSchedule & { startTime: string; endTime: string }) {
   const saved = (booking.visitDuties as { clockCloseout?: CloseoutSnapshot } | null)?.clockCloseout;
   // Saved instants are matched by block index, never by hours: two dates may share the same hours.
   const clock = saved ? savedClockForVisit(saved, visit) : undefined;
-  return clock ? new Date(clock.scheduledEndAt) : bookingAttendanceEnd({ ...booking, visitDuties: undefined, endTime: visit.endTime });
+  return clock ? new Date(clock.scheduledEndAt) : bookingAttendanceEnd({ ...booking, visitDuties: undefined, bookingDate: visit.visitDate || booking.bookingDate, startTime: visit.startTime, operatingWindowStartTime: visit.operatingWindowStartTime || booking.operatingWindowStartTime, endTime: visit.endTime });
 }
 
 /** Missing tracking is unknown attendance, including when tracking is optional. */

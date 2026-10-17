@@ -1024,3 +1024,22 @@ describe('preparation notice after an in-window confirmation', () => {
     expect(confirmedInsidePreparationWindow([], due)).toBe(false);
   });
 });
+
+describe('CP2 daily reminder readers', () => {
+  it('keeps same-hour dates distinct and removes cancelled/superseded resources', async () => {
+    state.booking.scheduleRevision = 2;
+    state.visits = ['2026-10-05', '2026-10-08', '2026-10-09'].map((visitDate, blockIndex) => ({ id: 30 + blockIndex, bookingId: 10,
+      blockIndex: blockIndex + 5, visitDate, scheduleRevision: 2, scheduleState: 'active', operatingWindowStartTime: '08:00',
+      startTime: '08:00', endTime: '12:00', checkinStatus: 'not_checked_in' }));
+    state.booking.visitDuties = { version: 2, source: 'confirmation', checkinWindowMinutesBefore: 15, checkoutReviewWindowMinutes: 60,
+      arrival: { enabled: true, items: [], photos: [] }, departure: { enabled: true, items: [], photos: [] },
+      clockCloseout: makeCloseoutSnapshot(state.booking, 'UTC', { checkinWindowMinutesBefore: 15, serviceEndGraceMinutes: 15, inspectionAutoCloseHours: 24 }, state.visits) };
+    let reminders = await currentReminders(state.db, 'booking', 10, policy, now);
+    const resources = new Set(reminders.map(r => r.resource));
+    expect(resources.size).toBe(3);
+    state.visits[1].scheduleState = 'cancelled'; state.visits[2].scheduleRevision = 1;
+    reminders = await currentReminders(state.db, 'booking', 10, policy, now);
+    expect(new Set(reminders.map(r => r.resource)).size).toBe(1);
+    expect(reminders.every(r => r.resource.endsWith('visit-5'))).toBe(true);
+  });
+});

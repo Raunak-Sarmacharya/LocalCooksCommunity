@@ -54,6 +54,21 @@ describe('chef running-late heads-up', () => {
     state.rows = [booking(), [], []];
     expect((await report(15, '2026-10-14T12:30:00Z')).created).toBe(true);
   });
+  it('counts running-late updates for the selected dated day independently', async () => {
+    const visits = [{ id: 22, blockIndex: 0, visitDate: '2026-10-14', scheduleRevision: 1, scheduleState: 'active', checkinStatus: 'not_checked_in' }];
+    const older = [15, 30, 60].map(minutes => ({ ...event(minutes, '2026-10-12T13:00:00Z'), metadata: { ...event(minutes, '2026-10-12T13:00:00Z').metadata, visitId: 21 } }));
+    state.rows = [booking({ scheduleRevision: 1 }), visits, older];
+    expect((await report(15, '2026-10-14T13:20:00Z', { visitId: 22 })).runningLate).toMatchObject({ count: 1, visitId: 22 });
+    state.rows = [[{ ...event(15, '2026-10-14T13:20:00Z'), metadata: { ...event(15, '2026-10-14T13:20:00Z').metadata, visitId: 22, scheduleRevision: 1 } }, ...older], [{ scheduleRevision: 1 }], visits];
+    expect(await readRunningLate(10)).toMatchObject({ count: 1, visitId: 22 });
+  });
+  it('drops running-late evidence for a cancelled day or an old schedule from current readers', async () => {
+    const dated = { ...event(15, '2026-10-14T13:20:00Z'), metadata: { ...event(15, '2026-10-14T13:20:00Z').metadata, scheduleRevision: 1, visitId: 22 } };
+    state.rows = [[dated], [{ scheduleRevision: 1 }], [{ id: 22, visitDate: '2026-10-14', scheduleRevision: 1, scheduleState: 'cancelled' }]];
+    expect(await readRunningLate(10)).toBeNull();
+    state.rows = [[dated], [{ scheduleRevision: 2 }], [{ id: 22, visitDate: '2026-10-14', scheduleRevision: 1, scheduleState: 'active' }]];
+    expect(await readRunningLate(10)).toBeNull();
+  });
   it('reads the latest heads-up back with the number sent', async () => {
     state.rows = [[event(30, '2026-10-14T13:20:00Z'), event(15, '2026-10-14T13:05:00Z')]];
     expect(await readRunningLate(10)).toMatchObject({ minutes: 30, count: 2, visitId: null });

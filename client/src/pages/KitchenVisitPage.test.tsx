@@ -79,6 +79,38 @@ describe("full-page kitchen visit", () => {
   });
   afterEach(() => { cleanup(); clients.forEach(value => value.clear()); vi.unstubAllGlobals(); });
 
+  it('opens a dated day-2 URL and copies matching tasks only, still requiring new photos and confirmation', async () => {
+    const date = new Date().toISOString().slice(0, 10);
+    const previous = new Date(); previous.setUTCDate(previous.getUTCDate() - 3);
+    const pastDate = previous.toISOString().slice(0, 10);
+    status = visit({ scheduleRevision: 1, bookingDate: pastDate,
+      currentVisitDuties: { version: 2, arrival: { ...section,
+        items: [{ id: 'clean', label: 'Check counter', required: true }, { id: 'new', label: 'New task', required: true }],
+        photos: [{ id: 'today', label: 'Today photo', required: true }] }, departure: section },
+      visits: [{ id: 11, blockIndex: 4, visitDate: pastDate, startTime: '00:00', endTime: '23:59', checkinStatus: 'no_show',
+        checkinChecklistItems: [{ id: 'clean', label: 'Old counter label', checked: true }, { id: 'removed', label: 'Removed', checked: true }] },
+      { id: 12, blockIndex: 7, visitDate: date, startTime: '00:00', endTime: '23:59', checkinStatus: 'not_checked_in' }] });
+    setup(true, '/booking/901/visit?visitId=12');
+    const confirm = await screen.findByRole('button', { name: 'Confirm check-in' });
+    fireEvent.click(screen.getByRole('button', { name: 'Same as previous visit' }));
+    expect(screen.getByRole('checkbox', { name: /Check counter/ })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: /New task/ })).not.toBeChecked();
+    expect(screen.queryByText('Removed')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('checkbox', { name: /New task/ }));
+    expect(confirm).toBeDisabled(); expect(posts()).toHaveLength(0);
+    expect(screen.getByText('Today photo')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Day 2 of 2/ })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('keeps a removed dated visit URL from falling through to a different mutable day', async () => {
+    status = visit({ scheduleRevision: 2, visits: [{ id: 12, blockIndex: 7, visitDate: status.bookingDate,
+      startTime: '00:00', endTime: '23:59', checkinStatus: 'not_checked_in' }] });
+    setup(true, '/booking/901/visit?visitId=11');
+    expect(await screen.findByRole('alert')).toHaveTextContent('no longer in the current schedule');
+    expect(screen.queryByRole('button', { name: 'Confirm check-in' })).not.toBeInTheDocument();
+    expect(posts()).toHaveLength(0);
+  });
+
   it('keeps required arrival photos before Confirm and instructions collapsed after the form', async () => {
     status.currentVisitDuties = { ...status.currentVisitDuties, arrival: { ...section,
       photos: [{ id: 'floor', label: 'Floor photo', required: true }] } } as any;

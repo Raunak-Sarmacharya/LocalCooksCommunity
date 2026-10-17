@@ -9,13 +9,16 @@ vi.mock('../db', () => {
   const database = (rows: Record<string, any[]>) => {
     const name = (table: any) => table[Symbol.for('drizzle:Name')];
     return {
+      execute: async () => [],
       select: () => ({ from: (table: any) => {
-        const chain: any = { innerJoin: () => chain, where: () => chain, limit: () => chain,
+        const chain: any = { innerJoin: () => chain, where: () => chain, limit: () => chain, orderBy: () => chain,
           then: (resolve: any) => resolve(rows[name(table)] || []) }; return chain;
       } }),
       insert: (table: any) => ({ values: (data: any) => {
-        const save = () => { const row = { id: state.next++, ...data }; (rows[name(table)] ||= []).push(row); return [row]; };
-        return { returning: async () => save(), then: (resolve: any) => resolve(save()) };
+        const save = () => { const saved = (Array.isArray(data) ? data : [data]).map(value => ({ id: state.next++, ...value }));
+          (rows[name(table)] ||= []).push(...saved); return saved; };
+        const query = { returning: async () => save(), then: (resolve: any) => resolve(save()), onConflictDoNothing: () => query };
+        return query;
       } }),
       update: (table: any) => ({ set: (data: any) => ({ where: async () => { for (const row of rows[name(table)] || []) Object.assign(row, data); } }) }),
       transaction: async (work: any) => {
@@ -35,7 +38,7 @@ const intent: any = { id: 'pi_fixture', status: 'requires_capture', amount: 2440
 describe('atomic quoted checkout fulfillment', () => {
   beforeEach(() => {
     vi.resetAllMocks(); state.next = 100;
-    Object.assign(state.rows, { kitchen_bookings: [], equipment_bookings: [], payment_transactions: [],
+    Object.assign(state.rows, { kitchen_bookings: [], kitchen_booking_visits: [], equipment_bookings: [], payment_transactions: [],
       kitchens: [{ id: 4, managerId: 2 }], equipment_listings: [{ id: 8, kitchenId: 4, equipmentType: 'Oven', sessionRate: '9999' }] });
   });
   it('keeps quoted prices after listing rates change and duplicates no items on retry', async () => {
@@ -62,6 +65,7 @@ describe('atomic quoted checkout fulfillment', () => {
     expect(state.rows.kitchen_bookings).toHaveLength(0);
     expect(state.rows.equipment_bookings).toHaveLength(0);
     expect(state.rows.payment_transactions).toHaveLength(0);
+    expect(state.rows.kitchen_booking_visits).toHaveLength(0);
     await fulfillQuotedKitchenBooking(session, intent, {} as any);
     expect(state.rows.kitchen_bookings).toHaveLength(1);
   });
@@ -71,6 +75,7 @@ describe('atomic quoted checkout fulfillment', () => {
     const id = await fulfillQuotedKitchenBooking(split, intent, {} as any);
     expect(state.rows.kitchen_bookings[0]).toMatchObject({ totalPrice: '2000', durationHours: '2', hourlyRate: '500',
       selectedSlots: [{ startTime: '09:00', endTime: '10:00' }, { startTime: '14:00', endTime: '15:00' }] });
+    expect(state.rows.kitchen_booking_visits.map(v => v.startTime)).toEqual(['09:00', '14:00']);
     expect(await fulfillQuotedKitchenBooking(split, intent, {} as any)).toBe(id);
     expect(state.rows.payment_transactions).toHaveLength(1);
   });

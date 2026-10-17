@@ -319,6 +319,7 @@ export async function requestKitchenCheckin(
     const [booking] = await db
       .select({
         id: kitchenBookings.id,
+        scheduleRevision: kitchenBookings.scheduleRevision,
         updatedAt: kitchenBookings.updatedAt,
         chefId: kitchenBookings.chefId,
         status: kitchenBookings.status,
@@ -338,6 +339,7 @@ export async function requestKitchenCheckin(
       .limit(1);
 
     if (!booking) return { success: false, error: 'Booking not found' };
+    if (booking.scheduleRevision > 0) return { success: false, error: 'Choose a dated visit for this action' };
     if (booking.chefId !== chefId) return { success: false, error: 'You do not have permission to check in to this booking' };
     const arrival: ArrivalInput = { bookingId, visitId: null, chefId, visitCode, requestKey,
       evidence: { checkinNotes, checkinPhotoUrls, checkinChecklistItems } };
@@ -482,6 +484,7 @@ export async function requestKitchenCheckout(
     const [booking] = await db
       .select({
         id: kitchenBookings.id,
+        scheduleRevision: kitchenBookings.scheduleRevision,
         updatedAt: kitchenBookings.updatedAt,
         chefId: kitchenBookings.chefId,
         status: kitchenBookings.status,
@@ -499,6 +502,7 @@ export async function requestKitchenCheckout(
       .limit(1);
 
     if (!booking) return { success: false, error: 'Booking not found' };
+    if (booking.scheduleRevision > 0) return { success: false, error: 'Choose a dated visit for this action' };
     if (booking.chefId !== chefId) return { success: false, error: 'You do not have permission for this booking' };
 
     // Late departure: still checked in after the booked end (the booking may already read "completed"). Allowed until
@@ -613,6 +617,7 @@ export async function processKitchenCheckoutClaim(
     const [booking] = await db
       .select({
         id: kitchenBookings.id,
+        scheduleRevision: kitchenBookings.scheduleRevision,
         chefId: kitchenBookings.chefId,
         checkinStatus: kitchenBookings.checkinStatus,
         kitchenId: kitchenBookings.kitchenId,
@@ -625,6 +630,7 @@ export async function processKitchenCheckoutClaim(
       .limit(1);
 
     if (!booking) return { success: false, error: 'Booking not found' };
+    if (booking.scheduleRevision > 0) return { success: false, error: 'Choose a dated visit for this action' };
 
     const hasPermission = await verifyManagerPermission(bookingId, managerId);
     if (!hasPermission) return { success: false, error: 'You do not have permission to review this checkout' };

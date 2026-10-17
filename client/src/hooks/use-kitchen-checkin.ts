@@ -27,6 +27,8 @@ export type KitchenCheckinStatus =
   | "checkout_claim_filed";
 
 export interface CheckinStatusData {
+  visitUnavailable?: boolean;
+  scheduleRevision?: number;
   closeout?: BookingCloseout;
   visitCloseout?: VisitCloseout;
   visitDuties?: VisitDuties;
@@ -64,6 +66,8 @@ export interface CheckinStatusData {
   visits?: Array<{
     id: number;
     blockIndex: number;
+    visitDate?: string | null;
+    operatingWindowStartTime?: string | null;
     closeout?: VisitCloseout;
     startTime: string;
     endTime: string;
@@ -176,6 +180,7 @@ export function useKitchenCheckin(bookingId: number | null, selectedVisitId?: nu
       visitCode?: string; requestKey?: string }
   >({
     mutationFn: async ({ checkinNotes, checkinPhotoUrls, checkinChecklistItems, visitCode, requestKey }) => {
+      if (status?.visitUnavailable) throw new Error('This visit is no longer in the current schedule');
       const headers = await getAuthHeaders();
       const response = await fetch(
         `/api/chef/bookings/${bookingId}/checkin`,
@@ -214,6 +219,7 @@ export function useKitchenCheckin(bookingId: number | null, selectedVisitId?: nu
     { checkoutNotes?: string; checkoutPhotoUrls?: string[]; checkoutChecklistItems?: Array<{ id: string; label: string; checked: boolean }> }
   >({
     mutationFn: async ({ checkoutNotes, checkoutPhotoUrls, checkoutChecklistItems }) => {
+      if (status?.visitUnavailable) throw new Error('This visit is no longer in the current schedule');
       const headers = await getAuthHeaders();
       const response = await fetch(
         `/api/chef/bookings/${bookingId}/checkout`,
@@ -242,22 +248,25 @@ export function useKitchenCheckin(bookingId: number | null, selectedVisitId?: nu
 
   const rawStatus = statusQuery.data;
   const visits = rawStatus?.visits || [];
+  const visitUnavailable = !!selectedVisitId && !visits.some(visit => visit.id === selectedVisitId);
   const currentVisit = visits.find(visit => visit.id === selectedVisitId)
-    || visits.find(visit => visit.checkinStatus === 'checked_in')
+    || visits.find(visit => ['arrival_window', 'in_booked_time'].includes(visit.closeout?.phase || ''))
+    || visits.find(visit => visit.checkinStatus === 'checked_in' && (!visit.closeout || lateCheckoutOpen(visit.closeout)))
     || visits.find(visit => {
       if (['checked_out', 'no_show', 'checkout_claim_filed'].includes(visit.checkinStatus)) return false;
-      const date = rawStatus!.bookingDate.split('T')[0];
+      if (visit.closeout) return Date.parse(visit.closeout.scheduledEndAt) >= Date.now();
+      const date = (visit.visitDate || rawStatus!.bookingDate).split('T')[0];
       const endDate = calendarDateForBookingTime(date, visit.endTime, rawStatus!.operatingWindowStartTime, visit.startTime);
       return createBookingDateTime(endDate, visit.endTime, rawStatus!.timezone || DEFAULT_TIMEZONE) >= new Date();
     }) || visits[visits.length - 1];
   const status = rawStatus && currentVisit ? {
-    ...rawStatus, ...currentVisit, closeout: rawStatus.closeout, visitCloseout: currentVisit.closeout, visitId: currentVisit.id,
-  } : rawStatus;
+    ...rawStatus, ...currentVisit, status: visitUnavailable ? 'schedule_unavailable' : rawStatus.status, visitUnavailable, runningLate: rawStatus.runningLate?.visitId === currentVisit.id ? rawStatus.runningLate : null, bookingDate: currentVisit.visitDate || rawStatus.bookingDate, closeout: rawStatus.closeout, visitCloseout: currentVisit.closeout, visitId: currentVisit.id,
+  } : rawStatus ? { ...rawStatus, visitUnavailable } : undefined;
 
   // Helpers
   const canCheckin = (): boolean => {
     const s = status;
-    if (!s) return false;
+    if (!s || s.visitUnavailable || s.scheduleRevision && !s.visitId) return false;
     if (s.status !== "confirmed") return false;
     if (["booked_time_ended", "ended"].includes((s.visitCloseout || s.closeout?.visits[0])?.phase || "")) return false;
     if (
@@ -275,8 +284,9 @@ export function useKitchenCheckin(bookingId: number | null, selectedVisitId?: nu
 
     const now = new Date();
     const dateOnly = s.bookingDate.split("T")[0]; // Extract YYYY-MM-DD from ISO timestamp
-    const bookingStart = createBookingDateTime(calendarDateForBookingTime(dateOnly, s.startTime, s.operatingWindowStartTime), s.startTime, timezone);
-    const bookingEnd = createBookingDateTime(calendarDateForBookingTime(dateOnly, s.endTime, s.operatingWindowStartTime, s.startTime), s.endTime, timezone);
+    const clock = s.visitCloseout;
+    const bookingStart = clock ? new Date(clock.scheduledStartAt) : createBookingDateTime(calendarDateForBookingTime(dateOnly, s.startTime, s.operatingWindowStartTime), s.startTime, timezone);
+    const bookingEnd = clock ? new Date(clock.scheduledEndAt) : createBookingDateTime(calendarDateForBookingTime(dateOnly, s.endTime, s.operatingWindowStartTime, s.startTime), s.endTime, timezone);
     const checkinOpens = new Date(
       bookingStart.getTime() - windowMinutesBefore * 60 * 1000,
     );
@@ -286,7 +296,7 @@ export function useKitchenCheckin(bookingId: number | null, selectedVisitId?: nu
 
   const canCheckout = (): boolean => {
     const s = status;
-    if (!s) return false;
+    if (!s || s.visitUnavailable || s.scheduleRevision && !s.visitId) return false;
     const clock = s.visitCloseout || s.closeout?.visits[0];
     const phase = clock?.phase || "";
     // A chef still on site after the booked end can always check out late (the booking may already read

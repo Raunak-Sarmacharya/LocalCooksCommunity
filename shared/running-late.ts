@@ -17,7 +17,7 @@ export type RunningLateState = {
   expectedAt: string;
   note: string | null;
   visitId: number | null;
-  /** How many heads-ups the chef has sent for this booking (limit: RUNNING_LATE_MAX_PER_BOOKING). */
+  /** How many heads-ups the chef has sent for this booking (per visit for dated schedules; limit: RUNNING_LATE_MAX_PER_BOOKING). */
   count: number;
 };
 

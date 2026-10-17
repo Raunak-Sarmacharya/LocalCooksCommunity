@@ -3,8 +3,8 @@ import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { kitchenBookings, kitchenBookingVisits, kitchens, locations,
   kitchenVisitArrivalChallenges as challengeTable } from '@shared/schema';
-import { addHour, occupiedIntervals, sortTimesInOperatingWindow } from '@shared/operating-hours';
-import { bookingVisitBlocks } from '@shared/booking-visit-blocks';
+import { ensureKitchenBookingVisits } from './kitchen-booking-visits';
+import { isCurrentVisit } from '@shared/dated-visits';
 import { logger } from '../logger';
 import { queueBookingLifecycleEvent } from './booking-lifecycle-delivery';
 import { VISIT_CODE_LENGTH, VISIT_CODE_MAX_ATTEMPTS, isVisitCodeFormat, visitCodeTargetKey,
@@ -128,11 +128,17 @@ async function readByTarget(exec: Tx, targetKey: string, lock: boolean): Promise
 async function lockForBooking(exec: Tx, bookingId: number): Promise<Challenge[]> {
   const result = await exec.execute(
     sql`SELECT * FROM kitchen_visit_arrival_challenges WHERE booking_id = ${bookingId} ORDER BY visit_id NULLS FIRST, id FOR UPDATE`);
-  return rowsOf(result).map(mapRow);
+  return activeChallenges(exec, bookingId, rowsOf(result).map(mapRow));
 }
 /** Plain read (no lock, no raw SQL): safe for GET handlers. */
+async function activeChallenges(exec: Tx, bookingId: number, rows: Challenge[]) {
+  const [booking] = await exec.select({ scheduleRevision: kitchenBookings.scheduleRevision }).from(kitchenBookings).where(eq(kitchenBookings.id, bookingId)).limit(1);
+  if (!booking?.scheduleRevision) return rows;
+  const visits = await exec.select().from(kitchenBookingVisits).where(eq(kitchenBookingVisits.bookingId, bookingId));
+  return rows.filter(row => visits.some(visit => visit.id === row.visitId && isCurrentVisit(booking, visit)));
+}
 async function readForBooking(exec: Tx, bookingId: number): Promise<Challenge[]> {
-  return exec.select().from(challengeTable).where(eq(challengeTable.bookingId, bookingId)).orderBy(asc(challengeTable.id));
+  return activeChallenges(exec, bookingId, await exec.select().from(challengeTable).where(eq(challengeTable.bookingId, bookingId)).orderBy(asc(challengeTable.id)));
 }
 /** Runs inside a savepoint when possible so a missing table cannot abort the caller's transaction. */
 async function tolerant<T>(exec: Tx, fallback: T, run: (inner: Tx) => Promise<T>): Promise<T> {
@@ -154,28 +160,6 @@ export function resolveArrivalTarget(target: { bookingId: number; visitId?: numb
 // Enrollment and revocation
 // ---------------------------------------------------------------------------------------------
 
-/** Mirrors ensureKitchenBookingVisits but on the caller's transaction (the caller holds the booking lock). */
-async function ensureVisitRows(tx: Tx, bookingId: number) {
-  const existing = await tx.select().from(kitchenBookingVisits).where(eq(kitchenBookingVisits.bookingId, bookingId))
-    .orderBy(asc(kitchenBookingVisits.blockIndex));
-  if (existing.length) return existing;
-  const [booking] = await tx.select({ startTime: kitchenBookings.startTime, endTime: kitchenBookings.endTime,
-    selectedSlots: kitchenBookings.selectedSlots, operatingWindowStartTime: kitchenBookings.operatingWindowStartTime })
-    .from(kitchenBookings).where(eq(kitchenBookings.id, bookingId)).limit(1);
-  if (!booking) return [];
-  const rawSlots = Array.isArray(booking.selectedSlots) ? booking.selectedSlots : [];
-  const normalized = rawSlots.map((slot: unknown) => typeof slot === 'string' ? { startTime: slot, endTime: addHour(slot) } : slot)
-    .filter((slot): slot is { startTime: string; endTime: string } => !!slot && typeof slot === 'object'
-      && typeof (slot as { startTime?: unknown }).startTime === 'string' && typeof (slot as { endTime?: unknown }).endTime === 'string');
-  const slots = normalized.length === rawSlots.length && normalized.length ? normalized : occupiedIntervals(booking);
-  const starts = sortTimesInOperatingWindow(slots.map(slot => slot.startTime), booking.operatingWindowStartTime || booking.startTime);
-  const blocks = bookingVisitBlocks(starts.map(start => slots.find(slot => slot.startTime === start)!));
-  if (blocks.length < 2) return [];
-  await tx.insert(kitchenBookingVisits).values(blocks.map((block, blockIndex) => ({ bookingId, blockIndex, ...block }))).onConflictDoNothing();
-  return tx.select().from(kitchenBookingVisits).where(eq(kitchenBookingVisits.bookingId, bookingId))
-    .orderBy(asc(kitchenBookingVisits.blockIndex));
-}
-
 /**
  * Called inside the confirmation transaction (booking row already locked). Creates one staffed revision-1
  * challenge per arrival target. Idempotent. If the signing key is not configured it logs and leaves the
@@ -188,7 +172,9 @@ export async function ensureChallengesForBooking(tx: Tx, bookingId: number, acto
   }
   const keyVersion = currentKeyVersion();
   return tolerant(tx, 0, async inner => {
-    const visits = await ensureVisitRows(inner, bookingId);
+    const visits = await ensureKitchenBookingVisits(bookingId, inner) || [];
+    const [booking] = await inner.select({ scheduleRevision: kitchenBookings.scheduleRevision }).from(kitchenBookings).where(eq(kitchenBookings.id, bookingId)).limit(1);
+    if (booking?.scheduleRevision && !visits.length) return 0;
     const targets = visits.length ? visits.map(visit => ({ bookingId, visitId: visit.id as number | null })) : [{ bookingId, visitId: null as number | null }];
     const created = await inner.insert(challengeTable).values(targets.map(target => ({
       bookingId, visitId: target.visitId, targetKey: visitCodeTargetKey(target), mode: 'staffed' as const, revision: 1,
@@ -205,6 +191,15 @@ export async function revokeForBooking(tx: Tx, bookingId: number, reason: string
       .where(and(eq(challengeTable.bookingId, bookingId), isNull(challengeTable.revokedAt), isNull(challengeTable.consumedAt)))
       .returning({ id: challengeTable.id });
     return revoked.length;
+  });
+}
+
+/** A dropped/moved day revokes only that target; other dates keep their own codes. */
+export async function revokeForVisit(tx: Tx, bookingId: number, visitId: number, reason: string) {
+  return tolerant(tx, 0, async inner => {
+    const rows = await inner.update(challengeTable).set({ revokedAt: new Date(), revokedReason: reason, updatedAt: new Date() })
+      .where(and(eq(challengeTable.bookingId, bookingId), eq(challengeTable.visitId, visitId), isNull(challengeTable.revokedAt), isNull(challengeTable.consumedAt))).returning({ id: challengeTable.id });
+    return rows.length;
   });
 }
 
@@ -288,6 +283,11 @@ export async function verifyArrivalCode(input: ArrivalInput): Promise<ArrivalGat
 
 /** Step 2: inside the arrival transaction after booking (and visit) locks. Re-checks; never counts. */
 export async function gateArrivalInTx(tx: Tx, input: ArrivalInput): Promise<ArrivalGate> {
+  const [booking] = await tx.select({ scheduleRevision: kitchenBookings.scheduleRevision, chefId: kitchenBookings.chefId }).from(kitchenBookings).where(eq(kitchenBookings.id, input.bookingId)).limit(1);
+  if (booking?.scheduleRevision) {
+    const [visit] = input.visitId ? await tx.select().from(kitchenBookingVisits).where(and(eq(kitchenBookingVisits.id, input.visitId), eq(kitchenBookingVisits.bookingId, input.bookingId))).limit(1) : [];
+    if (!visit || !isCurrentVisit(booking, visit) || booking.chefId !== input.chefId) throw new VisitCodeError('VISIT_CODE_REVOKED');
+  }
   const { targetKey } = resolveArrivalTarget(input);
   const row = await tolerant<Challenge | undefined>(tx, undefined, inner => readByTarget(inner, targetKey, true));
   const decision = decide(row, input);

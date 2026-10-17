@@ -57,7 +57,7 @@ vi.mock('stripe', () => ({ default: class { paymentIntents = { create: state.cre
   transfers = { create: state.transfer }; balance = { retrieve: state.balance }; refunds = { create: state.refund, retrieve: state.refund }; } }));
 vi.mock('../reference-code', () => ({ generateReferenceCode: async () => 'DC-TEST' }));
 vi.mock('./damage-claim-notices', () => ({ queueDamageClaimNotice: async () => { state.events.push('notice'); } }));
-import { decideDamageClaim, disputeDamageClaim, escalateDamageClaims, fileDamageClaim, readBookingClaims, replyToClaimReview, damageClaimsReviewFirst, notifyDamageClaimBookingHolds } from './damage-claims-v2';
+import { decideDamageClaim, disputeDamageClaim, escalateDamageClaims, fileDamageClaim, readBookingClaims, readClaimFilingContext, replyToClaimReview, damageClaimsReviewFirst, notifyDamageClaimBookingHolds } from './damage-claims-v2';
 import { prepareClaimPayment, settleClaimPayment, sendClaimKitchenMoney, recoverDamageClaimMoney } from './damage-claim-money';
 import { chargeApprovedClaim, adminDecision } from './damage-claim-service';
 vi.mock('./outcome-delivery', () => ({ queueClaimOutcome: vi.fn(), attemptOutcomeDelivery: vi.fn() }));
@@ -103,6 +103,24 @@ describe('itemized filing and dispute', () => {
     state.claim = null; state.visit.checkoutRequestedAt = new Date('2026-10-01');
     await expect(fileDamageClaim(2, { bookingId: 7, visitId: 9, description: 'A damaged tray needs repair', lines: [cost], requestKey: 'file:claim:two' })).rejects.toThrow(/72 hours/);
     expect(state.create).not.toHaveBeenCalled();
+  });
+  it('uses the targeted dated visit end for its 72-hour claim window, independently of the parent date', async () => {
+    state.booking.scheduleRevision = 1; state.booking.bookingDate = new Date('2026-10-01');
+    state.visit = { ...state.visit, visitDate: '2026-10-14', scheduleRevision: 1, scheduleState: 'active', blockIndex: 4,
+      operatingWindowStartTime: '08:00', checkoutRequestedAt: null };
+    const context = await readClaimFilingContext(7, 2, 9);
+    expect(context.allowed).toBe(true); expect(context.endedAt).toBe('2026-10-14T13:30:00.000Z');
+    expect(context.deadline).toBe('2026-10-17T13:30:00.000Z');
+    state.booking.visitDuties = { clockCloseout: { version: 1, timezone: 'UTC', serviceEndGraceMinutes: 15, inspectionAutoCloseHours: 24, checkinWindowMinutesBefore: 15,
+      visits: [{ key: 'saved-day-2', blockIndex: 4, localDate: '2026-10-14', operatingDate: '2026-10-14', startTime: '09:00', endTime: '11:00',
+        scheduledStartAt: '2026-10-14T13:00:00.000Z', scheduledEndAt: '2026-10-14T15:00:00.000Z' }] } };
+    expect((await readClaimFilingContext(7, 2, 9)).deadline).toBe('2026-10-17T15:00:00.000Z');
+    state.visit.checkoutRequestedAt = new Date('2026-10-14T16:00:00Z');
+    expect((await readClaimFilingContext(7, 2, 9)).deadline).toBe('2026-10-17T16:00:00.000Z');
+    state.visit.scheduleState = 'cancelled';
+    await expect(readClaimFilingContext(7, 2, 9)).rejects.toThrow(/active visit/);
+    state.visit.scheduleState = 'active'; state.visit.scheduleRevision = 0;
+    await expect(readClaimFilingContext(7, 2, 9)).rejects.toThrow(/active visit/);
   });
   it('requires a dispute note, saves optional photos, and opens review without charging', async () => {
     await expect(disputeDamageClaim(1, 5, { note: 'No' })).rejects.toThrow(/10 characters/);

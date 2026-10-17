@@ -1,9 +1,10 @@
+import { isCurrentVisit } from '@shared/dated-visits';
 import { getUserDisplayName } from '../utils/user-display';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { kitchenBookings, kitchenBookingVisits, kitchenBookingAttendanceEvents, kitchenBookingExtensions, bookingLifecycleEvents, kitchens, locations, paymentHistory, paymentTransactions } from '@shared/schema';
 import { buildBookingHistory } from '@shared/booking-history';
-import { bookingAttendanceEnd, bookingOperationsComplete, hasBookingAttendanceEvidence, visitAttendanceEnd } from '@shared/booking-attendance';
+import { bookingAttendanceEnd, hasBookingAttendanceEvidence, visitAttendanceEnd } from '@shared/booking-attendance';
 import { queueBookingLifecycleEvent } from './booking-lifecycle-delivery';
 
 export type AttendanceActor = { id: number; role: 'chef' | 'manager' | 'admin' };
@@ -58,7 +59,7 @@ export async function readBookingAttendance(bookingId: number, actor: Attendance
     ? await db.select().from(kitchenBookingAttendanceEvents).where(eq(kitchenBookingAttendanceEvents.bookingId, bookingId)).orderBy(asc(kitchenBookingAttendanceEvents.id))
     : await db.select(publicFields).from(kitchenBookingAttendanceEvents).where(eq(kitchenBookingAttendanceEvents.bookingId, bookingId)).orderBy(asc(kitchenBookingAttendanceEvents.id));
   const visits = await db.select({ id: kitchenBookingVisits.id, blockIndex: kitchenBookingVisits.blockIndex, startTime: kitchenBookingVisits.startTime,
-    endTime: kitchenBookingVisits.endTime, checkinStatus: kitchenBookingVisits.checkinStatus,
+    endTime: kitchenBookingVisits.endTime, visitDate: kitchenBookingVisits.visitDate, scheduleRevision: kitchenBookingVisits.scheduleRevision, scheduleState: kitchenBookingVisits.scheduleState, operatingWindowStartTime: kitchenBookingVisits.operatingWindowStartTime, checkinStatus: kitchenBookingVisits.checkinStatus,
     assistanceHistory: kitchenBookingVisits.assistanceHistory,
     updatedAt: kitchenBookingVisits.updatedAt }).from(kitchenBookingVisits)
     .where(eq(kitchenBookingVisits.bookingId, bookingId)).orderBy(asc(kitchenBookingVisits.blockIndex));
@@ -66,10 +67,14 @@ export async function readBookingAttendance(bookingId: number, actor: Attendance
     id: event.id, visitId: event.visitId, action: event.action, actorRole: event.actorRole,
     sharedMessage: event.sharedMessage, createdAt: event.createdAt,
   }));
+  const active = visits.filter(visit => isCurrentVisit(context.booking, visit));
+  const scheduledEnd = context.booking.scheduleRevision
+    ? active.length ? new Date(Math.max(...active.map(visit => visitAttendanceEnd({ ...context.booking, timezone: context.timezone }, visit).getTime()))) : null
+    : bookingAttendanceEnd({ ...context.booking, timezone: context.timezone });
   return { bookingId, status: context.booking.status, checkinStatus: context.booking.checkinStatus,
-    updatedAt: context.booking.updatedAt, scheduledEnd: bookingAttendanceEnd({ ...context.booking, timezone: context.timezone }),
+    updatedAt: context.booking.updatedAt, scheduledEnd,
     assistanceHistory: context.booking.assistanceHistory,
-    operationsComplete: bookingOperationsComplete({ ...context.booking, timezone: context.timezone }), visits: visits.map(visit => ({ ...visit,
+    operationsComplete: !!scheduledEnd && ['confirmed', 'completed', 'cancellation_requested'].includes(context.booking.status) && Date.now() >= scheduledEnd.getTime(), visits: active.map(visit => ({ ...visit,
       scheduledEnd: visitAttendanceEnd({ ...context.booking, timezone: context.timezone }, visit),
       operationsComplete: ['confirmed', 'completed'].includes(context.booking.status) && Date.now() >= visitAttendanceEnd({ ...context.booking, timezone: context.timezone }, visit).getTime(),
     })), history: visibleHistory };
@@ -103,6 +108,8 @@ export async function recordBookingAttendance(bookingId: number, actor: Attendan
     if ((visits.length > 0 && !visit) || (input.visitId !== undefined && !visit)) throw new AttendanceError('Choose a visit belonging to this booking');
     if (visit) await tx.execute(sql`SELECT id FROM kitchen_booking_visits WHERE id = ${visit.id} FOR UPDATE`);
     const [currentVisit] = visit ? await tx.select().from(kitchenBookingVisits).where(eq(kitchenBookingVisits.id, visit.id)).limit(1) : [];
+    if (context.booking.scheduleRevision && (!currentVisit || !isCurrentVisit(context.booking, currentVisit)))
+      throw new AttendanceError('Choose an active visit from the current booking schedule', 409);
     const current = currentVisit || context.booking;
     if (!input.expectedUpdatedAt || new Date(input.expectedUpdatedAt).getTime() !== current.updatedAt.getTime())
       throw new AttendanceError('The visit record changed; refresh before saving', 409);

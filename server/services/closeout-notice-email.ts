@@ -55,7 +55,9 @@ export async function currentCloseoutEmail(bookingId: number, kind: CloseoutNoti
   const evidence = await reader.select().from(kitchenBookingVisits).where(eq(kitchenBookingVisits.bookingId, bookingId)).orderBy(asc(kitchenBookingVisits.blockIndex));
   // A "They came" statement from the kitchen counts as attended (WP-N); money never reads this.
   const { withReportedAttendance } = await import('./clock-closeout');
-  const closeout = await withReportedAttendance(bookingId, reduceClockCloseout(booking, evidence, saved, new Date()), reader);
+  let closeout = await withReportedAttendance(bookingId, reduceClockCloseout(booking, evidence, saved, new Date()), reader);
+  if (booking.scheduleRevision && metadata.visitKey) closeout = { ...closeout, visits: closeout.visits.filter(visit => visit.key === metadata.visitKey || visit.clockKey === metadata.visitKey) };
+  if (!closeout.visits.length) return null;
   // Notices already queued for a booking that finished before the rollout cutover are dropped too.
   const cutover = await getSavedCloseoutNotificationsFrom(reader);
   if (cutover && new Date(saved.serviceEndedAt ?? closeout.serviceEndedAt) < cutover) return null;
@@ -63,7 +65,7 @@ export async function currentCloseoutEmail(bookingId: number, kind: CloseoutNoti
   // A visit that never took place (reported no-show) has nothing to announce.
   if (closeout.visits.every(visit => visit.attendance === 'no_show')) return null;
   const rows = closeout.visits.map((visit: VisitCloseout) => ({ visit,
-    row: matchVisitEvidence(evidence, visit.blockIndex, visit.localDate) || (closeout.visits.length === 1 && !evidence.length ? booking : undefined) }));
+    row: matchVisitEvidence(evidence, visit.blockIndex, visit.localDate, visit.operatingDate) || (closeout.visits.length === 1 && !evidence.length ? booking : undefined) }));
   let settled: VisitCloseout | undefined;
   if (kind === 'inspection_auto_closed') {
     settled = closeout.visits.find(visit => visit.key === metadata.visitKey || visit.clockKey === metadata.visitKey);
@@ -73,14 +75,14 @@ export async function currentCloseoutEmail(bookingId: number, kind: CloseoutNoti
   const chefName = clean(await getUserDisplayName(booking.chefId!, 'chef', reader));
   const recipientName = clean(await getUserDisplayName(recipientId, chefIsRecipient ? 'chef' : 'manager', reader)) || to.split('@')[0];
   const reference = booking.referenceCode || `KB-${bookingId}`;
-  const firstStart = saved.visits[0].scheduledStartAt;
+  const firstStart = closeout.visits[0].scheduledStartAt;
   const date = formatInTimezone(new Date(firstStart), 'MMMM d, yyyy', timezone);
   const zone = friendlyTimezoneName(timezone);
   const possessive = chefName ? `${chefName}’s` : 'The chef’s';
   const place = [{ label: 'Kitchen', value: kitchen.name }, { label: 'Location', value: location.name,
     ...(location.address ? { url: 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(location.address) } : {}) },
-    { label: saved.visits.length > 1 ? 'Scheduled visits' : 'Scheduled time',
-      value: saved.visits.map(visit => timeRange(visit.scheduledStartAt, visit.scheduledEndAt, timezone)).join('\n') + ` (${zone})` },
+    { label: closeout.visits.length > 1 ? 'Scheduled visits' : 'Scheduled time',
+      value: closeout.visits.map(visit => timeRange(visit.scheduledStartAt, visit.scheduledEndAt, timezone)).join('\n') + ` (${zone})` },
     { label: 'Reference', value: reference }];
   const bookingUrl = `${getAppBaseUrl(chefIsRecipient ? 'chef' : 'kitchen')}${chefIsRecipient ? '' : '/manager'}/booking/${bookingId}`;
   let feedbackAction: { label: string; url: string } | undefined;
@@ -95,7 +97,7 @@ export async function currentCloseoutEmail(bookingId: number, kind: CloseoutNoti
 
   // WP-N: the booked time ended and nobody recorded an arrival. Ask the kitchen; tell the chef plainly (no "complete", no rating).
   const noArrival = kind === 'service_ended' && closeout.visits.every(visit => visit.attendance === 'unknown')
-    && !(evidence.length ? evidence : [booking]).some(row => row.checkinStatus === 'checked_in');
+    && !rows.some(({ row }) => row?.checkinStatus === 'checked_in');
   if (noArrival) {
     const { noArrivalRoleText } = await import('./clock-closeout');
     const copy = await noArrivalRoleText({ booking, kitchenName: kitchen.name, timezone }, closeout, chefName);
@@ -126,7 +128,7 @@ export async function currentCloseoutEmail(bookingId: number, kind: CloseoutNoti
   if (chefIsRecipient) {
     await ensureServerI18n();
     const claims = await reader.select().from(damageClaims).where(eq(damageClaims.kitchenBookingId, bookingId)).orderBy(asc(damageClaims.id));
-    const claimSummary = claims.filter(claim => claim.claimVersion === 2 && claim.chefVisibleAt).map(claim =>
+    const claimSummary = claims.filter(claim => claim.claimVersion === 2 && claim.chefVisibleAt && (!booking.scheduleRevision || closeout.visits.some(visit => visit.visitId === claim.kitchenBookingVisitId))).map(claim =>
       tLocale(recipient.locale, claim.status === 'charge_succeeded' ? 'bnChefClaimPaid'
         : ['resolved', 'rejected'].includes(claim.status) ? 'bnChefClaimClosed' : 'bnChefClaimOpen', { ns: 'booking', kitchen: kitchen.name,
           amount: new Intl.NumberFormat(recipient.locale || 'en-CA', { style: 'currency', currency: 'CAD' }).format((claim.finalAmountCents ?? claim.claimedAmountCents) / 100),
@@ -148,7 +150,7 @@ export async function currentCloseoutEmail(bookingId: number, kind: CloseoutNoti
   }
 
   const due = closeout.visits.filter(visit => ['due', 'not_due'].includes(visit.inspection.outcome));
-  const inspectionUrl = `${bookingUrl}/inspection`;
+  const inspectionUrl = `${bookingUrl}/inspection${booking.scheduleRevision && closeout.visits.length === 1 ? `?visitId=${closeout.visits[0].visitId}` : ''}`;
   return renderTransactionalEmail({ to, recipientName,
     subject: `${possessive} visit at ${kitchen.name} has ended · ${reference}`,
     heading: `${possessive} visit has ended`,

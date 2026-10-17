@@ -1,3 +1,4 @@
+import { requireCurrentVisit } from '@shared/dated-visits';
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { kitchenBookings, kitchenBookingVisits, kitchens, locations, storageBookings, storageListings } from '@shared/schema';
@@ -47,6 +48,7 @@ export async function assistKitchenVisit(bookingId: number, managerId: number, i
     const visits = await tx.select().from(kitchenBookingVisits).where(eq(kitchenBookingVisits.bookingId, bookingId));
     const visit = visits.find(row => row.id === input.visitId);
     if (visits.length && !visit || input.visitId !== undefined && !visit) throw Error('Choose a visit belonging to this booking');
+    requireCurrentVisit(context.booking, visit);
     // "Record when they left": the booked time is over (the booking may already read "completed") but the chef never
     // checked out. Allowed until that visit's inspection window closes.
     const lateDeparture = context.booking.status === 'completed' && input.action === 'departure' && (visit || context.booking).checkinStatus === 'checked_in'

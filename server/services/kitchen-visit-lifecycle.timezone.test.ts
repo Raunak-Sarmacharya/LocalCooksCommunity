@@ -5,8 +5,8 @@ const state = vi.hoisted(() => ({ context: {} as any, duties: {} as any, parent:
   method: 'self' as 'code' | 'self', verify: vi.fn(), writes: [] as any[], conditions: [] as any[], won: true, queue: vi.fn(), capture: vi.fn(), checkin: vi.fn(), checkout: vi.fn(), lateOpen: vi.fn(async () => false), persist: vi.fn(async () => ({ changed: true })) }));
 vi.mock('../db', () => {
   const db: any = {
-    select: (projection: any) => { const q: any = { from: () => q, innerJoin: () => q, where: () => q,
-      limit: async () => [projection.visit ? state.context : state.parent] }; return q; },
+    select: (projection?: any) => { const q: any = { from: () => q, innerJoin: () => q, where: () => q,
+      limit: async () => [projection?.visit ? state.context : projection ? state.parent : state.context.visit] }; return q; },
     execute: async () => [],
     update: () => ({ set: (values: any) => ({ where: (condition: any) => {
       state.conditions.push(condition);
@@ -133,6 +133,18 @@ describe('split kitchen visit timezone (mocked DB and notifications, real time h
     state.context.visit.checkinStatus = 'checked_in'; const now = new Date('2026-10-02T16:25:00Z'); vi.setSystemTime(now);
     expect((await checkoutKitchenVisit(10, 5, 3)).success).toBe(true);
     expect(state.writes[0]).toMatchObject({ checkoutRequestedAt: now, actualEndTime: '09:25', updatedAt: now });
+  });
+  it('allows day 2 arrival after day 1 was missed, using the selected date and anchor', async () => {
+    state.context.booking.scheduleRevision = 1; state.parent.scheduleRevision = 1;
+    state.context.visit = { ...state.context.visit, visitDate: '2026-10-05', scheduleRevision: 1, scheduleState: 'active', blockIndex: 2,
+      operatingWindowStartTime: '08:00' };
+    vi.setSystemTime(new Date('2026-10-05T16:00:00Z'));
+    expect(await checkinKitchenVisit(10, 5, 3)).toMatchObject({ success: true });
+    expect(state.writes[0].checkedInAt).toEqual(new Date('2026-10-05T16:00:00Z'));
+    state.writes = []; state.context.visit.scheduleState = 'cancelled';
+    expect((await checkinKitchenVisit(10, 5, 3)).success).toBe(false);
+    state.context.visit.scheduleState = 'active'; state.context.visit.scheduleRevision = 0;
+    expect((await checkinKitchenVisit(10, 5, 3)).success).toBe(false); expect(state.writes).toEqual([]);
   });
   it('preserves chef ownership, task validation and parent/CAS failure without notices', async () => {
     vi.setSystemTime(new Date('2026-10-02T16:00:00Z'));

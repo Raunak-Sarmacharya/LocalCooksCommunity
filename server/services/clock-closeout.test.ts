@@ -233,6 +233,21 @@ describe('closeout persistence and reads (mocked database/providers)', () => {
     expect((await db.transaction(tx => persistBookingCloseout(10, tx))).changed).toBe(false);
     expect(state.booking).toEqual(before); expect(state.writes).toEqual([]);
   });
+  it('closes and announces only the ended dated day; later inspection and completion remain independent', async () => {
+    state.booking.scheduleRevision = 1;
+    state.visits = ['2026-10-13', '2026-10-16'].map((visitDate, blockIndex) => ({ id: 31 + blockIndex, bookingId: 10, blockIndex,
+      visitDate, scheduleRevision: 1, scheduleState: 'active', operatingWindowStartTime: '08:00', startTime: '10:00', endTime: '11:00', checkinStatus: 'not_checked_in' }));
+    const result = await db.transaction(tx => persistBookingCloseout(10, tx));
+    expect(result.projection?.status).toBe('confirmed');
+    expect(result.projection?.visits.map(v => v.inspection.outcome)).toEqual(['due', 'not_due']);
+    const notices = vi.mocked(queueBookingLifecycleEvent).mock.calls.filter(args => args[2] === 'service_ended');
+    expect(notices).toHaveLength(1); expect(notices[0][6]).toMatchObject({ visitId: 31 });
+    expect((await recordKitchenInspection(10, 7, 32)).success).toBe(false);
+    expect((await recordKitchenInspection(10, 7, 31)).success).toBe(true);
+    expect(state.booking.status).toBe('confirmed');
+    state.visits[1].scheduleState = 'cancelled';
+    expect((await recordKitchenInspection(10, 7, 32)).success).toBe(false);
+  });
   it('caps the batch, saves the keyset checkpoint and wraps an empty page', async () => {
     const checkpoints: any[] = [];
     state.due = []; state.queries = []; state.limits = [];
