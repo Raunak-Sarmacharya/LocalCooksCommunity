@@ -303,9 +303,10 @@ type BookingStep = "calendar" | "slots" | "equipment" | "confirm";
 type BookingRateMode = KitchenBookingRateMode;
 
 type StepMeta = { key: BookingStep; label: string; subtext: string };
-const DATE_REASON_KEYS: Record<string, string> = { booked: 'mdReasonBooked', held: 'mdReasonBooked', closed: 'mdReasonClosed',
+const DATE_REASON_KEYS = { booked: 'mdReasonBooked', held: 'mdReasonBooked', closed: 'mdReasonClosed',
   notice: 'mdReasonNotice', beyond_advance_window: 'mdReasonAdvance', weekly_limit: 'mdReasonWeekly', buffer: 'mdReasonBuffer',
-  clock_change: 'mdReasonClock', not_open_to_you: 'mdReasonAccess', maintenance: 'mdReasonMaintenance' };
+  clock_change: 'mdReasonClock', not_open_to_you: 'mdReasonAccess', maintenance: 'mdReasonMaintenance' } as const;
+const dateReasonKey = (reason?: string | null) => DATE_REASON_KEYS[reason as keyof typeof DATE_REASON_KEYS] ?? 'mdReasonUnavailable';
 
 /** Matches kitchen preview / prefs panel — fixed 32px cells → true circular selection. */
 const BOOKING_CALENDAR_CLASS_NAMES = {
@@ -1127,7 +1128,7 @@ export default function KitchenBookingFlow({
     return dateAvailability[toLocalDateString(d)] === true;
   };
 
-  const blockedDateReason = (date: Date) => {
+  const blockedDateReason = (date: Date): string | null => {
     const key = localDateKey(date);
     if (selectedDates.includes(key)) return null;
     const limitReason = dateSelectionReason(key, selectedDates, Math.min(dayRules.maxBookingDays ?? 7, 14));
@@ -1135,7 +1136,7 @@ export default function KitchenBookingFlow({
     if (bookableThrough && key > bookableThrough) return t('mdReasonAdvance');
     const status = dateStatuses[key];
     if (status?.hourly || status?.fullDay) return limitReason ? t(limitReason === 'count' ? 'mdCountLimit' : 'mdSpanLimit', { count: dayRules.maxBookingDays ?? 7 }) : null;
-    return t(DATE_REASON_KEYS[status?.reason ?? ''] ?? 'mdReasonUnavailable');
+    return t(dateReasonKey(status?.reason));
   };
   const selectMultipleDates = (dates: Date[] | undefined) => {
     const keys = (dates ?? []).map(localDateKey).sort();
@@ -1308,7 +1309,7 @@ export default function KitchenBookingFlow({
   const datedSummaryRows = isMultiDay ? datedPrices.map(day => ({
     date: formatDate(new Date(`${day.date}T12:00:00`)),
     hours: day.pricingMode === 'daily' ? t('sheetDailyRate') : day.slots.length
-      ? `${formatTime(day.slots[0].startTime)} – ${formatTime(day.slots[day.slots.length - 1].endTime)}` : t('sheetChooseTime'),
+      ? `${formatTime(day.slots[0].startTime)} – ${formatTime(day.slots[day.slots.length - 1].endTime)}` : t('sheetSelectTimeSlotsToContinueButton'),
     equipment: day.equipmentIds.map(id => equipmentName(equipmentListings.all.find(item => item.id === id) ?? {})).join(', '),
     subtotal: day.kitchenSubtotal + day.equipmentSubtotal,
   })) : undefined;
@@ -1701,7 +1702,7 @@ export default function KitchenBookingFlow({
             </div>
           ) : null}
           {isMultiDay && hasDailyRate && !isFullDayAvailable && <p className="text-sm text-muted-foreground">{t('mdFullDayUnavailable', {
-            reason: t(DATE_REASON_KEYS[dateStatuses[editingDay ?? selectedDates[0]]?.fullDayReason ?? ''] ?? 'mdReasonUnavailable'),
+            reason: t(dateReasonKey(dateStatuses[editingDay ?? selectedDates[0]]?.fullDayReason)),
           })}</p>}
 
           {bookingRateMode === "daily" ? (
