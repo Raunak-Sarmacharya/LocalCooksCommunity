@@ -66,4 +66,10 @@ describe("storage rental page", () => {
     expect(await screen.findByTestId("rental-status")).toHaveTextContent("3 days past your paid time. Harbour Kitchen may charge up to $15.00.")
     expect(screen.getByTestId("holdover")).toHaveTextContent("Holdover to pay")
   })
+
+  it.each(["grace", "holdover"] as const)("hides the extend-before disclosure during %s", async phase => {
+    show({ phase, holdoverDays: phase === "holdover" ? 3 : 0, accruedCents: phase === "holdover" ? 1500 : 0, actions: ["extend"], paidThrough: "2026-10-01" })
+    await screen.findByTestId("rental-status")
+    expect(screen.queryByText(/To keep your space longer, extend before/)).not.toBeInTheDocument()
+  })
 })

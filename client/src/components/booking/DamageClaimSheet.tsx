@@ -97,9 +97,11 @@ function ClaimForm({ bookingId, storageRentalId, visitId, chefName, onDone, loca
     <p className="text-sm text-muted-foreground">{t('dcV2FileBy', { when: claimWhen(ctx.deadline, ctx.timezone, locale) })}</p>
     {step === 1 && <>
       <label className="block space-y-2"><span>{t('dcV2WhatHappened')}</span><Textarea value={description} maxLength={2000} onChange={event => setDescription(event.target.value)} /></label>
-      <p className="text-sm">{t('dcV2AutoPhotos')}</p>
+      <p className="text-sm">{storage ? t('stClaimAutoPhotos', { ns: 'storage' }) : t('dcV2AutoPhotos')}</p>
       {ctx.noBaseline && <p className="text-sm">{t('stNoBaseline', { ns: 'storage' })}</p>}
-      <div className="grid grid-cols-2 gap-3">{['before', 'after'].map(side => <section key={side}><h3 className="text-sm font-medium mb-2">{t(side === 'before' ? 'dcV2Before' : 'dcV2After')}</h3>
+      <div className="grid grid-cols-2 gap-3">{['before', 'after'].map(side => <section key={side}><h3 className="text-sm font-medium mb-2">{storage
+        ? t(side === 'before' ? 'stClaimBefore' : 'stClaimAfter', { ns: 'storage' })
+        : t(side === 'before' ? 'dcV2Before' : 'dcV2After')}</h3>
         {ctx[side as 'before' | 'after'].map((url, index) => <div key={url}><a href={url} target="_blank" rel="noopener noreferrer"><img className="mb-2 aspect-square w-full rounded-lg object-cover" src={url} alt={t('dcV2VisitPhoto', { number: index + 1 })} /></a>
           <label className="flex items-center gap-2 text-xs mb-2"><input type="checkbox" checked={selectedPhotoUrls.includes(url)} onChange={event => setSelectedPhotos(current => event.target.checked ? [...current, url] : current.filter(photo => photo !== url))} />{t('dcV2UsePhoto', { number: index + 1 })}</label></div>)}</section>)}</div>
       <label className="block space-y-2"><span>{t('dcV2AddPhoto')}</span><Input type="file" accept="image/*" disabled={isUploading} onChange={event => { const file = event.target.files?.[0]; if (file) void upload(file); }} /></label>

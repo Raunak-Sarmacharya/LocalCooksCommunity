@@ -9,6 +9,7 @@ import { addDays, extensionLimit, localDayStart, localToday, occupancyRange, ran
 import { assertBookingMoneyWritable, BookingMoneyFrozen } from './booking-money-guard';
 import { calculateCheckoutFeesAsync } from './stripe-checkout-fee-service';
 import { queueStorageRentalNotice } from './storage-rental-notices';
+import { expectedStoragePayoutCents } from './storage-payouts';
 import { storageSettings } from './storage-settings';
 import { readRental, storageRentalStripe, StorageRentalError } from './storage-rentals';
 import { getAppBaseUrl } from '../config';
@@ -255,7 +256,8 @@ export async function reconcileStorageTerm(stripe: StorageExtensionStripe, termI
       await tx.update(storageRentalTerms).set({ status: 'paid', paidAt, paymentTransactionId: payment.id, operation: { ...op, state: 'done' } })
         .where(eq(storageRentalTerms.id, termId));
       await queueStorageRentalNotice(tx, term.rentalId, 'extended', { eventKey: `term:${termId}`, paidThrough: current.endsOn,
-        startOn: current.startsOn, endOn: current.endsOn, days: current.days, amountCents: current.totalCents });
+        startOn: current.startsOn, endOn: current.endsOn, days: current.days, amountCents: current.totalCents,
+        payoutCents: expectedStoragePayoutCents(payment), payoutDate: payment.payoutEligibleAt!, timezone: currentRow.rental.timezone! });
     } else if (settled?.status === 'canceled' || !settled && (session?.status === 'expired'
       || !session && now.getTime() - Date.parse(op.decidedAt) >= 60 * 60_000)) {
       await tx.update(storageRentalTerms).set({ status: 'failed', operation: { ...op, state: 'done' } }).where(eq(storageRentalTerms.id, termId));

@@ -21,7 +21,7 @@ export const ADMIN_STORAGE_KINDS = new Set([
   'storage_requested', 'storage_expired', 'storage_confirmed', 'storage_extension_paid',
   'storage_refund_issued', 'storage_payout_released', 'storage_payout_on_hold',
   'storage_holdover_raised', 'storage_holdover_paid', 'storage_holdover_waived', 'storage_holdover_disputed',
-  'storage_reclaim_served', 'storage_removal_review', 'storage_kitchen_debt', 'storage_payment_recovery',
+  'storage_reclaim_served', 'storage_removal_review', 'storage_final_notice', 'storage_kitchen_debt', 'storage_payment_recovery',
 ]);
 
 type Cancellation = { cause?: 'chef' | 'kitchen'; refundCents?: number; feeCents?: number; kitchenShareRetainedCents?: number; feePending?: boolean };
@@ -98,6 +98,7 @@ export type AdminStorageFacts = {
   amountCents?: number; days?: number;
   /** Kitchen-local dates, already formatted for the reader's locale. */
   paidThrough?: string; byDate?: string; deadline?: string;
+  perishablesAfter?: string; othersAfter?: string;
   holdReason?: string | null;
 };
 
@@ -140,6 +141,8 @@ function storageNoticeCopy(kind: string, facts: AdminStorageFacts): { title: str
       return { title: `Move-out notice served · ${facts.chef}`, message: `${who}. The kitchen asks the chef to move out by ${facts.byDate || 'the notice date'}; unused days are refunded.` };
     case 'storage_removal_review':
       return { title: `Storage removal review · ${facts.chef}`, message: `${who}. ${facts.message || 'Removal review opened; the kitchen may act only after the final-notice deadlines.'}` };
+    case 'storage_final_notice':
+      return { title: `Final notice sent · ${facts.chef}`, message: `${who}. Final notice sent; perishables may be removed after ${facts.perishablesAfter || 'the perishable deadline'}, other items after ${facts.othersAfter || 'the other-items deadline'}.` };
     case 'storage_kitchen_debt':
       return { title: `Kitchen debt recorded · ${facts.kitchen}`, message: `${who}. A refund of ${money(facts.amountCents)} couldn't be recovered from the kitchen's balance; the kitchen owes Local Cooks.` };
     case 'storage_payment_recovery':

@@ -72,7 +72,7 @@ describe('storage notice routing', () => {
     expect(storageAdminKind('requested')).toBe('storage_requested');
     expect(storageAdminKind('extended')).toBe('storage_extension_paid');
     expect(storageAdminKind('holdover_paid')).toBe('storage_holdover_paid');
-    expect(storageAdminKind('final_notice')).toBe('storage_removal_review');
+    expect(storageAdminKind('final_notice')).toBe('storage_final_notice');
     expect(storageAdminKind('ending')).toBeUndefined();
     expect(storageAdminKind('move_in_due')).toBeUndefined();
   });
@@ -83,10 +83,10 @@ describe('per-reader wording', () => {
     await queueStorageRentalNotice(tx(), 5, 'requested', facts);
     expect(notice(5)).toMatchObject({ target: 'chef', actionUrl: '/storage/5' });
     expect(notice(5)!.title).toBe('Request sent · Harbour Kitchen');
-    expect(notice(5)!.message).toBe('Your card is on hold for $30.00. Harbour Kitchen answers by Oct 17, 2026, 3:30 p.m.');
+    expect(notice(5)!.message).toBe('Your card is on hold for $30.00. Harbour Kitchen answers by Oct 17, 2026, 3:30 p.m. Newfoundland Time.');
     expect(notice(2)).toMatchObject({ target: 'manager', actionUrl: '/manager/storage/5' });
     expect(notice(2)!.title).toBe('Maya Chen wants storage · Shelf 2');
-    expect(notice(2)!.message).toBe('Maya Chen asked for Shelf 2 Oct 20, 2026–Oct 27, 2026 · total $30.00. Answer by Oct 17, 2026, 3:30 p.m.');
+    expect(notice(2)!.message).toBe('Maya Chen asked for Shelf 2 Oct 20, 2026–Oct 27, 2026 · total $30.00. Answer by Oct 17, 2026, 3:30 p.m. Newfoundland Time.');
   });
   it('shows the chef the approved unit and charge, and gives Local Cooks a factual summary', async () => {
     await queueStorageRentalNotice(tx(), 5, 'approved', { ...facts, unitLabel: '1' });
@@ -181,4 +181,19 @@ it('says when a move-out cleared automatically, without claiming the kitchen ins
   await queueStorageRentalNotice(tx(), 5, 'auto_cleared', { ...facts, date: '2026-10-27' });
   expect(notice(5)?.message).toContain('ended on Oct 27, 2026');
   expect(notice(2)?.message).toContain('cleared automatically');
+});
+
+it('tells the chef Local Cooks opened removal review, and gives final notice its own admin line with zone times', async () => {
+  await queueStorageRentalNotice(tx(), 5, 'removal_review', facts);
+  expect(notice(5)!.message).toBe('Your storage at Harbour Kitchen is now in removal review. Move out or extend to keep your items.');
+  expect(notice(1)!.message).toContain('Removal review opened');
+  state.notices = []; state.emails = [];
+  await queueStorageRentalNotice(tx(), 5, 'final_notice', { ...facts, perishablesAfter: new Date('2026-10-19T03:42:00Z'), othersAfter: new Date('2026-10-24T03:42:00Z') });
+  expect(notice(1)!.title).toContain('Final notice sent');
+  expect(notice(1)!.message).toMatch(/Final notice sent; perishables may be removed after .*Newfoundland Time.*other items after .*Newfoundland Time/);
+});
+
+it('adds the kitchen payout line on extension when payout facts are passed', async () => {
+  await queueStorageRentalNotice(tx(), 5, 'extended', { ...facts, amountCents: 1282, payoutCents: 1108, payoutDate: '2026-10-28' });
+  expect(notice(2)!.message).toBe("Maya Chen extended Shelf 2 to Oct 27, 2026 · $12.82 charged. You'll be paid $11.08 on Oct 28, 2026, less the card processing fee.");
 });

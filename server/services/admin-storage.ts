@@ -58,10 +58,28 @@ export async function adminStorageDetail(id: number, actorId: number) {
     UNION ALL SELECT 'chef:' || n.id, n.title, 'delivered', n.created_at, 'chef'
     FROM chef_notifications n WHERE n.metadata->>'storageRentalId' = ${String(id)}`);
   const notices = [...mail.map(row => ({ ...row, channel: 'email' })), ...inApp.rows.map(row => ({ ...row, channel: 'in_app' }))];
-  return { ...dto, adminActions: ADMIN_STORAGE_ACTIONS, payments: payments.map(source => ({ amountCents: Number(source.amount), refundedCents: Number(source.refundAmount || 0),
+  const paymentRows = payments.map(source => ({ amountCents: Number(source.amount), refundedCents: Number(source.refundAmount || 0),
     payoutAmountCents: expectedStoragePayoutCents(source), status: source.status, payoutStatus: source.transferId ? 'paid' : source.payoutHoldReason ? 'hold' : 'scheduled',
-    holdReason: source.payoutHoldReason, transferSent: !!source.transferId, paidAt: source.paidAt, payoutDate: source.payoutEligibleAt })),
-    flags, supportActions: actions, problems, claims, holdover: holdover.map(row => ({ ...row, amountCents: row.amountCents == null ? null
+    holdReason: source.payoutHoldReason, transferSent: !!source.transferId, paidAt: source.paidAt, payoutDate: source.payoutEligibleAt }));
+  const openFlag = flags.some(flag => !flag.resolvedAt);
+  const heldPayout = paymentRows.some(row => !!row.holdReason && !row.transferSent);
+  const review = rental.removalReview as { finalNoticeAt?: string | null } | null;
+  const adminActions = ADMIN_STORAGE_ACTIONS.filter(action => {
+    switch (action) {
+      case 'approve_for_kitchen': case 'decline_for_kitchen': return dto.state === 'requested';
+      case 'send_final_notice': return dto.state === 'removal_review' && !review?.finalNoticeAt;
+      case 'record_removal_for_kitchen': return dto.state === 'removal_review' && !!review?.finalNoticeAt;
+      case 'open_removal_review': return dto.state === 'active' && dto.phase === 'holdover';
+      case 'end_rental': return ['reserved', 'active', 'move_out_requested', 'removal_review'].includes(dto.state!);
+      // Same gate as kitchen holdover-waive: accrued holdover days with no open charge request.
+      case 'waive_holdover': return (dto.holdoverChargeCents ?? 0) > 0;
+      case 'release_payout': return heldPayout;
+      case 'resolve_flag': return openFlag;
+      default: return true;
+    }
+  });
+  return { ...dto, adminActions, payments: paymentRows, flags, supportActions: actions, problems, claims,
+    holdover: holdover.map(row => ({ ...row, amountCents: row.amountCents == null ? null
       : row.amountCents + Math.round(row.amountCents * dto.rentalTerms.taxRatePercent / 100) })), notices, removalReview: rental.removalReview };
 }
 export async function adminStorageList(filters: { state?: string; kitchenId?: number; q?: string; needsAttention?: boolean }, actorId: number) {

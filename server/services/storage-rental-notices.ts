@@ -19,7 +19,7 @@ import { notificationService } from './notification.service';
 import { operationalEmailAllowed } from './admin-email-preferences';
 import { getAppBaseUrl } from '../config';
 import { getUserDisplayName } from '../utils/user-display';
-import { DEFAULT_TIMEZONE } from '@shared/timezone-utils';
+import { DEFAULT_TIMEZONE, friendlyTimezoneName } from '@shared/timezone-utils';
 import { ADMIN_STORAGE_KINDS, adminStorageNotice } from './admin-booking-notice';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -51,6 +51,8 @@ export type StorageNoticeFacts = {
   days?: number;
   amountCents?: number;
   dailyCents?: number;
+  /** Kitchen share for the term (used on extension notices). */
+  payoutCents?: number;
   holdReason?: string | null;
   /** Local Cooks-only detail (support flags). */
   message?: string;
@@ -97,7 +99,7 @@ const ADMIN_EVENT_KIND: Partial<Record<StorageNoticeEvent, string>> = {
   extended: 'storage_extension_paid', refund_issued: 'storage_refund_issued',
   payout_released: 'storage_payout_released', payout_on_hold: 'storage_payout_on_hold', payout_overdue: 'storage_payout_on_hold', support_flag: 'storage_payment_recovery',
   holdover_charge: 'storage_holdover_raised', holdover_paid: 'storage_holdover_paid', holdover_waived: 'storage_holdover_waived', reclaim: 'storage_reclaim_served',
-  removal_review: 'storage_removal_review', final_notice: 'storage_removal_review',
+  removal_review: 'storage_removal_review', final_notice: 'storage_final_notice',
   kitchen_debt: 'storage_kitchen_debt',
 };
 
@@ -155,9 +157,12 @@ export async function queueStorageRentalNotice(tx: Tx, rentalId: number, event: 
       const instant = asInstant(value);
       return instant ? new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeZone: timezone }).format(instant) : '';
     };
+    // Date-times match booking notices: wall clock + zone name (e.g. "Oct 17, 2026, 3:30 p.m. Newfoundland Time").
     const deadline = (value?: string | Date) => {
       const instant = asInstant(value);
-      return instant ? new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short', timeZone: timezone }).format(instant) : '';
+      if (!instant) return '';
+      const when = new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short', timeZone: timezone }).format(instant);
+      return `${when} ${friendlyTimezoneName(timezone, locale)}`;
     };
     const money = (cents?: number) => new Intl.NumberFormat(locale, { style: 'currency', currency: 'CAD' }).format((cents || 0) / 100);
     const view = tLocale(locale, 'stView', { ns: 'storage' });
@@ -169,6 +174,7 @@ export async function queueStorageRentalNotice(tx: Tx, rentalId: number, event: 
       reference,
       amount: money(facts.amountCents),
       daily: money(facts.dailyCents),
+      payout: facts.payoutCents != null ? money(facts.payoutCents) : '',
       days: facts.days ?? 0,
       photos: facts.photos ?? 0,
       start: date(facts.startOn),
@@ -186,9 +192,15 @@ export async function queueStorageRentalNotice(tx: Tx, rentalId: number, event: 
       ? (adminKind ? adminStorageNotice(adminKind, { chef: values.chef, kitchen: row.kitchenName, listing: listingName,
           reference, when: [values.start, values.end].filter(Boolean).join('–'), locale, amountCents: facts.amountCents,
           days: facts.days, paidThrough: values.paidThrough, byDate: values.byDate, deadline: values.deadline,
+          perishablesAfter: values.perishableDate, othersAfter: values.otherDate,
           holdReason: facts.holdReason ?? null, message: facts.message }) : undefined)
       : { title: tLocale(locale, `${prefix}_${chef ? 'Chef' : 'Kitchen'}_Title`, { ns: 'storage', ...values }),
-          message: tLocale(locale, `${prefix}_${chef ? 'Chef' : 'Kitchen'}_Body`, { ns: 'storage', ...values }) };
+          message: (() => {
+            const body = tLocale(locale, `${prefix}_${chef ? 'Chef' : 'Kitchen'}_Body`, { ns: 'storage', ...values });
+            if (!chef && event === 'extended' && facts.payoutCents != null && facts.payoutDate)
+              return `${body} ${tLocale(locale, 'stExtended_Kitchen_Payout', { ns: 'storage', ...values })}`;
+            return body;
+          })() };
     if (!copy) continue;
     const path = role === 'chef' ? `/storage/${rentalId}` : role === 'admin' ? `/admin?section=storage-rentals&rental=${rentalId}` : `/manager/storage/${rentalId}`;
 

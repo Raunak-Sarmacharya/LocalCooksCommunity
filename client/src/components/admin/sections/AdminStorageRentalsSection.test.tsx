@@ -17,6 +17,8 @@ it('loads the table and drawer, requires a reason and previews a funded refund b
   expect(await screen.findByText('Harbour')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'stViewUnit' }));
   await screen.findByLabelText('stAdminAction');
+  expect(screen.getAllByText('stState_active').length).toBeGreaterThanOrEqual(1);
+  expect(screen.getByText('stAdminSubtitle')).toBeInTheDocument();
   expect(screen.getByText('stAdminSection_payments')).toBeInTheDocument();
   fireEvent.change(screen.getByLabelText('stAdminAction'), { target: { value: 'goodwill_refund' } });
   expect(screen.getByRole('button', { name: 'stPreview' })).toBeDisabled();
