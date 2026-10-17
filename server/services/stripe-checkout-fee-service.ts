@@ -307,13 +307,14 @@ export function calculateCheckoutFeesWithRates(
  */
 export async function calculateCheckoutFeesAsync(
   bookingPriceInCents: number,
-  options?: { taxAmountCents?: number }
+  options?: { taxAmountCents?: number },
+  connection: Pick<typeof db, 'select'> = db,
 ): Promise<FeeCalculationResult> {
   if (bookingPriceInCents <= 0) {
     throw new Error('Booking price must be greater than 0');
   }
 
-  const config = await getFeeConfig();
+  const config = await getFeeConfig(connection);
   const estimated = estimateManagerPayoutFeesCents({
     subtotalCents: bookingPriceInCents,
     taxCents: options?.taxAmountCents,

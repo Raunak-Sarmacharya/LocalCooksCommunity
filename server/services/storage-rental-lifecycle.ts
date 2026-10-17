@@ -29,7 +29,7 @@ const OPEN_HOLDOVER = ['detected', 'grace_period', 'pending_review', 'penalty_ap
 const SETTLED_HOLDOVER = ['charge_succeeded', 'penalty_waived', 'resolved'];
 const fail = (code: string, status = 409): never => { throw new StorageRentalError(code, status); };
 
-const dates = (r: Rental) => ({ rentalState: r.rentalState!, termStart: r.termStart!, paidThrough: r.paidThrough!, reclaimEndOn: r.reclaimEndOn,
+const dates = (r: Rental) => ({ rentalState: r.rentalState!, termStart: r.termStart!, paidThrough: r.paidThrough!, reclaimEndOn: r.reclaimEndOn, reclaim: r.reclaim,
   releasedOn: r.releasedOn, needsCleaning: r.needsCleaning });
 function phaseOf(r: Rental, today: string) {
   const f = r.rentalTerms as Frozen;
@@ -148,7 +148,7 @@ export async function sweepStorageRentals(limit = 3, now = new Date()) {
 // Holdover: a request the chef pays (or disputes) on-session, or the kitchen waives. Never an off-session charge.
 // ---------------------------------------------------------------------------------------------------------------------
 
-async function holdoverState(tx: Tx, rental: Rental, now: Date) {
+async function holdoverState(tx: Pick<typeof db, 'select'>, rental: Rental, now: Date) {
   if (!['active', 'removal_review'].includes(rental.rentalState!)) fail('not_active');
   const f = rental.rentalTerms as Frozen, phase = phaseOf(rental, localToday(now, rental.timezone!));
   if (phase.holdoverDays < 1) fail('holdover_not_started');
@@ -161,6 +161,23 @@ async function holdoverState(tx: Tx, rental: Rental, now: Date) {
   if (newDays < 1) fail('holdover_not_started');
   const capBase = newDays * f.dailyPriceCents;
   return { f, phase, key: `${prefix}${phase.holdoverDays}`, newDays, capBase, capTotal: withTax(capBase, f.taxRatePercent) };
+}
+/** Same eligibility used by the kitchen routes; read-only and safe outside a transaction. */
+export async function storageLifecycleActions(rental: Rental, now = new Date(), reader: Pick<typeof db, 'select'> = db) {
+  const actions: string[] = [];
+  let holdoverChargeCents = 0;
+  if (['active', 'removal_review'].includes(rental.rentalState!)) {
+    try {
+      const state = await holdoverState(reader, rental, now);
+      holdoverChargeCents = state.capTotal;
+      actions.push('holdover-charge', 'holdover-waive');
+    } catch (error) { if (!(error instanceof StorageRentalError)) throw error; }
+  }
+  const review = rental.removalReview as Review | null;
+  const removalItemIndexes = rental.rentalState === 'removal_review' && review?.finalNoticeAt && (await storageSettings(reader)).kitchenDisposalEnabled
+    ? review.items.flatMap((item, index) => !item.removedAt && now >= new Date(item.perishable ? review.perishablesAfter! : review.othersAfter!) ? [index] : []) : [];
+  if (removalItemIndexes.length) actions.push('removal/record');
+  return { actions, holdoverChargeCents, removalItemIndexes };
 }
 const recordValues = (rental: Rental, s: Awaited<ReturnType<typeof holdoverState>>) => ({ storageBookingId: rental.id,
   endDate: localDayStart(addDays(s.phase.effectiveEnd, 1), rental.timezone!), daysOverdue: s.phase.holdoverDays,

@@ -59,6 +59,7 @@ export default function ManagerStorageBookingsPage(_props: ManagerStorageBooking
           kitchenId: Number(row.kitchenId ?? kitchenId),
           kitchenName,
           unitCount: Number(row.unitCount ?? 1),
+          outOfServiceUnits: row.outOfServiceUnits as StorageListing["outOfServiceUnits"],
           visible: Boolean(row.isActive) && ["approved", "active"].includes(String(row.status)),
         }));
       }));
@@ -156,7 +157,7 @@ export default function ManagerStorageBookingsPage(_props: ManagerStorageBooking
                   {group.kitchenName ? ` · ${group.kitchenName}` : ""}
                 </h3>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  {group.rows.map((row) => <StorageUnitCard key={row.key} row={row} />)}
+                  {group.rows.map((row) => <StorageUnitCard key={row.key} row={row} onDone={refetch} />)}
                 </div>
               </div>
             ))}

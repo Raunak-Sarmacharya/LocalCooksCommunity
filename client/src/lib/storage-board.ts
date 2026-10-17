@@ -46,6 +46,8 @@ export interface StorageRental {
   graceEndsOn: string;
   holdoverDays: number;
   accruedCents: number;
+  holdoverChargeCents?: number;
+  removalItemIndexes?: number[];
   responseDeadline: string | null;
   declineReason: string | null;
   needsCleaning: boolean;
@@ -66,12 +68,14 @@ export interface StorageListing {
   kitchenId: number;
   kitchenName?: string;
   unitCount: number;
+  outOfServiceUnits?: Record<string, { reason: string; at: string }>;
   /** False for a draft/inactive listing the board hides unless a rental still occupies a unit. */
   visible?: boolean;
 }
 
 /** Every chip a unit row can carry. `free` is the only one with no rental behind it. */
 export type UnitChip =
+  | "outOfService"
   | "free"
   | "reserved"
   | "occupied"
@@ -93,6 +97,7 @@ export interface UnitRow {
   kitchenId: number;
   kitchenName: string;
   unitIndex: number;
+  outOfService?: { reason: string; at: string };
   chip: UnitChip;
   rental: StorageRental | null;
   occupantName: string | null;
@@ -181,7 +186,8 @@ export function unitRows(rentals: StorageRental[], listings: StorageListing[]): 
     const unitCount = Math.max(0, Math.floor(listing.unitCount || 0));
     for (let unit = 1; unit <= unitCount; unit += 1) {
       const rental = claims.get(`${listing.id}:${unit}`) ?? null;
-      const chip = rental ? chipForRental(rental) : "free";
+      const outOfService = listing.outOfServiceUnits?.[String(unit)];
+      const chip = rental ? chipForRental(rental) : outOfService ? "outOfService" : "free";
       rows.push({
         key: `${listing.id}:${unit}`,
         listingId: listing.id,
@@ -190,6 +196,7 @@ export function unitRows(rentals: StorageRental[], listings: StorageListing[]): 
         kitchenName: listing.kitchenName ?? "",
         unitIndex: unit,
         chip,
+        outOfService,
         rental,
         occupantName: rental?.chef?.name?.trim() || null,
         date: rental ? unitDateFor(rental) : null,
@@ -213,7 +220,7 @@ export function boardSummary(rentals: StorageRental[], listings: StorageListing[
   const rows = unitRows(rentals, listings);
   return {
     units: rows.length,
-    occupied: rows.filter((row) => row.chip !== "free").length,
+    occupied: rows.filter((row) => row.rental !== null).length,
     requests: rentals.filter((rental) => rental.state === "requested").length,
     grace: rows.filter((row) => row.chip === "grace").length,
     holdover: rows.filter((row) => row.chip === "holdover").length,
@@ -270,7 +277,7 @@ export function termPayout(term: StorageRentalTerm): TermPayout {
 }
 
 /** Which input fields a More-menu action asks for, before its confirm sheet. */
-export type StorageActionField = "unitIndex" | "byDate" | "days" | "amountCents" | "note";
+export type StorageActionField = "unitIndex" | "byDate" | "days" | "amountCents" | "note" | "photoUrls";
 
 export interface StorageActionDef {
   action: string;
@@ -292,15 +299,15 @@ const ACTION_DEFS: Record<string, StorageActionDef> = {
   "change-unit": { action: "change-unit", labelKey: "stActionChangeUnit", consequenceKey: "stConsequenceChangeUnit", requiresReason: true, fields: ["unitIndex"], defaults: {} },
   "move-out-by": { action: "move-out-by", labelKey: "stActionMoveOutBy", consequenceKey: "stConsequenceMoveOutBy", requiresReason: true, fields: ["byDate"], defaults: {} },
   "offer-extension": { action: "offer-extension", labelKey: "stActionOfferExtension", consequenceKey: "stConsequenceOfferExtension", requiresReason: false, fields: ["days"], defaults: { days: 7 } },
-  "release-unit": { action: "release-unit", labelKey: "stActionReleaseUnit", consequenceKey: "stConsequenceReleaseUnit", requiresReason: true, fields: [], defaults: {} },
+  "release": { action: "release", labelKey: "stActionReleaseUnit", consequenceKey: "stConsequenceReleaseUnit", requiresReason: true, fields: [], defaults: {} },
   refund: { action: "refund", labelKey: "stActionRefund", consequenceKey: "stConsequenceRefund", requiresReason: true, fields: ["amountCents"], defaults: {} },
   "holdover-charge": { action: "holdover-charge", labelKey: "stActionHoldoverCharge", consequenceKey: "stConsequenceHoldoverCharge", requiresReason: false, fields: ["amountCents", "note"], defaults: {} },
-  "waive-holdover": { action: "waive-holdover", labelKey: "stActionWaiveHoldover", consequenceKey: "stConsequenceWaiveHoldover", requiresReason: true, fields: [], defaults: {} },
-  "record-removal": { action: "record-removal", labelKey: "stActionRecordRemoval", consequenceKey: "stConsequenceRecordRemoval", requiresReason: true, fields: [], defaults: {} },
+  "holdover-waive": { action: "holdover-waive", labelKey: "stActionWaiveHoldover", consequenceKey: "stConsequenceWaiveHoldover", requiresReason: true, fields: [], defaults: {} },
+  "removal/record": { action: "removal/record", labelKey: "stActionRecordRemoval", consequenceKey: "stConsequenceRecordRemoval", requiresReason: true, fields: [], defaults: {} },
   "mark-ready": { action: "mark-ready", labelKey: "stActionMarkReady", consequenceKey: "stConsequenceMarkReady", requiresReason: false, fields: [], defaults: {} },
-  handover: { action: "handover", labelKey: "stActionHandover", consequenceKey: "stConsequenceHandover", requiresReason: false, fields: ["note"], defaults: {} },
+  handover: { action: "handover", labelKey: "stActionHandover", consequenceKey: "stConsequenceHandover", requiresReason: false, fields: ["note", "photoUrls"], defaults: {} },
   "clear-move-out": { action: "clear-move-out", labelKey: "stActionClearMoveOut", consequenceKey: "stConsequenceClearMoveOut", requiresReason: false, fields: [], defaults: {} },
-  "items-still-here": { action: "items-still-here", labelKey: "stActionItemsStillHere", consequenceKey: "stConsequenceItemsStillHere", requiresReason: false, fields: ["note"], defaults: {} },
+  "items-still-here": { action: "items-still-here", labelKey: "stActionItemsStillHere", consequenceKey: "stConsequenceItemsStillHere", requiresReason: false, fields: ["note", "photoUrls"], defaults: {} },
 };
 
 /** Every action the board can describe, newest-first order irrelevant. Used by tests and the menu. */
@@ -332,8 +339,8 @@ export function formatKitchenDateTime(iso: string, timezone?: string | null, loc
  */
 export function actionAmountCents(rental: StorageRental, def: StorageActionDef, values: Partial<Record<StorageActionField, number>>): number | null {
   if (def.action === "approve" || def.action === "decline") return rentalTotalCents(rental);
-  if (def.action === "holdover-charge") return values.amountCents ?? rental.accruedCents;
-  if (def.action === "waive-holdover") return rental.accruedCents;
+  if (def.action === "holdover-charge") return values.amountCents ?? (rental.holdoverChargeCents ?? rental.accruedCents);
+  if (def.action === "holdover-waive") return (rental.holdoverChargeCents ?? rental.accruedCents);
   if (def.action === "offer-extension") {
     const days = values.days ?? def.defaults.days ?? 0;
     const daily = rental.rentalTerms?.dailyPriceCents ?? 0;
@@ -354,5 +361,7 @@ export function actionBody(def: StorageActionDef, values: Partial<Record<Storage
   if (def.fields.includes("amountCents") && values.amountCents != null) body.amountCents = Number(values.amountCents);
   if (def.fields.includes("note") && reason.trim()) body.note = reason.trim();
   if (def.requiresReason) body.reason = reason.trim();
+  if (def.fields.includes("photoUrls")) body.photoUrls = String(values.photoUrls ?? "").split(/\s+/).filter(Boolean);
+  if (def.action === "clear-move-out") body.needsCleaning = false;
   return body;
 }

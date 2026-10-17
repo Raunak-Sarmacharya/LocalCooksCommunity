@@ -122,8 +122,8 @@ describe("board summary and requests", () => {
 
 describe("More-menu actions", () => {
   it("renders only the actions the server allowed, in order", () => {
-    const defs = allowedActions(rental({ actions: ["refund", "waive-holdover"] }));
-    expect(defs.map((def) => def.action)).toEqual(["refund", "waive-holdover"]);
+    const defs = allowedActions(rental({ actions: ["refund", "holdover-waive"] }));
+    expect(defs.map((def) => def.action)).toEqual(["refund", "holdover-waive"]);
     expect(defs.map((def) => def.labelKey)).toEqual(["stActionRefund", "stActionWaiveHoldover"]);
     expect(allowedActions(rental({ actions: [] }))).toEqual([]);
   });
@@ -155,4 +155,15 @@ describe("term payout status", () => {
     expect(termPayout(term({ payoutEligibleAt: "2026-10-11T02:30:00Z", payoutHoldReason: "problem_open" }))).toMatchObject({ status: "hold" });
     expect(termPayout(term({ status: "authorized" }))).toMatchObject({ status: "none" });
   });
+});
+
+
+it("shows out-of-service units without evicting renters or counting empty broken units as occupied", () => {
+  const units = { "1": { reason: "Repair", at: "2026-10-16" }, "2": { reason: "Repair", at: "2026-10-16" } };
+  const rows = unitRows([rental()], [listing({ unitCount: 3, outOfServiceUnits: units })]);
+  expect(rows.map(row => row.chip)).toEqual(["occupied", "outOfService", "free"]);
+  expect(rows[0].outOfService?.reason).toBe("Repair");
+  expect(rows[0].rental?.id).toBe(1);
+  expect(filterUnitRows(rows, "free")).toHaveLength(1);
+  expect(boardSummary([rental()], [listing({ unitCount: 3, outOfServiceUnits: units })]).occupied).toBe(1);
 });

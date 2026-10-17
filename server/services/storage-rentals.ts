@@ -21,6 +21,9 @@ import { generateReferenceCode } from '../reference-code';
 import { getAppBaseUrl } from '../config';
 import { workerAfter, workerPageEnd, workerRecord } from './worker-context';
 import { ensureServerI18n, tLocale } from '../i18n';
+import { unavailableUnitRanges } from './storage-availability';
+import { assertBookingMoneyWritable, BookingMoneyFrozen } from './booking-money-guard';
+import { storageSettings } from './storage-settings';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type Reader = Tx | typeof db;
@@ -57,13 +60,15 @@ async function eligible(chefId: number, ctx: Awaited<ReturnType<typeof context>>
   if ((await readClaimBookingHold(chefId)).held) fail('claim_hold', 403);
   if (await hasChefUnpaidPenalties(chefId)) fail('unpaid_holdover', 403);
 }
-async function freeUnit(reader: Reader, listingId: number, count: number, dates: RentalDates, today: string, excludeId?: number, chosen?: number) {
+export async function freeUnit(reader: Reader, listingId: number, count: number, dates: RentalDates, today: string, excludeId?: number, chosen?: number) {
+  const [listing] = await reader.select({ units: storageListings.outOfServiceUnits }).from(storageListings).where(eq(storageListings.id, listingId));
   const rows = await reader.select().from(storageBookings).where(eq(storageBookings.storageListingId, listingId));
   const occupied = rows.filter(row => row.id !== excludeId && row.unitIndex && row.termStart && row.paidThrough && row.rentalState)
     .flatMap(row => {
       const range = occupancyRange(row as RentalDates, today);
       return range ? [{ ...range, unitIndex: row.unitIndex! }] : [];
     });
+  occupied.push(...unavailableUnitRanges(listing?.units));
   const range = occupancyRange(dates)!;
   if (chosen !== undefined) {
     if (!Number.isInteger(chosen) || chosen < 1 || chosen > count) fail('full');
@@ -373,21 +378,46 @@ export async function readRental(id: number, actor: RentalActor, now = new Date(
     ? actor.role === 'chef' ? ['withdraw'] : rental.responseDeadline && now < rental.responseDeadline ? ['approve', 'decline'] : ['decline'] : [];
   const paymentIds = terms.flatMap(term => (typeof term.paymentTransactionId === 'number' ? [term.paymentTransactionId] : []));
   const payments = paymentIds.length
-    ? await db.select({ id: paymentTransactions.id, payoutEligibleAt: paymentTransactions.payoutEligibleAt,
-        payoutReleasedAt: paymentTransactions.payoutReleasedAt, payoutHoldReason: paymentTransactions.payoutHoldReason })
+    ? await db.select()
         .from(paymentTransactions).where(inArray(paymentTransactions.id, paymentIds))
     : [];
   const payoutById = new Map(payments.map(payment => [payment.id, payment]));
   const chefName = resolvedChefName ?? (rental.chefId ? await getUserDisplayName(rental.chefId) : '');
   const { storageRentalVisitActions, storageRentalRelet } = await import('./storage-checkout-service');
   actions.push(...storageRentalVisitActions(rental, actor.role, now, rental.rentalState === 'ended' && await storageRentalRelet(rental)));
-  if (rental.termStart! <= localToday(now, rental.timezone!) && !['requested', 'declined', 'expired', 'withdrawn'].includes(rental.rentalState!)) actions.push('report_problem');
+  let lifecycle: { actions: string[]; holdoverChargeCents: number; removalItemIndexes: number[] } = { actions: [], holdoverChargeCents: 0, removalItemIndexes: [] };
+  if (actor.role === 'manager') {
+    lifecycle = await (await import('./storage-rental-lifecycle')).storageLifecycleActions(rental, now);
+    actions.push(...lifecycle.actions);
+    const openTerm = terms.some(term => ['awaiting_payment', 'authorized'].includes(term.status));
+    if (!openTerm && !(rental.reclaim as any)?.pending) {
+      const today = localToday(now, rental.timezone!);
+      const others = await db.select().from(storageBookings).where(eq(storageBookings.storageListingId, rental.storageListingId));
+      const ranges = others.filter(other => other.id !== id && other.rentalState && other.termStart && other.paidThrough)
+        .flatMap(other => { const range = occupancyRange(other as RentalDates, today); return range ? [{ ...range, unitIndex: other.unitIndex! }] : []; });
+      const ownRange = occupancyRange(rental as RentalDates, today);
+      if (ownRange && ['reserved', 'active', 'move_out_requested', 'removal_review'].includes(rental.rentalState!)
+        && pickFreeUnit(ctx.listing.unitCount, [...ranges, ...unavailableUnitRanges(ctx.listing.outOfServiceUnits), { ...ownRange, unitIndex: rental.unitIndex! }], ownRange)) actions.push('change-unit');
+      let writable = true;
+      try { await assertBookingMoneyWritable({ storageRentalId: id }); }
+      catch (error) { if (error instanceof BookingMoneyFrozen) writable = false; else throw error; }
+      if (writable && ['reserved', 'active'].includes(rental.rentalState!) && !rental.reclaimEndOn) actions.push('move-out-by');
+      if (rental.rentalState === 'move_out_requested' || rental.rentalState === 'reserved' && !rental.checkinCompletedAt && localToday(now, rental.timezone!) >= addDays(rental.termStart!, 7)) actions.push('release');
+      if (writable && payments.some(payment => ['succeeded', 'partially_refunded'].includes(payment.status) && payment.stripeProcessingFee != null
+        && Number(payment.baseAmount) - Number(payment.stripeProcessingFee) - ((payment.metadata as any)?.refunds ?? []).reduce((sum: number, receipt: any) => sum + Number(receipt.managerDebited || 0), 0) > 0)) actions.push('refund');
+      const { extensionLimit } = await import('@shared/storage-rental');
+      const nextReservationStart = ranges.filter(range => range.unitIndex === rental.unitIndex && range.from > rental.paidThrough!).map(range => range.from).sort()[0] ?? null;
+      if (extensionLimit(rental as RentalDates, today, { platformMaxDays: (await storageSettings()).maxTermDays, listingMaxDays: ctx.listing.maxTermDays, nextReservationStart }).maxDays > 0) actions.push('offer-extension');
+    }
+  }
+  if (actor.role === 'chef' && rental.termStart! <= localToday(now, rental.timezone!) && !['requested', 'declined', 'expired', 'withdrawn'].includes(rental.rentalState!)) actions.push('report_problem');
   return { id, ref: rental.referenceCode, kitchen: { id: ctx.kitchen.id, name: ctx.kitchen.name },
     listing: { id: ctx.listing.id, name: ctx.listing.name }, chef: { id: rental.chefId ?? null, name: chefName },
     unitLabel: String(rental.unitIndex), state: rental.rentalState, timezone: rental.timezone,
     phase: phase?.phase ?? null, startOn: rental.termStart, paidThrough: rental.paidThrough,
     graceEndsOn: phase?.graceEndsOn ?? addDays(rental.paidThrough!, GRACE_DAYS), holdoverDays: phase?.holdoverDays ?? 0,
-    accruedCents: phase?.accruedCents ?? 0, responseDeadline: rental.responseDeadline, declineReason: rental.declineReason, rentalTerms: frozen, actions,
+    accruedCents: phase?.accruedCents ?? 0, holdoverChargeCents: lifecycle.holdoverChargeCents, removalItemIndexes: lifecycle.removalItemIndexes,
+    responseDeadline: rental.responseDeadline, declineReason: rental.declineReason, rentalTerms: frozen, actions,
     terms: terms.map(({ id, seq, kind, startsOn, endsOn, days, dailyPriceCents, subtotalCents, taxCents, serviceFeeCents, totalCents, status, paidAt, paymentTransactionId }) => {
       const payout = paymentTransactionId ? payoutById.get(paymentTransactionId) : undefined;
       return { id, seq, kind, startsOn, endsOn, days, dailyPriceCents, subtotalCents, taxCents, serviceFeeCents, totalCents, status, paidAt,

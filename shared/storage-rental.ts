@@ -21,7 +21,7 @@ export const DISPOSAL_PERISHABLE_HOURS = 48;
 export const DISPOSAL_OTHER_DAYS = 7;
 
 export type RentalState = 'requested' | 'declined' | 'expired' | 'withdrawn' | 'reserved' | 'active' | 'move_out_requested' | 'removal_review' | 'ended';
-export type RentalDates = { rentalState: RentalState; termStart: string; paidThrough: string; reclaimEndOn?: string | null;
+export type RentalDates = { rentalState: RentalState; termStart: string; paidThrough: string; reclaimEndOn?: string | null; reclaim?: unknown;
   releasedOn?: string | null; needsCleaning?: boolean };
 export type DayRange = { from: string; to: string | null };
 export type UnitRange = DayRange & { unitIndex: number };
@@ -40,6 +40,8 @@ export const addDays = (date: string, n: number) => fromDayNumber(dayNumber(date
 /** Whole days from a to b (b − a). */
 export const daysBetween = (a: string, b: string) => dayNumber(b) - dayNumber(a);
 const minDay = (a: string, b: string | null | undefined) => (b && b < a ? b : a);
+// A failed reclaim refund must not free the shelf or start holdover before the notice is served.
+const servedReclaimEnd = (r: RentalDates) => (r.reclaim as { pending?: boolean } | null)?.pending ? null : r.reclaimEndOn;
 
 export function localToday(now: Date, timezone: string) {
   const parts = new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now);
@@ -66,7 +68,7 @@ export type RentalPhase = 'current' | 'ending_soon' | 'grace' | 'holdover';
 /** Phase is derived from dates, never stored. null outside reserved/active/removal_review. */
 export function rentalPhase(r: RentalDates & { dailyPriceCents: number; taxRatePercent: number }, today: string) {
   if (!['reserved', 'active', 'removal_review'].includes(r.rentalState)) return null;
-  const effectiveEnd = minDay(r.paidThrough, r.reclaimEndOn);
+  const effectiveEnd = minDay(r.paidThrough, servedReclaimEnd(r));
   const graceEndsOn = addDays(effectiveEnd, GRACE_DAYS);
   const phase: RentalPhase = today <= addDays(effectiveEnd, -7) ? 'current' : today <= effectiveEnd ? 'ending_soon' : today <= graceEndsOn ? 'grace' : 'holdover';
   // Accrual stops growing at the removal-review threshold (owner OQ6: frozen at 15).
@@ -82,7 +84,7 @@ export function rentalPhase(r: RentalDates & { dailyPriceCents: number; taxRateP
 export function occupancyRange(r: RentalDates, today?: string): DayRange | null {
   switch (r.rentalState) {
     case 'requested': case 'reserved': case 'active': case 'move_out_requested': {
-      const to = addDays(minDay(r.paidThrough, r.reclaimEndOn), GRACE_DAYS + 1);
+      const to = addDays(minDay(r.paidThrough, servedReclaimEnd(r)), GRACE_DAYS + 1);
       return { from: r.termStart, to: today && to <= today ? addDays(today, 1) : to };
     }
     case 'removal_review': return { from: r.termStart, to: null };

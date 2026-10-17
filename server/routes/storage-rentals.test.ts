@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 const h = vi.hoisted(() => ({ quote: vi.fn(), checkout: vi.fn(), read: vi.fn(), list: vi.fn(), decide: vi.fn(), withdraw: vi.fn(),
-  visit: vi.fn(), extensionQuote: vi.fn(), extensionPay: vi.fn(), extensionSync: vi.fn(), raise: vi.fn(), waive: vi.fn(), record: vi.fn(), notice: vi.fn(), open: vi.fn() }));
+  adminAction: vi.fn(), visit: vi.fn(), extensionQuote: vi.fn(), extensionPay: vi.fn(), extensionSync: vi.fn(), raise: vi.fn(), waive: vi.fn(), record: vi.fn(), notice: vi.fn(), open: vi.fn() }));
 vi.mock('../services/storage-checkout-service', () => ({ storageRentalVisitAction: h.visit }));
 vi.mock('../services/storage-extensions', () => ({ quoteExtension: h.extensionQuote, payExtension: h.extensionPay, syncStorageTerm: h.extensionSync }));
 vi.mock('../firebase-auth-middleware', () => ({ requireFirebaseAuthWithUser: vi.fn(), requireManager: vi.fn(), requireAdmin: vi.fn() }));
@@ -9,6 +9,7 @@ vi.mock('./middleware', () => ({ requireChef: vi.fn() }));
 vi.mock('../services/storage-rentals', () => ({ quoteRental: h.quote, createRentalCheckout: h.checkout, readRental: h.read,
   listRentals: h.list, decideRental: h.decide, withdrawRental: h.withdraw,
   StorageRentalError: class extends Error { constructor(public code: string, public status = 409) { super(code); } } }));
+vi.mock('../services/admin-storage', async importOriginal => ({ ...await importOriginal<any>(), runAdminStorageAction: h.adminAction }));
 import router from './storage-rentals';
 import { StorageRentalError } from '../services/storage-rentals';
 const user = { id: 3, preferredLocale: 'fr-CA' };
@@ -75,10 +76,11 @@ describe('storage rental API contract', () => {
     await call('post', '/manager/storage-rentals/:id/removal/record', { all: true });
     expect(h.record).toHaveBeenCalledWith(7, { id: 3, role: 'manager' }, { all: true });
     const notice = { photos: ['https://img.test/a.jpg'], items: [{ name: 'Flour', qty: 2, perishable: false }] };
-    await call('post', '/admin/storage-rentals/:id/final-notice', notice);
-    expect(h.notice).toHaveBeenCalledWith(7, 3, notice);
-    await call('post', '/admin/storage-rentals/:id/open-removal-review', {});
-    expect(h.open).toHaveBeenCalledWith(7);
+    const audit = { reason: 'Reviewed with the kitchen.', operationKey: 'final-notice-test' };
+    await call('post', '/admin/storage-rentals/:id/final-notice', { ...notice, ...audit });
+    expect(h.adminAction).toHaveBeenCalledWith(7, 3, expect.objectContaining({ ...notice, ...audit, type: 'send_final_notice', fundedBy: 'none' }));
+    await call('post', '/admin/storage-rentals/:id/open-removal-review', audit);
+    expect(h.adminAction).toHaveBeenCalledWith(7, 3, expect.objectContaining({ type: 'open_removal_review', ...audit }));
     for (const [path, data] of [['/manager/storage-rentals/:id/holdover-charge', { amountCents: 1.5 }], ['/manager/storage-rentals/:id/holdover-charge', {}],
       ['/manager/storage-rentals/:id/holdover-waive', { reason: ' ' }], ['/admin/storage-rentals/:id/final-notice', { photos: [], items: notice.items }],
       ['/admin/storage-rentals/:id/final-notice', { photos: notice.photos, items: [] }]] as const)
