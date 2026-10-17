@@ -62,7 +62,7 @@ kitchen's current setting (today's behaviour).
 
 ## Verification
 
-- Commit before checks; `npx tsc --noEmit -p tsconfig.json` run once afterwards (result in the lead hand-off).
+- Work committed first; `npx tsc --noEmit -p tsconfig.json` run once afterwards: **0 errors**.
 - Server: **50 files, 926 passed, 1 expected fail** (`--config vitest.config.server.ts --maxWorkers=4` with filters
   `booking-availability booking-buffers booking-days-validation kitchen-booking-quota booking-buffer-pairs
   kitchen-checkout-holds session-extension kitchen-booking-change checkout-fulfillment checkout-replacement
