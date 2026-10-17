@@ -15,6 +15,7 @@ import { toast } from "sonner"
 import { auth } from "@/lib/firebase"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { TimeSelect } from "@/components/ui/time-select"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
@@ -525,11 +526,11 @@ export const ViewingSettingsPanel = forwardRef<ViewingSettingsPanelHandle, Viewi
                     <div className="order-3 col-span-2 flex min-w-0 items-center gap-2 sm:order-2 sm:col-span-1 sm:justify-end">
                       {schedule.isAvailable ? (
                         <>
-                          <Input type="time" aria-label={dayName + " " + mt("open")} className="min-h-11 min-w-0 flex-1 text-base sm:w-28 sm:flex-none sm:text-sm" value={schedule.startTime || "09:00"}
-                            onChange={(e) => setWeeklySchedule((prev) => ({ ...prev, [index]: { ...schedule, startTime: e.target.value } }))} />
+                          <TimeSelect aria-label={dayName + " " + mt("open")} className="min-h-11 flex-1 text-base sm:w-28 sm:flex-none sm:text-sm" value={schedule.startTime || "09:00"}
+                            onChange={(value) => setWeeklySchedule((prev) => ({ ...prev, [index]: { ...schedule, startTime: value } }))} />
                           <span className="select-none text-muted-foreground" aria-hidden>–</span>
-                          <Input type="time" aria-label={dayName + " " + mt("closed")} className="min-h-11 min-w-0 flex-1 text-base sm:w-28 sm:flex-none sm:text-sm" value={schedule.endTime || "17:00"}
-                            onChange={(e) => setWeeklySchedule((prev) => ({ ...prev, [index]: { ...schedule, endTime: e.target.value } }))} />
+                          <TimeSelect aria-label={dayName + " " + mt("closed")} className="min-h-11 flex-1 text-base sm:w-28 sm:flex-none sm:text-sm" value={schedule.endTime || "17:00"}
+                            onChange={(value) => setWeeklySchedule((prev) => ({ ...prev, [index]: { ...schedule, endTime: value } }))} />
                         </>
                       ) : (
                         <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">

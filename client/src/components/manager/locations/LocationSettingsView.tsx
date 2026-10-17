@@ -14,6 +14,7 @@ import { DEFAULT_TIMEZONE } from "@/utils/timezone-utils";
 import { Button } from "@/components/ui/button";
 import { StatusButton } from "@/components/ui/status-button";
 import { Input } from "@/components/ui/input";
+import { DateField } from "@/components/ui/date-field";
 import { NumericInput } from "@/components/ui/numeric-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -342,12 +343,12 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
                                     {shouldShowUpload && (
                                         <div className="space-y-4 border rounded-lg p-4 bg-muted/20">
                                             <div className="space-y-2">
-                                                <Label>{mt("licenseExpirationDate")}<span className="text-destructive">*</span></Label>
-                                                <Input
-                                                    type="date"
+                                                <Label htmlFor="location-license-expiry">{mt("licenseExpirationDate")}<span className="text-destructive">*</span></Label>
+                                                <DateField
+                                                    id="location-license-expiry"
                                                     value={licenseExpiryDate}
-                                                    onChange={e => setLicenseExpiryDate(e.target.value)}
-                                                    min={new Date().toISOString().split('T')[0]}
+                                                    onChange={setLicenseExpiryDate}
+                                                    placeholder={mt("licenseExpirationDate")}
                                                 />
                                             </div>
                                             <div className="space-y-2">

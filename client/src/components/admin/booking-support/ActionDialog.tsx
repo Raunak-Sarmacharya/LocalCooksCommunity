@@ -4,7 +4,9 @@ import { AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
 import { Dialog } from "@/components/ui/dialog";
 import { AppDialogBody, AppDialogContent, AppDialogFooter, AppDialogHeader } from "@/components/ui/app-dialog";
 import { Button } from "@/components/ui/button";
+import { DateField } from "@/components/ui/date-field";
 import { Input } from "@/components/ui/input";
+import { TimeSelect } from "@/components/ui/time-select";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
@@ -69,6 +71,11 @@ function ActionDialogContent({ action, supportCase: c, getFirebaseToken, onClose
   const [result, setResult] = useState<ActionResult | null>(null);
   const set = <K extends keyof ActionForm>(key: K, value: ActionForm[K]) => setForm((f) => ({ ...f, [key]: value }));
   const err = (key: string) => (errors[key] ? t(errors[key]) : undefined);
+  // The form stores one "yyyy-MM-ddTHH:mm" wall-clock string; the two house
+  // controls each own one half. An incomplete pair stays incomplete (and fails
+  // buildActionRequest's zone conversion) rather than silently defaulting.
+  const [actualAtDate = "", actualAtTime = ""] = form.actualAt.split("T");
+  const setActualAt = (date: string, time: string) => set("actualAt", date || time ? `${date}T${time}` : "");
 
   const actionLabel = t(`bsAction_${type}`, { defaultValue: action.label });
   const preview = previewForDisplay(type, action.moneyPreview, form.amount);
@@ -289,7 +296,10 @@ function ActionDialogContent({ action, supportCase: c, getFirebaseToken, onClose
 
           {spec.fields.includes("actualAt") && (
             <Field label={t("bsActualAt", { zone: c.schedule.zoneLabel })} htmlFor="bs-actual" error={err("actualAt")} hint={t("bsActualAtHint", { zone: c.schedule.zoneLabel })}>
-              <Input id="bs-actual" type="datetime-local" value={form.actualAt} disabled={readOnly} onChange={(e) => set("actualAt", e.target.value)} />
+              <div className="grid gap-2 sm:grid-cols-2">
+                <DateField id="bs-actual" minToday={false} value={actualAtDate} onChange={(date) => setActualAt(date, actualAtTime)} placeholder="yyyy-mm-dd" disabled={readOnly} />
+                <TimeSelect aria-label={t("bsActualAt", { zone: c.schedule.zoneLabel })} value={actualAtTime} onChange={(time) => setActualAt(actualAtDate, time)} stepMinutes={5} disabled={readOnly} />
+              </div>
             </Field>
           )}
 

@@ -3,6 +3,9 @@ vi.mock('react-i18next', async () => ({ useTranslation: (await import('@/test/bo
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('@/lib/firebase', () => ({ auth: { currentUser: { getIdToken: async () => 'fixture-token' } } }));
+// The dialog's job here is the quote/booking logic; the real DateField is a popover calendar
+// whose month navigation would make these fixtures depend on the day the suite runs.
+vi.mock('@/components/ui/date-field', () => ({ DateField: ({ id, value, onChange, disabled }: any) => <input id={id} value={value} disabled={disabled} onChange={event => onChange(event.target.value)} /> }));
 import { ChangeBookingDialog, KitchenBookingChanges } from './KitchenBookingChanges';
 
 const original = { date: '2030-11-10', windowStart: '06:00', slots: [{ startTime: '10:00', endTime: '11:00' }] };
