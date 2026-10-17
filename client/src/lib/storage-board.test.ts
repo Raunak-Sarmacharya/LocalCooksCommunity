@@ -109,7 +109,7 @@ describe("board summary and requests", () => {
       ],
       [listing({ unitCount: 8 })],
     );
-    expect(summary).toEqual({ units: 8, occupied: 3, requests: 1, grace: 1, holdover: 1 });
+    expect(summary).toEqual({ units: 8, occupied: 3, outOfService: 0, requests: 1, grace: 1, holdover: 1 });
   });
 
   it("orders requests by their answer deadline and sums the charge", () => {
@@ -166,5 +166,5 @@ it("shows out-of-service units without evicting renters or counting empty broken
   expect(rows[0].outOfService?.reason).toBe("Repair");
   expect(rows[0].rental?.id).toBe(1);
   expect(filterUnitRows(rows, "free")).toHaveLength(1);
-  expect(boardSummary([rental()], [listing({ unitCount: 3, outOfServiceUnits: units })]).occupied).toBe(1);
+  expect(boardSummary([rental()], [listing({ unitCount: 3, outOfServiceUnits: units })])).toMatchObject({ occupied: 1, units: 2, outOfService: 1 });
 });

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { I18nextProvider } from "react-i18next"
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 import i18n from "@/i18n"
@@ -49,6 +49,18 @@ const show = () => render(<QueryClientProvider client={new QueryClient({ default
   <I18nextProvider i18n={i18n}><ChefStorageRequestPage /></I18nextProvider></QueryClientProvider>)
 
 describe("rent storage stepper", () => {
+  it("greys out start dates before the first free day and starts on it", async () => {
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/St_Johns" }).format(new Date())
+    listing.availability = { state: "from", from: addDay(today, 3) } as typeof listing.availability
+    try {
+      show()
+      const group = (await screen.findAllByRole("group", { name: "Start date" })).at(-1)!
+      await waitFor(() => expect(within(group).getAllByRole("button")[3]).toHaveAttribute("aria-pressed", "true"))
+      const days = within(group).getAllByRole("button")
+      expect(days.slice(0, 3).every(day => (day as HTMLButtonElement).disabled)).toBe(true)
+      expect((days[3] as HTMLButtonElement).disabled).toBe(false)
+    } finally { listing.availability = { state: "now" } }
+  })
   it("shows the listing plainly, then the disclosure and consent before paying", async () => {
     show()
     expect(await screen.findByText("Dry storage · 3 units · One shelf, 36 in wide · Access during kitchen hours")).toBeInTheDocument()

@@ -212,6 +212,7 @@ export function unitRows(rentals: StorageRental[], listings: StorageListing[]): 
 export interface BoardSummary {
   units: number;
   occupied: number;
+  outOfService: number;
   requests: number;
   grace: number;
   holdover: number;
@@ -221,8 +222,10 @@ export interface BoardSummary {
 export function boardSummary(rentals: StorageRental[], listings: StorageListing[]): BoardSummary {
   const rows = unitRows(rentals, listings);
   return {
-    units: rows.length,
+    // A free unit taken out of service can't be rented, so it doesn't count toward capacity.
+    units: rows.filter((row) => row.chip !== "outOfService").length,
     occupied: rows.filter((row) => row.rental !== null).length,
+    outOfService: rows.filter((row) => row.chip === "outOfService").length,
     requests: rentals.filter((rental) => rental.state === "requested").length,
     grace: rows.filter((row) => row.chip === "grace").length,
     holdover: rows.filter((row) => row.chip === "holdover").length,

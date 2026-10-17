@@ -96,6 +96,7 @@ export default function ManagerStorageBookingsPage(_props: ManagerStorageBooking
           [t("stSummaryRequests", { count: summary.requests }), "text-foreground"],
           [t("stSummaryGrace", { count: summary.grace }), "text-foreground"],
           [t("stSummaryHoldover", { count: summary.holdover }), "text-foreground"],
+          ...(summary.outOfService ? [[t("stSummaryOutOfService", { count: summary.outOfService }), "text-foreground"]] : []),
         ].map(([label, className]) => (
           <div key={label} className="rounded-xl border bg-card p-4">
             <p className={`text-lg font-semibold tabular-nums ${className}`}>{label}</p>

@@ -107,7 +107,7 @@ export default function ChefStorageRequestPage() {
           <legend className="px-1 text-base font-semibold">{t("stcStartLabel")}</legend>
           <p className="text-sm text-muted-foreground">{t("stcStartHint")}</p>
           <div className="grid grid-cols-3 gap-2 sm:grid-cols-5" role="group" aria-label={t("stcStartLabel")}>
-            {startOptions.map(day => <Button key={day} type="button" variant="outline" aria-pressed={startOn === day}
+            {startOptions.map(day => <Button key={day} type="button" variant="outline" aria-pressed={startOn === day} disabled={day < firstFree}
               className={cn("min-h-11 px-1 text-[13px]", startOn === day && "border-foreground bg-muted font-semibold")}
               onClick={() => { setStartOn(day); setPayError(null); setRequestKey(newRequestKey()) }}>{storageDay(day, locale)}</Button>)}
           </div>
@@ -148,6 +148,7 @@ export default function ChefStorageRequestPage() {
             {q && <li>{t("stcDiscExtend", { end: storageDay(q.endOn, locale), kitchen, daily: cad(q.dailyPriceCents, locale) })}</li>}
             <li>{t("stcDiscEarly")}</li>
             <li>{t("stcDiscCancel", { kitchen })}</li>
+            <li>{t("stcDiscCardSaved")}</li>
           </ul>
         </section>
         <CheckoutCancellationDisclosure policy={policy.data} startAt={startOn ? localDayStart(startOn, timezone).toISOString() : undefined}
