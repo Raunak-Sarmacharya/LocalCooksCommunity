@@ -15,6 +15,7 @@ import { FrozenCancellationPolicy } from './FrozenCancellationPolicy';
 import { DamageClaimPanel } from './DamageClaimPanel';
 import { AdminCancellationPolicyEditor } from '@/components/admin/AdminCancellationPolicyEditor';
 import { CheckoutIncidents } from './CheckoutIncidents';
+import { KitchenChangeRecovery } from './KitchenChangeRecovery';
 
 function readBookingParam(): number | null {
   const raw = new URLSearchParams(window.location.search).get("booking");
@@ -116,6 +117,7 @@ export function BookingSupportSection({ getFirebaseToken }: { getFirebaseToken: 
         </p>
       )}
       <DamageClaimPanel bookingId={c.bookingId} />
+      <KitchenChangeRecovery bookingId={c.bookingId} getFirebaseToken={getFirebaseToken} />
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_20rem] xl:items-start">
         <div className="order-1 md:col-span-2 xl:order-3 xl:col-span-1">
           <ActionPanel actions={c.availableActions} supportActions={c.supportActions} onChoose={(action) => { setDoneLabel(null); setChosen(action); }} />
