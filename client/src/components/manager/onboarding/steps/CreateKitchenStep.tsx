@@ -22,7 +22,8 @@ import {
 } from "@/components/manager/kitchen/KitchenPhotoFields";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { hasKitchenRate, requiresExtraTimeRate } from "@shared/kitchen-booking-rate";
+import { formatCurrency } from "@/lib/formatters";
+import { hasKitchenRate, isPositiveRate, requiresExtraTimeRate } from "@shared/kitchen-booking-rate";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import { SmartImage } from "@/components/ui/smart-image";
 import { FormLegend } from "@/components/ui/form-legend";
@@ -928,7 +929,11 @@ export default function CreateKitchenStep() {
                   className="w-32"
                 />
               </SettingsRow>
-            ) : null}
+            ) : isPositiveRate(data.hourlyRate) ? (
+          <SettingsRow id="kitchen-extra-time-rate" label={mt("extraTimeRatePerHour")} hint={mt("extraTimeRateHelp")}>
+            <p className="text-sm text-muted-foreground">{mt("extraTimeRateSameAsHourly", { amount: formatCurrency(Math.round(Number(data.hourlyRate) * 100)) })}</p>
+          </SettingsRow>
+        ) : null}
 
             {/*
               * Required, and one hour is the floor. Zero is not a minimum booking — it is

@@ -4272,5 +4272,6 @@
   "extraTimeRateHelp": "Charged per hour when a chef asks for more time or stays past the end. Kitchens with an hourly rate use that rate.",
   "extraTimeRateMustBeAPositiveNumberOrEmpty": "Extra time rate must be a positive number or empty.",
   "extraTimeRateRequiredForDailyOnly": "Extra time rate (per hour) is required when you set a daily rate and no hourly rate.",
-  "listingReviewExtraTimePerHour": "/hour extra time"
+  "listingReviewExtraTimePerHour": "/hour extra time",
+  "extraTimeRateSameAsHourly": "Same as your hourly rate · {amount}/hour"
 }

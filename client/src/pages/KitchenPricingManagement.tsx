@@ -376,6 +376,10 @@ export const KitchenPricingContent = forwardRef<
               className="w-36"
             />
           </SettingsRow>
+        ) : isPositiveRate(pricing.hourlyRate) ? (
+          <SettingsRow id="extra-time-rate" label={mt("extraTimeRatePerHour")} hint={mt("extraTimeRateHelp")}>
+            <p className="text-sm text-muted-foreground">{mt("extraTimeRateSameAsHourly", { amount: formatCurrency(Math.round(Number(pricing.hourlyRate) * 100)) })}</p>
+          </SettingsRow>
         ) : null}
 
         <SettingsRow

@@ -4272,5 +4272,6 @@
   "extraTimeRateHelp": "Стягується за годину, коли шеф просить більше часу або залишається після кінця. Кухні з погодинною ставкою використовують її.",
   "extraTimeRateMustBeAPositiveNumberOrEmpty": "Ставка за додатковий час має бути додатним числом або порожньою.",
   "extraTimeRateRequiredForDailyOnly": "Ставка за додатковий час (за годину) обов’язкова, якщо ви вказали денну ставку без погодинної.",
-  "listingReviewExtraTimePerHour": "/год додаткового часу"
+  "listingReviewExtraTimePerHour": "/год додаткового часу",
+  "extraTimeRateSameAsHourly": "Як ваша погодинна ставка · {amount}/год"
 }

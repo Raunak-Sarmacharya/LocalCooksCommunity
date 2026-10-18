@@ -4272,5 +4272,6 @@
   "extraTimeRateHelp": "Facturé à l’heure lorsqu’un chef demande plus de temps ou reste après la fin. Les cuisines avec un tarif horaire utilisent ce tarif.",
   "extraTimeRateMustBeAPositiveNumberOrEmpty": "Le tarif pour le temps supplémentaire doit être un nombre positif ou vide.",
   "extraTimeRateRequiredForDailyOnly": "Le tarif pour le temps supplémentaire (par heure) est requis lorsque vous fixez un tarif journalier sans tarif horaire.",
-  "listingReviewExtraTimePerHour": "/heure de temps supplémentaire"
+  "listingReviewExtraTimePerHour": "/heure de temps supplémentaire",
+  "extraTimeRateSameAsHourly": "Identique à votre tarif horaire · {amount}/heure"
 }

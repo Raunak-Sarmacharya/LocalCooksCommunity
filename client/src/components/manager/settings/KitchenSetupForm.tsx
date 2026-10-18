@@ -5,7 +5,8 @@ import { mt } from "@/i18n/manager";
 import { tt } from "@/i18n/common-ns";
 import { useToast } from "@/hooks/use-toast";
 import { useSessionFileUpload } from "@/hooks/useSessionFileUpload";
-import { hasKitchenRate, requiresExtraTimeRate } from "@shared/kitchen-booking-rate";
+import { formatCurrency } from "@/lib/formatters";
+import { hasKitchenRate, isPositiveRate, requiresExtraTimeRate } from "@shared/kitchen-booking-rate";
 import { AlertCircle } from "@/components/ui/manager-icons";
 import { Button } from "@/components/ui/button";
 import { StatusButton } from "@/components/ui/status-button";
@@ -313,7 +314,11 @@ export function KitchenSetupForm({ locationId, onCancel, onCreated }: KitchenSet
                                 className="w-32"
                             />
                         </SettingsRow>
-                    ) : null}
+                    ) : isPositiveRate(hourlyRate) ? (
+          <SettingsRow id="new-kitchen-extra-time-rate" label={mt("extraTimeRatePerHour")} hint={mt("extraTimeRateHelp")}>
+            <p className="text-sm text-muted-foreground">{mt("extraTimeRateSameAsHourly", { amount: formatCurrency(Math.round(Number(hourlyRate) * 100)) })}</p>
+          </SettingsRow>
+        ) : null}
 
                     <SettingsRow id="new-kitchen-minimum" label={mt("minimumBooking")} required>
                         <NumericInput
