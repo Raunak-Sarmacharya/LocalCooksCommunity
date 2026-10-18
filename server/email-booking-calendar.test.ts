@@ -110,3 +110,12 @@ it('CP9: cancelling the first date never makes the calendar cancel the remaining
  expect(ics).toContain('METHOD:PUBLISH'); expect(ics).not.toContain('METHOD:CANCEL');
  expect(ics).toContain('STATUS:CANCELLED'); expect(ics).toContain('STATUS:CONFIRMED'); expect(ics).toContain('SEQUENCE:3');
 });
+
+it('a multi-day confirmation tells the chef each day has its own check-in (not for one day or the kitchen)', () => {
+  const base = { chefEmail: 'chef@example.com', chefName: 'Chef', kitchenName: 'Kitchen', bookingDate: '2030-01-15', startTime: '09:00', endTime: '10:00',
+    timezone: 'America/St_Johns', bookingId: 10, arrivalMode: 'staffed' as const, scheduleRevision: 1 };
+  const days = [{ id: 8, date: '2030-01-15', startTime: '09:00', endTime: '10:00' }, { id: 9, date: '2030-01-18', startTime: '09:00', endTime: '10:00' }];
+  expect(generateBookingConfirmationEmail({ ...base, days }).text).toContain('Each day of this booking has its own check-in and code.');
+  expect(generateBookingConfirmationEmail({ ...base, days: [days[0], { ...days[1], cancelled: true }] }).text).not.toContain('Each day of this booking');
+  expect(generateBookingConfirmationEmail({ ...base, days, isStaff: true }).text).not.toContain('Each day of this booking');
+});

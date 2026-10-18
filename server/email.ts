@@ -3684,9 +3684,9 @@ export const generateBookingConfirmationEmail = (bookingData: { chefEmail: strin
   const managerBody = bookingData.arrivalMode === 'self' ? 'bookingManagerSelfBody' : bookingData.arrivalMode === 'mixed'
     ? 'bookingManagerMixedBody' : bookingData.arrivalMode === 'staffed' ? 'bookingManagerStaffedBody' : 'bookingManagerLegacyBody';
   const guidance = staff ? tEmail(locale, bookingData.isAdmin ? 'bookingAdminConfirmedBody' : managerBody, { chef: bookingData.reservationChefName || bookingData.chefName })
-    : bookingData.visitGuidance || [arrivalModeLine(bookingData.arrivalMode, locale), bookingData.instructionsReleased
+    : bookingData.visitGuidance || [arrivalModeLine(bookingData.arrivalMode, locale), (bookingData.days?.filter(day => !day.cancelled).length ?? 0) > 1 ? tEmail(locale, 'arrivalEachDay') : '', bookingData.instructionsReleased
       ? [tEmail(locale, 'instructionsReleased'), bookingData.arrivalInstructions ? `Arrival instructions: ${bookingData.arrivalInstructions}` : '',
-        bookingData.departureInstructions ? `Departure instructions: ${bookingData.departureInstructions}` : ''].filter(Boolean).join('\n') : overview].join('\n');
+        bookingData.departureInstructions ? `Departure instructions: ${bookingData.departureInstructions}` : ''].filter(Boolean).join('\n') : overview].filter(Boolean).join('\n');
   const cancellation = !staff && bookingData.cancellationDeadline ? tEmail(locale, 'bookingCancellationPolicy', {
     deadline: emailLocalDateTimeSentence(bookingData.cancellationDeadline, timezone, locale), hours: bookingData.cancellationPolicyHours ?? 24 }) : '';
   // Staff see what the kitchen actually receives: manager revenue minus the card processing fee (same figure as the manager page).

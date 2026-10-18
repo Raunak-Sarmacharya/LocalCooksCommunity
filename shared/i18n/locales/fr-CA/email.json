@@ -74,6 +74,7 @@
   "sessionEndingNote": "Partir plus tôt ne donne pas droit à un remboursement du temps réservé non utilisé. Si quelque chose ne va pas, utilisez « Signaler un problème » ou « Obtenir de l’aide » sur la page de votre visite.",
   "arrivalModeStaffed": "À votre arrivée, demandez au personnel de la cuisine votre code d’enregistrement à 6 chiffres et saisissez-le dans Local Cooks. Il sert uniquement à vous enregistrer; il n’ouvre pas la porte.",
   "arrivalModeSelf": "L’arrivée autonome est activée pour cette visite. Suivez les instructions de la cuisine pour entrer, puis confirmez votre arrivée dans Local Cooks. Aucun code d’enregistrement requis.",
+  "arrivalEachDay": "Chaque jour de cette réservation a son propre enregistrement et son propre code.",
   "arrivalModeMixed": "Le mode d’arrivée varie selon la visite. Ouvrez chaque visite pour les détails.",
   "arrivalModeLegacy": "Suivez les instructions d’arrivée et confirmez votre arrivée dans Local Cooks une fois sur place.",
   "arrivalActionStaffed": "Demandez votre code d’enregistrement au personnel, puis saisissez-le dans Local Cooks pour vous enregistrer.",
