@@ -82,7 +82,7 @@ refund deadline.
 it; Local Cooks covers that fee. You can then drop the remaining days without the late charge, until the next booked day starts.
 Each of those days is refunded minus its card processing fee, and the refund comes out of the kitchen's payout for that day.
 
-**Invitations.** A kitchen can invite you to several days at once, on the same rules and at a price it sets.
+**Invitations.** A kitchen can invite you to several days at once, on the same rules, at a reduced price it offers you.
 
 ## 3. Changing a booking
 
@@ -137,8 +137,8 @@ time.
 
 **Extra time.** While you're checked in you can ask for more time. The kitchen can approve it with a charge, approve it for free, or
 decline it. If there's a charge, your card is held and charged only when the kitchen approves. Only time that is actually free is
-offered. Extra time can't be refunded once it's added. A request the kitchen doesn't answer within 15 minutes expires. Extra time
-isn't offered on multi-day bookings yet.
+offered. Extra time can't be refunded once it's added. A request the kitchen doesn't answer within 15 minutes expires. On a
+multi-day booking, extra time works the same way for the day you're checked in, priced at that day's rate.
 
 **Staying past your time.** If you stay longer without extra time, the kitchen can record when you left and send you a charge for
 the extra time in 30-minute blocks. **You pay it or dispute it — it is never charged automatically.** Charges not resolved within

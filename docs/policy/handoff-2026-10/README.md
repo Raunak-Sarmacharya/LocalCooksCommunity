@@ -51,7 +51,7 @@ publish.
 | E3 | **SMS**: Twilio is configured and some booking actions can text the phone on file. Decide keep or remove; if kept, add a "Text me booking updates" toggle (off by default) and STOP handling. | Consent + accuracy of §5 and §8.2. |
 | E4 | **Kitchen Stripe Connected Account Agreement** link shown before a kitchen connects Stripe. | Stripe requires platforms to present it. |
 | E5 | Remove the dormant Google Analytics / Tag Manager `dns-prefetch` lines (`client/index.html:109–110`) or, if you add analytics later, update §7 (cookies) first. | Policy says no third-party advertising/analytics trackers. |
-| E6 | **Multi-day booking creation** is built (CP6/CP8) but still switched off on dev; **partial acceptance** is built and needs live verification after migration 0103 is applied. Turn both on and verify before publishing the multi-day and item-approval rules. | The text describes what the product does; these paths aren't live yet. |
+| E6 | **Multi-day bookings** are built but still switched off on dev until the kitchen screens (CP9), whole-booking changes (CP7), invitations (CP10), extra time per day and a full live run-through are done — publish the multi-day rules only after that. **Chef approval of a declined item** is built and verified live on dev on Oct 17 (accept #200, decline #201, no answer #202). |
 
 ## Open points for you and your lawyer
 
