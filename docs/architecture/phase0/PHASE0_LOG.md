@@ -1178,6 +1178,10 @@ Already-failing tests found before any change (baseline, not ours): 21 in `tour-
 
 - **Bug 9 (blocker for multi-day extra time / early start / overstay charge on the booking page):** the extension state read refused a dated booking without a visit id (error swallowed) -> no "Let them start early" / "Need more time?" there. Reads now pick today's day (`2a0a71c7`, test fails on old code). Live #209 day 1: early start correctly offered no times (4-5 p.m. is #207's 1 h buffer); chef asked for 1 h -> "$30.50 is on hold" on the saved card -> kitchen saw "asked for 1 more hour (until 7:00 p.m.) · you'd get $28.75" with Approve · charge $30.50 / Approve for free / Decline -> declined (Stripe PI canceled, 0 received) -> "Offer more time" -> 30 min "Free, or charge?" -> Give it free -> chef "gave you 30 more minutes (until 6:30 p.m.) — no charge", day 1 ends 6:30, day 2 unchanged. Owner questions answered: early start uses the same extra time rate; free is the kitchen's choice for requests (Approve for free), offers and early starts; all options come from the same availability check (hours, other bookings, holds, buffer, weekly limit).
 
+- #209 day 1 finished live: checkout -> "Next: day 2 of 2 · Friday, October 23 at 5:00 p.m." -> inspection "Your $27.47 payout is sent right away" -> transfer `tr_3URx03…` 2747; day 2 untouched; free extra time added nothing.
+- **Owner decision:** no general kitchen custom charge at launch (policy register); candidate after team testing.
+- Independent money review of the Oct 18 live-run money fixes (af2aa5a6, 45cce2b3, 2a0a71c7, 204c4746, ab2434cc, 66352b57, 5f2db9ea) started (Cursor Auto).
+
 ### Handover — next session (start here)
 1. Done Oct 18: pushed (CP7 + fixes, extra time rate, CP10; 0104 on dev DB). Check the Vercel dev deploy succeeded and smoke-test kitchen pricing + a booking page.
 2. CP10 independent money review (Cursor Auto) -> fix round (Codex).
