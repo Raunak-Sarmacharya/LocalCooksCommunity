@@ -15,8 +15,21 @@ function localParts(instant: number, timezone: string): string {
   return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
 }
 
+// Pure in (date, time, timezone); month pickers ask the same wall times ~1M times (17 s per month uncached, Oct 18).
+const instantCache = new Map<string, number[]>();
+
 /** Return all real instants matching a kitchen-local wall time (zero, one, or two at DST). */
 export function matchingLocalInstants(date: string, time: string, timezone: string): number[] {
+  const key = `${date}T${time}|${timezone}`;
+  const hit = instantCache.get(key);
+  if (hit) return hit.slice();
+  if (instantCache.size > 50_000) instantCache.clear();
+  const result = computeLocalInstants(date, time, timezone);
+  instantCache.set(key, result);
+  return result.slice();
+}
+
+function computeLocalInstants(date: string, time: string, timezone: string): number[] {
   const target = `${date}T${time}`;
   const wallAsUtc = Date.parse(`${target}:00Z`);
   if (!Number.isFinite(wallAsUtc)) return [];

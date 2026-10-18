@@ -16,3 +16,10 @@ describe('Newfoundland daylight saving booking slots', () => {
     expect(isUnambiguousBookingSlot('2026-03-07', slot('01:00', '02:00'), '08:00', zone)).toBe(false);
   });
 });
+
+it('memoized instants are copies: a caller sorting or emptying its array cannot change the next answer', () => {
+  const first = matchingLocalInstants('2026-11-01', '01:30', 'America/St_Johns');
+  expect(first).toHaveLength(2);
+  first.length = 0;
+  expect(matchingLocalInstants('2026-11-01', '01:30', 'America/St_Johns')).toHaveLength(2);
+});

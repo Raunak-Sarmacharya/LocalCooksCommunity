@@ -565,9 +565,11 @@ export class BookingService {
                 : (weekly?.isAvailable && weekly.startTime && weekly.endTime ? { startTime: weekly.startTime, endTime: weekly.endTime } : null);
             if (!scheduleMap[dateStr] || !window) { result.push({ date: dateStr, ...closed('closed') }); continue; }
 
+            // Only bookings within two days can overlap or buffer this date (overnight windows + max 2 h buffer).
+            const near = entries.filter(entry => Math.abs(Date.parse(entry.slot.date) - date.getTime()) <= 2 * 86_400_000);
             const slots = getHourlySlotStarts(window.startTime, window.endTime).map(slot => {
                 const interval = { startTime: slot, endTime: addHour(slot) };
-                const block = slotBlockReason(entries, { date: dateStr, windowStartTime: window.startTime, ...interval }, context);
+                const block = slotBlockReason(near, { date: dateStr, windowStartTime: window.startTime, ...interval }, context);
                 if (!isUnambiguousBookingSlot(dateStr, interval, window.startTime, timezone)) return { reason: block ?? 'clock_change' as const, past: true };
                 const start = matchingLocalInstants(calendarDateForOperatingTime(dateStr, slot, window.startTime), slot, timezone)[0];
                 return { reason: block ?? (start < now + noticeMs ? 'notice' as const : null), past: !(start > now) };
