@@ -52,7 +52,7 @@ export function DatedChangeEditor({ bookingId, kitchenId, original, disabled, on
   useEffect(() => {
     for (const date of dates.filter(date => !slots[date])) {
       void Promise.all([get<Slot[]>(`/api/chef/kitchens/${kitchenId}/slots?date=${date}&changing=${bookingId}`).catch(() => []),
-        get<{ included?: Equipment[]; rental?: Equipment[] }>(`/api/chef/kitchens/${kitchenId}/equipment-listings?date=${date}`).catch(() => ({}))])
+        get<{ included?: Equipment[]; rental?: Equipment[] }>(`/api/chef/kitchens/${kitchenId}/equipment-listings?date=${date}`).catch(() => ({} as { included?: Equipment[]; rental?: Equipment[] }))])
         .then(([daySlots, items]) => {
           setSlots(current => ({ ...current, [date]: Array.isArray(daySlots) ? daySlots : [] }));
           setEquipment(current => ({ ...current, [date]: [...(items.included ?? []), ...(items.rental ?? [])].filter(item => !item.archivedAt) }));
