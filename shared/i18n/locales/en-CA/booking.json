@@ -1359,5 +1359,21 @@
   "invHoursMode": "Hours",
   "invStartFor": "Start time for {day}",
   "invEquipmentIncluded": "{name} (included)",
-  "invEquipmentLine": "{name} · {price} per day"
+  "invEquipmentLine": "{name} · {price} per day",
+  "cpCancelWhole": "Cancel the whole booking",
+  "cpCancelWholeHint": "Every remaining day of this booking",
+  "cpCancelSomeDays": "Cancel some days",
+  "cpCancelSomeDaysHint": "Choose which days to drop; the rest stay booked",
+  "cpChooseDays": "Choose days",
+  "cpDayPaid": "{amount} paid",
+  "cpDayRefundLine": "{date}: {refund} back",
+  "cpDaysStay": "{count, plural, one {# day stays booked · {total}} other {# days stay booked · {total}}}",
+  "cpDaysCancelled": "Selected days cancelled.",
+  "cpDaysRefundOnWay": "Your refund of {refund} is on its way. Banks usually show it within 5–10 business days.",
+  "cpDaysNoRefundDone": "Those days are cancelled. No refund applies.",
+  "cpDaysDeadline": "Cancel by {deadline} for a refund minus the card processing fee. After that, the kitchen late charge applies to dropped days.",
+  "cpDaysDeadlinePast": "The refund deadline passed on {deadline}. Dropped days follow the kitchen late charge.",
+  "cpDaysOffer": "The kitchen cancelled a day. You can drop remaining days without the late charge until {deadline}.",
+  "cpDaysChooseHint": "Select at least one day to continue.",
+  "cpCancelDaysButton": "Cancel selected days"
 }

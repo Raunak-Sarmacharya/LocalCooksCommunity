@@ -1359,5 +1359,21 @@
   "invHoursMode": "Години",
   "invStartFor": "Час початку на {day}",
   "invEquipmentIncluded": "{name} (включено)",
-  "invEquipmentLine": "{name} · {price} за день"
+  "invEquipmentLine": "{name} · {price} за день",
+  "cpCancelWhole": "Скасувати все бронювання",
+  "cpCancelWholeHint": "Усі дні, що залишилися в цьому бронюванні",
+  "cpCancelSomeDays": "Скасувати окремі дні",
+  "cpCancelSomeDaysHint": "Оберіть дні для скасування; решта залишаються заброньованими",
+  "cpChooseDays": "Оберіть дні",
+  "cpDayPaid": "Сплачено {amount}",
+  "cpDayRefundLine": "{date}: повернення {refund}",
+  "cpDaysStay": "{count, plural, one {# день залишається заброньованим · {total}} few {# дні залишаються заброньованими · {total}} many {# днів залишаються заброньованими · {total}} other {# дня залишаються заброньованими · {total}}}",
+  "cpDaysCancelled": "Вибрані дні скасовано.",
+  "cpDaysRefundOnWay": "Ваше повернення {refund} вже в дорозі. Банки зазвичай показують його протягом 5–10 робочих днів.",
+  "cpDaysNoRefundDone": "Ці дні скасовано. Повернення не застосовується.",
+  "cpDaysDeadline": "Скасуйте до {deadline}, щоб отримати повернення мінус комісію картки. Після цього за скасовані дні стягується штраф кухні за пізнє скасування.",
+  "cpDaysDeadlinePast": "Термін повернення минув {deadline}. За скасовані дні застосовується штраф кухні за пізнє скасування.",
+  "cpDaysOffer": "Кухня скасувала день. Ви можете скасувати решту днів без штрафу за пізнє скасування до {deadline}.",
+  "cpDaysChooseHint": "Виберіть принаймні один день, щоб продовжити.",
+  "cpCancelDaysButton": "Скасувати вибрані дні"
 }
