@@ -27,7 +27,7 @@ export async function currentManagerDecisionReminders(tx: Parameters<Parameters<
   if (now >= deadline) return [];
   const [manager] = await tx.select().from(users).where(eq(users.id, row.location.managerId)).limit(1);
   const chef = row.booking.chefId ? await getUserDisplayName(row.booking.chefId, 'chef', tx) : 'The chef';
-  const start = (await import('@shared/booking-response-deadline')).firstBookingVisitStart(row.booking, timezone);
+  const start = (await import('@shared/booking-response-deadline')).bookingFirstStart(row.booking, timezone);
   const deadlineText = emailLocalDateTimeSentence(deadline, timezone);
   const title = `Reminder: respond to ${chef}'s request by ${deadlineText}`;
   const message = `${chef} asked for ${row.kitchen.name} on ${emailLocalDateTimeSentence(start, timezone)}. If you don't respond by ${deadlineText}, the request expires and their card hold is released.`;

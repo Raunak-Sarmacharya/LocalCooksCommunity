@@ -234,7 +234,7 @@ export async function sendAuthExpiryNotification(
     const { emailLocalDateTimeSentence } = await import('../email');
     const zone = row.location.timezone || DEFAULT_TIMEZONE;
     const date = new Intl.DateTimeFormat('en-CA', { timeZone: zone, dateStyle: 'medium' })
-      .format((await import('@shared/booking-response-deadline')).firstBookingVisitStart(row.booking, zone));
+      .format((await import('@shared/booking-response-deadline')).bookingFirstStart(row.booking, zone));
     const chefMessage = `${row.kitchen.name} didn't respond in time, so your request for ${date} expired. Your card wasn't charged.`;
     const managerMessage = `${name}'s request for ${date} expired because it wasn't answered by ${emailLocalDateTimeSentence(responseDeadlineAt, zone)}. Their card hold was released.`;
     await (await import('./booking-lifecycle-delivery')).queueBookingLifecycleEvent(tx, recordId, 'cancelled', 'Booking request expired', chefMessage,

@@ -338,6 +338,16 @@ describe('Partial acceptance: the chef approves the new total before any capture
 });
 
 describe('CP4 atomic fulfillment and manifest recovery', () => {
+  it('a pending dated request gets kitchen reminders from its frozen first day (no visit clock needed; live webhook failed here, Oct 18)', async () => {
+    await fulfill();
+    const [booking] = await rows(s.kitchenBookings);
+    expect(booking).toMatchObject({ status: 'pending', paymentStatus: 'authorized' });
+    expect(booking.scheduleRevision).toBeGreaterThan(0);
+    const { currentManagerDecisionReminders } = await import('./manager-decision-reminders');
+    const reminders = await currentManagerDecisionReminders(h.db, booking.id, new Date(booking.createdAt));
+    expect(reminders.length).toBeGreaterThan(0);
+    expect(reminders[0].start).toBe(booking.cancellationPolicySnapshot.sessions[0].startAt);
+  });
   it('serializes simultaneous webhook fulfillment and creates only one booking/source', async () => {
     const session = await authorized();
     const ids = await Promise.all([fulfillQuotedKitchenBooking(session, h.intent, h.provider), fulfillQuotedKitchenBooking(session, h.intent, h.provider)]);
