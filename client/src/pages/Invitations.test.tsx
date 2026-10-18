@@ -11,7 +11,7 @@ vi.mock('wouter', () => ({
 }));
 import type React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ManagerInvitationNewPage from './ManagerInvitationNewPage';
 import ChefInvitationPage from './ChefInvitationPage';
@@ -22,10 +22,13 @@ import { CANCELLATION_DISCLOSURE_VERSION } from '@shared/cancellation-policy';
 const overnight = [...Array.from({ length: 15 }, (_, i) => `${String(i + 9).padStart(2, '0')}:00`), '00:00']
   .map(time => ({ time, available: 1, isFullyBooked: time === '12:00' }));
 const pricing = { listSubtotalCents: 5000, offeredSubtotalCents: 4000, discount: { type: 'amount', value: 1000 }, taxCents: 600, serviceFeeCents: 280, totalCents: 4880, managerEstimatedPayoutCents: 4459 };
+const cancellation = { noticeHours: 24, lateChargePercent: 50, refundDeadlineAt: '2026-10-26T12:30:00.000Z' };
 const invitation = (over: Record<string, unknown> = {}) => ({ id: 'inv-1', version: 1, status: 'sent', kitchen: { id: 54, name: 'Harbour Kitchen', locationId: 47, locationName: 'Water St', photoUrl: null },
   chef: null, date: '2026-10-27', startTime: '10:00', endTime: '12:00', timezone: 'America/St_Johns', pricing, note: 'Tuesday mornings are quiet.',
   expiresAt: '2026-10-18T13:00:00Z', createdAt: '2026-10-16T13:00:00Z', bookingId: null, startAt: '2026-10-27T12:30:00.000Z',
-  canPay: true, canDecline: true, ...over });
+  dayCount: 1, dated: false, days: [{ date: '2026-10-27', pricingMode: 'hourly', startTime: '10:00', endTime: '12:00', equipment: [] }],
+  cancellation, canPay: true, canDecline: true, ...over });
+const rules = { allowMultiDayBookings: false, multidayCreationEnabled: false, maxBookingDays: 7, minimumBookingWindowHours: 1, timezone: 'America/St_Johns' };
 let routes: Array<[RegExp, unknown]>;
 const calls: Array<{ url: string; method: string; body?: any }> = [];
 const policyResponse = { policy: { id: 1, version: 1, noticeHours: 24, lateChargePercent: 50 }, timezone: 'America/St_Johns' };
@@ -41,15 +44,25 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 const mount = (node: React.ReactNode) => render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{node}</QueryClientProvider>);
+/** The house date field opens the shared calendar; pick the day in the shown month. */
+const pickDate = async (label: string, monthDay: string) => {
+  const [month, day] = monthDay.split(' ');
+  fireEvent.click(screen.getByLabelText(label));
+  const popover = await screen.findByRole('dialog');
+  const button = Array.from(popover.querySelectorAll('button'))
+    .find(candidate => candidate.textContent === day && !candidate.className.includes('outside'));
+  if (!button) throw new Error(`No ${month} ${day} in the date picker`);
+  fireEvent.click(button);
+};
 
 describe('kitchen: invite to book', () => {
   it('previews the exact price the chef will see (list price struck through), then sends it once', async () => {
     routes = [[/eligible-chefs/, { chefs: [{ id: 380, name: 'Sam Chef' }] }], [/\/api\/manager\/kitchens\/47$/, [{ id: 54, name: 'Harbour Kitchen' }]],
-      [/\/slots\?date=/, overnight], [/invitations\/preview/, { pricing, expiresAt: '2026-10-18T13:00:00Z', available: true, warnings: [] }],
+      [/kitchen-rules/, rules], [/\/slots\?date=/, overnight], [/invitations\/preview/, { pricing, expiresAt: '2026-10-18T13:00:00Z', available: true, warnings: [] }],
       [/\/api\/manager\/invitations\?/, { invitations: [] }], [/\/api\/manager\/invitations$/, invitation()]];
     mount(<ManagerInvitationNewPage />);
     await waitFor(() => expect(screen.getByLabelText('Chef')).toHaveTextContent('Sam Chef'));
-    fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2026-10-27' } });
+    await pickDate('Date', 'October 27');
     fireEvent.click(screen.getByRole('radio', { name: '$ off' }));
     fireEvent.change(screen.getByLabelText('Dollars off the kitchen time'), { target: { value: '10' } });
     const preview = screen.getByTestId('invitation-preview');
@@ -64,12 +77,12 @@ describe('kitchen: invite to book', () => {
   });
   it("offers the kitchen's own hours for that day, overnight included, and marks booked hours", async () => {
     routes = [[/eligible-chefs/, { chefs: [{ id: 380, name: 'Sam Chef' }] }], [/\/api\/manager\/kitchens\/47$/, [{ id: 54, name: 'Harbour Kitchen' }]],
-      [/\/slots\?date=/, overnight], [/invitations\/preview/, { pricing, expiresAt: '2026-10-18T13:00:00Z', available: true, warnings: [] }],
+      [/kitchen-rules/, rules], [/\/slots\?date=/, overnight], [/invitations\/preview/, { pricing, expiresAt: '2026-10-18T13:00:00Z', available: true, warnings: [] }],
       [/\/api\/manager\/invitations\?/, { invitations: [] }]];
     mount(<ManagerInvitationNewPage />);
     await waitFor(() => expect(screen.getByLabelText('Chef')).toHaveTextContent('Sam Chef'));
     expect(screen.getByLabelText('Start time')).toBeDisabled();
-    fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2026-10-26' } });
+    await pickDate('Date', 'October 26');
     await waitFor(() => expect(screen.getByLabelText('Start time')).toBeEnabled());
     fireEvent.click(screen.getByLabelText('Start time'));
     expect(await screen.findByRole('option', { name: '12:00 a.m.' })).toBeInTheDocument();
@@ -83,11 +96,11 @@ describe('kitchen: invite to book', () => {
   });
   it('an unavailable time explains why and cannot be sent', async () => {
     routes = [[/eligible-chefs/, { chefs: [{ id: 380, name: 'Sam Chef' }] }], [/\/api\/manager\/kitchens\/47$/, [{ id: 54, name: 'Harbour Kitchen' }]],
-      [/\/slots\?date=/, overnight], [/invitations\/preview/, { pricing, expiresAt: '2026-10-18T13:00:00Z', available: false, unavailableReason: 'Sam Chef already has a request for this time.', warnings: [] }],
+      [/kitchen-rules/, rules], [/\/slots\?date=/, overnight], [/invitations\/preview/, { pricing, expiresAt: '2026-10-18T13:00:00Z', available: false, unavailableReason: 'Sam Chef already has a request for this time.', warnings: [] }],
       [/\/api\/manager\/invitations\?/, { invitations: [] }]];
     mount(<ManagerInvitationNewPage />);
     await waitFor(() => expect(screen.getByLabelText('Chef')).toHaveTextContent('Sam Chef'));
-    fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2026-10-27' } });
+    await pickDate('Date', 'October 27');
     expect(await screen.findByText('Sam Chef already has a request for this time.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Send invitation' })).toBeDisabled();
   });
