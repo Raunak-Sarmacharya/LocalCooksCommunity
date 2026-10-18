@@ -51,6 +51,7 @@ vi.mock('./stripe-service', () => ({ getBookingPaymentIntent: async () => struct
 import { createKitchenInvitation, datedInvitationCheckoutPricing, invitationDto } from './kitchen-invitations';
 import { fulfillQuotedKitchenBooking } from './booking-checkout-fulfillment';
 let checkoutDatedInvitation: typeof import('./dated-invitation-checkout').checkoutDatedInvitation;
+let invitationsRouter: typeof import('../routes/kitchen-invitations').default;
 
 beforeAll(async () => {
   vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_in_memory_only');
@@ -82,6 +83,7 @@ beforeAll(async () => {
     charges: { retrieve: vi.fn() }, balanceTransactions: { retrieve: vi.fn() } };
   // Import after the provider exists: the checkout service captures its Stripe client when first loaded.
   ({ checkoutDatedInvitation } = await import('./dated-invitation-checkout'));
+  ({ default: invitationsRouter } = await import('../routes/kitchen-invitations'));
 }, 60_000);
 afterAll(async () => { await h.client?.close(); vi.unstubAllEnvs(); });
 beforeEach(async () => {
@@ -204,12 +206,19 @@ describe('CP10 creating a multi-day invitation', () => {
 });
 
 describe('CP10 paying a multi-day invitation', () => {
-  it('refuses the whole checkout and names the unavailable day, reserving nothing', async () => {
+  it.each([0, 1])('refuses unavailable day %i through service and route, leaves sent and reserves nothing', async index => {
     const first = dateAfter(3), second = dateAfter(5);
     await create({ days: [day(first), day(second)] });
     const [row] = await rows(s.kitchenInvitations);
-    h.closed.add(second);
-    await expect(checkout(row)).rejects.toMatchObject({ status: 409, body: { dayErrors: [{ date: second, reason: 'closed' }] } });
+    const closed = [first, second][index];
+    h.closed.add(closed);
+    await expect(checkout(row)).rejects.toMatchObject({ status: 409, body: { dayErrors: [{ date: closed, reason: 'closed' }] } });
+    const route = (invitationsRouter as any).stack.find((layer: any) => layer.route?.path === '/chef/invitations/:id/checkout').route;
+    const res = { status: vi.fn().mockReturnThis(), json: vi.fn() };
+    await route.stack.at(-1).handle({ neonUser: { id: 3 }, params: { id: row.id }, body: {},
+      protocol: 'https', get: () => 'test.invalid' }, res);
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ dayErrors: [expect.objectContaining({ date: closed, reason: 'closed' })] }));
     expect(h.create).not.toHaveBeenCalled();
     expect(await rows(s.kitchenCheckoutHolds)).toHaveLength(0);
     expect((await rows(s.kitchenInvitations))[0].status).toBe('sent');

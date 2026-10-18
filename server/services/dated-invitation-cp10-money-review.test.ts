@@ -1,6 +1,5 @@
 /**
- * Independent CP10 money-review proofs. Product code untouched; these assert current behaviour
- * (including findings) so a fix round can flip the failing contracts deliberately.
+ * CP10 money-review regression proofs for the firm invitation price and checkout guards.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -48,7 +47,7 @@ vi.mock('./stripe-service', () => ({ getBookingPaymentIntent: async () => struct
   getDatedCaptureEvidence: async () => (await import('./dated-booking-allocations')).verifiedDatedCaptureEvidence(h.intent, h.provider),
 }));
 
-import { createKitchenInvitation, datedInvitationCheckoutPricing } from './kitchen-invitations';
+import { createKitchenInvitation, datedInvitationCheckoutPricing, invitationDto } from './kitchen-invitations';
 import { fulfillQuotedKitchenBooking } from './booking-checkout-fulfillment';
 let checkoutDatedInvitation: typeof import('./dated-invitation-checkout').checkoutDatedInvitation;
 
@@ -221,6 +220,8 @@ describe('CP10 money review — checkout / fulfill ledger', () => {
     expect(snapshot.map(row => row.offeredKitchenCents)).toEqual(allocateCents(8_005, [2_002, 7_003]));
 
     await h.db.update(s.kitchens).set({ hourlyRate: '5000', dailyRate: '20000' }).where(eq(s.kitchens.id, 4));
+    expect(await invitationDto(invite, 'chef')).toMatchObject({ extraTimeRateCents: 5_000 });
+    expect(await datedInvitationCheckoutPricing(invite)).toMatchObject({ extraTimeRateCents: 5_000 });
     const session = await checkout(invite, [{ date: first, equipmentIds: [10] }, { date: second, equipmentIds: [] }]);
     expect(session.currency ?? 'cad').toBeDefined();
     expect(h.sessions[0].currency).toBe('cad');
@@ -229,14 +230,18 @@ describe('CP10 money review — checkout / fulfill ledger', () => {
     const kitchenLines = h.sessions[0].metadata;
     expect(Number(kitchenLines.total_price_cents)).toBe(8_005 + 101);
     expect(h.intent.amount).toBe(8_106 + 1_216 + 567);
+    const hold = (await rows(s.kitchenCheckoutHolds)).find((row: any) => row.quoteSnapshot);
+    expect(hold.quoteSnapshot.manifest.days.map((day: any) => day.rateCents)).toEqual([890, 6_225]);
 
     h.sessions[0].status = 'complete';
     const bookingId = (await fulfillQuotedKitchenBooking(h.sessions[0], h.intent, h.provider))!;
     const [booking] = await rows(s.kitchenBookings);
     expect(booking).toMatchObject({ id: bookingId, invitationId: invite.id, paymentStatus: 'paid', status: 'confirmed' });
-    // S1: charged kitchen stays invited, but hourlyRate / extra-time snapshot follow the live list rate.
-    expect(booking.hourlyRate).toBe('5000');
+    // S1: invited effective rates describe the kitchen offer; extra time follows the live 1x rule.
+    expect(booking.hourlyRate).toBe('890');
     expect(booking.extraTimeRateCents).toBe(5_000);
+    const visits = (await rows(s.kitchenBookingVisits)).sort((a: any, b: any) => a.visitDate.localeCompare(b.visitDate));
+    expect(visits.map((visit: any) => visit.priceSnapshot.rateCents)).toEqual([890, 6_225]);
 
     const [source] = await rows(s.paymentTransactions);
     const parts = (source.metadata as any).capturedComponentAllocations as Array<{
@@ -255,7 +260,7 @@ describe('CP10 money review — checkout / fulfill ledger', () => {
     expect(await rows(s.paymentTransactions)).toHaveLength(1);
   });
 
-  it('M1: frozen days_snapshot equipment cents are ignored — live listing price is charged', async () => {
+  it('M1: frozen days_snapshot equipment cents are charged in both quote and session after a live hike', async () => {
     const first = dateAfter(3), second = dateAfter(5);
     await create({ days: [day(first, [10]), day(second, [], 'daily')], discount: { type: 'amount', value: 1_000 } });
     const [invite] = await rows(s.kitchenInvitations);
@@ -265,16 +270,42 @@ describe('CP10 money review — checkout / fulfill ledger', () => {
 
     await h.db.update(s.equipmentListings).set({ sessionRate: '50000' }).where(eq(s.equipmentListings.id, 10));
     const quote = await datedInvitationCheckoutPricing(invite, [{ date: first, equipmentIds: [10] }, { date: second, equipmentIds: [] }]);
-    expect(quote.equipment.find(item => item.listingId === 10)?.cents).toBe(50_000);
-    expect(quote.subtotalCents).toBe(8_005 + 50_000);
+    expect(quote.equipment.find(item => item.listingId === 10)?.cents).toBe(101);
+    expect(quote.subtotalCents).toBe(8_106);
 
     await checkout(invite, [{ date: first, equipmentIds: [10] }, { date: second, equipmentIds: [] }]);
-    const liveSubtotal = 8_005 + 50_000;
-    expect(Math.round(liveSubtotal * 15 / 100)).toBe(8_701);
-    expect(Math.round(liveSubtotal * 0.07)).toBe(4_060);
-    expect(h.intent.amount).toBe(70_766);
-    // Invitation DTO / snapshot still advertise the create-time mixer price.
+    expect(quote.taxCents).toBe(1_216);
+    expect(quote.serviceFeeCents).toBe(567);
+    expect(h.intent.amount).toBe(9_889);
+    expect(h.intent.amount).toBe(quote.totalCents);
     expect((invite.daysSnapshot as InvitationDaySnapshot[])[0].equipment[0].cents).toBe(101);
+  });
+
+  it('M1: the same equipment added on a different day uses its live price, even if its inclusion rule changes', async () => {
+    const first = dateAfter(3), second = dateAfter(5);
+    await create({ days: [day(first, [10, 11]), day(second)] });
+    const [invite] = await rows(s.kitchenInvitations);
+    await h.db.update(s.equipmentListings).set({ availabilityType: 'included', sessionRate: '50000' }).where(eq(s.equipmentListings.id, 10));
+    await h.db.update(s.equipmentListings).set({ availabilityType: 'rental', sessionRate: '307' }).where(eq(s.equipmentListings.id, 11));
+    const equipment = [{ date: first, equipmentIds: [11, 10] }, { date: second, equipmentIds: [11, 10] }];
+    const quote = await datedInvitationCheckoutPricing(invite, equipment);
+    expect(quote.days.map(day => day.equipment.map(item => [item.listingId, item.cents])))
+      .toEqual([[[10, 101], [11, 0]], [[10, 0], [11, 307]]]);
+    await checkout(invite, equipment);
+    expect(h.intent.amount).toBe(quote.totalCents);
+  });
+
+  it('S1: a $1 booking offer can allocate zero kitchen cents and a zero effective rate to a day', async () => {
+    await h.db.update(s.kitchens).set({ dailyRate: '7003000' }).where(eq(s.kitchens.id, 4));
+    await create({ days: [day(dateAfter(3)), day(dateAfter(5), [], 'daily')],
+      discount: { type: 'amount', value: 7_005_002 - 100 } });
+    const [invite] = await rows(s.kitchenInvitations);
+    await checkout(invite);
+    const hold = (await rows(s.kitchenCheckoutHolds)).find((row: any) => row.quoteSnapshot);
+    expect(hold.quoteSnapshot.manifest.days.map((day: any) => [day.kitchenCents, day.rateCents])).toEqual([[0, 0], [100, 100]]);
+    h.sessions[0].status = 'complete';
+    await fulfillQuotedKitchenBooking(h.sessions[0], h.intent, h.provider);
+    expect((await rows(s.kitchenBookings))[0].hourlyRate).toBe('0');
   });
 
   it('OK: daily-only kitchen snapshots extra_time_rate_cents (0104) on an invitation booking', async () => {
@@ -282,6 +313,8 @@ describe('CP10 money review — checkout / fulfill ledger', () => {
     const first = dateAfter(3), second = dateAfter(5);
     await create({ days: [day(first, [], 'daily'), day(second, [], 'daily')], discount: { type: 'amount', value: 1_000 } });
     const [invite] = await rows(s.kitchenInvitations);
+    expect(await invitationDto(invite, 'chef')).toMatchObject({ extraTimeRateCents: 2_500 });
+    expect(await datedInvitationCheckoutPricing(invite)).toMatchObject({ extraTimeRateCents: 2_500 });
     await checkout(invite);
     h.sessions[0].status = 'complete';
     await fulfillQuotedKitchenBooking(h.sessions[0], h.intent, h.provider);
@@ -298,14 +331,15 @@ describe('CP10 money review — checkout / fulfill ledger', () => {
     expect(await rows(s.kitchenCheckoutHolds)).toHaveLength(0);
   });
 
-  it('S2: checkoutDatedInvitation does not refuse an expired status=sent row (route-only guard)', async () => {
+  it.each(['expired', 'wrong chef', 'not sent'] as const)('S2: checkoutDatedInvitation refuses a %s row before reserving', async reason => {
     const first = dateAfter(3);
     await create({ days: [day(first), day(dateAfter(4))] });
     const [row] = await rows(s.kitchenInvitations);
-    await h.db.update(s.kitchenInvitations).set({ expiresAt: new Date(Date.now() - 60_000) }).where(eq(s.kitchenInvitations.id, row.id));
-    const [expired] = await rows(s.kitchenInvitations);
-    // Service accepts; the HTTP route is the only expiresAt gate today.
-    await expect(checkout(expired)).resolves.toMatchObject({ sessionUrl: 'https://checkout.test.invalid' });
-    expect((await rows(s.kitchenInvitations))[0].status).toBe('accepted_pending_payment');
+    const refused = { ...row, ...(reason === 'expired' ? { expiresAt: new Date(Date.now() - 60_000) }
+      : reason === 'wrong chef' ? { chefId: 2 } : { status: 'declined' }) };
+    await expect(checkout(refused)).rejects.toMatchObject({ status: 409, body: { error: 'This invitation is no longer payable.' } });
+    expect(h.create).not.toHaveBeenCalled();
+    expect(await rows(s.kitchenCheckoutHolds)).toHaveLength(0);
+    expect((await rows(s.kitchenInvitations))[0].status).toBe('sent');
   });
 });

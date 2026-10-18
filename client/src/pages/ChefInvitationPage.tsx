@@ -17,7 +17,8 @@ import { invitationRequest, type Invitation } from '@/lib/invitations';
 import { CANCELLATION_DISCLOSURE_VERSION, DATED_DISCLOSURE_VERSION } from '@shared/cancellation-policy';
 
 type Rental = { id: number; equipmentType: string; brand?: string | null; sessionRate: number };
-type DatedQuote = { subtotalCents: number; listSubtotalCents: number; taxCents: number; serviceFeeCents: number; totalCents: number };
+type DatedQuote = { subtotalCents: number; listSubtotalCents: number; taxCents: number; serviceFeeCents: number; totalCents: number;
+  extraTimeRateCents: number | null };
 
 /** The chef's view of a kitchen's invitation: what, when, the exact price, the note, and pay or decline. */
 export default function ChefInvitationPage() {
@@ -104,6 +105,7 @@ export default function ChefInvitationPage() {
         serviceFeeCents: datedQuote.data.serviceFeeCents, totalCents: datedQuote.data.totalCents } : invitation.pricing)
       : equipmentIds.length && quote.data ? { ...invitation.pricing, ...quote.data } : invitation.pricing;
     const pricing = dated ? !datedQuote.data : equipmentIds.length > 0 && !quote.data;
+    const extraTimeRateCents = datedQuote.data ? datedQuote.data.extraTimeRateCents : invitation.extraTimeRateCents;
     const expires = new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: invitation.timezone }).format(new Date(invitation.expiresAt)) + ` (${friendlyTimezoneName(invitation.timezone, locale)})`;
     const refundDeadline = invitation.cancellation
       ? new Intl.DateTimeFormat(locale, { month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit',
@@ -165,6 +167,8 @@ export default function ChefInvitationPage() {
           <div className="flex justify-between gap-3 border-t pt-1.5 text-base font-semibold"><dt>{t('invTotal')}</dt><dd className="tabular-nums">{money(p.totalCents)}</dd></div>
         </dl>
         {dated && <>
+          <p className="text-xs text-muted-foreground">{t('invDiscountEquipmentHelp')}</p>
+          {extraTimeRateCents != null && <p className="text-xs text-muted-foreground">{t('bpsExtraTimeRate', { amount: money(extraTimeRateCents) })}</p>}
           <p className="text-xs text-muted-foreground">{t('invOneDeadline', { deadline: refundDeadline })}</p>
           <p className="text-xs text-muted-foreground">{t('invChargedWhen')}</p>
         </>}

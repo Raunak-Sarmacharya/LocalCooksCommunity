@@ -129,6 +129,7 @@ describe('kitchen: invite to book', () => {
     const preview = screen.getByTestId('invitation-preview');
     await waitFor(() => expect(preview).toHaveTextContent('Sam Chef pays$121.50'));
     expect(preview).toHaveTextContent('$120.00$100.00');
+    expect(screen.getByText('Discounts apply to kitchen time only, not equipment.')).toBeInTheDocument();
     const drafted = calls.filter(call => call.url.includes('/preview')).at(-1)!.body;
     expect(drafted.days).toEqual([
       { date: '2026-10-27', pricingMode: 'hourly', equipmentIds: [9, 7],
@@ -176,7 +177,7 @@ describe('chef: an invitation', () => {
       cancellationPolicyVersion: 1, cancellationDisclosureVersion: CANCELLATION_DISCLOSURE_VERSION }));
   });
   it('lists every invited day with its hours and per-day equipment, then pays the whole set', async () => {
-    const dated = invitation({ dated: true, dayCount: 2, date: '2026-10-27', startTime: '10:00', endTime: '12:00',
+    const dated = invitation({ dated: true, dayCount: 2, date: '2026-10-27', startTime: '10:00', endTime: '12:00', extraTimeRateCents: 1001,
       pricing: { listSubtotalCents: 12000, offeredSubtotalCents: 10000, discount: { type: 'amount', value: 2000 },
         taxCents: 1500, serviceFeeCents: 650, totalCents: 12150 },
       days: [
@@ -184,7 +185,7 @@ describe('chef: an invitation', () => {
           equipment: [{ listingId: 9, name: 'Prep table', cents: 0 }] },
         { date: '2026-10-29', pricingMode: 'daily', startTime: '00:00', endTime: '00:00', equipment: [] },
       ] });
-    routes = [[/\/quote/, { subtotalCents: 10000, listSubtotalCents: 12000, taxCents: 1500, serviceFeeCents: 650, totalCents: 12150 }],
+    routes = [[/\/quote/, { subtotalCents: 10000, listSubtotalCents: 12000, taxCents: 1500, serviceFeeCents: 650, totalCents: 12150, extraTimeRateCents: 5000 }],
       [/equipment-listings/, { rental: [{ id: 7, equipmentType: 'Convection oven', brand: 'Rational', sessionRate: 2500 }] }],
       [/cancellation-policy/, policyResponse], [/\/checkout/, { url: 'https://checkout.stripe.test/s' }],
       [/\/api\/chef\/invitations\/inv-1$/, dated]];
@@ -198,6 +199,8 @@ describe('chef: an invitation', () => {
     expect(days).toHaveTextContent('Prep table (included)');
     expect(page).toHaveTextContent(/One refund deadline for every day: October 26/);
     expect(page).toHaveTextContent('Your card is charged in full when payment completes.');
+    expect(page).toHaveTextContent('Discounts apply to kitchen time only, not equipment.');
+    await waitFor(() => expect(page).toHaveTextContent('Extra time: $50.00/hour if you ask for more time or stay past the end.'));
     await waitFor(() => expect(calls.filter(call => call.url.endsWith('/quote')).at(-1)?.body)
       .toEqual({ equipment: [{ date: '2026-10-27', equipmentIds: [9] }, { date: '2026-10-29', equipmentIds: [] }] }));
     const secondDay = within(days).getByText('Thursday, October 29 · Full day').closest('li')!;

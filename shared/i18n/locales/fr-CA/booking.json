@@ -1165,6 +1165,7 @@
   "invDiscountAmount": "Rabais en dollars sur le temps de cuisine",
   "invDiscountPercent": "Rabais en pourcentage sur le temps de cuisine",
   "invDiscountHelp": "Les rabais s’appliquent seulement au temps de cuisine. Les taxes et les frais de service Local Cooks sont ajoutés automatiquement.",
+  "invDiscountEquipmentHelp": "Les rabais s’appliquent uniquement au temps de cuisine, pas à l’équipement.",
   "invNote": "Note au chef (facultatif)",
   "invNotePlaceholder": "Par exemple : les mardis matin sont calmes, voici un meilleur tarif.",
   "invExpires": "L’offre expire après",

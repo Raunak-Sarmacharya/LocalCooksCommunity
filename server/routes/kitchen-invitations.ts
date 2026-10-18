@@ -122,15 +122,6 @@ router.post('/chef/invitations/:id/checkout', requireChef, requireNoUnpaidPenalt
     await markUnavailable(row, eligibility.message || 'The customer may no longer book at this location.');
     throw new InvitationError(eligibility.message || 'You may not book at this location.', 409, 'recipient_ineligible');
   }
-  const slots = row.selectedSlots as Array<{ startTime: string; endTime: string }>;
-  // The invitation's frozen buffer and any kitchen override saved on it (never anything from this chef request).
-  const holdOptions = { bufferMinutes: row.bufferMinutesSnapshot, override: savedInvitationOverride(row) };
-  const availability = await bookingService.validateBookingAvailability(row.kitchenId, new Date(`${row.date}T12:00:00Z`),
-    row.startTime, row.endTime, { selectedSlots: slots, fullDay: row.pricingMode === 'daily', ...holdOptions });
-  if (!availability.valid || !availability.windowStartTime) {
-    await markUnavailable(row, availability.error || 'These dates are no longer available.');
-    throw new InvitationError(availability.error || 'These dates are no longer available.', 409, 'invitation_unavailable');
-  }
   const baseUrl = `${req.protocol}://${req.get('host')}`;
   // A day set goes through the same dated contract, hold group, allocation and one-refund-deadline rules as a chef's
   // multi-day checkout; only the kitchen subtotal is the invited one.
@@ -139,6 +130,15 @@ router.post('/chef/invitations/:id/checkout', requireChef, requireNoUnpaidPenalt
       cancellationPolicyAccepted: req.body?.cancellationPolicyAccepted, cancellationPolicyVersion: req.body?.cancellationPolicyVersion,
       cancellationDisclosureVersion: req.body?.cancellationDisclosureVersion }, baseUrl);
     return res.json({ url: session.sessionUrl });
+  }
+  const slots = row.selectedSlots as Array<{ startTime: string; endTime: string }>;
+  // The invitation's frozen buffer and any kitchen override saved on it (never anything from this chef request).
+  const holdOptions = { bufferMinutes: row.bufferMinutesSnapshot, override: savedInvitationOverride(row) };
+  const availability = await bookingService.validateBookingAvailability(row.kitchenId, new Date(`${row.date}T12:00:00Z`),
+    row.startTime, row.endTime, { selectedSlots: slots, fullDay: row.pricingMode === 'daily', ...holdOptions });
+  if (!availability.valid || !availability.windowStartTime) {
+    await markUnavailable(row, availability.error || 'These dates are no longer available.');
+    throw new InvitationError(availability.error || 'These dates are no longer available.', 409, 'invitation_unavailable');
   }
   const [manager] = await db.select({ account: users.stripeConnectAccountId }).from(users).where(eq(users.id, row.managerId)).limit(1);
   const [chef] = await db.select({ email: users.username }).from(users).where(eq(users.id, chefId)).limit(1);

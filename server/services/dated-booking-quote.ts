@@ -86,7 +86,7 @@ export function verifyDatedQuote(value: unknown): DatedQuote {
   for (const day of m.days) {
     assertConsecutiveBookingSlots(day.slots, day.windowStartTime);
     if (!day.slots.length || day.startTime !== day.slots[0].startTime || day.endTime !== day.slots.at(-1)!.endTime
-      || cents(day.rateCents) === 0 || (!m.invitation
+      || (cents(day.rateCents) === 0 && !m.invitation) || (!m.invitation
         && day.kitchenCents !== calculateKitchenBasePrice(day.pricingMode, day.rateCents, day.rateCents, day.slots.length))
       || new Set(day.equipmentIds).size !== day.equipmentIds.length || day.equipment.length !== day.equipmentIds.length
       || day.equipment.some((item, i) => item.listingId !== day.equipmentIds[i] || !Number.isSafeInteger(item.listingId) || item.listingId <= 0

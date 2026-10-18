@@ -24,6 +24,7 @@ import { notificationService } from './notification.service';
 import { ensureServerI18n, tLocale } from '../i18n';
 import { sendEmail } from '../email';
 import { friendlyTimezoneName } from '@shared/timezone-utils';
+import { snapshotExtraTimeRateCents } from '@shared/kitchen-booking-rate';
 import { operationalEmailAllowed } from './admin-email-preferences';
 import { isE2eOutboundSuppressed } from '../e2e-outbound-guard';
 import { kitchenBookingPolicies } from './booking-policy-settings';
@@ -105,6 +106,7 @@ async function context(kitchenId: number) {
     kitchenId: kitchens.id, kitchenName: kitchens.name, photoUrl: kitchens.imageUrl,
     locationId: locations.id, locationName: locations.name, managerId: locations.managerId,
     timezone: locations.timezone, hourlyRate: kitchens.hourlyRate, dailyRate: kitchens.dailyRate,
+    extraTimeRateCents: kitchens.extraTimeRateCents,
     taxRatePercent: kitchens.taxRatePercent, listingStatus: kitchens.listingStatus, active: kitchens.isActive,
     kitchenDailyLimit: kitchens.defaultDailyBookingLimit, locationDailyLimit: locations.defaultDailyBookingLimit,
   }).from(kitchens).innerJoin(locations, eq(locations.id, kitchens.locationId))
@@ -450,6 +452,7 @@ export async function invitationDto(row: typeof kitchenInvitations.$inferSelect,
     chef: reader === 'chef' ? null : { id: row.chefId, name: chefName || 'Customer' },
     date: row.date, startTime: row.startTime, endTime: row.endTime, timezone: row.timezone,
     dayCount: days.length, days, dated: !!snapshot,
+    ...(snapshot ? { extraTimeRateCents: snapshotExtraTimeRateCents(ctx) } : {}),
     pricing: {
       listSubtotalCents: row.listSubtotalCents, offeredSubtotalCents: row.offeredSubtotalCents,
       discount: row.discountType ? { type: row.discountType, value: row.discountValue! } : null,
@@ -490,19 +493,21 @@ export async function invitationCheckoutPricing(row: typeof kitchenInvitations.$
 }
 
 /**
- * Resolve each invited day's equipment at its listed price. The kitchen's included items stay free; anything the chef
- * adds is charged per day. A removed or foreign item is refused rather than silently dropped.
+ * Invited equipment keeps its frozen price for that day; newly added equipment uses the live rate.
+ * A removed or foreign item is refused rather than silently dropped.
  */
-export async function resolveInvitationEquipment(kitchenId: number, days: Array<{ date: string; equipmentIds: number[] }>) {
+export async function resolveInvitationEquipment(kitchenId: number, days: Array<{ date: string; equipmentIds: number[] }>,
+  snapshot: InvitationDaySnapshot[]) {
   const ids = Array.from(new Set(days.flatMap(day => day.equipmentIds)));
   const listings = ids.length ? await db.select().from(equipmentListings).where(and(inArray(equipmentListings.id, ids),
     eq(equipmentListings.kitchenId, kitchenId), eq(equipmentListings.isActive, true), isNull(equipmentListings.archivedAt))) : [];
   const byId = new Map(listings.map(listing => [listing.id, listing]));
-  const resolved = days.map(day => ({ date: day.date, equipment: day.equipmentIds.map(id => {
+  const resolved = days.map(day => ({ date: day.date, equipment: [...day.equipmentIds].sort((a, b) => a - b).map(id => {
     const listing = byId.get(id);
     if (!listing) throw new InvitationError('That equipment is no longer offered. Refresh and choose again.', 409, 'equipment_unavailable');
-    return { listingId: id, name: `${listing.brand ? `${listing.brand} ` : ''}${listing.equipmentType}`,
-      cents: listing.availabilityType === 'included' ? 0 : Math.round(Number(listing.sessionRate || 0)) };
+    const frozen = snapshot.find(offeredDay => offeredDay.date === day.date)?.equipment.find(item => item.listingId === id);
+    return { listingId: id, name: frozen?.name ?? `${listing.brand ? `${listing.brand} ` : ''}${listing.equipmentType}`,
+      cents: frozen?.cents ?? (listing.availabilityType === 'included' ? 0 : Math.round(Number(listing.sessionRate || 0))) };
   }) }));
   return { days: resolved, totalCents: resolved.reduce((sum, day) => sum + day.equipment.reduce((s, item) => s + item.cents, 0), 0) };
 }
@@ -514,15 +519,17 @@ export async function datedInvitationCheckoutPricing(row: typeof kitchenInvitati
   let days: Array<{ date: string; equipmentIds: number[] }>;
   try { days = invitationCheckoutDays(snapshot, equipment).map(day => ({ date: day.date, equipmentIds: day.equipmentIds })); }
   catch (error) { throw new InvitationError((error as Error).message); }
-  const resolved = await resolveInvitationEquipment(row.kitchenId, days);
+  const resolved = await resolveInvitationEquipment(row.kitchenId, days, snapshot);
   const kitchenCents = snapshot.reduce((sum, day) => sum + day.offeredKitchenCents, 0);
   const listKitchenCents = snapshot.reduce((sum, day) => sum + day.listKitchenCents, 0);
   const subtotalCents = kitchenCents + resolved.totalCents;
-  const { taxRatePercent } = await context(row.kitchenId);
+  const ctx = await context(row.kitchenId);
+  const { taxRatePercent } = ctx;
   const taxCents = Math.round(subtotalCents * Number(taxRatePercent || 0) / 100);
   const fees = await calculateCheckoutFeesAsync(subtotalCents, { taxAmountCents: taxCents });
   return { days: resolved.days, equipment: resolved.days.flatMap(day => day.equipment.map(item => ({ ...item, date: day.date }))),
     kitchenCents, listKitchenCents, listSubtotalCents: listKitchenCents + resolved.totalCents, subtotalCents, taxCents,
+    extraTimeRateCents: snapshotExtraTimeRateCents(ctx),
     serviceFeeCents: fees.platformCommissionInCents, totalCents: subtotalCents + taxCents + fees.platformCommissionInCents };
 }
 
