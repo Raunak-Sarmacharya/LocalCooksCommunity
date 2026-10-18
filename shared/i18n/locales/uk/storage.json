@@ -549,5 +549,11 @@
   "stState_penalty_waived": "Плату за прострочення скасовано",
   "stState_queued": "У черзі",
   "stState_sent": "Надіслано",
-  "stState_skipped_duplicate": "Уже надіслано"
+  "stState_skipped_duplicate": "Уже надіслано",
+  "stChipMoveInOverdue": "Заселення прострочено",
+  "stDateStartedOn": "Початок {date}",
+  "stPastRentals": "Минулі оренди",
+  "stPastRentalsEmpty": "Минулих оренд ще немає.",
+  "stRentalEarnings": "Ви отримуєте {amount}",
+  "stViewPayouts": "Переглянути виплати"
 }

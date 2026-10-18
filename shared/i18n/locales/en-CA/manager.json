@@ -4286,5 +4286,8 @@
   "r2Kitchen": "Kitchen",
   "r2Total": "Total",
   "r2RefundedColumn": "Refunded",
-  "r2Refunded": "Refunded {amount}"
+  "r2Refunded": "Refunded {amount}",
+  "r2NoBookingsMatch": "No bookings match these filters.",
+  "r2YouReceiveColumn": "You receive",
+  "r2YouReceive": "You receive {amount}"
 }

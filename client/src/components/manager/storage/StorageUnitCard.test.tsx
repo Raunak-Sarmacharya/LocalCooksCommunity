@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
-vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
+vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string, values?: any) => values?.date ? `${key}: ${values.date}` : key }) }));
 vi.mock('@/lib/api', () => ({ getAuthHeaders: async () => ({ Authorization: 'Bearer fixture' }) }));
 import { StorageUnitCard } from './StorageUnitCard';
 import type { UnitRow } from '@/lib/storage-board';
@@ -19,4 +19,13 @@ it('shows the service chip and restores a unit only after a reason is given', as
   fireEvent.click(screen.getByRole('button', { name: 'stConfirm' }));
   await waitFor(() => expect(onDone).toHaveBeenCalledOnce());
   expect(fetchMock).toHaveBeenCalledWith('/api/manager/storage-listings/1/units/2/service', expect.objectContaining({ body: JSON.stringify({ reason: 'Repair completed', outOfService: false }) }));
+});
+
+it('shows move-in overdue and the actual start date instead of a future start label', () => {
+  const row: UnitRow = { key: '1:1', listingId: 1, listingName: 'Shelf', kitchenId: 1, kitchenName: 'Harbour', unitIndex: 1,
+    chip: 'moveInOverdue', rental: null, occupantName: 'Morgan Lee', date: { key: 'startedOn', value: '2026-10-17' }, needsAction: true };
+  render(<StorageUnitCard row={row} />);
+  expect(screen.getByText(/stChipMoveInOverdue · stDateStartedOn:.*Oct 17/)).toBeInTheDocument();
+  expect(screen.queryByText('stChipReserved')).not.toBeInTheDocument();
+  expect(screen.queryByText(/stDateStartsOn/)).not.toBeInTheDocument();
 });

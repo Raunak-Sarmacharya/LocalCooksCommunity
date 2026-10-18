@@ -1381,5 +1381,7 @@
   "cpDaysDeadlinePast": "La date limite de remboursement est passée ({deadline}). Les jours annulés suivent les frais de retard de la cuisine.",
   "cpDaysOffer": "La cuisine a annulé un jour. Vous pouvez annuler les jours restants sans frais de retard jusqu’au {deadline}.",
   "cpDaysChooseHint": "Sélectionnez au moins un jour pour continuer.",
-  "cpCancelDaysButton": "Annuler les jours sélectionnés"
+  "cpCancelDaysButton": "Annuler les jours sélectionnés",
+  "dcR2Totals": "Réclamé {claimed} · Reçu {collected} · En attente {pending}",
+  "dcR2NoMatch": "Aucune réclamation ne correspond à ces filtres."
 }

@@ -549,5 +549,11 @@
   "stState_penalty_waived": "Holdover waived",
   "stState_queued": "Queued",
   "stState_sent": "Sent",
-  "stState_skipped_duplicate": "Already sent"
+  "stState_skipped_duplicate": "Already sent",
+  "stChipMoveInOverdue": "Move-in overdue",
+  "stDateStartedOn": "started {date}",
+  "stPastRentals": "Past rentals",
+  "stPastRentalsEmpty": "No past rentals yet.",
+  "stRentalEarnings": "You receive {amount}",
+  "stViewPayouts": "View payouts"
 }

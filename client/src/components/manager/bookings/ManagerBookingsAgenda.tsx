@@ -117,7 +117,7 @@ export function ManagerBookingsAgenda({ bookings, onReviewRequest }: {
 
       {shown.length === 0 ? (
         <div className="rounded-2xl border border-dashed p-6 text-[15px]">
-          {query.trim() ? mt("mblNoMatch", { query: query.trim() }) : mt(activeTab === "past" ? "mblEmptyPast" : "mblEmptyUpcoming")}
+          {query.trim() ? mt("mblNoMatch", { query: query.trim() }) : from || to || status !== "all" ? mt("r2NoBookingsMatch") : mt(activeTab === "past" ? "mblEmptyPast" : "mblEmptyUpcoming")}
         </div>
       ) : (
         <div className="space-y-6">
@@ -183,7 +183,7 @@ function bookingDayLabel(row: Row, bookings: Row[]) {
 }
 
 export function managerBookingsCSV(items: ListedBooking<Row>[], bookings: Row[]): string {
-  const headers = ["r2Date", "r2Day", "r2Chef", "r2Kitchen", "r2Status", "r2Total", "r2RefundedColumn", "youReceive"].map(key => mt(key));
+  const headers = ["r2Date", "r2Day", "r2Chef", "r2Kitchen", "r2Status", "r2Total", "r2RefundedColumn", "r2YouReceiveColumn"].map(key => mt(key));
   const rows = items.map(({ row, phase }) => [row.bookingDate.slice(0, 10), bookingDayLabel(row, bookings),
     row.chefName || mt("chefNumber", { id: row.chefId }), row.kitchenName || mt("unknownKitchen"), ct(bookingListPill(phase, true).key),
     ((row.transactionAmount ?? ((row.totalPrice ?? 0) + (row.taxAmount ?? 0) + (row.serviceFee ?? 0))) / 100).toFixed(2),

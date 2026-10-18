@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, expect, it, vi } from "vitest";
 
-vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key, i18n: { language: "en-CA" } }) }));
+vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string, values?: any) => values?.amount ? `${key}: ${values.amount}` : key, i18n: { language: "en-CA" } }) }));
 vi.mock("wouter", () => ({ Link: ({ href, children }: any) => <a href={href}>{children}</a> }));
 vi.mock("@/lib/api", () => ({ getAuthHeaders: async () => ({ Authorization: "Bearer fixture" }) }));
 vi.mock("@/hooks/use-manager-dashboard", () => ({ useManagerDashboard: () => ({ kitchens: [{ id: 1, name: "Harbour" }] }) }));
@@ -30,12 +30,12 @@ function renderBoard() {
   return render(<QueryClientProvider client={client}><ManagerStorageBookingsPage /></QueryClientProvider>);
 }
 
-function mockFetch() {
+function mockFetch(rentals = [request]) {
   const fetchMock = vi.fn(async (input: any, init?: any) => {
     const url = String(input);
     if ((init?.method ?? "GET").toUpperCase() === "POST") return { ok: true, json: async () => ({}) };
     if (url.includes("/storage-listings")) return { ok: true, json: async () => listings };
-    return { ok: true, json: async () => [request] };
+    return { ok: true, json: async () => rentals };
   });
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
@@ -48,6 +48,20 @@ it("approves a request from the board and refetches", async () => {
   fireEvent.click(await screen.findByRole("button", { name: "stApproveSubmit" }));
   await waitFor(() => expect(fetchMock.mock.calls.some((call) => String(call[0]).endsWith("/storage-rentals/1/approve") && (call[1] as any)?.method === "POST")).toBe(true));
   await waitFor(() => expect(fetchMock.mock.calls.filter((call) => String(call[0]).endsWith("/api/manager/storage-rentals")).length).toBeGreaterThan(1));
+});
+
+it('lists ended rentals with dates, net earnings, detail, chef and payout links', async () => {
+  mockFetch([{ ...request, id: 9, ref: 'SB-PAST', state: 'ended', releasedOn: '2026-10-19', actions: [],
+    terms: [{ ...term, status: 'paid', payoutCents: 2800 }, { ...term, id: 2, status: 'paid', payoutCents: 900 }] } as any]);
+  renderBoard();
+  expect(await screen.findByRole('link', { name: /SB-PAST/ })).toHaveAttribute('href', '/manager/storage/9');
+  expect(screen.getByRole('link', { name: 'Morgan Lee' })).toHaveAttribute('href', '/manager/customers/3');
+  expect(screen.getByRole('link', { name: 'stViewPayouts' })).toHaveAttribute('href', '/manager/dashboard?view=revenue');
+  expect(screen.getByText(/Oct 17.*Oct 19/)).toBeInTheDocument();
+  expect(screen.getByText('stRentalEarnings: $37.00')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'stPastRentals' }));
+  expect(screen.queryByRole('heading', { name: 'stUnitsHeading' })).not.toBeInTheDocument();
+  expect(screen.getByRole('link', { name: /SB-PAST/ })).toBeInTheDocument();
 });
 
 it("refuses to decline without a reason, then sends the reason", async () => {

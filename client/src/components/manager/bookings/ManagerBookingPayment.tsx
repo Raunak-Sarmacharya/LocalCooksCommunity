@@ -187,7 +187,7 @@ export function ManagerPaymentSummary({ booking }: { booking: Booking }) {
   }
 
   // ── NO PAYMENT DATA: Fallback ────────────────────────────────────────
-  if (displayAmount === 0) {
+  if (displayAmount === 0 && !(booking.refundAmount ?? 0)) {
       return null; // Nothing to show is shown as nothing (§7), not a dash.
   }
 
@@ -201,11 +201,17 @@ export function ManagerPaymentSummary({ booking }: { booking: Booking }) {
   const isRefunded = paymentStatus === 'refunded' || paymentStatus === 'partially_refunded';
   const hasRefund = refundAmount > 0;
 
-  if (hasRefund && hasTransactionData) {
-      return <div className="text-right">
-          <div className="font-medium text-sm">{mt("youReceiveAmount", { amount: formatPrice(bookingReceiveCents(booking)) })}</div>
+  if (hasRefund) {
+      return <TooltipProvider><Tooltip><TooltipTrigger asChild><div className="text-right cursor-help">
+          <div className="font-medium text-sm">{mt("r2YouReceive", { amount: formatPrice(bookingReceiveCents(booking)) })}</div>
           <div className="text-xs text-muted-foreground">{mt("r2Refunded", { amount: formatPrice(refundAmount) })}</div>
-      </div>;
+      </div></TooltipTrigger><TooltipContent className="max-w-xs">
+          <div className="space-y-1 text-sm">
+              <p>{mt("totalCharged2")} {formatPrice(displayAmount)}</p>
+              <p>{mt("refundedToChef")} {formatPrice(refundAmount)}</p>
+              <p>{mt("r2YouReceive", { amount: formatPrice(bookingReceiveCents(booking)) })}</p>
+          </div>
+      </TooltipContent></Tooltip></TooltipProvider>;
   }
 
   // Cancelled bookings awaiting refund: show pending refund state

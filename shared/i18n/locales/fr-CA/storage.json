@@ -549,5 +549,11 @@
   "stState_penalty_waived": "Frais de dépassement annulés",
   "stState_queued": "En attente d’envoi",
   "stState_sent": "Envoyé",
-  "stState_skipped_duplicate": "Déjà envoyé"
+  "stState_skipped_duplicate": "Déjà envoyé",
+  "stChipMoveInOverdue": "Emménagement en retard",
+  "stDateStartedOn": "Début le {date}",
+  "stPastRentals": "Locations passées",
+  "stPastRentalsEmpty": "Aucune location passée pour le moment.",
+  "stRentalEarnings": "Vous recevez {amount}",
+  "stViewPayouts": "Voir les versements"
 }

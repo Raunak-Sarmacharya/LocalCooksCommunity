@@ -1381,5 +1381,7 @@
   "cpDaysDeadlinePast": "The refund deadline passed on {deadline}. Dropped days follow the kitchen late charge.",
   "cpDaysOffer": "The kitchen cancelled a day. You can drop remaining days without the late charge until {deadline}.",
   "cpDaysChooseHint": "Select at least one day to continue.",
-  "cpCancelDaysButton": "Cancel selected days"
+  "cpCancelDaysButton": "Cancel selected days",
+  "dcR2Totals": "Claimed {claimed} · Collected {collected} · Still pending {pending}",
+  "dcR2NoMatch": "No claims match these filters."
 }
