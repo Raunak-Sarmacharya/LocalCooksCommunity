@@ -148,3 +148,21 @@ Changed: `shared/kitchen-booking-change.ts`, `server/services/kitchen-booking-ch
 `client/src/components/booking/KitchenBookingChanges.tsx` (+ test), `KitchenBookingFlow.tsx` (imports the shared calendar
 constants), `client/src/components/admin/booking-support/KitchenChangeRecovery.tsx`, `shared/i18n/locales/{en-CA,fr-CA,uk}/booking.json`,
 `docs/architecture/phase0/policy-facts-booking.md`.
+
+## Fix round (Oct 18)
+
+Review and proof test copied verbatim from `t3/29d9e772` and committed first in `5d9440c7`; proof assertions now check fixed behavior. This section supersedes earlier keep-refund recovery, positive allocation, open-change/day-drop and arrival-mode descriptions.
+
+Dated keep-refund records the Local Cooks-funded refund and atomically opens a booking-wide `manual_hold` flag. CP5 holds every installment (`support_flag`); the refund remains unallocated. CP7 and CP6 reject unreconciled zero-kitchen-debit change outside refunds, including historical shapes. Flag closure alone does not reconcile money. Finish is primary in dated refund recovery; the admin screen explains the reconciliation and hold in all three locales. Legacy single-day recovery is unchanged.
+
+Negative quotes cap gross at live paid cents and source headroom (`captured - max(changeGrossRefundedCents, refundAmount)`); retained fee is capped at the residual active fee share. A 32940-cent residual with 970 fee cents refunds 31970 rather than recomputing 971 and refusing. CP6 refuses chef/kitchen drops while a change is open, with role-specific instructions to withdraw or answer it.
+
+Positive charges use increases matched by date + component (equipment by listing ID). In the mixed example only the new mixer (2500 increase) and Saturday (18000 increase) have positive weights. Net 7000 additional subtotal splits **854 mixer / 6146 Saturday**, with **0 Monday / 0 Wednesday kitchen / 0 Friday**. Original subtotal 54000 moves over the complement: **18000 / 18000 / 1646 mixer / 4500 / 11854**. CP4 allocates each source's own tax, service fee and card fee: original 54000/8100/3780/1941; extra 7000/1050/490/278; combined paid 74420. Rounding remains deterministic and source totals conserve exactly.
+
+New days inherit the current days' latest kitchen-set arrival mode and its actor/time/reason. Existing helpers revoke old codes and enroll fresh targets/nonces. Tests cover mixed modes with both self and staffed most recent.
+
+**N1 remains support-only**, under the lead-approved fallback. Multi-source CP6 needs one inventory decision with independent source facts/allocations/installments/reservations, aggregate quote/replay reads and source-isolated recovery. Original-source-only `execute`/`commit`/`readDatedOperation` cannot safely provide that by removing the guard. No second-source partial-failure behavior was implemented. The review's Lead disposition covers every finding.
+
+Validation so far: focused dated-booking/change/day-payout/cancellation-refund/support/visit-code suites **502/502 passed** (13 files, `--no-file-parallelism` after an unrestricted attempt hit a Node allocation failure). This includes **20 CP7 regression tests** across builder and review suites, using actual 0099/0102 SQL and the 0098 trigger. Client change/recovery suites **13/13 passed** (2 files); i18n lint passed. Initial test-only issues corrected before the passing run: missing fixture arrival-target unique index and the assertion for the shared Button's actual brand-colour class.
+Full server run and foreground TypeScript check pending.
+No Stripe, external DB, deploy, push or network action. Dependencies use the local npm cache (`npm ci --offline`).

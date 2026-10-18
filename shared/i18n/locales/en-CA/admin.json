@@ -343,5 +343,6 @@
   "mdState_checkout_claim_filed": "Issue filed",
   "mdState_active": "Active",
   "mdState_cancelled": "Cancelled",
-  "mdState_superseded": "Superseded"
+  "mdState_superseded": "Superseded",
+  "bsChangeDatedKeepRefundHold": "Keeping the refund requires Local Cooks reconciliation. All booking payouts stay on hold."
 }

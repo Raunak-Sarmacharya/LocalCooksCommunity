@@ -7,7 +7,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatTime } from "@/lib/formatters";
-import { changeScheduleDays, type AnyChangeSchedule } from "@shared/kitchen-booking-change";
+import { changeScheduleDays, isDatedChangeSchedule, type AnyChangeSchedule } from "@shared/kitchen-booking-change";
 import { fmtMoney } from "./format";
 import { SupportApiError, type TokenGetter } from "./api";
 import { useSupportT } from "./useSupportT";
@@ -115,6 +115,7 @@ export function KitchenChangeRecovery({
   if (query.isLoading) return null;
   if (!open || open.state !== "recovery_required") return null;
 
+  const datedRefundRecovery = isDatedChangeSchedule(open.original) && open.money.refundCents > 0;
   const current = formatChangeSchedule(open.original);
   const requested = formatChangeSchedule(open.destination);
   const moneyLine = moneyMovedSummary(t, open.money);
@@ -149,13 +150,14 @@ export function KitchenChangeRecovery({
         {reason && <p className="rounded-lg border bg-background/80 p-2.5 text-sm" data-testid="change-recovery-reason">{reason}</p>}
         <div className="flex flex-wrap gap-2">
           {ACTIONS.map((action) => (
-            <Button key={action} type="button" variant="outline" disabled={resolve.isPending}
+            <Button key={action} type="button" variant={datedRefundRecovery && action === "finish" ? "default" : "outline"} disabled={resolve.isPending}
               data-testid={`change-recovery-${action}`}
               onClick={() => { setError(null); setStale(false); setPending(action); }}>
               {t(`bsChangeAction_${action}`)}
             </Button>
           ))}
         </div>
+        {datedRefundRecovery && <p className="text-sm text-muted-foreground">{t("bsChangeDatedKeepRefundHold")}</p>}
         {error && (
           <div role="alert" className="space-y-2 text-sm text-destructive">
             <p>{error}</p>

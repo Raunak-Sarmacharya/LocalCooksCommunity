@@ -89,11 +89,21 @@ function refundPending(source: Source) {
     || m.kitchenCancellationRefund && m.kitchenCancellationRefund.status !== 'succeeded'
     || !refundsAllocated(source);
 }
+/** A kept change refund has not reduced the day ledger; support must reconcile it before money can move. */
+export function hasUnreconciledChangeRefund(source: { metadata?: unknown }) {
+  const m = (source.metadata || {}) as Record<string, any>;
+  return (m.outsideRefunds || []).some((row: any) => row.kitchenDebitCents === 0
+    && !row.reconciledAt && !(m.allocatedChangeRefunds || []).includes(row.refundId)
+    && (row.kitchenChangeId || Object.values(m.changeGrossRefundOperations || {}).includes(row.refundId)
+      || (m.refunds || []).some((receipt: any) => receipt.id === row.refundId && receipt.kitchenChangeId)));
+}
+
 /**
  * Every refund on the charge is either a CP6 day refund (its kitchen debit already sits on that day's allocation) or
  * entirely Local Cooks-funded (goodwill/absorbed fee). Never guess which day an unallocated refund debits.
  */
 export function refundsAllocated(source: Pick<Source, 'refundAmount' | 'metadata'>) {
+  if (hasUnreconciledChangeRefund(source)) return false;
   const m = (source.metadata || {}) as Record<string, any>;
   const receipts: Array<{ id: string; customerReceived: number; managerDebited: number; platformServiceFeeReturned: number }> = m.refunds || [];
   const dayRefunds = new Set([...(m.cancellationRefundOperations || []), m.cancellationRefundOperation]

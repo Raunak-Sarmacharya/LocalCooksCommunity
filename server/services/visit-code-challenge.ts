@@ -160,12 +160,23 @@ export function resolveArrivalTarget(target: { bookingId: number; visitId?: numb
 // Enrollment and revocation
 // ---------------------------------------------------------------------------------------------
 
+type InheritedArrivalMode = Pick<Challenge, 'mode' | 'modeChangedByUserId' | 'modeChangedAt' | 'modeReason'>;
+
+/** Before replacing the schedule, preserve the kitchen's most recent mode decision across its current days. */
+export async function arrivalModeForChangedBooking(tx: Tx, bookingId: number): Promise<InheritedArrivalMode | undefined> {
+  const rows = (await readForBooking(tx, bookingId)).filter(row => !row.revokedAt && !row.consumedAt);
+  rows.sort((a, b) => new Date(b.modeChangedAt || 0).getTime() - new Date(a.modeChangedAt || 0).getTime() || b.id - a.id);
+  const latest = rows[0];
+  return latest ? { mode: latest.mode, modeChangedByUserId: latest.modeChangedByUserId,
+    modeChangedAt: latest.modeChangedAt, modeReason: latest.modeReason } : undefined;
+}
+
 /**
- * Called inside the confirmation transaction (booking row already locked). Creates one staffed revision-1
- * challenge per arrival target. Idempotent. If the signing key is not configured it logs and leaves the
+ * Called inside the confirmation transaction (booking row already locked). Creates one revision-1
+ * challenge per arrival target, carrying the kitchen mode when replacing a schedule. Idempotent. If the signing key is not configured it logs and leaves the
  * booking on today's tap-to-arrive behaviour rather than failing a payment reconciliation.
  */
-export async function ensureChallengesForBooking(tx: Tx, bookingId: number, actorUserId?: number | null): Promise<number> {
+export async function ensureChallengesForBooking(tx: Tx, bookingId: number, actorUserId?: number | null, inheritedMode?: InheritedArrivalMode): Promise<number> {
   if (!visitCodeKeyConfigured()) {
     logger.error('[VisitCode] Signing key is not configured; booking keeps tap-to-arrive behaviour', { bookingId });
     return 0;
@@ -178,7 +189,7 @@ export async function ensureChallengesForBooking(tx: Tx, bookingId: number, acto
     const targets = visits.length ? visits.map(visit => ({ bookingId, visitId: visit.id as number | null })) : [{ bookingId, visitId: null as number | null }];
     const created = await inner.insert(challengeTable).values(targets.map(target => ({
       bookingId, visitId: target.visitId, targetKey: visitCodeTargetKey(target), mode: 'staffed' as const, revision: 1,
-      keyVersion, nonce: newNonce(), issuedByUserId: actorUserId ?? null,
+      keyVersion, nonce: newNonce(), issuedByUserId: actorUserId ?? null, ...inheritedMode,
     }))).onConflictDoNothing({ target: challengeTable.targetKey }).returning({ id: challengeTable.id });
     return created.length;
   });

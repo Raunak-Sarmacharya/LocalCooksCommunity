@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import en from "@shared/i18n/locales/en-CA/admin.json";
-import { KitchenChangeRecovery } from "./KitchenChangeRecovery";
+import { KitchenChangeRecovery, type KitchenChangeOpen } from "./KitchenChangeRecovery";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -32,7 +32,7 @@ const recoveryChange = {
 
 let fetcher: ReturnType<typeof vi.fn>;
 
-function mount(open = recoveryChange) {
+function mount(open: KitchenChangeOpen = recoveryChange) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   fetcher.mockImplementation(async (url: string, init?: RequestInit) => {
     if (String(url).endsWith("/changes") && (!init || !init.method || init.method === "GET")) {
@@ -54,6 +54,16 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe("KitchenChangeRecovery", () => {
+  it("makes Finish primary and explains the payout hold for dated refund recovery", async () => {
+    const dated = { version: 'days-v1' as const, days: [{ ...schedule('2026-10-20', '14:00', '16:00'), pricingMode: 'hourly' as const, equipmentIds: [] }] };
+    mount({ ...recoveryChange, original: dated, destination: dated,
+      money: { ...recoveryChange.money, payCents: 0, refundCents: 31969 } });
+    await screen.findByTestId('kitchen-change-recovery');
+    expect(screen.getByTestId('change-recovery-finish')).toHaveClass('bg-[#E10939]');
+    expect(screen.getByTestId('change-recovery-close_keep_refund')).not.toHaveClass('bg-[#E10939]');
+    expect(screen.getByText(en.bsChangeDatedKeepRefundHold)).toBeVisible();
+  });
+
   it("renders the three recovery actions for a recovery_required change and posts the right body", async () => {
     mount();
     expect(await screen.findByTestId("kitchen-change-recovery")).toBeVisible();
