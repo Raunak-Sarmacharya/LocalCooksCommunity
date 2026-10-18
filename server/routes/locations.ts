@@ -9,6 +9,7 @@ import { kitchens } from '@shared/schema';
 import { hasAnyApplicationRequirement } from '@shared/kitchen-listing-readiness';
 import { kitchenIsVisibleToChefs, licenseAllowsBookings } from '@shared/kitchen-license';
 import { resolveKitchenBookingPolicies } from '@shared/kitchen-booking-policies';
+import { kitchenExtraTimeRateCents } from '@shared/kitchen-booking-rate';
 import { applyTier1Requirements, STEP1_REQUIREMENTS_SETTING_KEY } from '@shared/application-requirements';
 import { fromZodError } from 'zod-validation-error';
 import { db } from '../db';
@@ -388,6 +389,8 @@ router.get('/public/locations/:locationId/details', async (req: Request, res: Re
                 hourly_rate: hourlyRateCents,
                 dailyRate: dailyRateCents,
                 daily_rate: dailyRateCents,
+                // Shown before booking; daily-only kitchens bill extra time at this rate.
+                extraTimeRateCents: kitchenExtraTimeRateCents(kitchen),
                 pricingModel: kitchen.pricingModel || 'hourly',
                 currency: kitchen.currency || 'CAD',
                 availability,

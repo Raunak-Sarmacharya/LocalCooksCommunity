@@ -471,6 +471,7 @@ function KitchenDetailCard({ kitchen }: { kitchen: any }) {
           <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
             <Field label="Hourly Rate" value={kitchen.hourlyRate ? formatCents(kitchen.hourlyRate) : null} />
             <Field label="Daily Rate" value={kitchen.dailyRate ? formatCents(kitchen.dailyRate) : null} />
+            <Field label="Extra Time Rate" value={Number(kitchen.hourlyRate) > 0 ? "Same as hourly rate" : kitchen.extraTimeRateCents ? `${formatCents(kitchen.extraTimeRateCents)}/hr` : null} />
             <Field label="Pricing Model" value={kitchen.pricingModel} />
             <Field label="Min Booking Hours" value={kitchen.minimumBookingHours} />
             <Field label="Tax Rate" value={kitchen.taxRatePercent ? `${kitchen.taxRatePercent}%` : null} />

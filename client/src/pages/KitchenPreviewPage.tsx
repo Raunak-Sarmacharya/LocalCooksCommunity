@@ -444,6 +444,7 @@ interface PublicKitchen {
   locationAddress?: string | null;
   hourlyRate?: number | null;
   dailyRate?: number | null;
+  extraTimeRateCents?: number | null;
   pricingModel?: string | null;
   currency?: string | null;
   equipment?: {
@@ -546,6 +547,14 @@ function getKitchenRateParts(kitchen: PublicKitchen): string[] {
     rates.push(
       `${formatKitchenRateAmount(kitchen.dailyRate, currency)}${String(
         i18n.t("perDaySuffix", { ns: "kitchen", defaultValue: "/day" })
+      )}`
+    );
+  }
+  // Daily-only kitchens: show the extra time rate up front (an hourly rate already doubles as it).
+  if (!(Number(kitchen.hourlyRate) > 0) && Number(kitchen.extraTimeRateCents) > 0) {
+    rates.push(
+      `${formatKitchenRateAmount(Number(kitchen.extraTimeRateCents), currency)}${String(
+        i18n.t("perHourExtraTime", { ns: "kitchen", defaultValue: "/hr extra time" })
       )}`
     );
   }
