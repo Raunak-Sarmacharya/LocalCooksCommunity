@@ -31,14 +31,26 @@ import { BookingRuleOverrideError, invitationOverrideScope, kitchenRuleOverride,
 import { weeklyQuotaShortfallsFor } from './kitchen-booking-quota';
 import { weeklyQuotaMessage } from '@shared/kitchen-booking-quota';
 import { policyBufferMinutes } from '@shared/kitchen-booking-policies';
+import { validateBookingDays } from './booking-days-validation';
+import { allocateInvitationKitchenCents, invitationCheckoutDays, listInvitationDays,
+  readInvitationDays, type InvitationDaySnapshot } from './kitchen-invitation-days';
 
 export const invitationStatuses = [
   'sent', 'accepted_pending_payment', 'accepted', 'declined', 'withdrawn', 'expired', 'superseded', 'unavailable',
 ] as const;
 export type InvitationStatus = typeof invitationStatuses[number];
 export type InvitationDiscount = { type: 'amount' | 'percent'; value: number };
+/** One invited day: the kitchen's own date, mode, hours and equipment (CP10). */
+export type InvitationDayInput = {
+  date: string; pricingMode: 'hourly' | 'daily';
+  slots?: unknown; startTime?: string; endTime?: string; equipmentIds?: unknown;
+};
 export type InvitationInput = {
-  kitchenId: number; chefId: number; date: string; startTime: string; endTime: string;
+  kitchenId: number; chefId: number;
+  /** Legacy one-date invitation (days_snapshot stays null). */
+  date?: string; startTime?: string; endTime?: string;
+  /** New day set; one or more days. The server freezes it as days_snapshot. */
+  days?: InvitationDayInput[];
   discount?: InvitationDiscount; expiresInHours: 24 | 48 | 168; note?: string;
   /** The kitchen's explicit, reasoned override of its own buffer and/or this chef's weekly limit (audited). */
   ruleOverride?: { ignoreBuffer?: boolean; ignoreWeeklyLimit?: boolean; reason?: string };
@@ -65,6 +77,8 @@ export function offeredInvitationSubtotal(list: number, discount?: InvitationDis
       : NaN;
   if (!Number.isSafeInteger(offered)) throw new InvitationError('Percent discount must be between 0 and 100.');
   if (offered < 100) throw new InvitationError('The offered kitchen subtotal must be at least $1.00.');
+  // No above-list offers: an invitation is always a discount off the listed price.
+  if (offered > list) throw new InvitationError('The offered price cannot be above the listed price.');
   return offered;
 }
 
@@ -91,13 +105,26 @@ async function context(kitchenId: number) {
 function validateInput(input: InvitationInput) {
   if (!input || typeof input !== 'object') throw new InvitationError('Invitation details are required.');
   if (!Number.isSafeInteger(input.kitchenId) || !Number.isSafeInteger(input.chefId)) throw new InvitationError('Kitchen and customer are required.');
-  if (!datePattern.test(input.date) || !timePattern.test(input.startTime) || !timePattern.test(input.endTime) || input.startTime === input.endTime)
+  if (input.days !== undefined) {
+    if (!Array.isArray(input.days) || !input.days.length || input.days.length > 14)
+      throw new InvitationError('Choose between 1 and 14 days.');
+    for (const day of input.days) {
+      if (!day || typeof day !== 'object' || !datePattern.test(day.date)
+        || !['hourly', 'daily'].includes(day.pricingMode)) throw new InvitationError('Each day needs a valid date and pricing mode.');
+      if (day.pricingMode === 'hourly' && !Array.isArray(day.slots)) throw new InvitationError('Each hourly day needs its hours.');
+    }
+  } else if (!datePattern.test(input.date ?? '') || !timePattern.test(input.startTime ?? '')
+    || !timePattern.test(input.endTime ?? '') || input.startTime === input.endTime) {
     throw new InvitationError('Use a valid date and consecutive half-hour times.');
+  }
   if (![24, 48, 168].includes(input.expiresInHours)) throw new InvitationError('Expiry must be 24, 48, or 168 hours.');
   if (input.note !== undefined && (typeof input.note !== 'string' || input.note.trim().length > 500))
     throw new InvitationError('Note must be 500 characters or less.');
   if (input.discount !== undefined && (!input.discount || typeof input.discount !== 'object'
     || !['amount', 'percent'].includes(input.discount.type))) throw new InvitationError('Discount type must be amount or percent.');
+  if (input.discount && (!Number.isSafeInteger(input.discount.value) || input.discount.value < 0
+    || input.discount.type === 'percent' && input.discount.value > 100))
+    throw new InvitationError(input.discount.type === 'percent' ? 'Percent discount must be between 0 and 100.' : 'Discount must be a non-negative whole number.');
 }
 
 function overlaps(a: { startTime: string; endTime: string }, b: { startTime: string; endTime: string }) {
@@ -125,6 +152,14 @@ export async function previewKitchenInvitation(managerId: number, input: Invitat
     if (error instanceof BookingRuleOverrideError) throw new InvitationError(error.message);
     throw error;
   }
+  if (Array.isArray(input.days) && input.days.length) return previewDatedInvitation(input, ctx, locale, override);
+  return previewLegacyInvitation(input as LegacyInvitationInput, ctx, locale, override);
+}
+
+type LegacyInvitationInput = InvitationInput & { date: string; startTime: string; endTime: string };
+
+async function previewLegacyInvitation(input: LegacyInvitationInput, ctx: Awaited<ReturnType<typeof context>>, locale: string,
+  override: BookingRuleOverride | undefined) {
   const rules = await kitchenBookingPolicies(input.kitchenId);
   // Frozen with the invitation and used through checkout; an explicit kitchen waiver saves Off.
   const bufferMinutes = override?.ignoreBuffer ? 0 : policyBufferMinutes(rules);
@@ -190,6 +225,114 @@ export async function previewKitchenInvitation(managerId: number, input: Invitat
   };
 }
 
+const hoursBetween = (startTime?: string, endTime?: string) => {
+  if (!startTime || !endTime) return 0;
+  const [startH, startM] = startTime.split(':').map(Number), [endH, endM] = endTime.split(':').map(Number);
+  return ((endH * 60 + endM - startH * 60 - startM + 1440) % 1440) / 60;
+};
+
+/** The kitchen's listed price for each requested day, even when a day is unavailable (so the manager reads both). */
+function requestedDayListCents(days: InvitationDayInput[], rates: { hourlyRate: number; dailyRate: number },
+  listings: Array<{ id: number; availabilityType: string | null; sessionRate: string | null }>) {
+  return [...days].sort((a, b) => a.date.localeCompare(b.date)).map(day => {
+    const hours = Array.isArray(day.slots) ? day.slots.length : hoursBetween(day.startTime, day.endTime);
+    const kitchenCents = day.pricingMode === 'daily' ? rates.dailyRate : rates.hourlyRate * hours;
+    const ids = Array.isArray(day.equipmentIds) ? day.equipmentIds as number[] : [];
+    const equipmentCents = Array.from(new Set(ids)).reduce((sum, id) => {
+      const listing = listings.find(row => row.id === id);
+      return sum + (listing?.availabilityType === 'included' ? 0 : Math.round(Number(listing?.sessionRate ?? 0)));
+    }, 0);
+    return { date: day.date, kitchenCents: Math.max(0, Math.round(kitchenCents)), equipmentCents };
+  });
+}
+
+async function previewDatedInvitation(input: InvitationInput, ctx: Awaited<ReturnType<typeof context>>, locale: string,
+  override: BookingRuleOverride | undefined) {
+  const requested = input.days!;
+  const rules = await kitchenBookingPolicies(input.kitchenId);
+  const bufferMinutes = override?.ignoreBuffer ? 0 : policyBufferMinutes(rules);
+  const rates = { hourlyRate: Math.round(Number(ctx.hourlyRate || 0)), dailyRate: Math.round(Number(ctx.dailyRate || 0)) };
+  const ids = Array.from(new Set(requested.flatMap(day => Array.isArray(day.equipmentIds) ? day.equipmentIds as number[] : [])));
+  const listings = ids.length ? await db.select().from(equipmentListings).where(and(inArray(equipmentListings.id, ids),
+    eq(equipmentListings.kitchenId, input.kitchenId), eq(equipmentListings.isActive, true), isNull(equipmentListings.archivedAt))) : [];
+  const eligibility = await chefService.getApplicationStatusForBooking(input.chefId, ctx.locationId, input.kitchenId);
+  // The same validator as a chef's multi-day checkout: kitchen switch, day limit, 14-day span, notice, hours,
+  // occupancy, buffer, longest/shortest booking and the chef's weekly hours. A one-day set is exempt from the gate.
+  const check = await validateBookingDays({ kitchenId: input.kitchenId, chefId: input.chefId, days: requested,
+    bufferMinutes, override, legacySingleDay: requested.length === 1 });
+  const priced = check.ok ? listInvitationDays(check.days, rates, listings) : [];
+  const listed = check.ok
+    ? { days: priced, listKitchenCents: priced.reduce((sum, day) => sum + day.kitchenCents, 0) }
+    : (() => { const days = requestedDayListCents(requested, rates, listings);
+      return { days, listKitchenCents: days.reduce((sum, day) => sum + day.kitchenCents, 0) }; })();
+  let pricing: { offeredKitchenCents: number; allocation: number[] };
+  try {
+    const offeredKitchenCents = offeredInvitationSubtotal(listed.listKitchenCents, input.discount);
+    pricing = { offeredKitchenCents, allocation: allocateInvitationKitchenCents(listed.days.map(day => day.kitchenCents), offeredKitchenCents) };
+  } catch (error) {
+    if (error instanceof InvitationError) return { pricing: null, expiresAt: null, available: false,
+      unavailableReason: error.message, dayErrors: [], warnings: [] };
+    throw error;
+  }
+  const snapshot: InvitationDaySnapshot[] = check.ok
+    ? priced.map((day, index) => ({ date: day.date, pricingMode: day.pricingMode, slots: day.slots, windowStartTime: day.windowStartTime,
+      startTime: day.startTime, endTime: day.endTime, equipment: day.equipment, listKitchenCents: day.kitchenCents,
+      offeredKitchenCents: pricing.allocation[index] }))
+    : [];
+  const listEquipmentCents = check.ok ? snapshot.reduce((sum, day) => sum + day.equipment.reduce((s, item) => s + item.cents, 0), 0)
+    : listed.days.reduce((sum, day) => sum + day.equipmentCents, 0);
+  const offeredSubtotalCents = pricing.offeredKitchenCents + listEquipmentCents;
+  const taxCents = Math.round(offeredSubtotalCents * Number(ctx.taxRatePercent || 0) / 100);
+  const fees = await calculateCheckoutFeesAsync(offeredSubtotalCents, { taxAmountCents: taxCents });
+  const policy = await publishedCancellationPolicy(input.kitchenId);
+  const first = check.ok ? snapshot[0] : { date: [...requested].sort((a, b) => a.date.localeCompare(b.date))[0].date,
+    startTime: [...requested].sort((a, b) => a.date.localeCompare(b.date))[0].slots?.[0]?.startTime ?? '',
+    windowStartTime: [...requested].sort((a, b) => a.date.localeCompare(b.date))[0].slots?.[0]?.startTime ?? '' };
+  const calendarDate = calendarDateForOperatingTime(first.date, first.startTime || '00:00', first.windowStartTime || first.startTime || '00:00');
+  const startInstant = matchingLocalInstants(calendarDate, first.startTime || '00:00', ctx.timezone || 'America/St_Johns')[0];
+  const latestExpiry = new Date(startInstant - (policy.noticeHours * 60 + 37) * 60_000);
+  const expiresAt = new Date(Math.min(Date.now() + input.expiresInHours * 3_600_000, latestExpiry.getTime()));
+  if (expiresAt <= new Date()) throw new InvitationError('This time is too soon for an invitation checkout.', 409);
+  const dates = requested.map(day => day.date);
+  const windowOf = (day: InvitationDayInput) => ({
+    startTime: (Array.isArray(day.slots) ? (day.slots[0] as { startTime?: string })?.startTime : undefined) ?? day.startTime ?? '',
+    endTime: (Array.isArray(day.slots) ? (day.slots.at(-1) as { endTime?: string })?.endTime : undefined) ?? day.endTime ?? '',
+  });
+  // The same chef's undecided request on any invited day is a warning-level conflict, as for a single-day invitation.
+  const conflict = (await Promise.all(requested.map(async day => {
+    const window = windowOf(day);
+    if (!window.startTime || !window.endTime) return false;
+    const rows = await db.select({ startTime: kitchenBookings.startTime, endTime: kitchenBookings.endTime })
+      .from(kitchenBookings).where(and(eq(kitchenBookings.kitchenId, input.kitchenId), eq(kitchenBookings.chefId, input.chefId),
+        eq(kitchenBookings.status, 'pending'), sql`${kitchenBookings.bookingDate}::date = ${day.date}::date`));
+    return rows.some(row => overlaps(window, row));
+  }))).some(Boolean);
+  const activeInvitations = await db.select({ date: kitchenInvitations.date, startTime: kitchenInvitations.startTime, endTime: kitchenInvitations.endTime })
+    .from(kitchenInvitations).where(and(eq(kitchenInvitations.kitchenId, input.kitchenId), inArray(kitchenInvitations.date, dates),
+      inArray(kitchenInvitations.status, ['sent', 'accepted_pending_payment'])));
+  const warnings = activeInvitations.some(row => requested.some(day => day.date === row.date
+    && overlaps(windowOf(day), row) && windowOf(day).startTime !== '')) ? [tLocale(locale, 'booking:invOverlapWarning')] : [];
+  const available = eligibility.canBook && check.ok && !conflict;
+  return {
+    pricing: {
+      listSubtotalCents: listed.listKitchenCents + listEquipmentCents,
+      offeredSubtotalCents, discount: input.discount || null,
+      taxCents, serviceFeeCents: fees.platformCommissionInCents,
+      totalCents: offeredSubtotalCents + taxCents + fees.platformCommissionInCents,
+      managerEstimatedPayoutCents: fees.managerReceivesInCents,
+    },
+    expiresAt: expiresAt.toISOString(),
+    available,
+    ...(!available ? { unavailableReason: !eligibility.canBook ? tLocale(locale, 'booking:invUnavailable')
+      : conflict ? tLocale(locale, 'booking:invPendingConflict')
+        : !check.ok ? check.error : tLocale(locale, 'booking:invUnavailable') } : {}),
+    ...(!check.ok ? { dayErrors: check.dayErrors, code: check.code } : {}),
+    warnings,
+    internal: { ctx, policy, bufferMinutes, override, days: snapshot, pricing, timezone: rules.timezone,
+      firstDate: first.date, firstStartTime: first.startTime, firstWindowStartTime: first.windowStartTime },
+  };
+}
+
 async function event(tx: any, invitation: { id: string; version: number }, kind: string, actorId?: number, actorRole?: string, reason?: string, metadata: object = {}) {
   await tx.insert(kitchenInvitationEvents).values({
     invitationId: invitation.id, version: invitation.version, kind, actorId, actorRole, reason, metadata,
@@ -214,16 +357,20 @@ export async function createKitchenInvitation(managerId: number, input: Invitati
     return invitationDto(existing, 'manager');
   }
   const preview = await previewKitchenInvitation(managerId, input);
-  if (!preview.available) throw new InvitationError(preview.unavailableReason || 'These dates are unavailable.', 409);
+  if (!preview.available || !preview.pricing) throw new InvitationError(preview.unavailableReason || 'These dates are unavailable.', 409);
+  const days = (preview.internal as { days?: InvitationDaySnapshot[] }).days ?? null;
+  const first = days?.[0];
   let row: typeof kitchenInvitations.$inferSelect;
   try { row = await db.transaction(async tx => {
     const id = randomUUID();
     const [created] = await tx.insert(kitchenInvitations).values({
       id, requestKey: input.requestKey, kitchenId: input.kitchenId, locationId: preview.internal.ctx.locationId,
-      managerId, chefId: input.chefId, status: 'sent', version: 1, date: input.date,
-      startTime: input.startTime, endTime: input.endTime, operatingWindowStartTime: preview.internal.windowStartTime,
-      timezone: preview.internal.ctx.timezone || 'America/St_Johns',
-      pricingMode: preview.internal.pricingMode, selectedSlots: preview.internal.slots,
+      managerId, chefId: input.chefId, status: 'sent', version: 1,
+      date: first?.date ?? input.date!, startTime: first?.startTime ?? input.startTime!, endTime: first?.endTime ?? input.endTime!,
+      operatingWindowStartTime: first?.windowStartTime ?? preview.internal.windowStartTime!,
+      timezone: (preview.internal as { timezone?: string }).timezone || preview.internal.ctx.timezone || 'America/St_Johns',
+      pricingMode: first?.pricingMode ?? preview.internal.pricingMode!, selectedSlots: first?.slots ?? preview.internal.slots!,
+      ...(days ? { daysSnapshot: days } : {}),
       listSubtotalCents: preview.pricing.listSubtotalCents, offeredSubtotalCents: preview.pricing.offeredSubtotalCents,
       discountType: input.discount?.type, discountValue: input.discount?.value,
       taxCents: preview.pricing.taxCents, serviceFeeCents: preview.pricing.serviceFeeCents,
@@ -255,33 +402,49 @@ export async function invitationDto(row: typeof kitchenInvitations.$inferSelect,
     locale = person?.locale || 'en-CA';
   }
   const ctx = await context(row.kitchenId);
+  const snapshot = readInvitationDays(row.daysSnapshot);
   let status = readStatus(row, now);
   if (status === 'sent') {
-    const [availability, eligibility] = await Promise.all([
-      bookingService.validateBookingAvailability(row.kitchenId, new Date(`${row.date}T12:00:00Z`), row.startTime, row.endTime, {
+    const eligibility = await chefService.getApplicationStatusForBooking(row.chefId, row.locationId, row.kitchenId);
+    const available = snapshot
+      // An already-sent day set is re-checked against today's inventory and the chef's weekly hours, never re-priced.
+      ? (await validateBookingDays({ kitchenId: row.kitchenId, chefId: row.chefId,
+        days: snapshot.map(day => ({ date: day.date, pricingMode: day.pricingMode, slots: day.slots,
+          equipmentIds: day.equipment.map(item => item.listingId) })),
+        bufferMinutes: row.bufferMinutesSnapshot, override: savedInvitationOverride(row), authorizedContract: true,
+        legacySingleDay: snapshot.length === 1 })).ok
+      : (await bookingService.validateBookingAvailability(row.kitchenId, new Date(`${row.date}T12:00:00Z`), row.startTime, row.endTime, {
         selectedSlots: row.selectedSlots as Array<{ startTime: string; endTime: string }>, fullDay: row.pricingMode === 'daily',
         bufferMinutes: row.bufferMinutesSnapshot, override: savedInvitationOverride(row),
-      }),
-      chefService.getApplicationStatusForBooking(row.chefId, row.locationId, row.kitchenId),
-    ]);
-    if (!availability.valid || !eligibility.canBook) status = 'unavailable';
+      })).valid;
+    if (!available || !eligibility.canBook) status = 'unavailable';
   }
   const chefName = reader === 'chef' ? null : await getUserDisplayName(row.chefId, 'chef').catch(() => 'Customer');
+  const days = snapshot?.map(day => ({ date: day.date, pricingMode: day.pricingMode, startTime: day.startTime, endTime: day.endTime,
+    equipment: day.equipment, listKitchenCents: day.listKitchenCents, offeredKitchenCents: day.offeredKitchenCents }))
+    ?? [{ date: row.date, pricingMode: row.pricingMode, startTime: row.startTime, endTime: row.endTime, equipment: [] }];
+  const first = days[0];
+  const firstStartAt = new Date(matchingLocalInstants(calendarDateForOperatingTime(first.date, first.startTime,
+    snapshot?.[0]?.windowStartTime ?? row.operatingWindowStartTime), first.startTime, row.timezone)[0]);
   return {
     id: row.id, version: row.version, status,
     kitchen: { id: ctx.kitchenId, name: ctx.kitchenName, locationId: ctx.locationId, locationName: ctx.locationName, photoUrl: ctx.photoUrl },
     chef: reader === 'chef' ? null : { id: row.chefId, name: chefName || 'Customer' },
     date: row.date, startTime: row.startTime, endTime: row.endTime, timezone: row.timezone,
+    dayCount: days.length, days, dated: !!snapshot,
     pricing: {
       listSubtotalCents: row.listSubtotalCents, offeredSubtotalCents: row.offeredSubtotalCents,
       discount: row.discountType ? { type: row.discountType, value: row.discountValue! } : null,
       taxCents: row.taxCents, serviceFeeCents: row.serviceFeeCents, totalCents: row.totalCents,
       ...(reader !== 'chef' ? { managerEstimatedPayoutCents: row.managerEstimatedPayoutCents } : {}),
     },
+    // One refund deadline for the whole booking: the kitchen's notice period before the FIRST day starts.
+    cancellation: { noticeHours: row.cancellationPolicyHours, lateChargePercent: row.cancellationChargePercent,
+      refundDeadlineAt: new Date(firstStartAt.getTime() - row.cancellationPolicyHours * 3_600_000).toISOString() },
     note: row.note, expiresAt: row.expiresAt.toISOString(), createdAt: row.createdAt.toISOString(),
     bookingId: row.bookingId,
     // The chef reads the kitchen's published policy against this start, exactly as a normal checkout does.
-    startAt: new Date(matchingLocalInstants(calendarDateForOperatingTime(row.date, row.startTime, row.operatingWindowStartTime), row.startTime, row.timezone)[0]).toISOString(),
+    startAt: firstStartAt.toISOString(),
     ...(reader !== 'chef' ? { canWithdraw: status === 'sent', canReplace: status !== 'accepted_pending_payment' && status !== 'accepted' } : {}),
     ...(reader === 'chef' ? { canPay: status === 'sent' || status === 'accepted_pending_payment', canDecline: status === 'sent' } : {}),
   };
@@ -306,6 +469,43 @@ export async function invitationCheckoutPricing(row: typeof kitchenInvitations.$
   const fees = await calculateCheckoutFeesAsync(subtotalCents, { taxAmountCents: taxCents });
   return { equipment, subtotalCents, taxCents, serviceFeeCents: fees.platformCommissionInCents,
     totalCents: subtotalCents + taxCents + fees.platformCommissionInCents };
+}
+
+/**
+ * Resolve each invited day's equipment at its listed price. The kitchen's included items stay free; anything the chef
+ * adds is charged per day. A removed or foreign item is refused rather than silently dropped.
+ */
+export async function resolveInvitationEquipment(kitchenId: number, days: Array<{ date: string; equipmentIds: number[] }>) {
+  const ids = Array.from(new Set(days.flatMap(day => day.equipmentIds)));
+  const listings = ids.length ? await db.select().from(equipmentListings).where(and(inArray(equipmentListings.id, ids),
+    eq(equipmentListings.kitchenId, kitchenId), eq(equipmentListings.isActive, true), isNull(equipmentListings.archivedAt))) : [];
+  const byId = new Map(listings.map(listing => [listing.id, listing]));
+  const resolved = days.map(day => ({ date: day.date, equipment: day.equipmentIds.map(id => {
+    const listing = byId.get(id);
+    if (!listing) throw new InvitationError('That equipment is no longer offered. Refresh and choose again.', 409, 'equipment_unavailable');
+    return { listingId: id, name: `${listing.brand ? `${listing.brand} ` : ''}${listing.equipmentType}`,
+      cents: listing.availabilityType === 'included' ? 0 : Math.round(Number(listing.sessionRate || 0)) };
+  }) }));
+  return { days: resolved, totalCents: resolved.reduce((sum, day) => sum + day.equipment.reduce((s, item) => s + item.cents, 0), 0) };
+}
+
+/** The chef's quote for an invited day set: frozen offered kitchen time plus the equipment they choose, per day. */
+export async function datedInvitationCheckoutPricing(row: typeof kitchenInvitations.$inferSelect, equipment: unknown = undefined) {
+  const snapshot = readInvitationDays(row.daysSnapshot);
+  if (!snapshot) throw new InvitationError('This invitation is not a day set.', 409);
+  let days: Array<{ date: string; equipmentIds: number[] }>;
+  try { days = invitationCheckoutDays(snapshot, equipment).map(day => ({ date: day.date, equipmentIds: day.equipmentIds })); }
+  catch (error) { throw new InvitationError((error as Error).message); }
+  const resolved = await resolveInvitationEquipment(row.kitchenId, days);
+  const kitchenCents = snapshot.reduce((sum, day) => sum + day.offeredKitchenCents, 0);
+  const listKitchenCents = snapshot.reduce((sum, day) => sum + day.listKitchenCents, 0);
+  const subtotalCents = kitchenCents + resolved.totalCents;
+  const { taxRatePercent } = await context(row.kitchenId);
+  const taxCents = Math.round(subtotalCents * Number(taxRatePercent || 0) / 100);
+  const fees = await calculateCheckoutFeesAsync(subtotalCents, { taxAmountCents: taxCents });
+  return { days: resolved.days, equipment: resolved.days.flatMap(day => day.equipment.map(item => ({ ...item, date: day.date }))),
+    kitchenCents, listKitchenCents, listSubtotalCents: listKitchenCents + resolved.totalCents, subtotalCents, taxCents,
+    serviceFeeCents: fees.platformCommissionInCents, totalCents: subtotalCents + taxCents + fees.platformCommissionInCents };
 }
 
 export async function getInvitationForChef(id: string, chefId: number) {
@@ -362,7 +562,9 @@ export async function replaceKitchenInvitation(id: string, managerId: number, ve
     return invitationDto(existing, 'manager');
   }
   const preview = await previewKitchenInvitation(managerId, input);
-  if (!preview.available) throw new InvitationError(preview.unavailableReason || 'These dates are unavailable.', 409);
+  if (!preview.available || !preview.pricing) throw new InvitationError(preview.unavailableReason || 'These dates are unavailable.', 409);
+  const days = (preview.internal as { days?: InvitationDaySnapshot[] }).days ?? null;
+  const first = days?.[0];
   const row = await db.transaction(async tx => {
     const [old] = await tx.select().from(kitchenInvitations)
       .where(and(eq(kitchenInvitations.id, id), eq(kitchenInvitations.managerId, managerId))).limit(1).for('update');
@@ -372,9 +574,12 @@ export async function replaceKitchenInvitation(id: string, managerId: number, ve
     const [replacement] = await tx.insert(kitchenInvitations).values({
       id: replacementId, requestKey: input.requestKey, replacesId: id, kitchenId: input.kitchenId,
       locationId: preview.internal.ctx.locationId, managerId, chefId: input.chefId, status: 'sent', version: version + 1,
-      date: input.date, startTime: input.startTime, endTime: input.endTime, operatingWindowStartTime: preview.internal.windowStartTime,
-      timezone: preview.internal.ctx.timezone || 'America/St_Johns', pricingMode: preview.internal.pricingMode,
-      selectedSlots: preview.internal.slots, listSubtotalCents: preview.pricing.listSubtotalCents,
+      date: first?.date ?? input.date!, startTime: first?.startTime ?? input.startTime!, endTime: first?.endTime ?? input.endTime!,
+      operatingWindowStartTime: first?.windowStartTime ?? preview.internal.windowStartTime!,
+      timezone: (preview.internal as { timezone?: string }).timezone || preview.internal.ctx.timezone || 'America/St_Johns',
+      pricingMode: first?.pricingMode ?? preview.internal.pricingMode!, selectedSlots: first?.slots ?? preview.internal.slots!,
+      ...(days ? { daysSnapshot: days } : {}),
+      listSubtotalCents: preview.pricing.listSubtotalCents,
       offeredSubtotalCents: preview.pricing.offeredSubtotalCents, discountType: input.discount?.type,
       discountValue: input.discount?.value, taxCents: preview.pricing.taxCents,
       serviceFeeCents: preview.pricing.serviceFeeCents, totalCents: preview.pricing.totalCents,
@@ -451,6 +656,29 @@ export async function releaseInvitationCheckoutByHold(holdId: string) {
   if (row?.stripeSessionId) await releaseInvitationCheckout(row.id, row.version, row.stripeSessionId);
 }
 
+/**
+ * The invitation is the kitchen's pre-approval: a fulfilled checkout is confirmed at once with the same capture,
+ * recovery and reconciliation command a kitchen uses. Replay returns the existing decision.
+ */
+export async function acceptFulfilledInvitation(invitation: typeof kitchenInvitations.$inferSelect | undefined, bookingId: number) {
+  if (!invitation) return;
+  const { decideAuthorizedBooking } = await import('./booking-payment-decision');
+  await decideAuthorizedBooking(bookingId, 'confirmed', [], [], invitation.managerId, undefined,
+    { message: `Pre-approved by kitchen invitation v${invitation.version}` });
+}
+
+export async function markInvitationUnavailable(invitation?: typeof kitchenInvitations.$inferSelect, reason?: string) {
+  if (!invitation) return;
+  const [updated] = await db.update(kitchenInvitations).set({ status: 'unavailable',
+    unavailableReason: reason || 'These dates are no longer available.', updatedAt: new Date() })
+    .where(and(eq(kitchenInvitations.id, invitation.id), eq(kitchenInvitations.version, invitation.version),
+      eq(kitchenInvitations.status, 'accepted_pending_payment'))).returning();
+  if (updated) await db.insert(kitchenInvitationEvents).values({ invitationId: invitation.id, version: invitation.version,
+    kind: 'unavailable', actorRole: 'system', noticeKey: `${invitation.id}:${invitation.version}:unavailable`,
+    metadata: { afterPayment: true } }).onConflictDoNothing();
+  if (updated) wakeInvitationDelivery(invitation.id);
+}
+
 export async function recordFulfilledInvitation(invitationId: string, bookingId: number, tx: Parameters<Parameters<typeof db.transaction>[0]>[0]) {
   const [row] = await tx.select().from(kitchenInvitations).where(eq(kitchenInvitations.id, invitationId)).limit(1);
   if (!row) return;
@@ -482,18 +710,27 @@ export function invitationNoticeReaders(kind: string, actorRole?: string | null,
 export async function invitationNoticeCopy(input: {
   kind: string; reader: Reader; locale: string; kitchen: string; customer: string;
   date: string; startTime: string; endTime: string; totalCents: number; offeredSubtotalCents?: number; listSubtotalCents?: number;
+  /** Every invited day, so a multi-day notice names all of them. */
+  days?: Array<{ date: string; startTime: string; endTime: string; pricingMode: string }>;
   expiresAt: Date; timezone: string; reason?: string | null; actorRole?: string | null;
 }) {
   await ensureServerI18n();
   const money = (cents: number) => new Intl.NumberFormat(input.locale, { style: 'currency', currency: 'CAD' }).format(cents / 100);
   const clock = (time: string) => new Intl.DateTimeFormat(input.locale, { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' })
     .format(new Date(`1970-01-01T${time}:00Z`));
+  const dayLabel = (date: string) => new Intl.DateTimeFormat(input.locale, { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' })
+    .format(new Date(`${date}T12:00:00Z`));
+  const multiDay = (input.days?.length ?? 0) > 1;
   const values = {
     kitchen: input.kitchen, customer: input.customer,
-    when: tLocale(input.locale, 'booking:invWhen', {
-      day: new Intl.DateTimeFormat(input.locale, { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' }).format(new Date(`${input.date}T12:00:00Z`)),
-      start: clock(input.startTime), end: clock(input.endTime), zone: friendlyTimezoneName(input.timezone, input.locale),
-    }),
+    when: multiDay
+      ? tLocale(input.locale, 'booking:invWhenDays', { count: input.days!.length, days: input.days!.map(day =>
+        `${dayLabel(day.date)} (${day.pricingMode === 'daily' ? tLocale(input.locale, 'booking:invFullDay') : `${clock(day.startTime)}–${clock(day.endTime)}`})`).join(' · '),
+        zone: friendlyTimezoneName(input.timezone, input.locale) })
+      : tLocale(input.locale, 'booking:invWhen', {
+        day: dayLabel(input.date),
+        start: clock(input.startTime), end: clock(input.endTime), zone: friendlyTimezoneName(input.timezone, input.locale),
+      }),
     total: money(input.totalCents),
     price: money(input.offeredSubtotalCents ?? 0), list: money(input.listSubtotalCents ?? 0),
     expiry: new Intl.DateTimeFormat(input.locale, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: input.timezone }).format(input.expiresAt),
@@ -531,6 +768,8 @@ export async function deliverKitchenInvitationEvents(limit = 3) {
           kind: record.kind, reader, locale, kitchen: ctx?.kitchenName || '', customer: chefName, date: invitation.date,
           startTime: invitation.startTime, endTime: invitation.endTime, totalCents: invitation.totalCents,
           offeredSubtotalCents: invitation.offeredSubtotalCents, listSubtotalCents: invitation.listSubtotalCents,
+          days: readInvitationDays(invitation.daysSnapshot)?.map(day => ({ date: day.date, startTime: day.startTime,
+            endTime: day.endTime, pricingMode: day.pricingMode })),
           expiresAt: invitation.expiresAt, timezone: invitation.timezone, reason: record.reason, actorRole: record.actorRole,
         });
         const path = reader === 'chef' ? `/invitation/${invitation.id}` : reader === 'admin' ? '/admin?section=booking-support'

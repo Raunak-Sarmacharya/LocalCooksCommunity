@@ -42,6 +42,13 @@ export function allocateInvitationKitchenCents(listCents: number[], offeredTotal
   return allocateCents(offeredTotal, listCents);
 }
 
+/** Listed day prices only (rate x hours or the daily rate, plus each day's equipment at list). */
+export function listInvitationDays(days: ValidatedBookingDay[],
+  rates: { hourlyRate: number; dailyRate: number },
+  listings: Array<{ id: number; equipmentType: string; availabilityType: string | null; sessionRate: string | null }>): PricedBookingDay[] {
+  return priceBookingDays(days, rates, listings);
+}
+
 /**
  * Price validated days at their listed rates and split the offered booking subtotal across them.
  * `offeredKitchenCents` is already floor-checked against the listed total by the caller.
@@ -50,7 +57,7 @@ export function priceInvitationDays(days: ValidatedBookingDay[],
   rates: { hourlyRate: number; dailyRate: number },
   listings: Array<{ id: number; equipmentType: string; availabilityType: string | null; sessionRate: string | null }>,
   offeredKitchenCents: number): InvitationDaysPricing {
-  const priced: PricedBookingDay[] = priceBookingDays(days, rates, listings);
+  const priced: PricedBookingDay[] = listInvitationDays(days, rates, listings);
   const listCents = priced.map(day => day.kitchenCents);
   const offered = allocateInvitationKitchenCents(listCents, offeredKitchenCents);
   const snapshot: InvitationDaySnapshot[] = priced.map((day, index) => ({

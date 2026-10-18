@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db';
-import { kitchenInvitationEvents, kitchenInvitations, users } from '@shared/schema';
+import { kitchenInvitationEvents, kitchenInvitations, kitchens, locations, users } from '@shared/schema';
 import { requireAdmin, requireManager } from '../firebase-auth-middleware';
 import { requireChef, requireNoUnpaidPenalties } from './middleware';
 import {
@@ -13,6 +13,7 @@ import {
   getInvitationForChef,
   invitationCheckoutPricing,
   invitationDto,
+  datedInvitationCheckoutPricing,
   releaseInvitationCheckout,
   wakeInvitationDelivery,
   listKitchenInvitations,
@@ -20,6 +21,9 @@ import {
   replaceKitchenInvitation,
   withdrawKitchenInvitation,
 } from '../services/kitchen-invitations';
+import { checkoutDatedInvitation, DatedInvitationRefused } from '../services/dated-invitation-checkout';
+import { kitchenBookingPolicies } from '../services/booking-policy-settings';
+import { effectiveMaxBookingDays } from '@shared/booking-days-contract';
 import { savedInvitationOverride } from '../services/booking-rule-overrides';
 import { WeeklyChefHoursLimitError } from '../services/kitchen-booking-quota';
 import { chefService } from '../domains/users/chef.service';
@@ -42,6 +46,7 @@ const asyncRoute = (fn: (req: Request, res: Response) => Promise<unknown>) => as
   try { await fn(req, res); }
   catch (error) {
     if (error instanceof InvitationError) return res.status(error.status).json({ error: error.message, code: error.code });
+    if (error instanceof DatedInvitationRefused) return res.status(error.status).json(error.body);
     if (error instanceof WeeklyChefHoursLimitError) return res.status(409).json(error.body());
     console.error('[Kitchen invitations]', error);
     return res.status(500).json({ error: error instanceof Error ? error.message : 'Invitation operation failed.' });
@@ -58,6 +63,17 @@ router.post('/manager/invitations', requireManager, asyncRoute(async (req, res) 
 }));
 router.get('/manager/invitations/eligible-chefs', requireManager, asyncRoute(async (req, res) => {
   res.json({ chefs: await eligibleInvitationChefs(req.neonUser!.id, Number(req.query.locationId)) });
+}));
+// The day picker needs the same multi-day switch, day limit and notice as a chef's booking flow, before any date is chosen.
+router.get('/manager/invitations/kitchen-rules', requireManager, asyncRoute(async (req, res) => {
+  const kitchenId = Number(req.query.kitchenId);
+  const [row] = await db.select({ managerId: locations.managerId }).from(kitchens)
+    .innerJoin(locations, eq(locations.id, kitchens.locationId)).where(eq(kitchens.id, kitchenId)).limit(1);
+  if (!row || row.managerId !== req.neonUser!.id) throw new InvitationError('Kitchen not found.', 404);
+  const rules = await kitchenBookingPolicies(kitchenId);
+  res.json({ allowMultiDayBookings: rules.allowMultiDayBookings, multidayCreationEnabled: rules.multidayCreationEnabled,
+    maxBookingDays: effectiveMaxBookingDays(rules), minimumBookingWindowHours: rules.minimumBookingWindowHours,
+    timezone: rules.timezone });
 }));
 router.get('/manager/invitations', requireManager, asyncRoute(async (req, res) => {
   res.json({ invitations: await listKitchenInvitations('manager', req.neonUser!.id, req.query) });
@@ -83,7 +99,9 @@ router.post('/chef/invitations/:id/decline', requireChef, asyncRoute(async (req,
 }));
 
 router.post('/chef/invitations/:id/quote', requireChef, asyncRoute(async (req, res) => {
-  const { equipment: _, ...pricing } = await invitationCheckoutPricing(await getInvitationForChef(req.params.id, req.neonUser!.id), req.body?.equipmentIds);
+  const row = await getInvitationForChef(req.params.id, req.neonUser!.id);
+  if (row.daysSnapshot) return res.json(await datedInvitationCheckoutPricing(row, req.body?.equipment));
+  const { equipment: _, ...pricing } = await invitationCheckoutPricing(row, req.body?.equipmentIds);
   res.json(pricing);
 }));
 
@@ -112,6 +130,15 @@ router.post('/chef/invitations/:id/checkout', requireChef, requireNoUnpaidPenalt
     await markUnavailable(row, availability.error || 'These dates are no longer available.');
     throw new InvitationError(availability.error || 'These dates are no longer available.', 409, 'invitation_unavailable');
   }
+  const baseUrl = `${req.protocol}://${req.get('host')}`;
+  // A day set goes through the same dated contract, hold group, allocation and one-refund-deadline rules as a chef's
+  // multi-day checkout; only the kitchen subtotal is the invited one.
+  if (row.daysSnapshot) {
+    const session = await checkoutDatedInvitation(chefId, row, { equipment: req.body?.equipment,
+      cancellationPolicyAccepted: req.body?.cancellationPolicyAccepted, cancellationPolicyVersion: req.body?.cancellationPolicyVersion,
+      cancellationDisclosureVersion: req.body?.cancellationDisclosureVersion }, baseUrl);
+    return res.json({ url: session.sessionUrl });
+  }
   const [manager] = await db.select({ account: users.stripeConnectAccountId }).from(users).where(eq(users.id, row.managerId)).limit(1);
   const [chef] = await db.select({ email: users.username }).from(users).where(eq(users.id, chefId)).limit(1);
   if (!manager?.account) throw new InvitationError('The kitchen cannot accept payments yet.', 409);
@@ -130,7 +157,6 @@ router.post('/chef/invitations/:id/checkout', requireChef, requireNoUnpaidPenalt
   if (Date.now() >= cutoff) throw new InvitationError(tLocale(req.neonUser!.preferredLocale, 'invCheckoutCutoff', { ns: 'booking' }), 409, 'checkout_cutoff');
   const pricing = await invitationCheckoutPricing(row, req.body?.equipmentIds);
   const holdId = await reserveKitchenCheckout(row.kitchenId, chefId, row.date, slots, availability.windowStartTime, row.pricingMode === 'daily', undefined, holdOptions);
-  const baseUrl = `${req.protocol}://${req.get('host')}`;
   let session: Awaited<ReturnType<typeof createPendingCheckoutSession>> | undefined;
   try {
     session = await createPendingCheckoutSession({
