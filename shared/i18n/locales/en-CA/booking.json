@@ -1167,7 +1167,7 @@
   "invDiscount_percent": "% off",
   "invDiscountAmount": "Dollars off the kitchen time",
   "invDiscountPercent": "Percent off the kitchen time",
-  "invDiscountHelp": "Discounts apply to the kitchen time only. Tax and the Local Cooks service fee are added automatically.",
+  "invDiscountHelp": "Discounts apply to the kitchen time only, not equipment. Tax and the Local Cooks service fee are added automatically.",
   "invDiscountEquipmentHelp": "Discounts apply to kitchen time only, not equipment.",
   "invNote": "Note to the chef (optional)",
   "invNotePlaceholder": "For example: Tuesday mornings are quiet, so here’s a better rate.",

@@ -408,7 +408,6 @@ export default function ManagerInvitationNewPage() {
               {discountType !== 'none' && <label className={field}>{t(discountType === 'amount' ? 'invDiscountAmount' : 'invDiscountPercent')}
                 <Input inputMode="decimal" className="mt-1 min-h-11 max-w-[10rem]" value={discountValue} onChange={event => setDiscountValue(event.target.value.replace(/[^\d.]/g, ''))} /></label>}
               <p className="text-xs text-muted-foreground">{t('invDiscountHelp')}</p>
-              <p className="text-xs text-muted-foreground">{t('invDiscountEquipmentHelp')}</p>
               <p className="text-xs text-muted-foreground">{t('invOfferHelp')}</p>
               <label className={field}>{t('invNote')}
                 <Textarea className="mt-1" maxLength={500} value={note} placeholder={t('invNotePlaceholder')} onChange={event => setNote(event.target.value)} /></label>

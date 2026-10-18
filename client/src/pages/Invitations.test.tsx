@@ -129,7 +129,7 @@ describe('kitchen: invite to book', () => {
     const preview = screen.getByTestId('invitation-preview');
     await waitFor(() => expect(preview).toHaveTextContent('Sam Chef pays$121.50'));
     expect(preview).toHaveTextContent('$120.00$100.00');
-    expect(screen.getByText('Discounts apply to kitchen time only, not equipment.')).toBeInTheDocument();
+    expect(screen.getByText(/Discounts apply to the kitchen time only, not equipment./)).toBeInTheDocument();
     const drafted = calls.filter(call => call.url.includes('/preview')).at(-1)!.body;
     expect(drafted.days).toEqual([
       { date: '2026-10-27', pricingMode: 'hourly', equipmentIds: [9, 7],
