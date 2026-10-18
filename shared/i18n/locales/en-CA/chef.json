@@ -3544,6 +3544,8 @@
   "bnChefDetailsAt": "We’ll share arrival details on {time}.",
   "bnWhatToExpect": "At the kitchen, ask staff for your 6-digit check-in code and enter it in Local Cooks.",
   "bnWhatToExpectSelf": "You check in on your own: follow the kitchen’s access instructions, then confirm arrival in Local Cooks.",
+  "bnWhatToExpectDays": "Each day has its own check-in: when you arrive, ask staff for that day’s 6-digit code and enter it in Local Cooks.",
+  "bnWhatToExpectDaysSelf": "Check in on your own each day: follow the kitchen’s access instructions, then confirm your arrival in Local Cooks.",
   "kvIsCheckOutEarly": "Check out early",
   "kvIsEarlyTitle": "Check out early?",
   "kvIsKeepGoing": "Keep going",

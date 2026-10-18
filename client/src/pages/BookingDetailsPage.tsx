@@ -1680,8 +1680,9 @@ export default function BookingDetailsPage() {
             <Button type="button" variant="outline" className="min-h-11" data-testid="they-didnt-come" onClick={() => openFix('report_no_show')}>{t('bnTheyDidntCome')}</Button>
           </div>
         )}
-        {now.body === 'preparation' && chefBeforeArrival && booking.location?.instructionsReleased === false && (
-          <p className="rounded-xl bg-muted/30 px-4 py-3 text-sm" data-testid="now-body">{t(booking.arrivalMode === 'self' ? 'bnWhatToExpectSelf' : 'bnWhatToExpect')}</p>
+        {/* Multi-day: say every time that each day has its own check-in, also once arrival details are out. */}
+        {now.body === 'preparation' && chefBeforeArrival && (booking.location?.instructionsReleased === false || keptDays.length > 1) && (
+          <p className="rounded-xl bg-muted/30 px-4 py-3 text-sm" data-testid="now-body">{t(keptDays.length > 1 ? (booking.arrivalMode === 'self' ? 'bnWhatToExpectDaysSelf' : 'bnWhatToExpectDays') : booking.arrivalMode === 'self' ? 'bnWhatToExpectSelf' : 'bnWhatToExpect')}</p>
         )}
         {now.body === 'preparation' && chefBeforeArrival && booking.location?.instructionsReleased !== false && (
           <ClampedBlock showAll={t('bnShowAll')} showLess={t('bnShowLess')}>

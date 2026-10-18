@@ -3544,6 +3544,8 @@
   "bnChefDetailsAt": "Nous vous enverrons les détails d’arrivée le {time}.",
   "bnWhatToExpect": "À la cuisine, demandez au personnel votre code d’enregistrement à 6 chiffres et entrez-le dans Local Cooks.",
   "bnWhatToExpectSelf": "Vous vous enregistrez seul : suivez les instructions d’accès de la cuisine, puis confirmez votre arrivée dans Local Cooks.",
+  "bnWhatToExpectDays": "Chaque jour a son propre enregistrement : à votre arrivée, demandez au personnel le code à 6 chiffres du jour et entrez-le dans Local Cooks.",
+  "bnWhatToExpectDaysSelf": "Enregistrez-vous seul chaque jour : suivez les instructions d’accès de la cuisine, puis confirmez votre arrivée dans Local Cooks.",
   "kvIsCheckOutEarly": "Quitter plus tôt",
   "kvIsEarlyTitle": "Quitter plus tôt?",
   "kvIsKeepGoing": "Continuer",
