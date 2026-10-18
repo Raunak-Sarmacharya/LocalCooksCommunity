@@ -40,15 +40,28 @@ export const waitingForChef = (row: BookingListRow) => !!waitingPartialAcceptanc
 
 export const listTimezone = (row: Pick<BookingListRow, 'timezone' | 'locationTimezone'>) => row.timezone || row.locationTimezone || DEFAULT_TIMEZONE;
 
+type VisitState = NonNullable<BookingListRow['visitStates']>[number];
+const datedDays = (row: BookingListRow) => row.scheduleRevision
+  ? (row.visitStates || []).filter(day => day.visitDate && day.startTime && day.endTime).sort((a, b) => a.visitDate!.localeCompare(b.visitDate!)) : [];
+const asDay = <T extends BookingListRow>(row: T, day: VisitState): T => ({ ...row, bookingDate: day.visitDate!, startTime: day.startTime!, endTime: day.endTime!,
+  operatingWindowStartTime: day.operatingWindowStartTime, selectedSlots: undefined, checkinStatus: day.checkinStatus, visitStates: [day] });
+
 export function managerDatedListDay<T extends BookingListRow>(row: T, now = Date.now()): T {
-  if (!row.scheduleRevision) return row;
-  const days = (row.visitStates || []).filter(day => day.visitDate && day.startTime && day.endTime).sort((a, b) => a.visitDate!.localeCompare(b.visitDate!));
+  const days = datedDays(row);
   const chosen = days.find(day => day.checkinStatus === 'checkout_requested') || days.find(day => {
-    const bounds = bookingListBounds({ ...row, bookingDate: day.visitDate!, startTime: day.startTime!, endTime: day.endTime!, operatingWindowStartTime: day.operatingWindowStartTime });
+    const bounds = bookingListBounds(asDay(row, day));
     return day.checkinStatus !== 'checked_out' && bounds && bounds.endAt.getTime() > now;
   }) || days.at(-1);
-  return chosen ? { ...row, bookingDate: chosen.visitDate!, startTime: chosen.startTime!, endTime: chosen.endTime!, operatingWindowStartTime: chosen.operatingWindowStartTime,
-    selectedSlots: undefined, checkinStatus: chosen.checkinStatus, visitStates: [chosen] } : row;
+  return chosen ? asDay(row, chosen) : row;
+}
+
+/**
+ * One row per booked day of a dated multi-day booking ("Day 1 of 2"), each with only that day's times, so a list never
+ * merges every day's slots into one line. A single-day booking is one row as it is.
+ */
+export function managerListDays<T extends BookingListRow>(row: T): Array<{ row: T; dayNumber?: number; dayCount?: number; visitId?: number }> {
+  const days = datedDays(row);
+  return days.length ? days.map((day, index) => ({ row: asDay(row, day), dayNumber: index + 1, dayCount: days.length, visitId: day.id })) : [{ row }];
 }
 
 /** Start, end and check-in opening as real instants in the kitchen zone (the booking page's `visitBounds`). */
