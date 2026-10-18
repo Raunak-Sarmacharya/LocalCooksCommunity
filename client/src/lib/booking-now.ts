@@ -240,7 +240,8 @@ function managerSecondary(phase: BookingHeaderPhase, f: BookingNowFacts): NowSec
     // While the kitchen can answer, "They came" / "They didn't come" render as one equal pair under the question (the page's
     // attendance answer), not a header button plus a link; afterwards only the record fix remains.
     case 'no_checkin': if (!f.inspectionCanRespond) out.push('fix_record'); break;
-    case 'cancelled': if (f.replacedByRef) out.push('view_new_request'); else if (f.managerCanManage) out.push('manage_refund'); break;
+    // After declining or letting a request expire, the kitchen can invite the chef to another time (spec row 5).
+    case 'cancelled': if (f.replacedByRef) out.push('view_new_request'); else { if (f.findAnotherTime) out.push('find_another_time'); if (f.managerCanManage) out.push('manage_refund'); } break;
   }
   return out;
 }

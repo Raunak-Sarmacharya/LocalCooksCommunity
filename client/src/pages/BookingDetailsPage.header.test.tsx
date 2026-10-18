@@ -250,6 +250,15 @@ describe("why a request ended", () => {
       else expect(screen.queryByTestId("find-another-time")).not.toBeInTheDocument();
     }
   });
+  it("offers the kitchen an invitation to another time after it declined (spec row 5)", async () => {
+    h.manager = true;
+    h.booking = { ...base(), ...ended(9) };
+    render(<BookingDetailsPage />);
+    await screen.findByTestId("booking-header");
+    const link = screen.getByTestId("find-another-time");
+    expect(link).toHaveAttribute("href", "/manager/invitations/new?chefId=1&location=3");
+    expect(link).toHaveTextContent("Invite Ada Lovelace to another time");
+  });
   it("shows one Not charged line, a manager-worded hold message and no refund-details link when nothing was captured", async () => {
     h.manager = true;
     h.booking = { ...base(), ...ended(9), totalPrice: 2500, paymentTransaction: { amount: 3050, serviceFee: 0, managerRevenue: 0, status: "canceled" } };

@@ -1291,8 +1291,10 @@ export default function BookingDetailsPage() {
     visitAttendance: datedBooking ? headerClock ? [headerClock.attendance] : undefined : booking.closeout?.legacy ? undefined : booking.closeout?.visits?.map(visit => visit.attendance), inspectionCanRespond, startAt: visitBounds?.startAt, endAt: visitBounds?.endAt, checkinOpensAt: visitBounds?.opensAt, timezone: tz,
   }) : 'confirmed';
   const cancelCause = booking ? bookingCancelCause({ status: booking.status, chefId: booking.chefId, paymentDecision: booking.paymentDecision, partialAcceptance: booking.partialAcceptance }) : null;
-  const findAnotherTimeHref = booking && !isManagerView && (cancelCause === 'declined' || cancelCause === 'expired') && (booking.location?.id ?? booking.kitchen?.locationId)
-    ? `/book/${booking.location?.id ?? booking.kitchen?.locationId}?kitchenId=${booking.kitchenId}` : null;
+  // After a declined or expired request: the chef finds another time; the kitchen can invite the chef to one (spec row 5).
+  const findAnotherTimeHref = booking && (cancelCause === 'declined' || cancelCause === 'expired') && (booking.location?.id ?? booking.kitchen?.locationId)
+    ? isManagerView ? (booking.chefId ? `/manager/invitations/new?chefId=${booking.chefId}&location=${booking.location?.id ?? booking.kitchen?.locationId}` : null)
+      : `/book/${booking.location?.id ?? booking.kitchen?.locationId}?kitchenId=${booking.kitchenId}` : null;
   // A request the chef changed: its replacement is where things continue.
   const replacedBy = cancelCause === 'replaced' ? booking?.paymentDecision?.replacedBy : null;
   const newRequestHref = replacedBy?.bookingId ? `${isManagerView ? '/manager' : ''}/booking/${replacedBy.bookingId}` : null;
@@ -1459,7 +1461,7 @@ export default function BookingDetailsPage() {
       case 'need_more_time': return booking ? [{ key, label: t('bnNeedMoreTime'), onSelect: () => navigate(`/booking/${booking.id}/visit`) }] : [];
       case 'download_invoice': case 'download_payout_statement': return [{ key, label: downloadLabel, icon: Download, onSelect: () => void handleDownloadInvoice() }];
       case 'contact_local_cooks': return [{ key, label: t('bdContactSupport', { defaultValue: 'Contact Local Cooks' }), onSelect: goToHelp }];
-      case 'find_another_time': return findAnotherTimeHref ? [{ key, label: t('bdhFindAnotherTime'), href: findAnotherTimeHref, onSelect: () => navigate(findAnotherTimeHref), testId: 'find-another-time' }] : [];
+      case 'find_another_time': return findAnotherTimeHref ? [{ key, label: isManagerView ? t('bdhInviteAnotherTime', { chef: chefName }) : t('bdhFindAnotherTime'), href: findAnotherTimeHref, onSelect: () => navigate(findAnotherTimeHref), testId: 'find-another-time' }] : [];
       case 'view_new_request': return newRequestHref ? [{ key, label: t('bnViewNewRequest'), href: newRequestHref, onSelect: () => navigate(newRequestHref), testId: 'view-new-request' }] : [];
       case 'extension_tools': return extTools.map(tool => ({ key: `tool-${tool}`, label: toolLabel(tool), onSelect: () => setExtTool(tool) }));
       case 'change_booking': return [{ key, label: t('bdhChangeBooking'), onSelect: openManagementDialog }];
