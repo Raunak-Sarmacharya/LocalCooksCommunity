@@ -150,6 +150,8 @@ describe('chef asks for more time (approval mode, the default)', () => {
       checkedInAt: new Date('2026-10-14T16:35:00Z'), checkoutRequestedAt: null, checkedOutAt: null }];
     const view = await readSessionExtensions(10, chef, 22, IN_FINAL_HOUR);
     expect(view).toMatchObject({ canRequest: true, unavailableReason: null });
+    // The booking page asks without a visit: a multi-day booking finds today's day itself (live, Oct 18: it found none).
+    expect(await readSessionExtensions(10, chef, undefined, IN_FINAL_HOUR)).toMatchObject({ visitId: 22, canRequest: true, unavailableReason: null });
     expect(view.options.find(option => option.minutes === 60)?.amountCents).toBe(3000);
     const { extension } = await createSessionExtension(stripe, 10, chef,
       { kind: 'request', minutes: 60, requestKey: key(), expectedEndAt: END, expectedAmountCents: 3000, visitId: 22 }, IN_FINAL_HOUR);

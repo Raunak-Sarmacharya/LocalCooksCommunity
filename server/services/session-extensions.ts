@@ -221,8 +221,9 @@ const isInSession = (row: Context, visit: VisitCloseout, evidence: { checkoutReq
   row.booking.status === 'confirmed' && visit.arrivalRecorded && visit.inspection.outcome === 'not_due'
   && !evidence?.checkoutRequestedAt && !evidence?.checkedOutAt && now.getTime() < Date.parse(visit.scheduledEndAt)
   && (!finalHour || inExtensionWindow(now, visit.scheduledEndAt));
-async function chooseSession(tx: Tx, row: Context, now: Date, visitId?: number | null, kind?: ExtensionKind) {
-  if (row.booking.scheduleRevision && !visitId) throw new SessionExtensionError('Choose a dated visit');
+// `pickCurrent`: reads of a multi-day booking find today's day (in session, about to start, or overstay open); writes name the visit.
+async function chooseSession(tx: Tx, row: Context, now: Date, visitId?: number | null, kind?: ExtensionKind, pickCurrent = false) {
+  if (row.booking.scheduleRevision && !visitId && !pickCurrent) throw new SessionExtensionError('Choose a dated visit');
   const clock = await clocks(tx, row, now);
   const evidenceFor = (visit: VisitCloseout) => visit.visitId ? clock.visits.find(item => item.id === visit.visitId) : row.booking;
   const visit = visitId ? clock.projection.visits.find(visit => visit.visitId === visitId)
@@ -265,7 +266,7 @@ export async function readSessionExtensions(bookingId: number, actor: ExtensionA
   const tx = readTx(), row = await context(tx, bookingId, actor);
   const history = await tx.select().from(kitchenBookingExtensions).where(eq(kitchenBookingExtensions.bookingId, bookingId)).orderBy(desc(kitchenBookingExtensions.id)).limit(50);
   const enabled = await sessionExtensionsEnabled(tx);
-  const clock = await chooseSession(tx, row, now, visitId).catch(() => null);
+  const clock = await chooseSession(tx, row, now, visitId, undefined, true).catch(() => null);
   // A request/offer past its deadline is closed in everyone's eyes now (the timer/worker/next write records it): it no longer
   // blocks a new ask, and its own time hold no longer hides the slot from the chef.
   const overdue = (ext: Extension) => ['requested', 'offered'].includes(ext.status) && ext.expiresAt <= now;
