@@ -1223,6 +1223,7 @@
   "invClosedChef_accepted": "Vous avez réservé ce créneau.",
   "invClosedChef_unavailable": "Ce créneau n’est plus disponible.",
   "invBanner": "{kitchen} vous invite à réserver le {day} à {time} · {total}",
+  "invBannerDays": "{kitchen} vous invite à réserver {count, plural, one {# jour} other {# jours}} à partir du {day} · {total}",
   "invReview": "Voir",
   "cpAddonsEquipmentOnly": "L’équipement ajouté à cette séance est inclus.",
   "invPendingConflict": "Refusez la demande en attente du client avant d’envoyer une invitation pour une période qui se chevauche.",

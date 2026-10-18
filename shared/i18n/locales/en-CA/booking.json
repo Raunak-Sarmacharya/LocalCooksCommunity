@@ -1226,6 +1226,7 @@
   "invClosedChef_accepted": "You booked this time.",
   "invClosedChef_unavailable": "This time is no longer available.",
   "invBanner": "{kitchen} invited you to book {day} at {time} · {total}",
+  "invBannerDays": "{kitchen} invited you to book {count, plural, one {# day} other {# days}} from {day} · {total}",
   "invReview": "Review",
   "cpAddonsEquipmentOnly": "Equipment you added to this session is included.",
   "invPendingConflict": "Decline the customer’s pending request before sending an invitation for overlapping time.",

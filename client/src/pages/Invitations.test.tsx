@@ -185,7 +185,7 @@ describe('chef: an invitation', () => {
           equipment: [{ listingId: 9, name: 'Prep table', cents: 0 }] },
         { date: '2026-10-29', pricingMode: 'daily', startTime: '00:00', endTime: '00:00', equipment: [] },
       ] });
-    routes = [[/\/quote/, { subtotalCents: 10000, listSubtotalCents: 12000, taxCents: 1500, serviceFeeCents: 650, totalCents: 12150, extraTimeRateCents: 5000 }],
+    routes = [[/\/quote/, { subtotalCents: 10000, listSubtotalCents: 12000, kitchenCents: 7500, listKitchenCents: 9500, taxCents: 1500, serviceFeeCents: 650, totalCents: 12150, extraTimeRateCents: 5000 }],
       [/equipment-listings/, { rental: [{ id: 7, equipmentType: 'Convection oven', brand: 'Rational', sessionRate: 2500 }] }],
       [/cancellation-policy/, policyResponse], [/\/checkout/, { url: 'https://checkout.stripe.test/s' }],
       [/\/api\/chef\/invitations\/inv-1$/, dated]];
@@ -207,6 +207,10 @@ describe('chef: an invitation', () => {
     fireEvent.click(within(secondDay).getByRole('checkbox', { name: /Rational Convection oven/ }));
     await waitFor(() => expect(calls.filter(call => call.url.endsWith('/quote')).at(-1)?.body)
       .toEqual({ equipment: [{ date: '2026-10-27', equipmentIds: [9] }, { date: '2026-10-29', equipmentIds: [7] }] }));
+    // Kitchen time carries the discount; equipment is its own line (live, Oct 18: it was folded into "Kitchen time").
+    const summary = screen.getByLabelText('What the chef will see');
+    await waitFor(() => expect(summary).toHaveTextContent(/Kitchen time\$95\.00\$75\.00/));
+    expect(summary).toHaveTextContent(/Equipment\$25\.00/);
     const pay = screen.getByRole('button', { name: 'Review and pay $121.50' });
     await waitFor(() => expect(pay).toBeEnabled());
     fireEvent.click(pay);

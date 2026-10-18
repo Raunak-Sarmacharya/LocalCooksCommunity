@@ -17,7 +17,7 @@ import { invitationRequest, type Invitation } from '@/lib/invitations';
 import { CANCELLATION_DISCLOSURE_VERSION, DATED_DISCLOSURE_VERSION } from '@shared/cancellation-policy';
 
 type Rental = { id: number; equipmentType: string; brand?: string | null; sessionRate: number };
-type DatedQuote = { subtotalCents: number; listSubtotalCents: number; taxCents: number; serviceFeeCents: number; totalCents: number;
+type DatedQuote = { subtotalCents: number; listSubtotalCents: number; kitchenCents: number; listKitchenCents: number; taxCents: number; serviceFeeCents: number; totalCents: number;
   extraTimeRateCents: number | null };
 
 /** The chef's view of a kitchen's invitation: what, when, the exact price, the note, and pay or decline. */
@@ -158,8 +158,14 @@ export default function ChefInvitationPage() {
 
       <section className="space-y-2 rounded-2xl border bg-card p-5" aria-label={t('invSummary')}>
         <dl className="space-y-1.5 text-sm">
-          <div className="flex justify-between gap-3"><dt>{t('invKitchenTime')}</dt><dd className="tabular-nums">
-            {p.offeredSubtotalCents < p.listSubtotalCents && <s className="mr-2 text-muted-foreground">{money(p.listSubtotalCents)}</s>}{money(p.offeredSubtotalCents)}</dd></div>
+          {dated && datedQuote.data ? <>
+            {/* Multi-day: the discount is on kitchen time only, so equipment gets its own line. */}
+            <div className="flex justify-between gap-3"><dt>{t('invKitchenTime')}</dt><dd className="tabular-nums">
+              {datedQuote.data.kitchenCents < datedQuote.data.listKitchenCents && <s className="mr-2 text-muted-foreground">{money(datedQuote.data.listKitchenCents)}</s>}{money(datedQuote.data.kitchenCents)}</dd></div>
+            {datedQuote.data.subtotalCents > datedQuote.data.kitchenCents && <div className="flex justify-between gap-3"><dt>{t('invEquipment')}</dt>
+              <dd className="tabular-nums">{money(datedQuote.data.subtotalCents - datedQuote.data.kitchenCents)}</dd></div>}
+          </> : <div className="flex justify-between gap-3"><dt>{t('invKitchenTime')}</dt><dd className="tabular-nums">
+            {p.offeredSubtotalCents < p.listSubtotalCents && <s className="mr-2 text-muted-foreground">{money(p.listSubtotalCents)}</s>}{money(p.offeredSubtotalCents)}</dd></div>}
           {!dated && chosen.map(item => <div key={item.id} className="flex justify-between gap-3"><dt>{[item.brand, item.equipmentType].filter(Boolean).join(' ')}</dt>
             <dd className="tabular-nums">{money(Math.round(item.sessionRate))}</dd></div>)}
           <div className="flex justify-between gap-3"><dt>{t('invTax')}</dt><dd className="tabular-nums">{money(p.taxCents)}</dd></div>

@@ -1223,6 +1223,7 @@
   "invClosedChef_accepted": "Ви забронювали цей час.",
   "invClosedChef_unavailable": "Цей час більше недоступний.",
   "invBanner": "{kitchen} запрошує вас забронювати {day} о {time} · {total}",
+  "invBannerDays": "{kitchen} запрошує вас забронювати {count, plural, one {# день} few {# дні} many {# днів} other {# дня}} з {day} · {total}",
   "invReview": "Переглянути",
   "cpAddonsEquipmentOnly": "Обладнання, додане до цього сеансу, теж скасовується.",
   "invPendingConflict": "Відхиліть запит клієнта, що очікує на розгляд, перш ніж надсилати запрошення на час, який перетинається.",
