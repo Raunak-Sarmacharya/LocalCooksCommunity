@@ -374,6 +374,41 @@ describe('Oct 18 live fixes: independent money proofs', () => {
     await expect(readDatedCancellationQuote(1, chef, { visitIds: [8] }, NOW)).rejects.toThrow(/separate change payment|Local Cooks/);
   });
 
+  it('fills shared residual budgets exactly when two sources move to entirely different days', async () => {
+    await request(days(full(MON), full(WED, [7]), full(FRI)));
+    expect((await decide('approve')).state).toBe('applied');
+    await syncDayPayoutSource(2);
+    const { quote } = await request(days(full(TUE), full(THU), full(SAT), hourly('2099-11-08', 9, 13)));
+    expect((await decide('approve')).state).toBe('applied');
+    await syncDayPayoutSource(3);
+    const parts = live(await get(s.kitchenBookingDayAllocations));
+    const visits = (await get(s.kitchenBookingVisits)).filter((visit: any) => visit.scheduleState === 'active');
+    expect(visits.map((visit: any) => sum(parts.filter((part: any) => part.visitId === visit.id), 'subtotalCents'))).toEqual([18000, 18000, 18000, 9000]);
+    expect(visits.map((visit: any) => sum(parts.filter((part: any) => part.visitId === visit.id), 'taxCents'))).toEqual([2700, 2700, 2700, 1350]);
+    expect(visits.map((visit: any) => sum(parts.filter((part: any) => part.visitId === visit.id), 'serviceFeeCents'))).toEqual([1260, 1260, 1260, 630]);
+    for (const source of await get(s.paymentTransactions)) {
+      const moved = parts.filter((part: any) => part.sourceId === source.id);
+      expect(sum(moved, 'subtotalCents') + sum(moved, 'taxCents') + sum(moved, 'serviceFeeCents')).toBe(Number(source.amount));
+      expect(sum(moved, 'stripeFeeCents')).toBe(Number(source.stripeProcessingFee));
+    }
+    expect(quote.money.newTerms).toEqual({ kitchenCents: 63000, taxCents: 9450, feeCents: 4410 });
+  });
+
+  it('uses the quote component order for a new charge when kitchen and equipment tax remainders tie', async () => {
+    await h.db.update(s.kitchens).set({ dailyRate: '3003' });
+    await h.db.update(s.equipmentListings).set({ sessionRate: '3003' });
+    const { quote } = await request(days(full(MON), full(WED), full(FRI), full(SAT, [7])));
+    expect((await decide('approve')).state).toBe('applied');
+    await syncDayPayoutSource(2);
+    const parts = live(await get(s.kitchenBookingDayAllocations));
+    const visit = (await get(s.kitchenBookingVisits)).find((visit: any) => visit.scheduleState === 'active' && visit.visitDate === SAT);
+    expect(quote.money.newTerms).toEqual({ kitchenCents: 60006, taxCents: 9001, feeCents: 4200 });
+    expect(sum(parts.filter((part: any) => part.visitId === visit.id && part.componentKey === 'kitchen'), 'taxCents')).toBe(451);
+    expect(sum(parts.filter((part: any) => part.visitId === visit.id && part.componentKey.startsWith('equipment:')), 'taxCents')).toBe(450);
+    await syncDayPayoutSource(2);
+    expect(live(await get(s.kitchenBookingDayAllocations))).toEqual(parts);
+  });
+
   it('M1: a tax change preserves quoted kept subtotals after a price-down apply', async () => {
     await h.db.update(s.kitchens).set({ taxRatePercent: '10' });
     const { quote } = await request(days(full(MON), full(WED)));

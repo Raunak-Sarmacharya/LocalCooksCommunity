@@ -54,7 +54,8 @@ export async function syncDayPayoutSource(sourceId: number) {
     }
     if (!components?.length || components.some(c => !visits.some(v => v.id === c.visitId) || !Number.isSafeInteger(c.subtotalCents) || c.subtotalCents < 0)
       || new Set(components.map(c => `${c.visitId}:${c.componentKey}`)).size !== components.length) throw Error('Supplemental day allocations required');
-    components = [...components].sort((a, b) => visits.find(v => v.id === a.visitId)!.visitDate!.localeCompare(visits.find(v => v.id === b.visitId)!.visitDate!) || a.componentKey.localeCompare(b.componentKey));
+    // New dated changes freeze quote order for rounding ties; historical sources and extensions keep their original order.
+    if (m.dayComponentOrder !== 'quote-v1') components = [...components].sort((a, b) => visits.find(v => v.id === a.visitId)!.visitDate!.localeCompare(visits.find(v => v.id === b.visitId)!.visitDate!) || a.componentKey.localeCompare(b.componentKey));
     if (evidence.currency !== 'cad' || locked.currency.toLowerCase() !== 'cad' || evidence.intentId !== locked.paymentIntentId || evidence.capturedCents !== Number(locked.amount)
       || Number(locked.baseAmount) + Number(locked.serviceFee) !== evidence.capturedCents) throw Error('Supplemental capture differs');
     const allocated = allocateDatedCapture(components, { totalCents: Number(locked.amount), taxCents: Number(locked.taxAmount), serviceFeeCents: Number(locked.serviceFee) } as any, evidence.feeCents);

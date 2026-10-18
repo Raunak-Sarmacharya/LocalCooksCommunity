@@ -257,7 +257,7 @@ export async function priceDatedChange(tx: Tx, row: DatedRow, validated: Awaited
 }
 
 const hoursOf = (slots: Array<{ startTime: string; endTime: string }>) => slots.map(slot => `${slot.startTime}-${slot.endTime}`).join(',');
-const samePaidDay = (visit: Visit, day: PricedBookingDay | Awaited<ReturnType<typeof validateDatedDestination>>['validated'][number]) =>
+const samePaidDay = (visit: Visit, day: Pick<PricedBookingDay, 'date' | 'pricingMode' | 'slots'>) =>
   String(visit.visitDate).slice(0, 10) === day.date && (visit.pricingMode === 'daily' ? 'daily' : 'hourly') === day.pricingMode
   && hoursOf((visit.selectedSlots as Array<{ startTime: string; endTime: string }>) || []) === hoursOf(day.slots);
 
@@ -312,6 +312,9 @@ function planLedger(sources: SourceLedger[], state: Days, quote: DatedChangeMone
   const remaining = sources.map(entry => {
     const plan = plans.find(plan => plan.transactionId === entry.source.id), reduction = plan?.datedReduction;
     if (plan && (!reduction || columns.some(key => !validCents(reduction[key]))
+      || !validCents(plan.grossCents!) || !validCents(plan.refundCents!) || plan.refundCents! > plan.grossCents!
+      || plan.intentId !== entry.source.paymentIntentId || plan.capturedCents !== Number(entry.source.amount)
+      || plan.processingFeeCents !== Number(entry.source.stripeProcessingFee)
       || sum(columns.map(key => reduction[key]), n => n) !== plan.grossCents || reduction.serviceFeeCents !== plan.platformReturnCents
       || reduction.subtotalCents + reduction.taxCents - (plan.grossCents! - plan.refundCents!) !== plan.kitchenDebitCents))
       throw support('the exact change refund split needs review');
@@ -333,7 +336,7 @@ function planLedger(sources: SourceLedger[], state: Days, quote: DatedChangeMone
       const reserved = allocateCents(Math.min(available[index], sum(preferred, n => n)), preferred);
       reserved.forEach((n, i) => { moved[index][i][key] += n; budget[i] -= n; available[index] -= n; });
     }
-    sources.forEach((entry, index) => {
+    sources.forEach((_, index) => {
       const assigned = index === sources.length - 1 ? [...budget] : allocateCents(available[index], budget);
       if (sum(assigned, n => n) !== available[index]) throw support('the last source does not fill the exact remainder');
       assigned.forEach((n, i) => { moved[index][i][key] += n; budget[i] -= n; });
@@ -445,7 +448,7 @@ export async function applyDatedChange(tx: Tx, row: DatedRow, change: { id: stri
     const [extra] = await tx.select().from(paymentTransactions).where(and(eq(paymentTransactions.bookingId, booking.id), eq(paymentTransactions.paymentIntentId, change.intentId || '')));
     const subs = planned.added.map(part => part.subtotalCents);
     if (!extra || meta(extra).kitchenChangeId !== change.id || Number(extra.baseAmount) - Number(extra.taxAmount) !== sum(subs, n => n)) throw Error('The change charge does not match its quote');
-    await tx.update(paymentTransactions).set({ metadata: { ...meta(extra), dayComponents: components.map((item, i) => ({ ...item, subtotalCents: subs[i] })) } })
+    await tx.update(paymentTransactions).set({ metadata: { ...meta(extra), dayComponentOrder: 'quote-v1', dayComponents: components.map((item, i) => ({ ...item, subtotalCents: subs[i] })) } })
       .where(eq(paymentTransactions.id, extra.id));
   }
   // 5. Clocks and codes for the new days.
