@@ -1188,9 +1188,9 @@ Already-failing tests found before any change (baseline, not ours): 21 in `tour-
 - Also today: kitchen "Invite {chef} to another time" after a decline, "Request declined" toast, multi-day receipts "Kitchen booking · N days", admin dates readable / $0 installments hidden, Peerspace-style custom charges deferred (owner).
 
 ### Handover — next session (start here)
-1. Done Oct 18: pushed (CP7 + fixes, extra time rate, CP10; 0104 on dev DB). Check the Vercel dev deploy succeeded and smoke-test kitchen pricing + a booking page.
-2. CP10 independent money review (Cursor Auto) -> fix round (Codex).
-3. Decide N1 (multi-source day drops after a price-up change): build in CP6 or accept support-only for launch — ask the owner with a recommendation.
-4. Extra time rate: show it on chef kitchen preview/discovery and the admin location dialog; live-verify a full-day overstay charge = hourly rate on dev.
-5. CP11: real-Postgres parity (0099/0102/0103/0104 + triggers), switch `booking_multiday_enabled` on for dev, full live run-through (chef, kitchen, Local Cooks, Stripe sandbox checked) incl. invitations, change, extra time per day; then the owner's team test checklist + heads-up. Production stays untouched until the owner's team signs off.
-6. Cleanup: merged worktrees on C: (t3-0d6b761b, t3-0d8d07f5, t3-b36baefd, t3-b0181505, t3-29d9e772, t3-96580dc5, t3-7b975794) can be removed with `git worktree remove` (never force through junctions).
+State Oct 18 (evening): multi-day + single-day booking cycle verified end to end on dev; **owner's team testing next** (production untouched; `booking_multiday_enabled` = true on dev only).
+- Final checks on `7fe6b7f2`/`72c7c05a`: tsc 0; client 7367 / server 4175 (5 known load timeouts pass serially); deploy success; live: second paid change on #210 applied with exact per-day prices across 3 payments (Mon 4500+2500, Wed 4500, Fri 5000, Sat 5000).
+- Team test plan: `docs/architecture/phase0/team-test-plan-2026-10.md` (multi-day section live). Policy register current.
+- Open / later: N1 paid-change-then-cancel = support-only (manual Stripe); kitchen custom charges deferred (Peerspace-style candidate); not live-run (tests only): full-day overstay billed at the extra time rate, 24 h auto payout, request expiry, multi-day partial acceptance, no-show — the team plan covers them.
+- Locked leftover worktree folders (no junctions; safe to delete by hand): t3-492c21bd, t3-5b86759a, t3-595ffb45, t3-e445914c under C:\Users\rauna\.t3\worktrees\LocalCooksCommunity.
+- Before any production deploy (owner go-ahead only): apply migrations 0099/0102/0103/0104 to prod; review the storage base_price note; decide `booking_multiday_enabled` for prod.
