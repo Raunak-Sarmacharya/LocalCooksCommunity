@@ -1095,7 +1095,7 @@ describe('receipts and money after a change', () => {
     const parent = payments.find((row: any) => row.paymentIntentId === 'pi_original'), extra = payments.find((row: any) => (row.metadata as any).kitchenChangeId);
     expect((parent.metadata as any).originalBookingSchedule).toMatchObject({ date: ORIGINAL_DATE });
     expect(Number(parent.amount)).toBe(9600); // immutable
-    const money = deriveBookingMoney({ booking: await getBooking(), payments: payments as any, refunds: [], claims: [], extensions: [] } as any);
+    const money = deriveBookingMoney({ booking: await getBooking(), payments: payments as any, refunds: [], claims: [], extensions: [], addonNames: { storage: {}, equipment: {} } } as any);
     const lines = JSON.stringify(money);
     expect(lines).toContain('Booking change');
     expect(Number(extra.amount)).toBe(4800);
