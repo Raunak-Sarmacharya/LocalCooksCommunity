@@ -1248,7 +1248,7 @@ export default function BookingDetailsPage() {
     if (isManagerView) return { label: payoutTitle, struck: false,
       // The booking's own net plus each extra charge's net. (The payout snapshot already includes the extras: never add them to it.)
       cents: (booking.paymentTransaction.kitchenShareCents ?? (extraCharges.length ? buildKitchenPayoutStatementBreakdown(pricingBreakdownInput).kitchenNetPayoutCents
-        : booking.payout?.timing === 'after_closeout' ? booking.payout.amountCents : buildKitchenPayoutStatementBreakdown(pricingBreakdownInput).kitchenNetPayoutCents)) + extraTotalCents };
+        : !booking.scheduleRevision && booking.payout?.timing === 'after_closeout' ? booking.payout.amountCents : buildKitchenPayoutStatementBreakdown(pricingBreakdownInput).kitchenNetPayoutCents)) + extraTotalCents };
     // Before capture it is only a hold on the card; "Total paid" appears once the money was actually taken.
     if (!paymentCaptured) return { label: t('bnCardHold'), cents: booking.paymentTransaction.amount || buildChefBookingReceiptBreakdown(pricingBreakdownInput).totalPaidCents, struck: false };
     return { label: t('bdhTotalPaid'), cents: booking.paymentTransaction.amount + extraTotalCents, struck: false };
@@ -1695,7 +1695,7 @@ export default function BookingDetailsPage() {
             <VisitCodePanel key={`visit-code-${booking.id}`} bookingId={booking.id} bookingStatus={booking.status} embedded collapsed={!withinCodeLead}
               visitEnded={false} customerName={chefName} kitchenName={booking.kitchen?.name}
               timezone={booking.location?.timezone} bookingDate={booking.bookingDate} operatingWindowStartTime={booking.operatingWindowStartTime}
-              startTime={booking.startTime} endTime={booking.endTime} visits={booking.visits} onChanged={reloadBookingDetails} />
+              startTime={booking.startTime} endTime={booking.endTime} visits={datedBooking ? bookingDays : booking.visits} onChanged={reloadBookingDetails} />
           </div>
         )}
         {!isManagerView && (runningLateOpen || runningLateSent) && (

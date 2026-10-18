@@ -62,6 +62,8 @@ async function readDetails(bookingId: number): Promise<ManagerInspectionDetails>
   if (result.id !== bookingId || !Array.isArray(result.visits) || !result.kitchen || !result.location)
     throw Error(t('inspectCopy01'));
   if (result.inspection && !readVisitDuties(result.inspection.duties)) throw Error(t('inspectCopy02'));
+  if (result.scheduleRevision) result.visits = result.visits.filter((visit: Evidence) => visit.scheduleRevision === result.scheduleRevision && visit.scheduleState !== 'superseded')
+    .sort((a: Evidence, b: Evidence) => (a.visitDate || '').localeCompare(b.visitDate || ''));
   return result;
 }
 

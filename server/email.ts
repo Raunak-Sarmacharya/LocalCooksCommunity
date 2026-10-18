@@ -870,7 +870,7 @@ function bookingCalendarParts(
     });
     const links = booking.days.filter(day => !day.cancelled).map(day => ({ label: `${day.date} · ${emailClock(day.startTime)}–${emailClock(day.endTime)}`,
       url: generateCalendarUrl('calendar@gmail.com', title, day.date, day.startTime, day.endTime, location, description, timezone, day.operatingWindowStartTime || undefined) }));
-    return { ics: [files[0].slice(0, files[0].indexOf('BEGIN:VEVENT')), ...files.map(file => file.slice(file.indexOf('BEGIN:VEVENT'), file.indexOf('END:VEVENT') + 'END:VEVENT'.length)), 'END:VCALENDAR'].join('\r\n'),
+    return { ics: [files[0].slice(0, files[0].indexOf('BEGIN:VEVENT')).replace('METHOD:CANCEL', 'METHOD:PUBLISH'), ...files.map(file => file.slice(file.indexOf('BEGIN:VEVENT'), file.indexOf('END:VEVENT') + 'END:VEVENT'.length)), 'END:VCALENDAR'].join('\r\n'),
       links, linksHtml: links.map(link => `<a href="${escapeHtml(link.url)}">${escapeHtml(link.label)}</a>`).join(''), linksText: links.map(link => `${link.label}: ${link.url}`).join('\n'), timeLabel: '' };
   }
   const operatingDate = booking.bookingDate instanceof Date

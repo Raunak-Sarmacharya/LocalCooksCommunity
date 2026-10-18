@@ -367,6 +367,6 @@
   "bcRefundIfApprovedLine": "Якщо вони погодять, вам повернуть {amount}.",
   "bcRequestedManagerSameTitle": "Запит на зміну · {reference}",
   "bcRequestedManagerSameBody": "{chef} просить перенести {reference} з {old} на {new}. Ціна та сама, тож ваша виплата не зміниться. Дайте відповідь до {deadline}. Крайній термін повернення коштів зміститься на {freeCancel}.",
-  "bookingDaysCount": "{count} днів",
+  "bookingDaysCount": "{count, plural, one {# день} few {# дні} many {# днів} other {# дня}}",
   "bookingWholeTotal": "Загальна сума всього бронювання"
 }

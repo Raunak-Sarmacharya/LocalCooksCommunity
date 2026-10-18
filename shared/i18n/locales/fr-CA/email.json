@@ -367,6 +367,6 @@
   "bcRefundIfApprovedLine": "S’ils approuvent, vous recevrez {amount}.",
   "bcRequestedManagerSameTitle": "Demande de modification · {reference}",
   "bcRequestedManagerSameBody": "{chef} demande de déplacer {reference} de {old} à {new}. Même prix : votre versement ne change pas. Répondez d’ici le {deadline}. Sa date limite de remboursement passerait au {freeCancel}.",
-  "bookingDaysCount": "{count} jours",
+  "bookingDaysCount": "{count, plural, one {# jour} other {# jours}}",
   "bookingWholeTotal": "Total de la réservation entière"
 }

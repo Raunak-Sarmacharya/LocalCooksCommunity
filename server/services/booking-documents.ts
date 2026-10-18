@@ -100,13 +100,13 @@ function refundReason(row: PaymentRow, receipt: Record<string, any>) {
   if (purposeOf(row, null) === 'claim') return 'Claim refund';
   return 'Refund';
 }
-function refundsOf(row: PaymentRow, booking: BookingFacts, changes: MoneyRows['changes']): RefundFact[] {
+function refundsOf(row: PaymentRow, booking: BookingFacts, changes: MoneyRows['changes'], equipmentNames?: Record<number, string>): RefundFact[] {
   const receipts = Array.isArray(meta(row).refunds) ? meta(row).refunds as Array<Record<string, any>> : [];
   const facts = receipts.flatMap(receipt => {
     const id = String(receipt.id || receipt.refundId || '');
     const amount = cents(receipt.customerReceived);
     const operation = [meta(row).cancellationRefundOperation, ...(meta(row).cancellationRefundOperations || [])].find(op => op?.dated && op.refundId === id);
-    const dayItems = operation?.lines?.map((line: any) => ({ label: `${operation.days?.find((day: any) => day.visitId === line.visitId)?.date || ''} · ${line.kind === 'equipment' ? 'Equipment' : 'Kitchen day'}`, amountCents: cents(line.customerCents) }));
+    const dayItems = operation?.lines?.map((line: any) => ({ label: `${operation.days?.find((day: any) => day.visitId === line.visitId)?.date || ''} · ${line.kind === 'equipment' ? equipmentNames?.[line.itemId] || 'Equipment' : 'Kitchen day'}`, amountCents: cents(line.customerCents) }));
     const destination = changes?.find(change => change.id === receipt.kitchenChangeId)?.destination as { date?: string; slots?: Slot[]; pricingMode?: string } | undefined;
     const bookingSchedule = destination?.date && destination.slots?.length ? { ...booking, bookingDate: destination.date,
       pricingMode: destination.pricingMode === 'daily' ? 'daily' as const : booking.pricingMode, originalSlots: destination.slots } : undefined;
@@ -185,7 +185,7 @@ export function deriveBookingMoney(rows: MoneyRows): BookingMoney {
         pricingMode: datedDays?.find(d => d.date === day.date)?.pricingMode === 'daily' ? 'daily' : 'hourly' },
       items: [{ label: `Kitchen visit - ${day.date}`, subtotalCents: day.subtotalCents }], taxCents: day.taxCents, taxRatePercent: null,
       serviceFeeCents: 0, amountCents: day.subtotalCents + day.taxCents,
-      refunds: refundsOf(row, booking, rows.changes).flatMap(refund => {
+      refunds: refundsOf(row, booking, rows.changes, rows.addonNames.equipment).flatMap(refund => {
         const operation = [m.cancellationRefundOperation, ...(m.cancellationRefundOperations || [])].find(op => op?.dated && op.refundId === refund.refundId);
         const reversed = operation ? Number(day.evidence.reversals?.[operation.id] || 0) : 0;
         return reversed ? [{ ...refund, managerDebitedCents: reversed, reversedCents: reversed }] : [];
@@ -194,7 +194,7 @@ export function deriveBookingMoney(rows: MoneyRows): BookingMoney {
         transferredCents: day.transferId ? day.amountCents : null, transferredAt: day.evidence.sentAt || null, reversedCents: day.evidence.reversedCents || 0 } }));
     return { ...(installments ? { installments } : {}), bookingSchedule: paymentBooking, paymentIntentId: row.paymentIntentId!, chargeId: row.chargeId, purpose, paidAt: iso(row.paidAt), items, ...(kitchenItems ? { kitchenItems } : {}),
       taxCents: tax, taxRatePercent: m.taxRatePercent != null ? Number(m.taxRatePercent) : subtotal && tax ? Math.round(tax * 1000 / subtotal) / 10 : null,
-      serviceFeeCents: Math.max(0, serviceFee), amountCents: amount, refunds: refundsOf(row, booking, rows.changes).map(refund => ({ ...refund,
+      serviceFeeCents: Math.max(0, serviceFee), amountCents: amount, refunds: refundsOf(row, booking, rows.changes, rows.addonNames.equipment).map(refund => ({ ...refund,
         ...(evidence?.refunds && Object.keys(evidence.refunds).length ? { reversedCents: evidence.refunds[refund.refundId]?.amountCents || 0 } : {}) })), ...(problem ? { problem } : {}),
       kitchen: { noShare: purpose === 'claim' && (claim?.fundedBy === 'local_cooks' || m.platformRecovery === true),
         processingAbsorbed: purpose === 'claim',

@@ -101,3 +101,12 @@ it('CP9: dated email calendars preserve gaps, visit identity, revision and cance
   expect(ics).toContain('SEQUENCE:3'); expect(ics).toContain('STATUS:CANCELLED');
   expect(email.text).toContain('Jan 15'); expect(email.text).toContain('Jan 18'); expect(email.text).toContain('2 days');
 });
+
+it('CP9: cancelling the first date never makes the calendar cancel the remaining dates', () => {
+ const email = generateBookingConfirmationEmail({ chefEmail: 'chef@example.test', chefName: 'Sam', kitchenName: 'Kitchen', bookingId: 42,
+  bookingDate: '2030-01-15', startTime: '09:00', endTime: '10:00', timezone: 'UTC', scheduleRevision: 2,
+  days: [{ id: 8, date: '2030-01-15', startTime: '09:00', endTime: '10:00', cancelled: true }, { id: 9, date: '2030-01-18', startTime: '09:00', endTime: '10:00' }] });
+ const ics = String(email.attachments?.[0]?.content);
+ expect(ics).toContain('METHOD:PUBLISH'); expect(ics).not.toContain('METHOD:CANCEL');
+ expect(ics).toContain('STATUS:CANCELLED'); expect(ics).toContain('STATUS:CONFIRMED'); expect(ics).toContain('SEQUENCE:3');
+});

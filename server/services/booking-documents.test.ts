@@ -248,8 +248,10 @@ it('CP9: receipt and credit note list every dated allocation without duplicating
   expect(money.payments[0].items.map(item => item.detail).join(' ')).toMatch(/Jan 15.*Jan 18.*Full day/);
   expect(money.payments[0].refunds[0].items).toEqual([{ label: '2030-01-18 · Kitchen day', amountCents: 1220 }]);
   const plan = planBookingDocuments(money, false);
-  const ctx = { number: 'LC-R-1', issuedAt: '2030-01-19T12:00:00Z', supplier: { name: 'Local Cooks', legalNote: '', address: '', website: '', email: '', taxNumber: null }, referenced: { number: 'LC-R-0' } };
+  const ctx = { number: 'LC-R-1', issuedAt: '2030-01-19T12:00:00Z', supplier: { name: 'Local Cooks', legalNote: '', address: '', website: '', email: '', taxNumber: null }, card: null, issued: [] };
   const receipt = plan[0].build(ctx); expect(receipt.meta.filter(row => row.label === 'Booking day')).toHaveLength(2);
-  const credit = plan.find(row => row.audience === 'chef' && row.kind === 'refund')!.build(ctx);
+  const referenced: StoredDocument = { id: 1, number: 'LC-R-0', bookingId: rows.booking.id, kind: 'payment', audience: 'chef', sourceKey: plan[0].sourceKey,
+    amountCents: 2440, issuedAt: ctx.issuedAt, snapshot: receipt, referencesDocumentId: null };
+  const credit = plan.find(row => row.audience === 'chef' && row.kind === 'refund')!.build({ ...ctx, referenced });
   expect(credit.sections[0].lines[0]).toMatchObject({ label: '2030-01-18 · Kitchen day', amountCents: -1220 });
 });
