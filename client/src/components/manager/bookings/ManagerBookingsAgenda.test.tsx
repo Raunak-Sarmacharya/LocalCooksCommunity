@@ -152,7 +152,7 @@ it('combines reference search, inclusive dates and status, and exports only the 
   expect(screen.queryByTestId('manager-booking-row')).not.toBeInTheDocument();
 });
 
-it('keeps the day label in CSV and uses only that day’s projected installments', () => {
+it('keeps the day label in CSV; one row is the whole multi-day booking, so You receive counts every day', () => {
   const booking = row({ scheduleRevision: 1, visitStates: [
     { id: 11, visitDate: '2026-10-07', startTime: '13:00', endTime: '15:00', checkinStatus: 'checked_out' },
     { id: 12, visitDate: '2026-10-14', startTime: '15:00', endTime: '17:00', checkinStatus: 'not_checked_in' }],
@@ -161,8 +161,8 @@ it('keeps the day label in CSV and uses only that day’s projected installments
   mount([booking]);
   fireEvent.click(screen.getByRole('button', { name: 'Export CSV' }));
   expect(vi.mocked(downloadCSV).mock.lastCall![0]).toContain('"2026-10-14","Day 2 of 2"');
-  expect(vi.mocked(downloadCSV).mock.lastCall![0]).toContain('"35.00"');
-  expect(bookingReceiveCents({ ...booking, visitStates: [booking.visitStates![1]] })).toBe(3500);
+  expect(vi.mocked(downloadCSV).mock.lastCall![0]).toContain('"70.00"');
+  expect(bookingReceiveCents({ ...booking, visitStates: [booking.visitStates![1]] })).toBe(7000);
 });
 
 it('exports zero remaining earnings, escapes formulas and omits payment provider IDs', () => {
