@@ -1008,6 +1008,9 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
             ...chefBooking,
             responseDeadlineAt: await getBookingResponseDeadlineAt(booking, undefined, location?.timezone),
             runningLate: await (await import('../services/running-late')).readRunningLate(booking.id),
+            // Multi-day: what each day cost the chef and what came back (the kitchen's remaining share stays private).
+            ...(booking.scheduleRevision > 0 ? { dayMoney: (await (await import('../services/booking-day-money')).readBookingDayMoney(id))
+                .map(({ kitchenRemainingCents: _kitchen, ...day }) => day) } : {}),
             // Read-only: extra time and claim payments on this booking (own rows), so the page shows the true total paid.
             additionalCharges: await (await import('../services/booking-additional-charges')).readAdditionalCharges(db, booking.id, 'chef', booking.paymentIntentId).catch(() => []),
             checkinWindowMinutesBefore: checkinSettings.checkinWindowMinutesBefore,
