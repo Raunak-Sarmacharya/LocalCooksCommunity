@@ -325,10 +325,11 @@ export function KitchenCheckinTracker({
     return new Intl.DateTimeFormat(locale, { timeZone: timezone, hour: "numeric", minute: "2-digit",
       ...(dayKey === visitDate ? {} : { month: "short", day: "numeric" }) }).format(at)
   }
-  const formatVisit = (start: string, end: string) => {
-    if (!visitDate) return `${start}–${end}`
-    const begins = createBookingDateTime(calendarDateForBookingTime(visitDate, start, data?.operatingWindowStartTime), start, timezone)
-    const ends = createBookingDateTime(calendarDateForBookingTime(visitDate, end, data?.operatingWindowStartTime, start), end, timezone)
+  // `date`: a multi-day visit's own operating date (each day in the picker is labelled with its own date).
+  const formatVisit = (start: string, end: string, date: string | null | undefined = visitDate) => {
+    if (!date) return `${start}–${end}`
+    const begins = createBookingDateTime(calendarDateForBookingTime(date, start, data?.operatingWindowStartTime), start, timezone)
+    const ends = createBookingDateTime(calendarDateForBookingTime(date, end, data?.operatingWindowStartTime, start), end, timezone)
     return formatVisitWhen(begins, ends, timezone, locale)
   }
   const visitStart = data?.startTime || startTime
@@ -564,7 +565,7 @@ export function KitchenCheckinTracker({
                 aria-pressed={data.visitId === visit.id}
                 disabled={isPending}
                 onClick={() => setSelectedVisitId(visit.id)}>
-                <span>{data.scheduleRevision ? `${visit.visitDate} - Day ${ordinal + 1} of ${data.visits!.length}: ${formatVisit(visit.startTime, visit.endTime)}` : <>{t("kciVisitNumber", `Visit ${visit.blockIndex + 1}`, { number: visit.blockIndex + 1 })}: {formatVisit(visit.startTime, visit.endTime)}</>}</span>
+                <span>{data.scheduleRevision ? `${t('mdDayOf', `Day ${ordinal + 1} of ${data.visits!.length}`, { number: ordinal + 1, total: data.visits!.length })} · ${formatVisit(visit.startTime, visit.endTime, visit.visitDate?.slice(0, 10))}` : <>{t("kciVisitNumber", `Visit ${visit.blockIndex + 1}`, { number: visit.blockIndex + 1 })}: {formatVisit(visit.startTime, visit.endTime)}</>}</span>
                 <span>{t(`visitStatus_${visit.checkinStatus}`, visit.checkinStatus.replaceAll("_", " "))}</span>
               </Button>
             ))}

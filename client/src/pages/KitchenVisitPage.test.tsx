@@ -100,6 +100,10 @@ describe("full-page kitchen visit", () => {
     expect(confirm).toBeDisabled(); expect(posts()).toHaveLength(0);
     expect(screen.getByText('Today photo')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Day 2 of 2/ })).toHaveAttribute('aria-pressed', 'true');
+    // Each day is labelled with its own date (live bug Oct 18: every day showed the selected day's date).
+    const md = (iso: string) => new Intl.DateTimeFormat('en-CA', { timeZone: 'UTC', month: 'short', day: 'numeric' }).format(new Date(`${iso}T12:00:00Z`));
+    expect(screen.getByRole('button', { name: /Day 1 of 2/ })).toHaveTextContent(md(pastDate));
+    expect(screen.getByRole('button', { name: /Day 1 of 2/ })).not.toHaveTextContent(/\d{4}-\d{2}-\d{2}/);
   });
 
   it('keeps a removed dated visit URL from falling through to a different mutable day', async () => {
