@@ -303,8 +303,8 @@ export function ManagerPaymentSummary({ booking }: { booking: Booking }) {
 
 /** The existing payout projection owns refund allocation; chef refunds can include platform money. */
 export function bookingReceiveCents(booking: Booking): number {
+  // Multi-day: the row is the whole booking, so every day's payout counts (sent and still to come).
   const installments = booking.payout?.installments;
-  const visitId = booking.scheduleRevision ? booking.visitStates?.[0]?.id : undefined;
-  if (installments && visitId != null) return installments.filter(item => item.visitId === visitId).reduce((sum, item) => sum + item.amountCents, 0);
+  if (booking.scheduleRevision && installments?.length) return installments.reduce((sum, item) => sum + item.amountCents, 0);
   return booking.payout?.amountCents ?? booking.managerRemainingBalance ?? 0;
 }
