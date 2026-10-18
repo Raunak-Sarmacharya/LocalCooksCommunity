@@ -160,11 +160,6 @@ export function resolveArrivalTarget(target: { bookingId: number; visitId?: numb
 // Enrollment and revocation
 // ---------------------------------------------------------------------------------------------
 
-/**
- * Called inside the confirmation transaction (booking row already locked). Creates one staffed revision-1
- * challenge per arrival target. Idempotent. If the signing key is not configured it logs and leaves the
- * booking on today's tap-to-arrive behaviour rather than failing a payment reconciliation.
- */
 type InheritedArrivalMode = Pick<Challenge, 'mode' | 'modeChangedByUserId' | 'modeChangedAt' | 'modeReason'>;
 
 /** Before replacing the schedule, preserve the kitchen's most recent mode decision across its current days. */
@@ -176,6 +171,11 @@ export async function arrivalModeForChangedBooking(tx: Tx, bookingId: number): P
     modeChangedAt: latest.modeChangedAt, modeReason: latest.modeReason } : undefined;
 }
 
+/**
+ * Called inside the confirmation transaction (booking row already locked). Creates one revision-1
+ * challenge per arrival target, carrying the kitchen mode when replacing a schedule. Idempotent. If the signing key is not configured it logs and leaves the
+ * booking on today's tap-to-arrive behaviour rather than failing a payment reconciliation.
+ */
 export async function ensureChallengesForBooking(tx: Tx, bookingId: number, actorUserId?: number | null, inheritedMode?: InheritedArrivalMode): Promise<number> {
   if (!visitCodeKeyConfigured()) {
     logger.error('[VisitCode] Signing key is not configured; booking keeps tap-to-arrive behaviour', { bookingId });

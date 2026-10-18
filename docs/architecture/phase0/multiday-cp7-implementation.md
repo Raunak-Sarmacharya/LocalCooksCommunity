@@ -163,5 +163,6 @@ New days inherit the current days' latest kitchen-set arrival mode and its actor
 
 **N1 remains support-only**, under the lead-approved fallback. Multi-source CP6 needs one inventory decision with independent source facts/allocations/installments/reservations, aggregate quote/replay reads and source-isolated recovery. Original-source-only `execute`/`commit`/`readDatedOperation` cannot safely provide that by removing the guard. No second-source partial-failure behavior was implemented. The review's Lead disposition covers every finding.
 
-Validation: pending focused suites, full server run and foreground TypeScript check.
+Validation so far: focused dated-booking/change/day-payout/cancellation-refund/support/visit-code suites **502/502 passed** (13 files, `--no-file-parallelism` after an unrestricted attempt hit a Node allocation failure). This includes **20 CP7 regression tests** across builder and review suites, using actual 0099/0102 SQL and the 0098 trigger. Client change/recovery suites **13/13 passed** (2 files); i18n lint passed. Initial test-only issues corrected before the passing run: missing fixture arrival-target unique index and the assertion for the shared Button's actual brand-colour class.
+Full server run and foreground TypeScript check pending.
 No Stripe, external DB, deploy, push or network action. Dependencies use the local npm cache (`npm ci --offline`).

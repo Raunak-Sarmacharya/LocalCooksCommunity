@@ -71,10 +71,10 @@ async function load(tx: Tx, bookingId: number, lock: boolean) {
   const installments = installmentQuery ? lock ? await installmentQuery.for('update') : await installmentQuery : [];
   const equipment = await tx.select({ row: equipmentBookings, name: equipmentListings.equipmentType }).from(equipmentBookings)
     .innerJoin(equipmentListings, eq(equipmentListings.id, equipmentBookings.equipmentListingId)).where(eq(equipmentBookings.kitchenBookingId, bookingId));
-  // Supplemental change charges are allocated by CP7; until then a captured one makes this booking support-only.
   const openChanges = await tx.select({ id: kitchenBookingChanges.id }).from(kitchenBookingChanges).where(and(
     eq(kitchenBookingChanges.bookingId, bookingId), inArray(kitchenBookingChanges.state, OPEN_KITCHEN_CHANGE_STATES)));
   const unreconciledChangeRefund = sources.some(hasUnreconciledChangeRefund);
+  // shortcut: CP6 still reserves only the original source; keep the guard until multi-source recovery is implemented.
   const supplemental = sources.filter(item => item.id !== source?.id && metadata(item).kitchenChangeId && ['succeeded', 'partially_refunded'].includes(item.status));
   return { booking, managerId: row.managerId!, timezone: row.timezone || 'America/St_Johns', kitchenName: row.kitchenName, source, supplemental,
     visits, allocations: rows, installments, equipment, openChanges, unreconciledChangeRefund };
