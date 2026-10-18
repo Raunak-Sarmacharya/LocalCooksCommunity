@@ -7,7 +7,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatTime } from "@/lib/formatters";
-import type { ChangeSchedule } from "@shared/kitchen-booking-change";
+import { changeScheduleDays, type AnyChangeSchedule } from "@shared/kitchen-booking-change";
 import { fmtMoney } from "./format";
 import { SupportApiError, type TokenGetter } from "./api";
 import { useSupportT } from "./useSupportT";
@@ -21,7 +21,7 @@ export type KitchenChangeMoney = {
 
 export type KitchenChangeOpen = {
   id: string; state: string; revision: number;
-  original: ChangeSchedule; destination: ChangeSchedule;
+  original: AnyChangeSchedule; destination: AnyChangeSchedule;
   money: KitchenChangeMoney;
   steps?: { state: string; message: string; at: string }[];
 };
@@ -46,12 +46,13 @@ async function callChanges<T>(getToken: TokenGetter, url: string, init?: Request
   return body as T;
 }
 
-export function formatChangeSchedule(schedule: ChangeSchedule, locale = "en-CA"): string {
-  const day = new Intl.DateTimeFormat(locale, { timeZone: "UTC", weekday: "short", month: "short", day: "numeric" })
-    .format(new Date(`${schedule.date}T12:00:00Z`));
-  const start = formatTime(schedule.slots[0]?.startTime || "", locale);
-  const end = formatTime(schedule.slots.at(-1)?.endTime || "", locale);
-  return `${day} · ${start}–${end}`;
+/** One line per schedule; a dated booking's days are listed in order ("Mon, Nov 2 · 9:00 AM–5:00 PM; Wed, Nov 4 · ..."). */
+export function formatChangeSchedule(schedule: AnyChangeSchedule, locale = "en-CA"): string {
+  return changeScheduleDays(schedule).map((item) => {
+    const day = new Intl.DateTimeFormat(locale, { timeZone: "UTC", weekday: "short", month: "short", day: "numeric" })
+      .format(new Date(`${item.date}T12:00:00Z`));
+    return `${day} · ${formatTime(item.slots[0]?.startTime || "", locale)}–${formatTime(item.slots.at(-1)?.endTime || "", locale)}`;
+  }).join("; ");
 }
 
 function reasonOf(change: KitchenChangeOpen): string {

@@ -36,7 +36,7 @@ export async function syncDayPayoutSource(sourceId: number) {
     // A change charge is split over the new days only once its change applies (its manifest is written then).
     if (m.kitchenChangeId && !m.dayComponents?.length && !Number.isSafeInteger(m.visitId)) {
       const [change] = await tx.select({ state: kitchenBookingChanges.state }).from(kitchenBookingChanges).where(eq(kitchenBookingChanges.id, String(m.kitchenChangeId)));
-      if (change?.state !== 'applied') return;
+      if (change && change.state !== 'applied') return;
     }
     const visits = await tx.select().from(kitchenBookingVisits).where(eq(kitchenBookingVisits.bookingId, locked.bookingId));
     let components: DayComponent[] = m.dayComponents;

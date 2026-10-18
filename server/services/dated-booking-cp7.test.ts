@@ -238,8 +238,9 @@ describe('CP7 dated changes: validation and eligibility', () => {
 });
 
 describe('CP7 dated changes: money and apply', () => {
-  it('equal price: approval moves Mon/Wed/Fri to Tue/Thu/Sat at once, with new visits, codes, sessions (0098) and a moved ledger', async () => {
-    const { quote } = await request(days(full(TUE), full(THU), full(SAT)));
+  it('equal price, mixed mode: approval moves Mon/Wed/Fri to Tue (8 hours)/Thu/Sat at once, with new visits, codes, sessions (0098) and a moved ledger', async () => {
+    // 8 hours x $22.50 = one $180 full day, so the whole total is unchanged.
+    const { quote } = await request(days(hourly(TUE, 9, 17), full(THU), full(SAT)));
     expect(quote.money).toMatchObject({ oldTotalCents: 65880, newTotalCents: 65880, payCents: 0, refundCents: 0 });
     expect(quote.freeCancelAfter).toBe('2099-11-02T09:00:00.000Z');
     // The whole destination is held while the original days stay booked.
@@ -253,8 +254,8 @@ describe('CP7 dated changes: money and apply', () => {
     // 0098: only `sessions` moved; the one deadline follows the new first day.
     expect(b.cancellationPolicySnapshot).toEqual({ ...snapshot, sessions: [TUE, THU, SAT].map(date => ({ startAt: at9(date) })) });
     const visits = await get(s.kitchenBookingVisits);
-    expect(visits.map((v: any) => [v.visitDate, v.scheduleRevision, v.scheduleState, v.blockIndex])).toEqual([[MON, 1, 'superseded', 0], [WED, 1, 'superseded', 1],
-      [FRI, 1, 'superseded', 2], [TUE, 2, 'active', 3], [THU, 2, 'active', 4], [SAT, 2, 'active', 5]]);
+    expect(visits.map((v: any) => [v.visitDate, v.scheduleRevision, v.scheduleState, v.blockIndex, v.pricingMode])).toEqual([[MON, 1, 'superseded', 0, 'daily'],
+      [WED, 1, 'superseded', 1, 'daily'], [FRI, 1, 'superseded', 2, 'daily'], [TUE, 2, 'active', 3, 'hourly'], [THU, 2, 'active', 4, 'daily'], [SAT, 2, 'active', 5, 'daily']]);
     expect(h.revoked).toEqual([1, 2, 3]);
     expect(h.enrolled).toEqual([1]);
     expect(await get(s.kitchenCheckoutHolds)).toEqual([]);
