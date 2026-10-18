@@ -91,6 +91,7 @@ beforeAll(async () => {
     'ALTER TABLE booking_flags DROP COLUMN visit_id; ALTER TABLE commitment_problems DROP COLUMN visit_id',
     readFileSync('migrations/0102_day_payout_problem_scope.sql', 'utf8'),
     'CREATE UNIQUE INDEX cp7_group_day ON kitchen_checkout_holds(group_id, operating_date) WHERE group_id IS NOT NULL',
+    'CREATE UNIQUE INDEX cp7_arrival_target ON kitchen_visit_arrival_challenges(target_key)',
     'CREATE UNIQUE INDEX cp7_visit_block ON kitchen_booking_visits(booking_id, block_index)',
     'CREATE UNIQUE INDEX cp7_visit_date ON kitchen_booking_visits(booking_id, schedule_revision, visit_date)',
     'CREATE UNIQUE INDEX cp7_change_open ON kitchen_booking_changes(booking_id) WHERE state IN (\'requested\',\'awaiting_consent\',\'awaiting_payment\',\'payment_pending\',\'authorized\',\'capture_pending\',\'refund_pending\',\'release_pending\',\'recovery_required\')',
@@ -382,6 +383,18 @@ describe('CP7 dated changes: money and apply', () => {
     expect(original.every((r: any) => r.allocationRevision === 2 && visits.some((v: any) => v.id === r.visitId))).toBe(true);
     // Both sources together pay exactly the new booking total.
     expect(sum([...extra, ...original].map((r: any) => ({ v: r.subtotalCents + r.taxCents + r.serviceFeeCents })), 'v')).toBe(74420);
+  });
+
+  it('S3: a retained item matches by date and listing despite getting a new equipment booking ID', async () => {
+    await seed({ mixerOnMon: 'active' });
+    await request(days(full(MON, [7]), full(WED, [7]), full(FRI), full(SAT)));
+    await decide('approve');
+    const sources = await get(s.paymentTransactions);
+    expect(sources[1]).toMatchObject({ amount: '25010', baseAmount: '23575', taxAmount: '3075', serviceFee: '1435' });
+    expect(sources[1].metadata.dayComponents.map((c: any) => c.subtotalCents)).toEqual([0, 0, 0, 2500, 0, 18000]);
+    const original = live((await get(s.kitchenBookingDayAllocations)).filter((r: any) => r.sourceId === 1));
+    expect(original.map((r: any) => r.subtotalCents)).toEqual([18000, 2500, 18000, 0, 18000, 0]);
+    expect(sum(original, 'subtotalCents')).toBe(56500);
   });
 
   it('keeps a settled add-on: an item removed earlier stays refunded, out of the old total, and is never refunded again', async () => {

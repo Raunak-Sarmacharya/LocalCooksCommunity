@@ -13,7 +13,7 @@
  *    so the one refund deadline follows the new first day), and the day ledger moved to the new days.
  *
  * Ledger (per payment source, CP4/CP5): the active parts' cents (subtotal, tax, service fee, actual card fee) move to the new
- * days by their new subtotals, conserving every source exactly; moved rows are marked `supersededBy` and their unsent
+ * days by residual subtotals after the positive charge takes its increase-weighted share, conserving every source exactly; moved rows are marked `supersededBy` and their unsent
  * installments end with no entitlement. Settled rows (dropped days, removed items) stay where they are. A refund (negative
  * difference) is recorded as one fully settled `change-refund:<id>` part; a positive difference is a separate charge whose
  * day split CP5 reads from `dayComponents`. A sent or in-flight installment, a part with a partial refund, an unallocated
