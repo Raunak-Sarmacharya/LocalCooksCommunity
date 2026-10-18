@@ -12,7 +12,7 @@
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import { db } from '../db';
 import { kitchenBookings, kitchenBookingVisits, kitchenBookingDayAllocations, kitchenBookingDayPayouts, paymentTransactions,
-  equipmentBookings, equipmentListings, kitchens, locations } from '@shared/schema';
+  equipmentBookings, equipmentListings, kitchens, locations, kitchenBookingChanges } from '@shared/schema';
 import { allocateCents, quoteCancellation, roundRatio, type CancellationPolicySnapshot } from '@shared/cancellation-policy';
 import { cancellationSourceQuote } from '@shared/cancellation-refund';
 import { getCancellationPaymentFacts } from './stripe-service';
@@ -23,6 +23,8 @@ import { addPaymentHistory } from './payment-transactions-service';
 import { revokeForVisit } from './visit-code-challenge';
 import { cancelLinkedBookingDates } from './booking-linked-cancellation';
 import { BookingItemCancellationError } from './booking-item-cancellation';
+import { OPEN_KITCHEN_CHANGE_STATES } from '@shared/kitchen-booking-change';
+import { hasUnreconciledChangeRefund } from './kitchen-day-payouts';
 import { logger } from '../logger';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -70,9 +72,12 @@ async function load(tx: Tx, bookingId: number, lock: boolean) {
   const equipment = await tx.select({ row: equipmentBookings, name: equipmentListings.equipmentType }).from(equipmentBookings)
     .innerJoin(equipmentListings, eq(equipmentListings.id, equipmentBookings.equipmentListingId)).where(eq(equipmentBookings.kitchenBookingId, bookingId));
   // Supplemental change charges are allocated by CP7; until then a captured one makes this booking support-only.
+  const openChanges = await tx.select({ id: kitchenBookingChanges.id }).from(kitchenBookingChanges).where(and(
+    eq(kitchenBookingChanges.bookingId, bookingId), inArray(kitchenBookingChanges.state, OPEN_KITCHEN_CHANGE_STATES)));
+  const unreconciledChangeRefund = sources.some(hasUnreconciledChangeRefund);
   const supplemental = sources.filter(item => item.id !== source?.id && metadata(item).kitchenChangeId && ['succeeded', 'partially_refunded'].includes(item.status));
   return { booking, managerId: row.managerId!, timezone: row.timezone || 'America/St_Johns', kitchenName: row.kitchenName, source, supplemental,
-    visits, allocations: rows, installments, equipment };
+    visits, allocations: rows, installments, equipment, openChanges, unreconciledChangeRefund };
 }
 type Context = Awaited<ReturnType<typeof load>>;
 
@@ -123,6 +128,7 @@ type Draft = { row: Allocation; kitchen: number; platform: number; absorbed: num
 /** The checks every day-refund path shares: captured charge, frozen allocations, actual fee, provider agreement. */
 function verifiedSource(ctx: Context, facts: Facts, statuses: string[]) {
   const { booking, source } = ctx;
+  if (ctx.unreconciledChangeRefund) throw fail('This booking needs Local Cooks review before a refund can be quoted.');
   if (!source || !['succeeded', 'partially_refunded'].includes(source.status) || !source.paymentIntentId) throw fail('A verified captured payment is needed for a refund.');
   if (!statuses.includes(booking.status) || !['paid', 'partially_refunded', 'refunded'].includes(booking.paymentStatus || '')
     || (booking.paymentDecision as { state?: string } | null)?.state === 'pending') throw fail('This booking can’t be changed in its current state.');
@@ -191,6 +197,9 @@ function finish(ctx: Context, verified: NonNullable<ReturnType<typeof verifiedSo
 /** Exact cents for the selected days/items; nothing is written. Throws a 409 the caller can show as-is. */
 function price(ctx: Context, facts: Facts, target: DayTarget, requested: DayMode, at: Date) {
   const { booking } = ctx;
+  if (ctx.openChanges.length) throw fail(requested === 'kitchen'
+    ? 'This booking has a change request waiting for your answer. Approve or decline it first.'
+    : "You have a change request waiting for the kitchen. Withdraw it first, or wait for the kitchen's answer.");
   const checked = verifiedSource(ctx, facts, ['confirmed']);
   if (!checked) return { quoteReady: false as const, reasonCode: 'processing_fee_pending' as const, message: FEE_PENDING };
   // The engine sees the current days only: their own paid cents and card-fee shares (equal to the source before any change).

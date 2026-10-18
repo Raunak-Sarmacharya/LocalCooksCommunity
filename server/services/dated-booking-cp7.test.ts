@@ -383,7 +383,7 @@ describe('CP7 dated changes: closing and recovery', () => {
     expect((await get(s.paymentTransactions))[1].metadata.dayComponents).toHaveLength(4);
   });
 
-  it('refund then apply failure: finish applies without a second refund; keep-refund closes it Local Cooks-funded and frees the payouts', async () => {
+  it('refund then apply failure: finish applies without a second refund; keep-refund closes it Local Cooks-funded and holds all payouts', async () => {
     h.failAfterMoney = true;
     await request(days(full(TUE), full(THU)));
     expect((await decide('approve') as any).state).toBe('recovery_required');
@@ -393,7 +393,8 @@ describe('CP7 dated changes: closing and recovery', () => {
     const open = await change();
     const kept: any = await engine.resolveKitchenChange(stripe, 1, open.id, admin, { action: 'close_keep_refund', revision: open.revision }, NOW);
     expect(kept.change.state).toBe('withdrawn');
-    expect(refundsAllocated((await get(s.paymentTransactions))[0])).toBe(true);
+    expect(refundsAllocated((await get(s.paymentTransactions))[0])).toBe(false);
+    expect(await get(s.bookingFlags)).toEqual([expect.objectContaining({ bookingId: 1, kind: 'support', visitId: null, resolvedAt: null })]);
     await originalIntact();
 
     await seed();

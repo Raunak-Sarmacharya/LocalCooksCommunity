@@ -1,18 +1,4 @@
-/**
- * Proof tests for CP7 money-review findings. Does not change product code.
- * M1/S4: after a Local Cooks-funded change refund (keep-refund shape), priceDatedChange still quotes a full
- * price-down refund against the untouched day ledger — the chef can be refunded twice for one schedule cut —
- * and day entitlements stay full; CP6 still quotes a full Thursday drop (21313) against the unreduced ledger.
- * M1 lateral: an equal-price day set still quotes pay/refund 0 at oldTotal 65880, so the chef can keep the
- * LC-funded 31969 and still move the full-value booking (no clawback).
- * M2: those full day entitlements (60159) exceed the charge residual after the keep-refund (33911), so
- * source_transaction day transfers cannot fund every day the ledger still claims — but one day (~20053)
- * still fits the residual, so the first installment can succeed before later days fail closed.
- * S1: after a prior change keeps fee share 971 of 1941, residual fee 970; a full residual re-quote of the same
- * gross recomputes kept 971 and would trip `kept > moved.fee` in priceDatedChange.
- * S5: after keep-refund, a larger price-down (Tue 4h only) still quotes refund 53282 from the full ledger,
- * which exceeds the Stripe residual 33911 (dated ignores refundAmount / changeGrossRefundedCents).
- */
+/** Regression proofs from the independent CP7 money review, asserting fixed behavior. */
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { eq } from 'drizzle-orm';
@@ -143,62 +129,26 @@ const days = (...list: any[]) => ({ version: 'days-v1' as const, days: list });
 
 beforeEach(async () => { vi.setSystemTime(NOW); await seedKeepRefundShape(); });
 
-describe('CP7 money review proofs', () => {
-  it('M1/M2/S4: after keep-refund shape, same price-down still quotes 31969; entitlements exceed charge residual; CP6 still quotes a full day drop', async () => {
+describe('CP7 money review regressions', () => {
+  it('M1/M2/S4: kept 31969 refund stays unallocated and blocks both change and day refund', async () => {
     const [source] = await h.db.select().from(s.paymentTransactions);
-    expect(refundsAllocated(source)).toBe(true);
+    expect(refundsAllocated(source)).toBe(false);
     expect(source.refundAmount).toBe('31969');
-    // Day ledger still prices the full Mon/Wed/Fri booking; outside LC refund is invisible to termsOf/priceDatedChange.
-    const quote = await engine.previewKitchenChange(1, chef, { destination: days(hourly(TUE, 9, 13), full(THU)) }, NOW);
-    // Public quote omits kitchenDebit; refundCents is what would be sent to Stripe on approve.
-    expect(quote.money).toMatchObject({ oldTotalCents: 65880, newTotalCents: 32940, refundCents: 31969, feeKeptCents: 971 });
-    // Approving would send another 31969 on the same charge (65880 − 31969 − 31969 = 1942 left for a 32940 booking).
-    expect(65880 - 31969 - quote.money.refundCents).toBe(1942);
-    // M2/S4: kitchen day entitlements are untouched (30079 LC-funded refund never hit managerDebitedCents on a day).
-    const rows = await h.db.select().from(s.kitchenBookingDayAllocations);
-    const entitlement = dayEntitlement(rows);
-    const chargeResidual = 65880 - 31969;
-    expect(entitlement).toBe(62100 - 1941); // 60159
-    // M2: source_transaction transfers cannot pay every day from the residual left after keep-refund.
-    expect(entitlement!).toBeGreaterThan(chargeResidual);
-    expect(chargeResidual).toBe(33911);
-    // One mid-booking day (~20053) still fits the residual; the second day would push cumulative transfers over.
-    expect(20053).toBeLessThanOrEqual(chargeResidual);
-    expect(20053 * 2).toBeGreaterThan(chargeResidual);
-    // S4: CP6 still prices a full Wednesday drop; kitchen would be debited again on top of the LC-funded change refund.
-    const drop: any = await readDatedCancellationQuote(1, chef, { visitIds: [2] }, NOW);
-    expect(drop).toMatchObject({ chefRefundCents: 21313, beforeDeadline: true });
-    expect(chargeResidual).toBeGreaterThanOrEqual(drop.chefRefundCents);
+    expect(dayEntitlement(await h.db.select().from(s.kitchenBookingDayAllocations))).toBe(60159);
+    await expect(engine.previewKitchenChange(1, chef, { destination: days(hourly(TUE, 9, 13), full(THU)) }, NOW))
+      .rejects.toMatchObject({ code: 'datedChangeSupport' });
+    await expect(readDatedCancellationQuote(1, chef, { visitIds: [2] }, NOW)).rejects.toThrow('Local Cooks');
   });
 
-  it('M1 lateral: after keep-refund, equal-price move quotes pay/refund 0 at full 65880 (chef keeps LC cash + full booking)', async () => {
-    // Same rates, different days (Tue/Thu/Sat): no money moves, ledger still prices the full original total.
-    const quote = await engine.previewKitchenChange(1, chef, { destination: days(full(TUE), full(THU), full('2099-11-07')) }, NOW);
-    expect(quote.money).toMatchObject({ oldTotalCents: 65880, newTotalCents: 65880, payCents: 0, refundCents: 0 });
-    // Chef already holds 31969 from the abandoned price-down; approving this move never claws it back.
+  it('M1 lateral: kept refund blocks an equal-price move too', async () => {
+    await expect(engine.previewKitchenChange(1, chef, { destination: days(full(TUE), full(THU), full('2099-11-07')) }, NOW))
+      .rejects.toMatchObject({ code: 'datedChangeSupport' });
     expect(Number((await h.db.select().from(s.paymentTransactions))[0].refundAmount)).toBe(31969);
   });
 
-  it('S1: draining a source residual re-rounds fee kept above the fee left on active rows', () => {
-    const fee = 1941, captured = 65880, gross = 32940;
-    const kept = Math.round(fee * gross / captured);
-    const movedFeeAfterFirst = fee - kept;
-    expect(kept).toBe(971);
-    expect(movedFeeAfterFirst).toBe(970);
-    // Same formula on the residual (dated priceDatedChange still divides by the original captured fee).
-    const keptAgain = Math.round(fee * gross / captured);
-    expect(keptAgain).toBe(971);
-    expect(keptAgain > movedFeeAfterFirst).toBe(true); // trips dated-booking-changes.ts kept > moved.fee
-  });
-
-  it('S5: after keep-refund, a larger price-down quotes refund above Stripe residual', async () => {
-    // Tue 4h only: 9000 + 1350 tax + 630 fee = 10980; difference 54900 from unreduced 65880 ledger.
-    const quote = await engine.previewKitchenChange(1, chef, { destination: days(hourly(TUE, 9, 13)) }, NOW);
-    expect(quote.money).toMatchObject({ oldTotalCents: 65880, newTotalCents: 10980 });
-    const difference = 65880 - 10980;
-    const kept = Math.round(1941 * difference / 65880);
-    expect(kept).toBe(1618);
-    expect(quote.money.refundCents).toBe(difference - kept); // 53282
-    expect(quote.money.refundCents).toBeGreaterThan(65880 - 31969); // > 33911 residual left after keep-refund
+  it('S5: kept refund blocks a larger price-down before another refund can be quoted', async () => {
+    await expect(engine.previewKitchenChange(1, chef, { destination: days(hourly(TUE, 9, 13)) }, NOW))
+      .rejects.toMatchObject({ code: 'datedChangeSupport' });
+    expect(h.refunds).toHaveLength(1);
   });
 });

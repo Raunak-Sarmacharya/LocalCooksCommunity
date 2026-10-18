@@ -19,7 +19,7 @@ import { createHash, randomInt, randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import type Stripe from 'stripe';
 import { db } from '../db';
-import { kitchenBookings, kitchenBookingChanges, kitchenBookingVisits, kitchens, locations, paymentTransactions, paymentHistory,
+import { bookingFlags, kitchenBookings, kitchenBookingChanges, kitchenBookingVisits, kitchens, locations, paymentTransactions, paymentHistory,
   equipmentBookings, equipmentListings, storageBookings, kitchenCheckoutHolds, kitchenViewings } from '@shared/schema';
 import { bookingChangeSchedule, isDatedChangeSchedule, OPEN_KITCHEN_CHANGE_STATES, type AnyChangeSchedule, type ChangeSchedule, type DatedChangeSchedule, type KitchenChangeState } from '@shared/kitchen-booking-change';
 import { assertConsecutiveBookingSlots } from '@shared/consecutive-booking-slots';
@@ -1022,14 +1022,16 @@ export async function resolveKitchenChange(stripe: ChangeStripe, bookingId: numb
           || receipt.managerDebited !== plan.kitchenDebitCents || receipt.platformServiceFeeReturned !== plan.platformReturnCents)
           throw new KitchenChangeError('The successful refund receipt needs Local Cooks to reconcile it before closing this change.', 409, 'refundReceiptReconcile');
       }
-      // Per-day sources: the kept refund is Local Cooks-funded, never a day's debit, so the day payouts may resume (CP5 `refundsAllocated`).
+      // The day ledger is unchanged: keep the entire dated booking on support hold until reconciled.
       if (datedOf(change)) for (const plan of m.refundSources || []) {
         const [source] = await tx.select().from(paymentTransactions).where(eq(paymentTransactions.id, plan.transactionId)).limit(1).for('update');
         const saved = (source.metadata || {}) as Record<string, any>;
         await tx.update(paymentTransactions).set({ metadata: { ...saved, outsideRefunds: [...(saved.outsideRefunds || []), { refundId: verifiedRefunds.get(plan.transactionId),
-          visitId: null, kitchenDebitCents: 0, actorId: actor.id, at: now.toISOString(), note: `Booking change ${change.id} closed; refund kept by Local Cooks` }] } })
+          visitId: null, kitchenDebitCents: 0, kitchenChangeId: change.id, actorId: actor.id, at: now.toISOString(), note: `Booking change ${change.id} closed; refund kept by Local Cooks` }] } })
           .where(eq(paymentTransactions.id, source.id));
       }
+      if (isDatedRow(row)) await tx.insert(bookingFlags).values({ bookingId, kind: 'support', providerRef: `change-kept-refund:${change.id}`,
+        openedAt: now, note: `Change ${change.id}: kept refund requires Local Cooks reconciliation; all day payouts held.` });
       const amount = new Intl.NumberFormat('en-CA', { style: 'currency', currency: quote.currency }).format(quote.refundCents / 100);
       const resolution = { action: 'close_keep_refund' as const, fundedBy: 'local_cooks' as const, amountCents: quote.refundCents,
         resolvedBy: actor.id, resolvedAt: now.toISOString() };

@@ -34,7 +34,7 @@ import { calculateCheckoutFeesAsync } from './stripe-checkout-fee-service';
 import { policySessionStart } from './cancellation-policy-settings';
 import { lockKitchenInventory } from './kitchen-checkout-holds';
 import { ensureKitchenBookingVisits } from './kitchen-booking-visits';
-import { ensureDayPayoutRows, dayTransferKey, refundsAllocated } from './kitchen-day-payouts';
+import { ensureDayPayoutRows, dayTransferKey, refundsAllocated, hasUnreconciledChangeRefund } from './kitchen-day-payouts';
 import { ensureChallengesForBooking, revokeForVisit } from './visit-code-challenge';
 import { closeoutTiming } from './clock-closeout';
 import { KitchenChangeError, type RefundSource } from './kitchen-booking-changes';
@@ -107,6 +107,7 @@ async function ledger(tx: Tx, booking: Booking, days: Days, changeId?: string) {
   const result: SourceLedger[] = [];
   for (const source of sources) {
     const m = meta(source);
+    if (hasUnreconciledChangeRefund(source)) throw support('a kept change refund needs reconciliation');
     if (m.cancellationRefundOperation && m.cancellationRefundOperation.status !== 'succeeded')
       throw new KitchenChangeError('A payment for this booking is still being checked. Refresh in a moment.', 409, 'paymentChecking');
     const own = changeId ? m.changeGrossRefundOperations?.[changeId] : undefined;
@@ -221,9 +222,10 @@ export async function priceDatedChange(tx: Tx, row: DatedRow, validated: Awaited
     let remaining = -difference, feeReturn = old.feeCents - next.feeCents;
     for (const entry of [...book.sources].sort((a, b) => b.source.id - a.source.id)) {
       const { source, moved } = entry, captured = Number(source.amount), fee = Number(source.stripeProcessingFee);
-      const gross = Math.min(remaining, moved.sub + moved.tax + moved.svc);
+      const gross = Math.min(remaining, moved.sub + moved.tax + moved.svc,
+        captured - Math.max(Number(meta(source).changeGrossRefundedCents || 0), Number(source.refundAmount || 0)));
       if (gross <= 0) continue;
-      const kept = Math.min(gross, Math.round(fee * gross / captured)), refund = gross - kept;
+      const kept = Math.min(gross, moved.fee, Math.round(fee * gross / captured)), refund = gross - kept;
       const platform = Math.min(feeReturn, moved.svc, remaining === gross ? feeReturn : Math.round((old.feeCents - next.feeCents) * gross / -difference), refund);
       const kitchen = refund - platform;
       if (kept > moved.fee || kitchen > moved.sub + moved.tax - moved.fee) throw new KitchenChangeError('This change needs Local Cooks to refund it. Message the kitchen or contact Local Cooks.', 409, 'refundReview');
