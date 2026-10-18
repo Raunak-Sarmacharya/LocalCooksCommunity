@@ -75,12 +75,17 @@ const setField = (label: string, value: string) =>
  * the button only unlocks after it does. The `act` flush is what makes the following assertion
  * meaningful rather than a race.
  */
-const fillEssentials = async (rates: { hourly?: string; daily?: string }) => {
+const fillEssentials = async (rates: { hourly?: string; daily?: string; extraTime?: string }) => {
   setField("kitchenName", "Harbour Kitchen");
   setField("description", "A bright prep kitchen");
   fireEvent.click(screen.getByRole("button", { name: "pick-cover" }));
   setField("hourlyRateCAD", rates.hourly ?? "");
   setField("dailyRateCAD", rates.daily ?? "");
+  // Daily-only kitchens must set the extra time rate (hidden when an hourly rate is set).
+  if (rates.extraTime != null || (rates.daily && !rates.hourly)) {
+    await waitFor(() => expect(screen.getByLabelText(/^extraTimeRatePerHour/)).toBeInTheDocument());
+    setField("extraTimeRatePerHour", rates.extraTime ?? "25.00");
+  }
 
   await waitFor(() => expect(h.uploadFile).toHaveBeenCalled());
   await act(async () => {});
@@ -109,13 +114,25 @@ describe("Kitchen create form — the rate rule", () => {
     expect(createButton()).toBeEnabled();
   });
 
-  it("unlocks on a DAILY rate alone — the reported bug", async () => {
+  it("unlocks on a DAILY rate alone when the extra time rate is set", async () => {
     render(<KitchenSetupForm locationId={7} />);
-    await fillEssentials({ daily: "150.00" });
+    await fillEssentials({ daily: "150.00", extraTime: "25.00" });
 
     expect(createButton()).toBeEnabled();
     // The old modal's own words, which named the hourly and so described a rule the gate does not have.
     expect(screen.queryByText("completeKitchenEssentials")).not.toBeInTheDocument();
+  });
+
+  it("stays locked on a daily rate without an extra time rate", async () => {
+    render(<KitchenSetupForm locationId={7} />);
+    setField("kitchenName", "Harbour Kitchen");
+    setField("description", "A bright prep kitchen");
+    fireEvent.click(screen.getByRole("button", { name: "pick-cover" }));
+    setField("dailyRateCAD", "150.00");
+    await waitFor(() => expect(h.uploadFile).toHaveBeenCalled());
+    await act(async () => {});
+
+    expect(createButton()).toBeDisabled();
   });
 
   it("unlocks on both, which is a kitchen bookable either way", async () => {
@@ -146,9 +163,9 @@ describe("Kitchen create form — the rate rule", () => {
 });
 
 describe("Kitchen create form — what it sends", () => {
-  it("sends a daily-only kitchen WITHOUT a broken hourly rate", async () => {
+  it("sends a daily-only kitchen WITHOUT a broken hourly rate, with the extra time rate", async () => {
     render(<KitchenSetupForm locationId={7} />);
-    await fillEssentials({ daily: "150.00" });
+    await fillEssentials({ daily: "150.00", extraTime: "25.00" });
     fireEvent.click(createButton());
 
     await waitFor(() => expect(h.fetchMock).toHaveBeenCalled());
@@ -159,6 +176,7 @@ describe("Kitchen create form — what it sends", () => {
     expect(body.locationId).toBe(7);
     expect(body.name).toBe("Harbour Kitchen");
     expect(body.dailyRate).toBe(15000);
+    expect(body.extraTimeRateCents).toBe(2500);
     /*
      * The load-bearing assertion. `"hourlyRate" in body` rather than `body.hourlyRate === undefined`,
      * because the difference IS the bug: `undefined` is dropped by `JSON.stringify` and the endpoint

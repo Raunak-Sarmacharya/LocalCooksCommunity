@@ -125,11 +125,13 @@ export class BookingService {
             (appliedRateCents === 0 && (hourlyRateCents > 0 || dailyRateCents > 0))) {
             throw new Error(`This kitchen does not offer ${pricingMode} booking`);
         }
+        const { snapshotExtraTimeRateCents } = await import('@shared/kitchen-booking-rate');
         const pricing = {
             totalPriceCents: pricingMode === 'daily' ? dailyRateCents : hourlyRateCents * selectedSlots.length,
             hourlyRateCents: appliedRateCents,
             durationHours: selectedSlots.length,
             currency: kitchen.currency || 'CAD',
+            extraTimeRateCents: snapshotExtraTimeRateCents(kitchen),
         };
 
         if (!data.chefId) {
@@ -159,6 +161,7 @@ export class BookingService {
             ...data,
             totalPrice: '0', // Will be updated after calculating addons
             hourlyRate: pricing.hourlyRateCents.toString(),
+            extraTimeRateCents: pricing.extraTimeRateCents,
             durationHours: pricing.durationHours.toString(),
             serviceFee: serviceFeeCents.toString(),
             currency: pricing.currency,

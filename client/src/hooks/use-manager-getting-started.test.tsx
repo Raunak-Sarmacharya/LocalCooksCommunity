@@ -71,6 +71,7 @@ const REVIEW: KitchenReadinessReview = {
     description: "A bright prep kitchen",
     hourlyRateCents: 2500,
     dailyRateCents: null,
+    extraTimeRateCents: null,
     coverPhotoUrl: "https://cdn.example.com/cover.png",
     galleryImageCount: 3,
     availabilityDayCount: 5,

@@ -424,6 +424,9 @@ function requirementValue(
       const parts: string[] = [];
       if (d.hourlyRateCents) parts.push(`${formatCurrency(d.hourlyRateCents)}${mt("listingReviewPerHour")}`);
       if (d.dailyRateCents) parts.push(`${formatCurrency(d.dailyRateCents)}${mt("listingReviewPerDay")}`);
+      if (!d.hourlyRateCents && d.extraTimeRateCents) {
+        parts.push(`${formatCurrency(d.extraTimeRateCents)}${mt("listingReviewExtraTimePerHour")}`);
+      }
       return parts.length ? parts.join(" · ") : null;
     }
     case "availability":

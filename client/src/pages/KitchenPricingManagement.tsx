@@ -12,6 +12,7 @@ import { SettingsRow } from "@/components/manager/settings/SettingsRow";
 import { apiGet, apiPut } from "@/lib/api";
 import { formatCurrency } from "@/lib/formatters";
 import { describeDailyRate, formatBreakEvenHours } from "@/lib/daily-rate-hint";
+import { isPositiveRate, requiresExtraTimeRate } from "@shared/kitchen-booking-rate";
 
 /**
  * The platform bills in Canadian dollars only, so the manager never picks a
@@ -24,6 +25,8 @@ interface KitchenPricing {
   /** Raw input string in dollars (e.g. "15.50"). Empty string = unset. Stored as string so trailing decimals survive while typing. */
   hourlyRate: string;
   dailyRate: string;
+  /** Dollars; required when daily-only. Hidden when an hourly rate is set. */
+  extraTimeRate: string;
   /** Raw input string as a percentage (e.g. "13" or "13.5"). Empty string = unset. */
   taxRatePercent: string;
   /** Whole hours, 0–24. 0 means no minimum. */
@@ -34,6 +37,7 @@ interface KitchenPricing {
 const EMPTY_PRICING: KitchenPricing = {
   hourlyRate: '',
   dailyRate: '',
+  extraTimeRate: '',
   taxRatePercent: '',
   minimumBookingHours: 0,
   pricingModel: 'hourly',
@@ -69,6 +73,10 @@ function toForm(data: any): KitchenPricing {
     dailyRate:
       data.dailyRate !== undefined && data.dailyRate !== null
         ? (Number(data.dailyRate) / 100).toFixed(2)
+        : '',
+    extraTimeRate:
+      data.extraTimeRateCents !== undefined && data.extraTimeRateCents !== null
+        ? (Number(data.extraTimeRateCents) / 100).toFixed(2)
         : '',
     taxRatePercent:
       data.taxRatePercent !== undefined && data.taxRatePercent !== null
@@ -123,6 +131,7 @@ export const KitchenPricingContent = forwardRef<
   const isDirty =
     pricing.hourlyRate !== baseline.hourlyRate ||
     pricing.dailyRate !== baseline.dailyRate ||
+    pricing.extraTimeRate !== baseline.extraTimeRate ||
     (!hideMinimumBookingDuration && pricing.minimumBookingHours !== baseline.minimumBookingHours);
 
   useEffect(() => {
@@ -210,6 +219,7 @@ export const KitchenPricingContent = forwardRef<
     const parseAmount = (value: string) => value.trim() === '' ? null : /^\d+(?:\.\d{1,2})?$/.test(value.trim()) ? Number(value.trim()) : NaN;
     const hourlyRateNum = parseAmount(pricing.hourlyRate);
     const dailyRateNum = parseAmount(pricing.dailyRate);
+    const extraTimeRateNum = parseAmount(pricing.extraTimeRate);
 
     const invalid = (value: number | null) => value !== null && (!Number.isFinite(value) || value < 0);
 
@@ -231,6 +241,15 @@ export const KitchenPricingContent = forwardRef<
       throw new Error("invalid-daily-rate");
     }
 
+    if (invalid(extraTimeRateNum) || (extraTimeRateNum !== null && extraTimeRateNum <= 0)) {
+      toast({
+        title: mt("validationError"),
+        description: mt("extraTimeRateMustBeAPositiveNumberOrEmpty"),
+        variant: "destructive",
+      });
+      throw new Error("invalid-extra-time-rate");
+    }
+
     if ((hourlyRateNum ?? 0) <= 0 && (dailyRateNum ?? 0) <= 0) {
       toast({
         title: mt("validationError"),
@@ -240,10 +259,23 @@ export const KitchenPricingContent = forwardRef<
       throw new Error("no-rate");
     }
 
+    if (requiresExtraTimeRate(hourlyRateNum, dailyRateNum) && (extraTimeRateNum ?? 0) <= 0) {
+      toast({
+        title: mt("validationError"),
+        description: mt("extraTimeRateRequiredForDailyOnly"),
+        variant: "destructive",
+      });
+      throw new Error("extra-time-rate-required");
+    }
+
     const payload = {
       // Rates travel in cents; the form holds dollars. HST is location-owned — not sent here.
       hourlyRate: hourlyRateNum === null ? null : Math.round(hourlyRateNum * 100),
       dailyRate: dailyRateNum === null ? null : Math.round(dailyRateNum * 100),
+      // Hourly kitchens clear this; daily-only send the required rate.
+      extraTimeRateCents: isPositiveRate(hourlyRateNum)
+        ? null
+        : extraTimeRateNum === null ? null : Math.round(extraTimeRateNum * 100),
       currency: CURRENCY,
       pricingModel: pricing.pricingModel || 'hourly',
       ...(!hideMinimumBookingDuration ? { minimumBookingHours: pricing.minimumBookingHours } : {}),
@@ -328,6 +360,27 @@ export const KitchenPricingContent = forwardRef<
             className="w-36"
           />
         </SettingsRow>
+
+        {requiresExtraTimeRate(pricing.hourlyRate, pricing.dailyRate) ? (
+          <SettingsRow
+            id="extra-time-rate"
+            label={mt("extraTimeRatePerHour")}
+            required
+            hint={mt("extraTimeRateHelp")}
+          >
+            <CurrencyInput
+              id="extra-time-rate"
+              value={pricing.extraTimeRate}
+              onValueChange={(val) => setPricing((current) => ({ ...current, extraTimeRate: val }))}
+              placeholder="25.00"
+              className="w-36"
+            />
+          </SettingsRow>
+        ) : isPositiveRate(pricing.hourlyRate) ? (
+          <SettingsRow id="extra-time-rate" label={mt("extraTimeRatePerHour")} hint={mt("extraTimeRateHelp")}>
+            <p className="text-sm text-muted-foreground">{mt("extraTimeRateSameAsHourly", { amount: formatCurrency(Math.round(Number(pricing.hourlyRate) * 100)) })}</p>
+          </SettingsRow>
+        ) : null}
 
         <SettingsRow
           id="tax-rate"

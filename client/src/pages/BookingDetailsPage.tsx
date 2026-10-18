@@ -125,6 +125,8 @@ interface BookingDetails {
   specialNotes?: string;
   totalPrice?: number;
   hourlyRate?: number;
+  /** Frozen at booking creation; shown so the chef knows the extra-time hourly rate. */
+  extraTimeRateCents?: number | null;
   durationHours?: number;
   pricingMode?: "hourly" | "daily";
     serviceFee?: number;
@@ -1846,6 +1848,11 @@ export default function BookingDetailsPage() {
         <span className="text-muted-foreground">{isRefunded || isPartiallyRefunded ? t("bdAmountCharged") : t("bdSubtotal")}</span>
         <span className={`tabular-nums ${isRefunded ? 'text-muted-foreground line-through' : ''}`}>{formatCurrency(totals.subtotal)}</span>
       </div>
+      {Number(booking.extraTimeRateCents) > 0 ? (
+        <p className="text-xs leading-relaxed text-muted-foreground" data-testid="booking-extra-time-rate">
+          {t('bpsExtraTimeRate', { amount: formatCurrency(booking.extraTimeRateCents) })}
+        </p>
+      ) : null}
       {booking.paymentTransaction && pricingBreakdownInput && (
         isManagerView ? (
           proposal ? null : (

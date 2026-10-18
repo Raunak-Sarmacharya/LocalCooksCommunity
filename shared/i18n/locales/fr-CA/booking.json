@@ -1336,5 +1336,6 @@
   "mdDayDone": "Terminée",
   "mdDayCancelled": "Annulée",
   "mdOpenVisit": "Ouvrir votre visite",
-  "mdFullDayUnavailable": "Journée complète non disponible : {reason}. Vous pouvez choisir des heures disponibles."
+  "mdFullDayUnavailable": "Journée complète non disponible : {reason}. Vous pouvez choisir des heures disponibles.",
+  "bpsExtraTimeRate": "Temps supplémentaire : {amount}/heure si vous demandez plus de temps ou restez après la fin."
 }

@@ -681,6 +681,10 @@ async function handleCheckoutSessionCompleted(
           const directBooking = await fulfillKitchenCheckout(
             metadata.hold_id, session.id, kitchenId, bookingDate.toISOString().slice(0, 10),
             selectedSlots, metadata.window_start_time || startTime, async saved => {
+          const [kitchenRates] = await db.select({
+            hourlyRate: kitchens.hourlyRate, extraTimeRateCents: kitchens.extraTimeRateCents,
+          }).from(kitchens).where(eq(kitchens.id, kitchenId)).limit(1);
+          const { snapshotExtraTimeRateCents } = await import('@shared/kitchen-booking-rate');
           const [created] = await db
             .insert(kitchenBookings)
             .values({
@@ -696,6 +700,7 @@ async function handleCheckoutSessionCompleted(
               specialNotes,
               totalPrice: totalPriceCents.toString(),
               hourlyRate: hourlyRateCents.toString(),
+              extraTimeRateCents: snapshotExtraTimeRateCents(kitchenRates || {}),
               durationHours: durationHours.toString(),
               serviceFee: parseInt(metadata.platform_fee_cents || "0").toString(),
               currency: "CAD",

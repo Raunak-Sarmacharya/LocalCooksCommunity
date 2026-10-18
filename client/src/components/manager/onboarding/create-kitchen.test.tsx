@@ -182,6 +182,7 @@ describe("createKitchen — the return value the caller gates on", () => {
         description: "A bright prep kitchen",
         hourlyRate: "",
         dailyRate: "150.00",
+        extraTimeRate: "25.00",
         currency: "CAD",
         minimumBookingHours: "1",
         imageUrl: "https://cdn.example.com/cover.png",
@@ -202,5 +203,6 @@ describe("createKitchen — the return value the caller gates on", () => {
     const body = JSON.parse((create as any[])[1].body);
     expect(body.hourlyRate).toBeUndefined();
     expect(body.dailyRate).toBe(15000);
+    expect(body.extraTimeRateCents).toBe(2500);
   });
 });

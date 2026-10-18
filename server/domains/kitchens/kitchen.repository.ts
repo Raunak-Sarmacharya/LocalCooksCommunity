@@ -36,6 +36,7 @@ export class KitchenRepository {
       listingStatus: row.listingStatus === "active" ? "active" : "draft",
       hourlyRate: row.hourlyRate ? parseFloat(row.hourlyRate) : null,
       dailyRate: row.dailyRate ? parseFloat(row.dailyRate) : null,
+      extraTimeRateCents: row.extraTimeRateCents ?? null,
       galleryImages: (row.galleryImages as string[]) || [], // Ensure type safety for JSONB
       amenities: (row.amenities as string[]) || [],         // Ensure type safety for JSONB
       // Cast enum to specific string union type if needed, or trust strict match
@@ -233,6 +234,8 @@ export class KitchenRepository {
           isActive: dto.isActive !== undefined ? dto.isActive : true,
           hourlyRate: dto.hourlyRate ? dto.hourlyRate.toString() : null, // Convert number to string for numeric column
           dailyRate: dto.dailyRate ? dto.dailyRate.toString() : null,
+          // Hourly kitchens use hourly for extra time; keep the dedicated field null then.
+          extraTimeRateCents: dto.hourlyRate ? null : (dto.extraTimeRateCents ?? null),
           currency: dto.currency || 'CAD',
           minimumBookingHours: dto.minimumBookingHours ?? 1,
           pricingModel: dto.pricingModel || 'hourly',
@@ -278,6 +281,7 @@ export class KitchenRepository {
             : dto.dailyRate !== undefined
               ? dto.dailyRate.toString()
               : undefined,
+          extraTimeRateCents: dto.extraTimeRateCents === undefined ? undefined : dto.extraTimeRateCents,
           currency: dto.currency,
           minimumBookingHours: dto.minimumBookingHours,
           pricingModel: dto.pricingModel,

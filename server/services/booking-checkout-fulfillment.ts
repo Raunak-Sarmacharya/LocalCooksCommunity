@@ -115,16 +115,21 @@ export async function fulfillQuotedKitchenBooking(session: Stripe.Checkout.Sessi
         if (replacesId && !replaced?.live && await hasInventoryConflict(kitchenId, metadata.booking_date.slice(0, 10),
           parseCheckoutSlots(metadata.selected_slots, metadata.start_time, metadata.end_time), metadata.window_start_time || metadata.start_time, metadata.hold_id, undefined, tx))
           throw new KitchenSlotUnavailableError();
-        const [context] = await tx.select({ managerId: locations.managerId, kitchenName: kitchens.name, timezone: locations.timezone }).from(kitchens)
+        const [context] = await tx.select({
+          managerId: locations.managerId, kitchenName: kitchens.name, timezone: locations.timezone,
+          hourlyRate: kitchens.hourlyRate, extraTimeRateCents: kitchens.extraTimeRateCents,
+        }).from(kitchens)
           .innerJoin(locations, eq(locations.id, kitchens.locationId)).where(eq(kitchens.id, kitchenId)).limit(1);
         if (!context?.managerId) throw new Error('Checkout manager not found');
+        const { snapshotExtraTimeRateCents } = await import('@shared/kitchen-booking-rate');
         const [parent] = await tx.insert(kitchenBookings).values({ referenceCode: await generateReferenceCode('kitchen_booking'),
           chefId, kitchenId, invitationId: invitation?.id, bookingDate, startTime: metadata.start_time, endTime: metadata.end_time,
           operatingWindowStartTime: metadata.window_start_time || null,
           selectedSlots: parseCheckoutSlots(metadata.selected_slots, metadata.start_time, metadata.end_time),
           pricingMode: metadata.pricing_mode === 'daily' ? 'daily' : 'hourly', status: 'pending', paymentStatus,
           paymentIntentId: intent.id, totalPrice: String(terms.subtotal), serviceFee: String(terms.commission),
-          hourlyRate: metadata.hourly_rate_cents, durationHours: metadata.duration_hours,
+          hourlyRate: metadata.hourly_rate_cents, extraTimeRateCents: snapshotExtraTimeRateCents(context),
+          durationHours: metadata.duration_hours,
           cancellationPolicyHours: parseCheckoutCancellationPolicy(metadata.cancellation_policy_hours),
           cancellationPolicySnapshot: cancellationSnapshotFromMetadata(metadata),
           specialNotes: metadata.special_notes || null, stripeCustomerId: customerId, stripePaymentMethodId: paymentMethodId,

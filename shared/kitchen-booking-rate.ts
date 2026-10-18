@@ -30,6 +30,65 @@ export function hasKitchenRate(hourlyRate: unknown, dailyRate: unknown): boolean
   return isPositiveRate(hourlyRate) || isPositiveRate(dailyRate);
 }
 
+/**
+ * Positive integer cents, or null. Used for the kitchen's extra-time rate field and the booking snapshot.
+ */
+export function positiveCentsOrNull(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const n = typeof value === 'number' ? value : Number(value);
+  return Number.isSafeInteger(n) && n > 0 ? n : null;
+}
+
+/**
+ * Rate charged for extra time at a kitchen (1x, no multiplier).
+ * Hourly kitchens use their hourly rate; daily-only kitchens use `extraTimeRateCents`.
+ */
+export function kitchenExtraTimeRateCents(kitchen: {
+  hourlyRate?: unknown;
+  extraTimeRateCents?: unknown;
+}): number | null {
+  return positiveCentsOrNull(kitchen.hourlyRate) ?? positiveCentsOrNull(kitchen.extraTimeRateCents);
+}
+
+/**
+ * Snapshot saved on the booking at creation. Same rule as `kitchenExtraTimeRateCents`.
+ * Later kitchen price edits must never change an existing booking's value.
+ */
+export function snapshotExtraTimeRateCents(kitchen: {
+  hourlyRate?: unknown;
+  extraTimeRateCents?: unknown;
+}): number | null {
+  return kitchenExtraTimeRateCents(kitchen);
+}
+
+/**
+ * Whether a daily-only kitchen must supply an extra time rate (no positive hourly rate).
+ */
+export function requiresExtraTimeRate(hourlyRate: unknown, dailyRate: unknown): boolean {
+  return !isPositiveRate(hourlyRate) && isPositiveRate(dailyRate);
+}
+
+/** Clear message when a daily-only kitchen is saved without an extra time rate. */
+export const EXTRA_TIME_RATE_REQUIRED_MESSAGE =
+  'Extra time rate (per hour) is required when the kitchen has a daily rate and no hourly rate.';
+
+/**
+ * Normalize what to store for `extra_time_rate_cents`.
+ * Hourly kitchens always store null (they use the hourly rate for extra time).
+ * Daily-only kitchens require a positive rate; returns an error message when missing.
+ */
+export function normalizeExtraTimeRateCents(input: {
+  hourlyRate: unknown;
+  dailyRate: unknown;
+  extraTimeRateCents: unknown;
+}): { value: number | null; error?: string } {
+  if (isPositiveRate(input.hourlyRate)) return { value: null };
+  if (!isPositiveRate(input.dailyRate)) return { value: null };
+  const cents = positiveCentsOrNull(input.extraTimeRateCents);
+  if (!cents) return { value: null, error: EXTRA_TIME_RATE_REQUIRED_MESSAGE };
+  return { value: cents };
+}
+
 export function calculateKitchenBasePrice(
   mode: KitchenBookingRateMode,
   hourlyRateCents: number,

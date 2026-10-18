@@ -23,7 +23,7 @@ function show(notesSaved = true, storage = false) {
       hasVisitSetup: notesSaved, hasBookingRules: true,
       hasGalleryImages: true, hasTerms: true, toursEnabled: false, hasEquipment: true, hasStorage: storage, hasStorageVisitSetup: false }),
     details: { kitchenName: 'Test Kitchen', locationName: 'Test Location', description: 'A kitchen',
-      hourlyRateCents: 2500, dailyRateCents: null, coverPhotoUrl: 'cover.jpg', galleryImageCount: 1,
+      hourlyRateCents: 2500, dailyRateCents: null, extraTimeRateCents: null, coverPhotoUrl: 'cover.jpg', galleryImageCount: 1,
       availabilityDayCount: 7, licenseStatus: 'approved', stripeAccountId: 'acct_test',
       hasApplicationRequirements: true, termsUploadedAt: null, toursEnabled: false,
       cancellationPolicyHours: 24, dailyBookingLimit: 2, minimumBookingWindowHours: 1, minimumBookingHours: 1,

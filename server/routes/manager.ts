@@ -2396,6 +2396,7 @@ router.post(
         // dropped it, so a daily rate typed during onboarding was silently discarded — and
         // the field then looked "cleared" because the form re-read the kitchen it had made.
         dailyRate,
+        extraTimeRateCents,
         currency,
         minimumBookingHours,
       } = req.body;
@@ -2419,6 +2420,10 @@ router.post(
       if (dailyRate !== undefined && (!Number.isSafeInteger(dailyRate) || dailyRate < 0)) {
         return res.status(400).json({ error: "Daily rate must be nonnegative integer cents" });
       }
+      if (extraTimeRateCents !== undefined && extraTimeRateCents !== null
+        && (!Number.isSafeInteger(extraTimeRateCents) || extraTimeRateCents <= 0)) {
+        return res.status(400).json({ error: "Extra time rate must be positive integer cents" });
+      }
       // Draft kitchens can be created before their pricing is configured.
       if (currency !== undefined && currency !== 'CAD') return res.status(400).json({ error: 'Kitchen checkout currently supports CAD only' });
       if (
@@ -2432,6 +2437,9 @@ router.post(
       ) {
         return res.status(400).json({ error: "Minimum booking hours must be a whole number between 1 and 24" });
       }
+      const { normalizeExtraTimeRateCents } = await import('@shared/kitchen-booking-rate');
+      const extraTime = normalizeExtraTimeRateCents({ hourlyRate, dailyRate, extraTimeRateCents });
+      if (extraTime.error) return res.status(400).json({ error: extraTime.error });
 
       const created = await kitchenService.createKitchen({
         locationId,
@@ -2442,6 +2450,7 @@ router.post(
         isActive: true, // Auto-activate
         hourlyRate,
         dailyRate,
+        extraTimeRateCents: extraTime.value,
         currency: currency || "CAD",
         minimumBookingHours: minimumBookingHours ?? 1,
         pricingModel: dailyRate > 0 && !(hourlyRate > 0) ? "daily" : "hourly",
@@ -3362,6 +3371,7 @@ router.get(
         locationName: location.name,
         hourlyRate: kitchen.hourlyRate, // In dollars if getKitchenById handled it, or cents?
         dailyRate: kitchen.dailyRate,
+        extraTimeRateCents: kitchen.extraTimeRateCents,
         // routes.ts typically converted it?
         // Wait, updateKitchenPricing converts dollars to cents.
         // getKitchenById likely returns cents?
@@ -3417,6 +3427,7 @@ router.put(
       const {
         hourlyRate,
         dailyRate,
+        extraTimeRateCents,
         currency,
         minimumBookingHours,
         pricingModel,
@@ -3444,6 +3455,16 @@ router.put(
           .json({ error: "Daily rate must be a positive number or null" });
       }
 
+      if (
+        extraTimeRateCents !== undefined &&
+        extraTimeRateCents !== null &&
+        (!Number.isSafeInteger(extraTimeRateCents) || extraTimeRateCents <= 0)
+      ) {
+        return res
+          .status(400)
+          .json({ error: "Extra time rate must be positive integer cents" });
+      }
+
       const effectiveHourlyRate = hourlyRate !== undefined
         ? hourlyRate
         : kitchen.hourlyRate;
@@ -3455,6 +3476,13 @@ router.put(
           error: "At least one hourly or daily rate must be greater than zero",
         });
       }
+      const { normalizeExtraTimeRateCents } = await import('@shared/kitchen-booking-rate');
+      const extraTime = normalizeExtraTimeRateCents({
+        hourlyRate: effectiveHourlyRate,
+        dailyRate: effectiveDailyRate,
+        extraTimeRateCents: extraTimeRateCents !== undefined ? extraTimeRateCents : kitchen.extraTimeRateCents,
+      });
+      if (extraTime.error) return res.status(400).json({ error: extraTime.error });
 
       if (currency !== undefined && currency !== 'CAD') {
         return res.status(400).json({ error: "Kitchen checkout currently supports CAD only" });
@@ -3507,6 +3535,7 @@ router.put(
       if (dailyRate !== undefined) {
         pricing.dailyRate = dailyRate === null ? null : dailyRate;
       }
+      pricing.extraTimeRateCents = extraTime.value;
       if (currency !== undefined) pricing.currency = currency;
       if (minimumBookingHours !== undefined)
         pricing.minimumBookingHours = minimumBookingHours;
