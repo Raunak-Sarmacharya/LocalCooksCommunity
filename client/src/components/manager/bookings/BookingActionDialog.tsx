@@ -1,5 +1,6 @@
 import { EquipmentIcon as Package, StorageIcon as Boxes } from "@/components/ui/inventory-icons";
 import { bookingStartDateKey } from '@/lib/calendar-date';
+import { RequestedBookingDays, type RequestedDay } from './RequestedBookingDays';
 import { useState, useMemo, useRef, useEffect, type ReactNode } from "react";
 import { getAuthHeaders } from "@/lib/api";
 import { mt } from "@/i18n/manager";
@@ -44,6 +45,8 @@ export interface EquipmentItemForAction {
 }
 
 export interface BookingForAction {
+  scheduleRevision?: number;
+  visits?: RequestedDay[];
   id: number;
   kitchenName?: string;
   chefName?: string;
@@ -572,6 +575,7 @@ function BookingActionDialogContent({
           )}
         </div>
 
+        <RequestedBookingDays visits={booking.visits} revision={booking.scheduleRevision} equipment={booking.equipmentItems} />
         <div className="grid items-start gap-5 lg:grid-cols-[1.15fr_1fr]">
         <div className="space-y-4">
         <section className="space-y-3" aria-label={mt("reviewRequestedItems")}>
@@ -580,7 +584,7 @@ function BookingActionDialogContent({
             <p className="text-sm leading-6 text-muted-foreground">{mt("reviewItemGuidance")}</p>
           </div>
           <BookingItemDecision
-            name={booking.pricingMode === 'daily' ? `${mt("kitchenSession")} · ${mt("kitchenSessionFullDay")}` : mt("kitchenSession")}
+            name={booking.scheduleRevision ? mt('mdAllDays') : booking.pricingMode === 'daily' ? `${mt("kitchenSession")} · ${mt("kitchenSessionFullDay")}` : mt("kitchenSession")}
             details={kitchenBookingBlocks(booking).map(block =>
               `${formatTime(block.startTime)} – ${formatTime(block.endTime)}`).join(', ')}
             price={booking.totalPrice}
