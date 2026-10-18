@@ -1995,7 +1995,8 @@ export default function BookingDetailsPage() {
           items={[...(booking.storageBookings || []).map(item => ({ id: item.id, kind: 'storage' as const,
             name: item.storageListing?.name || `Storage #${item.id}`, status: item.status, dates: `${formatShortDate(item.startDate)} – ${formatShortDate(item.endDate)}` })),
             ...(booking.equipmentBookings || []).map(item => ({ id: item.id, kind: 'equipment' as const,
-              name: item.equipmentListing?.equipmentType || `Equipment #${item.id}`, status: item.status }))]}
+              name: item.equipmentListing?.equipmentType || `Equipment #${item.id}`, status: item.status,
+              ...(datedBooking ? { dates: (day => day?.visitDate ? formatShortDate(day.visitDate) : undefined)(bookingDays.find(visit => visit.id === (item as { kitchenBookingVisitId?: number | null }).kitchenBookingVisitId)) } : {}) }))]}
           onChanged={async () => { await reloadBookingDetails(); await queryClient.invalidateQueries(); }} />
       )}
 

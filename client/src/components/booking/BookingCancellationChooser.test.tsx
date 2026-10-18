@@ -253,6 +253,12 @@ describe('one parent cancellation chooser', () => {
       expect(summary).toHaveTextContent(/3 days/);
       expect(summary).not.toHaveTextContent(/6:00/);
       expect(summary).not.toHaveTextContent(/a\.m\./i);
+      // Confirmed: an add-on comes off its own day (the server prices it per day).
+      expect(screen.getByLabelText(/Selected add-ons/)).toBeInTheDocument();
+    });
+    it('a pending multi-day request offers no add-on removal (answered all-or-nothing)', async () => {
+      openDated({ status: 'pending', paymentStatus: 'authorized' });
+      fireEvent.click(screen.getByRole('button', { name: /Withdraw|Cancel/ }));
       expect(screen.queryByLabelText(/Selected add-ons/)).not.toBeInTheDocument();
     });
     it('quotes selected days, shows the server refund, and posts visitIds with expectedRefundCents', async () => {

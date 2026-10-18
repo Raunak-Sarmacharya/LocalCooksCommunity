@@ -67,7 +67,8 @@ export function BookingCancellationChooser({ bookingId, status, paymentStatus, i
     return new Date(`${day.visitDate!.slice(0, 10)}T00:00:00Z`).getTime() > Date.now();
   });
   // Dated bookings cancel by day; add-on removal is also supported server-side, but the chooser scopes to whole booking / some days.
-  const showItemsScope = !dated && items.length > 0;
+  // Multi-day: add-ons come off one day at a time once confirmed (a pending request is answered all-or-nothing).
+  const showItemsScope = items.length > 0 && (!dated || status === 'confirmed');
   const showDaysScope = dated && cancellableDays.length > 0;
   const paidOf = (visitId: number) => {
     const row = dayMoney.find(item => item.visitId === visitId);
