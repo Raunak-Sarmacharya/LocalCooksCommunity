@@ -2,7 +2,7 @@ import { ensureKitchenBookingVisits } from './kitchen-booking-visits';
 import type Stripe from 'stripe';
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db';
-import { kitchenBookings, kitchenInvitations, kitchenInvitationEvents, kitchens, locations,
+import { kitchenBookings, kitchenInvitations, kitchens, locations,
   equipmentBookings, equipmentListings, paymentTransactions } from '@shared/schema';
 import { bookingCaptureTerms } from '@shared/booking-capture-terms';
 import { bookingAddonPrices } from '@shared/booking-addon-prices';
@@ -12,6 +12,8 @@ import { cancellationSnapshotFromMetadata } from './cancellation-policy-settings
 import { fulfillKitchenCheckout, hasInventoryConflict, KitchenHoldMissingError, KitchenSlotUnavailableError } from './kitchen-checkout-holds';
 import { WeeklyChefHoursLimitError } from './kitchen-booking-quota';
 import { savedInvitationOverride } from './booking-rule-overrides';
+// The invitation's pre-approved acceptance and its "no longer available" outcome are shared with the dated path.
+import { acceptFulfilledInvitation, markInvitationUnavailable } from './kitchen-invitations';
 import { queueBookingLifecycleEvent } from './booking-lifecycle-delivery';
 import { generateReferenceCode } from '../reference-code';
 import { kitchenPayoutTiming } from '@shared/kitchen-payout';
@@ -34,23 +36,6 @@ async function invitationForCheckout(metadata: Record<string, string>, chefId: n
   return invitation;
 }
 
-async function acceptFulfilledInvitation(invitation: typeof kitchenInvitations.$inferSelect | undefined, bookingId: number) {
-  if (!invitation) return;
-  const { decideAuthorizedBooking } = await import('./booking-payment-decision');
-  await decideAuthorizedBooking(bookingId, 'confirmed', [], [], invitation.managerId, undefined,
-    { message: `Pre-approved by kitchen invitation v${invitation.version}` });
-}
-
-async function markInvitationUnavailable(invitation?: typeof kitchenInvitations.$inferSelect) {
-  if (!invitation) return;
-  const [updated] = await db.update(kitchenInvitations).set({ status: 'unavailable', unavailableReason: 'These dates are no longer available.',
-    updatedAt: new Date() }).where(and(eq(kitchenInvitations.id, invitation.id), eq(kitchenInvitations.version, invitation.version),
-      eq(kitchenInvitations.status, 'accepted_pending_payment'))).returning();
-  if (updated) await db.insert(kitchenInvitationEvents).values({ invitationId: invitation.id, version: invitation.version,
-    kind: 'unavailable', actorRole: 'system', noticeKey: `${invitation.id}:${invitation.version}:unavailable`,
-    metadata: { afterPayment: true } }).onConflictDoNothing();
-  if (updated) (await import('./kitchen-invitations')).wakeInvitationDelivery(invitation.id);
-}
 
 /** The chef's own in-app notice for a new request; the manager keeps the review copy. */
 async function chefRequestCopy(booking: Parameters<typeof getBookingResponseDeadline>[0], reader: Parameters<typeof getBookingResponseDeadline>[1], kitchenName: string | null, timezone: string | null) {

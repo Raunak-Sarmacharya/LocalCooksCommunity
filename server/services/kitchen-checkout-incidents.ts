@@ -153,6 +153,8 @@ export async function reconcileKitchenCheckout(sessionId: string, stripe = check
   }
   const intent = session.payment_intent;
   if (!intent || typeof intent === 'string') throw Error('Checkout payment evidence is unavailable');
+  // Dated fulfillment is idempotent, and a replayed dated invitation also resumes its automatic acceptance (the same
+  // booking and the same capture) rather than leaving a paid, unconfirmed invitation.
   if (session.metadata.booking_contract || session.metadata.quote_hash)
     return (await import('./booking-checkout-fulfillment')).fulfillQuotedKitchenBooking(session, intent, stripe);
   const [booking] = await db.select().from(kitchenBookings).where(and(eq(kitchenBookings.paymentIntentId, intent.id), eq(kitchenBookings.chefId, row.chefId))).limit(1);

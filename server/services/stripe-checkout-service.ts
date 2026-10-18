@@ -61,16 +61,22 @@ export interface CheckoutSessionResult {
 /** The durable head quote is saved before this call. Retries use the same provider key and exact expiry. */
 export async function createDatedKitchenCheckoutSession(params: {
   quote: import('./dated-booking-quote').DatedQuote; customerEmail: string; successUrl: string; cancelUrl: string;
+  /** A pre-approved kitchen invitation: the same contract, only the kitchen subtotal is the invited one. */
+  invitation?: { id: string; version: number; listSubtotalCents: number; offeredSubtotalCents: number };
 }, provider: Stripe | null = stripe): Promise<CheckoutSessionResult> {
   if (!provider) throw Error('Stripe is not configured');
   const { datedCheckoutMetadata } = await import('./dated-booking-quote');
-  const metadata = datedCheckoutMetadata(params.quote), m = params.quote.manifest;
+  const metadata = { ...datedCheckoutMetadata(params.quote), ...(params.invitation ? {
+    invitation_id: params.invitation.id, invitation_version: String(params.invitation.version),
+    invitation_list_subtotal_cents: String(params.invitation.listSubtotalCents),
+    invitation_offered_subtotal_cents: String(params.invitation.offeredSubtotalCents) } : {}) };
+  const m = params.quote.manifest;
   const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [];
   const add = (name: string, amount: number) => {
     if (amount) lineItems.push({ price_data: { currency: 'cad', product_data: { name }, unit_amount: amount }, quantity: 1 });
   };
   for (const day of m.days) {
-    add(`${day.date}: Kitchen (${day.pricingMode === 'daily' ? 'full day' : `${day.slots.length} hours`})`, day.kitchenCents);
+    add(`${day.date}: Kitchen (${day.pricingMode === 'daily' ? 'full day' : `${day.slots.length} hours`}${params.invitation ? ', invited rate' : ''})`, day.kitchenCents);
     add(`${day.date}: Equipment`, day.equipment.reduce((sum, item) => sum + item.cents, 0));
   }
   add(`Tax (${m.taxRatePercent}%)`, m.taxCents); add('Service Fee', m.serviceFeeCents);
@@ -78,7 +84,9 @@ export async function createDatedKitchenCheckoutSession(params: {
     customer_email: params.customerEmail, expires_at: m.checkoutExpiresAt, line_items: lineItems, metadata,
     payment_intent_data: { capture_method: 'manual', metadata, receipt_email: params.customerEmail, setup_future_usage: 'off_session' },
     success_url: params.successUrl, cancel_url: params.cancelUrl,
-    custom_text: { submit: { message: 'Your card is held for the whole booking. You are charged in full only if the kitchen accepts all days.' } },
+    custom_text: { submit: { message: params.invitation
+      ? 'Your card is held for the whole booking and charged when payment completes. The kitchen already approved these days.'
+      : 'Your card is held for the whole booking. You are charged in full only if the kitchen accepts all days.' } },
   }, { idempotencyKey: `kitchen-days-checkout:${m.headId}` });
   if (!session.url) throw Error('Checkout URL is unavailable; keep the saved quote for recovery');
   return { sessionId: session.id, sessionUrl: session.url };

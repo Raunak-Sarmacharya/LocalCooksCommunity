@@ -13,12 +13,17 @@ export type PricedBookingDay = ValidatedBookingDay & {
   rateCents: number; kitchenCents: number;
   equipment: Array<{ listingId: number; name: string; cents: number }>;
 };
+/** The invitation's one offered booking subtotal and its deterministic per-day split (CP10). */
+export type InvitationQuoteBlock = {
+  id: string; version: number; listKitchenCents: number; offeredKitchenCents: number;
+  days: Array<{ date: string; listKitchenCents: number; offeredKitchenCents: number }>;
+};
 export type DatedBookingManifest = {
   contract: typeof DATED_BOOKING_CONTRACT; headId: string; chefId: number; kitchenId: number; managerId: number;
   destination: string; timezone: string; bufferMinutes: number; createdAt: string; checkoutExpiresAt: number;
   days: PricedBookingDay[]; subtotalCents: number; taxCents: number; serviceFeeCents: number; totalCents: number;
   taxRatePercent: number; serviceFeeRate: number; policy: CancellationPolicySnapshot;
-  specialNotes: string | null; replacesBookingId?: number;
+  specialNotes: string | null; replacesBookingId?: number; invitation?: InvitationQuoteBlock;
 };
 export type DatedQuote = { manifest: DatedBookingManifest; hash: string };
 const cents = (n: number) => { if (!Number.isSafeInteger(n) || n < 0) throw Error('Invalid dated quote cents'); return n; };
@@ -49,6 +54,24 @@ export function priceBookingDays(days: ValidatedBookingDay[], rates: { hourlyRat
   });
 }
 
+/**
+ * A discounted invitation quote is still one dated contract: the same schedule, tax, fee and policy evidence, with the
+ * kitchen's single offered booking subtotal split over the listed day prices. The split must be the deterministic
+ * largest-remainder allocation, never an ad-hoc per-day price.
+ */
+export function verifyInvitationBlock(block: InvitationQuoteBlock, days: PricedBookingDay[]) {
+  if (!block || typeof block.id !== 'string' || !block.id || !Number.isSafeInteger(block.version) || block.version < 1
+    || block.days.length !== days.length || block.days.some((day, i) => day.date !== days[i].date)) throw Error('Invitation quote days need review');
+  const list = block.days.map(day => cents(day.listKitchenCents));
+  const offered = block.days.map(day => cents(day.offeredKitchenCents));
+  const listTotal = list.reduce((sum, value) => sum + value, 0), offeredTotal = offered.reduce((sum, value) => sum + value, 0);
+  if (listTotal !== cents(block.listKitchenCents) || offeredTotal !== cents(block.offeredKitchenCents)
+    || offeredTotal < 100 || offeredTotal > listTotal || offered.some((value, i) => value > list[i])
+    || days.some((day, i) => day.kitchenCents !== offered[i])) throw Error('Invitation quote allocation needs review');
+  const expected = allocateCents(offeredTotal, list);
+  if (expected.some((value, i) => value !== offered[i])) throw Error('Invitation quote allocation needs review');
+}
+
 export function verifyDatedQuote(value: unknown): DatedQuote {
   const quote = value as DatedQuote;
   const m = quote?.manifest;
@@ -58,11 +81,13 @@ export function verifyDatedQuote(value: unknown): DatedQuote {
   for (const id of [m.chefId, m.kitchenId, m.managerId]) if (!Number.isSafeInteger(id) || id <= 0) throw Error('Dated quote ownership needs review');
   if (!m.headId || !m.destination || ![0, 60, 120].includes(m.bufferMinutes) || !Number.isFinite(Date.parse(m.createdAt))
     || !Number.isSafeInteger(m.checkoutExpiresAt)) throw Error('Dated quote context needs review');
+  if (m.invitation) verifyInvitationBlock(m.invitation, m.days);
   let subtotal = 0;
   for (const day of m.days) {
     assertConsecutiveBookingSlots(day.slots, day.windowStartTime);
     if (!day.slots.length || day.startTime !== day.slots[0].startTime || day.endTime !== day.slots.at(-1)!.endTime
-      || cents(day.rateCents) === 0 || day.kitchenCents !== calculateKitchenBasePrice(day.pricingMode, day.rateCents, day.rateCents, day.slots.length)
+      || cents(day.rateCents) === 0 || (!m.invitation
+        && day.kitchenCents !== calculateKitchenBasePrice(day.pricingMode, day.rateCents, day.rateCents, day.slots.length))
       || new Set(day.equipmentIds).size !== day.equipmentIds.length || day.equipment.length !== day.equipmentIds.length
       || day.equipment.some((item, i) => item.listingId !== day.equipmentIds[i] || !Number.isSafeInteger(item.listingId) || item.listingId <= 0
         || i > 0 && item.listingId <= day.equipment[i - 1].listingId)) throw Error('Dated component prices need review');
