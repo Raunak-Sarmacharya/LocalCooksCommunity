@@ -675,11 +675,12 @@ export const customerNotes = pgTable("customer_notes", {
 
 // Define kitchen bookings table
 export const kitchenBookings = pgTable("kitchen_bookings", {
+  // id stays first: Drizzle treats a left-joined table as null when its first column is null.
+  id: serial("id").primaryKey(),
   feedbackRequestedAt: timestamp('feedback_requested_at', { withTimezone: true }),
   feedbackRemindedAt: timestamp('feedback_reminded_at', { withTimezone: true }),
   visitDuties: jsonb('visit_duties'), // v1 confirmation snapshot; null legacy captures at first action
   assistanceHistory: jsonb('assistance_history').default([]).notNull(),
-  id: serial("id").primaryKey(),
   invitationId: text("invitation_id").references(() => kitchenInvitations.id, { onDelete: "set null" }),
   referenceCode: text("reference_code").unique(), // Human-friendly reference e.g. KB-A7K9MX
   chefId: integer("chef_id").references(() => users.id, { onDelete: "restrict" }), // Nullable for external/third-party bookings
@@ -1661,9 +1662,10 @@ export const bookingLifecycleEvents = pgTable('booking_lifecycle_events', {
 });
 
 export const storageBookings = pgTable("storage_bookings", {
+  // id stays first: Drizzle treats a left-joined table as null when its first column is null.
+  id: serial("id").primaryKey(),
   visitDuties: jsonb('visit_duties'), // Independent storage duties/dates, including standalone legacy
   assistanceHistory: jsonb('assistance_history').default([]).notNull(),
-  id: serial("id").primaryKey(),
   referenceCode: text("reference_code").unique(), // Human-friendly reference e.g. SB-X3P2NR
   storageListingId: integer("storage_listing_id").references(() => storageListings.id, { onDelete: "restrict" }).notNull(),
   kitchenBookingId: integer("kitchen_booking_id").references(() => kitchenBookings.id, { onDelete: "restrict" }), // NULLABLE - storage can be booked independently
