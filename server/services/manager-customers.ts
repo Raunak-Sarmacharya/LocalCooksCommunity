@@ -85,8 +85,16 @@ export type CustomerListResponse = { customers: CustomerListRow[]; counts: Custo
 
 /* ───────────────────────────── pure assembly ───────────────────────────── */
 
-export function bookingBounds(booking: Pick<RawBooking, 'bookingDate' | 'startTime' | 'endTime' | 'operatingWindowStartTime' | 'selectedSlots' | 'visitDuties' | 'status'>, timezone: string) {
+export function bookingBounds(booking: Pick<RawBooking, 'bookingDate' | 'startTime' | 'endTime' | 'operatingWindowStartTime' | 'selectedSlots' | 'visitDuties' | 'status'> & Pick<Partial<RawBooking>, 'cancellationPolicySnapshot'>, timezone: string) {
   try {
+    const policy = booking.cancellationPolicySnapshot as { deadlineBasis?: string; sessions?: Array<{ startAt: string; endAt?: string }> } | null;
+    // Pending dated requests have frozen session starts before confirmation saves their visit clock.
+    if (booking.status === 'pending' && policy?.deadlineBasis === 'booking_first_day') {
+      const starts = (policy.sessions ?? []).map(session => Date.parse(session.startAt)).filter(Number.isFinite);
+      const ends = (policy.sessions ?? []).map(session => Date.parse(session.endAt ?? session.startAt)).filter(Number.isFinite);
+      if (starts.length && ends.length) return { start: new Date(Math.min(...starts)), end: new Date(Math.max(...ends)) };
+      return null;
+    }
     const clock = savedCloseout(booking.visitDuties) ?? makeCloseoutSnapshot(booking as never, timezone, { serviceEndGraceMinutes: 0, inspectionAutoCloseHours: 0, checkinWindowMinutesBefore: 0 });
     const starts = clock.visits.map(visit => Date.parse(visit.scheduledStartAt)).filter(Number.isFinite);
     const ends = clock.visits.map(visit => Date.parse(visit.scheduledEndAt)).filter(Number.isFinite);
