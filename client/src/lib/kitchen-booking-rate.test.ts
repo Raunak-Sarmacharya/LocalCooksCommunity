@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { calculateKitchenBasePrice, hasKitchenRate, isPositiveRate, resolveCapturedKitchenRate } from "@shared/kitchen-booking-rate";
+import {
+  calculateKitchenBasePrice,
+  hasKitchenRate,
+  isPositiveRate,
+  kitchenExtraTimeRateCents,
+  requiresExtraTimeRate,
+  resolveCapturedKitchenRate,
+  snapshotExtraTimeRateCents,
+} from "@shared/kitchen-booking-rate";
 
 describe("isPositiveRate", () => {
   it("accepts a positive number in either unit", () => {
@@ -83,5 +91,22 @@ describe("resolveCapturedKitchenRate", () => {
       bookingSubtotalCents: 192000,
       pricingMode: "daily",
     })).toEqual({ mode: "daily", kitchenSubtotalCents: 24000 });
+  });
+});
+
+describe("extra time rate", () => {
+  it("uses the kitchen hourly rate when set", () => {
+    expect(kitchenExtraTimeRateCents({ hourlyRate: 2500, extraTimeRateCents: 4000 })).toBe(2500);
+    expect(snapshotExtraTimeRateCents({ hourlyRate: "2500", extraTimeRateCents: null })).toBe(2500);
+  });
+
+  it("uses extra_time_rate_cents when daily-only", () => {
+    expect(kitchenExtraTimeRateCents({ hourlyRate: null, extraTimeRateCents: 2500 })).toBe(2500);
+    expect(requiresExtraTimeRate(null, 18000)).toBe(true);
+    expect(requiresExtraTimeRate(2500, 18000)).toBe(false);
+  });
+
+  it("returns null when neither rate is set", () => {
+    expect(kitchenExtraTimeRateCents({ hourlyRate: 0, extraTimeRateCents: null })).toBeNull();
   });
 });

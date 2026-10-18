@@ -30,6 +30,44 @@ export function hasKitchenRate(hourlyRate: unknown, dailyRate: unknown): boolean
   return isPositiveRate(hourlyRate) || isPositiveRate(dailyRate);
 }
 
+/**
+ * Positive integer cents, or null. Used for the kitchen's extra-time rate field and the booking snapshot.
+ */
+export function positiveCentsOrNull(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const n = typeof value === 'number' ? value : Number(value);
+  return Number.isSafeInteger(n) && n > 0 ? n : null;
+}
+
+/**
+ * Rate charged for extra time at a kitchen (1x, no multiplier).
+ * Hourly kitchens use their hourly rate; daily-only kitchens use `extraTimeRateCents`.
+ */
+export function kitchenExtraTimeRateCents(kitchen: {
+  hourlyRate?: unknown;
+  extraTimeRateCents?: unknown;
+}): number | null {
+  return positiveCentsOrNull(kitchen.hourlyRate) ?? positiveCentsOrNull(kitchen.extraTimeRateCents);
+}
+
+/**
+ * Snapshot saved on the booking at creation. Same rule as `kitchenExtraTimeRateCents`.
+ * Later kitchen price edits must never change an existing booking's value.
+ */
+export function snapshotExtraTimeRateCents(kitchen: {
+  hourlyRate?: unknown;
+  extraTimeRateCents?: unknown;
+}): number | null {
+  return kitchenExtraTimeRateCents(kitchen);
+}
+
+/**
+ * Whether a daily-only kitchen must supply an extra time rate (no positive hourly rate).
+ */
+export function requiresExtraTimeRate(hourlyRate: unknown, dailyRate: unknown): boolean {
+  return !isPositiveRate(hourlyRate) && isPositiveRate(dailyRate);
+}
+
 export function calculateKitchenBasePrice(
   mode: KitchenBookingRateMode,
   hourlyRateCents: number,
