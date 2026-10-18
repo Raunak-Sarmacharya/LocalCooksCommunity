@@ -1599,9 +1599,10 @@ export default function BookingDetailsPage() {
   const heroPhoto = !isManagerView ? booking?.kitchen?.photos?.find(Boolean) : null;
   const heroSrc = heroPhoto ? getR2ProxyUrl(heroPhoto) || heroPhoto : null;
   const slotText = bookingTimeSlots.length > 1 ? bookingTimeSlots.join(' · ') : null;
-  const whenLine = datedBooking && bookingDays.length ? [
-    formatDate(bookingDays[0].visitDate!), formatDate(bookingDays[bookingDays.length - 1].visitDate!),
-  ].join(' – ') + ` · ${policyT('mdSelectedDays', { count: bookingDays.length })}` : booking ? [
+  // The header describes the days still booked; cancelled days stay listed below with their status.
+  const keptDays = bookingDays.some(day => day.scheduleState !== 'cancelled') ? bookingDays.filter(day => day.scheduleState !== 'cancelled') : bookingDays;
+  const daySpan = keptDays.length ? `${[formatDate(keptDays[0].visitDate!), formatDate(keptDays[keptDays.length - 1].visitDate!)].filter((v, i, all) => all.indexOf(v) === i).join(' – ')} · ${policyT('mdSelectedDays', { count: keptDays.length })}` : '';
+  const whenLine = datedBooking && bookingDays.length ? daySpan : booking ? [
     visitBounds ? new Intl.DateTimeFormat(lang, { timeZone: tz, weekday: 'short', month: 'short', day: 'numeric' }).format(visitBounds.startAt)
       : new Date(`${bookingStartDateKey(booking) ?? booking.bookingDate.slice(0, 10)}T12:00:00Z`).toLocaleDateString(lang, { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' }),
     slotText || timeRange(formatTime(booking.startTime), formatTime(booking.endTime)),
@@ -1984,7 +1985,7 @@ export default function BookingDetailsPage() {
         <BookingCancellationChooser hideTrigger open={cancelOpen} onOpenChange={setCancelOpen} visitActive={visitActive} bookingId={booking.id} status={booking.status} paymentStatus={booking.paymentStatus}
           summary={{ kitchenName, reference: booking.referenceCode || undefined,
             schedule: datedBooking && bookingDays.length
-              ? `${[formatDate(bookingDays[0].visitDate!), formatDate(bookingDays[bookingDays.length - 1].visitDate!)].join(' – ')} · ${policyT('mdSelectedDays', { count: bookingDays.length })}`
+              ? daySpan
               : `${formatDate(bookingStartDateKey(booking) ?? booking.bookingDate)}\n${bookingTimeSlots.join(', ')} · ${friendlyTimezoneName(booking.location?.timezone, i18n.language)}`,
             amount: booking.paymentTransaction ? formatCurrency(booking.paymentTransaction.amount) : undefined }}
           cancellationDeadline={cancellationDeadlineText}

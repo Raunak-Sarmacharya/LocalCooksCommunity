@@ -55,8 +55,9 @@ export function BookingCancellationChooser({ bookingId, status, paymentStatus, i
   const dated = scheduleRevision > 0;
   const bookingDays = dated ? currentBookingDays(visits, scheduleRevision) : [];
   const dayLabel = (date: string) => new Intl.DateTimeFormat(i18n.language, { timeZone: 'UTC', month: 'short', day: 'numeric' }).format(new Date(`${date.slice(0, 10)}T12:00:00Z`));
-  const datedSchedule = bookingDays.length
-    ? `${dayLabel(bookingDays[0].visitDate!)} – ${dayLabel(bookingDays[bookingDays.length - 1].visitDate!)} · ${policyT('mdSelectedDays', { count: bookingDays.length })}`
+  const keptDays = bookingDays.some(day => day.scheduleState !== 'cancelled') ? bookingDays.filter(day => day.scheduleState !== 'cancelled') : bookingDays;
+  const datedSchedule = keptDays.length
+    ? `${[dayLabel(keptDays[0].visitDate!), dayLabel(keptDays[keptDays.length - 1].visitDate!)].filter((v, i, all) => all.indexOf(v) === i).join(' – ')} · ${policyT('mdSelectedDays', { count: keptDays.length })}`
     : summary?.schedule;
   const scheduleText = dated ? datedSchedule : summary?.schedule;
   const cancellableDays = bookingDays.filter(day => {

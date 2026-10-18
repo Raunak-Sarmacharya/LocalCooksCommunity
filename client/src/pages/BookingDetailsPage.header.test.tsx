@@ -746,7 +746,8 @@ it('shows a dated chef booking as a span, day count and chronological day list w
   expect(screen.getByTestId('booking-header')).toHaveTextContent(/January 15.*January 19/);
   expect(screen.getByRole('link', { name: 'Open your visit' })).toHaveAttribute('href', '/booking/5/visit?visitId=11');
   expect(screen.getByTestId('payment-card')).toHaveTextContent('$300.00');
-  expect(screen.getByTestId('cancellation-card')).toHaveTextContent(/Jan 14.*50%.*every day/);
+  // Day 3 of the stay: the one deadline (Jan 14) has passed, so the card says so instead of a past "Cancel by".
+  expect(screen.getByTestId('cancellation-card')).toHaveTextContent(/refund deadline passed on Jan 14.*50%/);
 });
 
 it('opens a pending dated request for the kitchen when every day has its own clock (live crash, Oct 18)', async () => {
@@ -762,4 +763,19 @@ it('opens a pending dated request for the kitchen when every day has its own clo
       inspection: { outcome: 'not_due', dueAt: null, deadline: null, closedAt: null, canRespond: false } })) } };
   render(<BookingDetailsPage />);
   expect(await screen.findByTestId('booking-header')).toHaveTextContent('3 days');
+});
+
+it('the header counts the days still booked once a day is cancelled (cancelled days stay in the list)', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(START - 3 * 86_400_000);
+  h.manager = false;
+  h.booking = { ...base(), scheduleRevision: 1, status: 'confirmed', paymentStatus: 'partially_refunded',
+    paymentTransaction: { amount: 30000, serviceFee: 2000, managerRevenue: 28000, status: 'partially_refunded' }, totalPrice: 28000,
+    cancellationPolicySnapshot: { noticeHours: 24, lateChargePercent: 50, timezone: 'America/St_Johns', sessions: [{ startAt: '2030-01-15T13:30:00Z' }], deadlineBasis: 'booking_first_day' },
+    visits: [15, 17, 19].map((day, i) => ({ id: i + 10, blockIndex: i, visitDate: `2030-01-${day}`, scheduleRevision: 1, scheduleState: i === 2 ? 'cancelled' : 'active',
+      startTime: '10:00', endTime: '12:00', checkinStatus: 'not_checked_in', updatedAt: '2030-01-10T12:00:00Z' })) };
+  render(<BookingDetailsPage />);
+  const header = await screen.findByTestId('booking-header');
+  expect(header).toHaveTextContent('2 days');
+  expect(header).toHaveTextContent(/January 15.*January 17/);
+  expect(screen.getByTestId('booking-day-list')).toHaveTextContent('Jan 19, 2030');
 });
