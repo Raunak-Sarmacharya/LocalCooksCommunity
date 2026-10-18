@@ -94,3 +94,9 @@ accepts); no marketplace changes a guest's booking without consent. Owner: the c
    Time") and what happens without an answer ("If you don't answer, the request closes and your card hold is released.").
    Built Oct 17: `partial-acceptance-implementation.md`. Money review fix (Oct 17): the chef's deadline is
    min(offer + 24 h, first start − (notice + 1) h) with no 30-minute floor, so the 3-hour guard always decides.
+
+## Remaining before multi-day is switched on (lead, Oct 17)
+CP7 whole-booking change, CP9 kitchen/admin screens + communications + documents, CP10 invitations, **extra time per day**
+(the CP4 money-review guard M2 refuses extra time on multi-day; it must work like single-day for the day the chef is checked
+in, priced from that day's saved rate, paid with that day's installment), CP11 real-Postgres parity + full live run-through on
+dev (chef, kitchen, Local Cooks; Stripe checked), then the owner's team tests.
