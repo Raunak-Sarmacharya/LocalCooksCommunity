@@ -7,19 +7,19 @@
  * offered booking amount split over the listed day prices, never a re-price from today's rates.
  */
 import { randomUUID } from 'node:crypto';
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db } from '../db';
-import { equipmentListings, kitchenInvitationEvents, kitchenInvitations, kitchens, locations, users } from '@shared/schema';
+import { kitchenInvitationEvents, kitchenInvitations, kitchens, locations, users } from '@shared/schema';
 import { DATED_DISCLOSURE_VERSION } from '@shared/cancellation-policy';
 import { validateBookingDays, bookingDaysErrorBody } from './booking-days-validation';
 import { datedManifestHash, verifyDatedQuote, type DatedBookingManifest } from './dated-booking-quote';
-import { invitationCheckoutDays, invitationQuoteBlock, listInvitationDays, readInvitationDays } from './kitchen-invitation-days';
+import { invitationCheckoutDays, invitationQuoteBlock, readInvitationDays } from './kitchen-invitation-days';
 import { calculateCheckoutFeesAsync } from './stripe-checkout-fee-service';
 import { checkoutCancellationSnapshot, policySessionStart } from './cancellation-policy-settings';
 import { reserveKitchenCheckoutGroup, bindKitchenCheckout, releaseKitchenCheckout } from './kitchen-checkout-holds';
 import { createDatedKitchenCheckoutSession, expireAbandonedCheckoutSession } from './stripe-checkout-service';
 import { savedInvitationOverride } from './booking-rule-overrides';
-import { InvitationError, wakeInvitationDelivery } from './kitchen-invitations';
+import { InvitationError, resolveInvitationEquipment, wakeInvitationDelivery } from './kitchen-invitations';
 
 export class DatedInvitationRefused extends Error {
   constructor(readonly status: number, readonly body: Record<string, unknown>) { super(String(body.error)); }
@@ -31,6 +31,8 @@ export async function checkoutDatedInvitation(chefId: number, row: InvitationRow
   equipment?: unknown;
   cancellationPolicyAccepted?: unknown; cancellationPolicyVersion?: unknown; cancellationDisclosureVersion?: unknown;
 }, baseUrl: string) {
+  if (row.chefId !== chefId || row.status !== 'sent' || row.expiresAt <= new Date())
+    throw new DatedInvitationRefused(409, { error: 'This invitation is no longer payable.' });
   const snapshot = readInvitationDays(row.daysSnapshot);
   if (!snapshot) throw new InvitationError('This invitation is not a day set.', 409);
   let days: ReturnType<typeof invitationCheckoutDays>;
@@ -53,17 +55,15 @@ export async function checkoutDatedInvitation(chefId: number, row: InvitationRow
   const [chef] = await db.select({ email: users.username }).from(users).where(eq(users.id, chefId)).limit(1);
   if (!manager?.stripeConnectAccountId) throw new InvitationError('The kitchen cannot accept payments yet.', 409);
   if (!chef?.email) throw new InvitationError('Customer email not found.', 400);
-  const ids = Array.from(new Set(check.days.flatMap(day => day.equipmentIds)));
-  const listings = ids.length ? await db.select().from(equipmentListings).where(and(inArray(equipmentListings.id, ids),
-    eq(equipmentListings.kitchenId, row.kitchenId), eq(equipmentListings.isActive, true), isNull(equipmentListings.archivedAt))) : [];
-  const priced = listInvitationDays(check.days, { hourlyRate: Number(row2.kitchen.hourlyRate ?? 0),
-    dailyRate: Number(row2.kitchen.dailyRate ?? 0) }, listings);
+  const resolved = await resolveInvitationEquipment(row.kitchenId, check.days, snapshot);
   const offered = new Map(snapshot.map(day => [day.date, day.offeredKitchenCents]));
-  const manifestDays = priced.map(day => {
+  const manifestDays = check.days.map((day, index) => {
     const offeredCents = offered.get(day.date);
     if (typeof offeredCents !== 'number' || !Number.isSafeInteger(offeredCents))
       throw new InvitationError('The invited days changed. Refresh and try again.', 409);
-    return { ...day, kitchenCents: offeredCents };
+    const equipment = resolved.days[index].equipment;
+    return { ...day, equipment, equipmentIds: equipment.map(item => item.listingId), kitchenCents: offeredCents,
+      rateCents: day.pricingMode === 'daily' ? offeredCents : Math.round(offeredCents / day.slots.length) };
   });
   const subtotalCents = manifestDays.reduce((sum, day) => sum + day.kitchenCents
     + day.equipment.reduce((s, item) => s + item.cents, 0), 0);
@@ -85,6 +85,8 @@ export async function checkoutDatedInvitation(chefId: number, row: InvitationRow
     serviceFeeCents: fees.platformCommissionInCents, totalCents: subtotalCents + taxCents + fees.platformCommissionInCents,
     policy, specialNotes: row.note, invitation: invitationQuoteBlock(snapshot, row.id, row.version) };
   const quote = verifyDatedQuote({ manifest, hash: datedManifestHash(manifest) });
+  if (row.expiresAt <= new Date())
+    throw new DatedInvitationRefused(409, { error: 'This invitation is no longer payable.' });
   await reserveKitchenCheckoutGroup({ groupId: headId, kitchenId: row.kitchenId, chefId, bufferMinutes: check.bufferMinutes,
     quoteSnapshot: quote, days: manifestDays.map(day => ({ operatingDate: day.date, windowStartTime: day.windowStartTime,
       slots: day.slots, fullDay: day.pricingMode === 'daily', equipmentListingIds: day.equipmentIds })) });
