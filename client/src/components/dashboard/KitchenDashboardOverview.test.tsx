@@ -8,6 +8,10 @@ const state = vi.hoisted(() => ({
   bookings: [] as Array<Record<string, unknown>>,
   viewings: [] as Array<Record<string, unknown>>,
   applications: [] as Array<Record<string, unknown>>,
+  rentals: [] as Array<Record<string, unknown>>,
+  payouts: { totalCents: 0, payouts: [] } as { totalCents: number; payouts: Array<Record<string, unknown>> },
+  hours: [] as Array<Record<string, unknown>>,
+  overrides: [] as Array<Record<string, unknown>>,
   licenseStatus: "approved" as string,
   licenseExpiry: "2099-01-01",
   activity: { paymentsNeedAttention: false, paymentsAction: "overviewPaymentsUpdate", unreadMessages: 0, storageBookings: [] as Array<Record<string, unknown>>, extensions: [] as Array<Record<string, unknown>>, storageCheckouts: [] as Array<Record<string, unknown>>, claims: [] as Array<Record<string, unknown>>, visits: [], isLoading: false, isError: false },
@@ -16,14 +20,21 @@ const state = vi.hoisted(() => ({
 vi.mock("@/hooks/use-auth", () => ({ useFirebaseAuth: () => ({ user: { uid: "manager-1", displayName: "Alex" } }) }));
 vi.mock("@/hooks/use-manager-dashboard", () => ({ useManagerDashboard: () => ({ bookings: state.bookings, isLoadingBookings: false, isErrorBookings: false }) }));
 vi.mock("@/hooks/use-manager-overview-activity", () => ({ useManagerOverviewActivity: () => state.activity }));
-vi.mock("@tanstack/react-query", () => ({ useQuery: ({ queryKey }: { queryKey: string[] }) => ({ data: queryKey[0] === "managerViewings" ? state.viewings : queryKey[0] === "/api/manager/kitchen-applications" ? state.applications : { totalRevenue: 0 }, isLoading: false, isError: false }) }));
+vi.mock("@tanstack/react-query", () => ({
+  useQuery: ({ queryKey }: { queryKey: string[] }) => ({ data: queryKey[0] === "managerViewings" ? state.viewings : queryKey[0] === "/api/manager/kitchen-applications" ? state.applications
+    : queryKey[0] === "/api/manager/storage-rentals" ? state.rentals : queryKey[0] === "/api/manager/revenue/upcoming-payouts" ? state.payouts : { totalRevenue: 0 }, isLoading: false, isError: false }),
+  useQueries: ({ queries }: { queries: Array<{ queryKey: unknown[] }> }) => queries.map(({ queryKey }) => ({ data: queryKey[0] === "/api/manager/availability" ? state.hours : state.overrides, isLoading: false, isError: false })),
+}));
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ i18n: { language: "en-CA" } }) }));
 vi.mock("wouter", () => ({ Link: ({ href, children, ...props }: { href: string; children: ReactNode }) => <a href={href} {...props}>{children}</a> }));
 vi.mock("@/i18n/manager", () => ({ mt: (key: string) => key }));
 vi.mock("@/i18n/chef-ns", () => ({ ct: (key: string) => key }));
-vi.mock("@/components/booking/BookingNowCard", () => ({ StatusPill: ({ children }: { children: ReactNode }) => <span data-testid="booking-status-pill">{children}</span> }));
+vi.mock("@/components/booking/BookingNowCard", () => ({ StatusPill: ({ children }: { children: ReactNode }) => <span data-testid="booking-status-pill">{children}</span>,
+  PILL: new Proxy({}, { get: () => ({ surface: "", dot: "" }) }) }));
 vi.mock("@/lib/api", () => ({ apiGet: vi.fn() }));
-vi.mock("./BookingCalendarWidget", () => ({ default: () => <div>calendar</div> }));
+// The real rows and sorting, a marker for the calendar itself (its own render is tested in BookingCalendarWidget.test).
+vi.mock("./BookingCalendarWidget", async (importOriginal) => ({ ...(await importOriginal<typeof import("./BookingCalendarWidget")>()),
+  default: ({ events }: { events: Array<{ key: string; date: string; label: string }> }) => <div data-testid="calendar">{events.map(event => `${event.key}@${event.date}:${event.label}`).join("|")}</div> }));
 
 import KitchenDashboardOverview from "./KitchenDashboardOverview";
 
@@ -45,6 +56,10 @@ beforeEach(() => {
   state.bookings = [];
   state.viewings = [];
   state.applications = [];
+  state.rentals = [];
+  state.payouts = { totalCents: 0, payouts: [] };
+  state.hours = [];
+  state.overrides = [];
   state.licenseStatus = "approved";
   state.licenseExpiry = "2099-01-01";
   state.activity.unreadMessages = 0;
@@ -182,7 +197,7 @@ it("keeps dated storage, application and claim history visible during a partial 
 
 it("never substitutes a chef email for a display name in overview rows",()=>{state.activity.storageBookings=[{id:30,status:"pending",chefName:"chef@example.com",chefEmail:"chef@example.com",storageName:"Dry shelf",createdAt:"2025-01-01"}];state.activity.claims=[{id:31,status:"draft",chefEmail:"chef@example.com",claimTitle:"Worktop damage",createdAt:"2025-01-02"}];const html=render();expect(html).not.toContain("chef@example.com");expect(html).toContain("guestChef");expect(html).toContain("Dry shelf");});
 
-it("uses the parent booking chef identity in recent storage activity",()=>{state.bookings=[{id:5,chefId:2,kitchenId:10,chefName:"Morgan Lee",locationId:1,status:"completed",bookingDate:"2025-01-01",createdAt:"2025-01-01",startTime:"09:00",endTime:"12:00"}];state.activity.storageBookings=[{id:10,chefId:2,chefName:"Guest chef",chefEmail:"email@example.com",storageName:"Dry shelf",status:"cancelled",createdAt:"2025-01-02"}];const html=render();expect(html).not.toContain("email@example.com");expect(html).not.toContain("Guest chef");expect(html.match(/Morgan Lee/g)?.length).toBeGreaterThanOrEqual(2);expect(html.match(/data-radix-scroll-area-viewport=""/g)).toHaveLength(4);expect(html).not.toContain("scrollbar-width:thin");});
+it("uses the parent booking chef identity in recent storage activity",()=>{state.bookings=[{id:5,chefId:2,kitchenId:10,chefName:"Morgan Lee",locationId:1,status:"completed",bookingDate:"2025-01-01",createdAt:"2025-01-01",startTime:"09:00",endTime:"12:00"}];state.activity.storageBookings=[{id:10,chefId:2,chefName:"Guest chef",chefEmail:"email@example.com",storageName:"Dry shelf",status:"cancelled",createdAt:"2025-01-02"}];const html=render();expect(html).not.toContain("email@example.com");expect(html).not.toContain("Guest chef");expect(html.match(/Morgan Lee/g)?.length).toBeGreaterThanOrEqual(2);expect(html.match(/data-radix-scroll-area-viewport=""/g)).toHaveLength(5);expect(html).not.toContain("scrollbar-width:thin");});
 
 it("keeps payout branding distinct from normal workflow icons",()=>{state.activity.paymentsNeedAttention=true;const html=render();expect(html).toContain("text-stripe");expect(html).toContain("overviewPaymentsUpdate");expect(html.match(/overviewPaymentsAttention/g)).toHaveLength(1);});
 
@@ -201,4 +216,100 @@ it("lists a booking request once in Recent activity, not as both the booking and
     expect(history).not.toContain("Kitchen booking requested");
     expect(history).toContain("Kitchen booking confirmed");
   } finally { delete (state.activity as Record<string, unknown>).bookingEvents; }
+});
+
+describe("revamped overview (R3)", () => {
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/St_Johns", year: "numeric", month: "2-digit", day: "2-digit" }).format(Date.now());
+  const plus = (days: number) => { const date = new Date(`${today}T12:00:00Z`); date.setUTCDate(date.getUTCDate() + days); return date.toISOString().slice(0, 10); };
+  const weekStart = plus(-new Date(`${today}T12:00:00Z`).getUTCDay());
+  const live = () => { state.kitchens = [{ id: 10, locationId: 1, name: "Kitchen East", isActive: true, listingStatus: "active" }]; };
+
+  it("keeps the first-time view staged: no Today card, week strip or calendar until there is activity", () => {
+    live();
+    let html = render();
+    expect(html).not.toContain('data-testid="overview-today"');
+    expect(html).not.toContain('data-testid="overview-week"');
+    expect(html).not.toContain('data-testid="calendar"');
+    expect(html.match(/h-\[320px\]/g)).toHaveLength(4);
+    state.bookings = [{ id: 90, kitchenId: 10, locationId: 1, chefName: "Morgan", kitchenName: "Kitchen East", bookingDate: plus(3), createdAt: "2025-01-01", startTime: "09:00", endTime: "10:00", status: "confirmed" }];
+    html = render();
+    expect(html).toContain('data-testid="overview-today"');
+    expect(html).toContain('data-testid="overview-week"');
+    expect(html).toContain('data-testid="calendar"');
+    expect(html).toContain('data-testid="overview-revenue"');
+  });
+
+  it("lists a multi-day booking once per day with its own times, never merged slots", () => {
+    live();
+    state.bookings = [{ id: 90, kitchenId: 10, locationId: 1, chefName: "Morgan", kitchenName: "Kitchen East", bookingDate: plus(2), createdAt: "2025-01-01",
+      startTime: "20:00", endTime: "21:00", status: "confirmed", scheduleRevision: 1,
+      selectedSlots: [{ startTime: "20:00", endTime: "21:00" }, { startTime: "20:00", endTime: "21:00" }],
+      visitStates: [{ id: 901, checkinStatus: "not_checked_in", visitDate: plus(2), startTime: "20:00", endTime: "21:00" },
+        { id: 902, checkinStatus: "not_checked_in", visitDate: plus(3), startTime: "20:00", endTime: "21:00" }] }];
+    const html = render();
+    expect(html).not.toContain("8:00–9:00 p.m., 8:00–9:00 p.m.");
+    const schedule = html.slice(html.indexOf('aria-label="overviewUpcomingBookings"'), html.indexOf("overviewHistory"));
+    expect(schedule.match(/mdDayOf · [^<]*8:00–9:00 p\.m\./g)).toHaveLength(2);
+    const calendar = html.slice(html.indexOf('data-testid="calendar"'));
+    expect(calendar).toContain(`booking-90-901-0@${plus(2)}`);
+    expect(calendar).toContain(`booking-90-902-0@${plus(3)}`);
+  });
+
+  it("links every needs-attention item to the exact rental or day", () => {
+    live();
+    state.rentals = [
+      { id: 61, kitchen: { id: 10, name: "Kitchen East" }, listing: { id: 5, name: "Dry shelf" }, chef: { id: 2, name: "Sam" }, state: "requested", startOn: plus(4), paidThrough: plus(10), responseDeadline: null, actions: [], terms: [] },
+      { id: 62, kitchen: { id: 10, name: "Kitchen East" }, listing: { id: 6, name: "Cooler" }, chef: { id: 3, name: "Ana" }, state: "move_out_requested", startOn: plus(-9), paidThrough: plus(1), responseDeadline: null, actions: [], terms: [] },
+      { id: 63, kitchen: { id: 99, name: "Elsewhere" }, listing: { id: 7, name: "Other" }, chef: { id: 4, name: "Lee" }, state: "requested", startOn: plus(4), paidThrough: plus(10), responseDeadline: null, actions: [], terms: [] },
+    ];
+    state.bookings = [{ id: 90, kitchenId: 10, locationId: 1, chefName: "Morgan", kitchenName: "Kitchen East", bookingDate: plus(-3), createdAt: "2025-01-01",
+      startTime: "09:00", endTime: "10:00", status: "confirmed", checkinStatus: "checkout_requested", scheduleRevision: 1,
+      visitStates: [{ id: 901, checkinStatus: "checked_out", visitDate: plus(-3), startTime: "09:00", endTime: "10:00" },
+        { id: 902, checkinStatus: "checkout_requested", visitDate: plus(-2), startTime: "09:00", endTime: "10:00" }] }];
+    const html = render();
+    const attention = html.slice(html.indexOf('aria-label="overviewNeedsAttention"'), html.indexOf('data-testid="overview-today"'));
+    expect(attention).toContain('href="/manager/storage/61"');
+    expect(attention).toContain("ovrStorageStarts");
+    expect(attention).toContain('href="/manager/storage/62"');
+    expect(attention).toContain("ovrStorageToAction");
+    expect(attention).not.toContain("/manager/storage/63");
+    expect(attention).toContain('href="/manager/booking/90/inspection?visitId=902"');
+    expect(attention).toContain("mdDayOf · ");
+    expect(attention).not.toContain("overviewAllCaughtUp");
+  });
+
+  it("counts this week's bookings and utilisation of open hours (closures removed) against last week", () => {
+    live();
+    state.bookings = [
+      { id: 90, kitchenId: 10, locationId: 1, chefName: "Morgan", bookingDate: weekStart, createdAt: "2025-01-01", startTime: "10:00", endTime: "12:00", status: "completed" },
+      { id: 91, kitchenId: 10, locationId: 1, chefName: "Morgan", bookingDate: plus(-new Date(`${today}T12:00:00Z`).getUTCDay() - 3), createdAt: "2025-01-01", startTime: "09:00", endTime: "10:00", status: "completed" },
+      { id: 92, kitchenId: 10, locationId: 1, chefName: "Morgan", bookingDate: weekStart, createdAt: "2025-01-01", startTime: "13:00", endTime: "14:00", status: "cancelled" },
+    ];
+    // 4 open hours a day, one day closed this week: 24 open hours; 2 booked = 8%.
+    state.hours = [0, 1, 2, 3, 4, 5, 6].map(dayOfWeek => ({ dayOfWeek, startTime: "09:00", endTime: "13:00", isAvailable: true }));
+    state.overrides = [{ id: 1, specificDate: `${weekStart}T00:00:00.000Z`, isAvailable: false, reason: "Maintenance" }];
+    const html = render();
+    const tile = (key: string) => html.slice(html.indexOf(`data-testid="week-${key}"`)).slice(0, 600);
+    expect(tile("bookings")).toMatch(/>1<\/dd>/);
+    expect(tile("utilisation")).toContain("8%");
+    const calendar = html.slice(html.indexOf('data-testid="calendar"'));
+    expect(calendar).toContain(`override-10-1@${weekStart}:closed`);
+  });
+
+  it("shows upcoming and on-hold payouts for this location only, with the next payout day", () => {
+    live();
+    state.bookings = [{ id: 90, kitchenId: 10, locationId: 1, bookingDate: plus(1), createdAt: "2025-01-01", startTime: "09:00", endTime: "10:00", status: "confirmed" }];
+    state.payouts = { totalCents: 0, payouts: [
+      { bookingId: 90, status: "scheduled", amountCents: 4500, expectedAt: "2026-10-21T13:30:00.000Z", timezone: "America/St_Johns" },
+      { bookingId: 90, status: "on_hold", amountCents: 1200, expectedAt: null },
+      { bookingId: 555, status: "scheduled", amountCents: 9999, expectedAt: "2026-10-19T13:30:00.000Z" },
+    ] };
+    const html = render();
+    const card = html.slice(html.indexOf('data-testid="overview-revenue"'));
+    expect(card).toContain("$45.00");
+    expect(card).toContain("$12.00");
+    expect(card).not.toContain("$99.99");
+    expect(card).toContain("ovrNextPayout");
+    expect(card).toContain("ovrOnHoldCount");
+  });
 });

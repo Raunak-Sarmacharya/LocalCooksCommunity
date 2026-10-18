@@ -26,7 +26,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import BookingCalendarWidget, { CalendarEventRow, sortEvents, type CalendarEvent } from "./BookingCalendarWidget";
 import { RevenuePayoutsCard } from "./RevenuePayoutsCard";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import i18next from "@/i18n";
 import { HAPPENING_NOW, managerDatedListDay, managerListDays } from "@/lib/booking-list-status";
 import { kitchenBookingBlocks } from "@/lib/kitchen-booking-blocks";
 import { addDaysKey, kitchenTodayKey, spanMinutes, weekStartKey, weekStats, type DateOverride, type WeeklyHours } from "@/lib/manager-week-stats";
@@ -309,7 +308,7 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
   for (const rental of pendingRequests(locationRentals)) addTask("overviewStorageRequests", { id: `rental-${rental.id}`, title: rentalTitle(rental),
     detail: mt("ovrStorageStarts", { date: storageDay(rental.startOn, i18n.language) }), view: "storage-bookings", href: `/manager/storage/${rental.id}` });
   for (const rental of locationRentals) if (occupiesUnit(rental) && chipNeedsAction(chipForRental(rental))) addTask("ovrStorageToAction", { id: `rental-${rental.id}`, title: rentalTitle(rental),
-    detail: String(i18next.t(STORAGE_CHIP_KEY[chipForRental(rental)] as never, { ns: "storage" } as never)), view: "storage-bookings", href: `/manager/storage/${rental.id}` });
+    detail: mt(STORAGE_CHIP_KEY[chipForRental(rental)], { ns: "storage" }), view: "storage-bookings", href: `/manager/storage/${rental.id}` });
   for (const claim of activity.claims) if (["draft", "approved", "partially_approved", "chef_accepted", "charge_failed", "escalated"].includes(claim.status ?? "")) addTask("overviewClaimsToAction", { id: String(claim.id), title: recordTitle(claim), view: "damage-claims", param: "claim", detail: mt(claim.status === "draft" ? "overviewClaimComplete" : "overviewClaimCollect") });
   for (const location of locations) {
     if (selectedLocation && location.id !== selectedLocation.id) continue;
