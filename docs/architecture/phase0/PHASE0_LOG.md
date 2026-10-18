@@ -1161,6 +1161,12 @@ Already-failing tests found before any change (baseline, not ours): 21 in `tour-
 - **Bug 7 (copy):** same-day multi-day request showed "Cancel by Sat, Oct 17" (a past date) -> checkout uses the short-notice warning and the booking card the booked-inside/deadline-passed sentences, like single-day (`79ae57bf`, test).
 - **Live #207 KB-BJAGDH:** today 2-4 p.m. + oven, Wed 2-4 p.m. (oven unticked on day 2): $152.50 (oven on day 1 only, Stripe lines per day); webhook fulfilment and kitchen accept both worked first time after the fixes.
 
+- **Kitchen cancels a day live (#206 Oct 31):** preview "Chef receives $219.60 · your payout decreases by $198.78 · Local Cooks pays $20.82" -> refund 21960, total refunded 43097, offer stored (`eligibleVisitIds` [Oct 24], expires at its start); chef sees "The kitchen cancelled a day. You can drop remaining days without the late charge until Oct 24, 6:00 a.m." Header now counts the days still booked (`77406d5b`).
+- **Add-on per day (`d42f24be`):** server already removes one day's equipment on a confirmed dated booking; the chooser now offers it with the day's date.
+- **Each day has its own check-in (owner question):** booking page line `bnWhatToExpectDays` (also after details are released) + confirmation email `arrivalEachDay`.
+- **Owner decision — multi-day reminder emails (`10e1c3a5`):** full arrival details once (first remaining day), short "Day N of M" reminder each day; was full details + reminder every day (7-day = 14 emails, now 8). Research: Airbnb instructions once per stay, Peerspace details 1–2 days before + day-before reminder, TFC repeat sessions are separate bookings with kitchen-configurable notifications. Parity test proves 1 preparation + 3 "Day N of 3" arrivals (fails on old code).
+- Team test plan updated for multi-day on dev (`c9006a29`).
+
 ### Handover — next session (start here)
 1. Done Oct 18: pushed (CP7 + fixes, extra time rate, CP10; 0104 on dev DB). Check the Vercel dev deploy succeeded and smoke-test kitchen pricing + a booking page.
 2. CP10 independent money review (Cursor Auto) -> fix round (Codex).
