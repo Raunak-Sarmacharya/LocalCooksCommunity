@@ -17,30 +17,31 @@ interface Props {
   data: RevenueByDate[];
   dateRange: DateRange;
   isLoading: boolean;
+  monthly?: boolean;
 }
 
-export function RevenueTrendChart({ data, dateRange, isLoading }: Props) {
+export function RevenueTrendChart({ data, dateRange, isLoading, monthly = false }: Props) {
   const chartData = useMemo(() => dateRange.from && dateRange.to
-    ? buildEarningsBuckets(data, dateRange.from, dateRange.to).map((bucket) => ({
+    ? buildEarningsBuckets(data, dateRange.from, dateRange.to, monthly).map((bucket) => ({
         ...bucket,
         netEarningsDollars: centsToDollars(bucket.netEarnings),
       }))
-    : [], [data, dateRange.from, dateRange.to]);
+    : [], [data, dateRange.from, dateRange.to, monthly]);
   const fromDay = dateRange.from ? Date.UTC(dateRange.from.getFullYear(), dateRange.from.getMonth(), dateRange.from.getDate()) : 0;
   const toDay = dateRange.to ? Date.UTC(dateRange.to.getFullYear(), dateRange.to.getMonth(), dateRange.to.getDate()) : 0;
   const days = (toDay - fromDay) / 86_400_000 + 1;
   const shortDate = (time: number) => new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(time));
   const labelDate = (value: string) => {
     const time = Date.parse(`${value}T12:00:00Z`);
-    if (days > 120) return new Intl.DateTimeFormat(undefined, { month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(time));
+    if (monthly || days > 120) return new Intl.DateTimeFormat(undefined, { month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(time));
     if (days > 31) return `${shortDate(time)}–${shortDate(Math.min(time + 6 * 86_400_000, toDay + 12 * 60 * 60_000))}`;
     return shortDate(time);
   };
 
   return <Card className="rounded-2xl border-border/70">
     <CardHeader>
-      <CardTitle>{mt("revenueEarningsActivity")}</CardTitle>
-      <CardDescription>{mt("revenueTrendDescription")}</CardDescription>
+      <CardTitle>{mt(monthly ? 'r1MonthlyNet' : 'revenueEarningsActivity')}</CardTitle>
+      <CardDescription>{mt(monthly ? 'r1NetExplanation' : 'revenueTrendDescription')}</CardDescription>
     </CardHeader>
     <CardContent>
       {isLoading ? <Skeleton className="h-[260px] w-full rounded-xl" /> : data.length === 0 ? (

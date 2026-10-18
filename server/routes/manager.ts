@@ -1,4 +1,5 @@
 import { bookingDaysCap, bookingWindowCap } from '../services/booking-policy-settings';
+import { readManagerRevenue, revenueQuery } from '../services/manager-revenue-service';
 import { bufferWritePatch, isBookingBufferMinutes, validBookingDays, validBookingWindowDays, validWeeklyChefHoursLimit } from '@shared/kitchen-booking-policies';
 import managerCustomersRouter from './manager-customers';
 import { revokeManagerLocationAccess, futureAccessBookings, deliverAccessNotice } from "../services/location-access-notices";
@@ -177,6 +178,14 @@ import { managerService } from "../domains/managers/manager.service";
 // ===================================
 // MANAGER REVENUE ENDPOINTS
 // ===================================
+
+// R1 reporting only: no provider calls, scheduling or money mutations.
+router.get('/revenue/ledger', requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+  const parsed = revenueQuery.safeParse(req.query);
+  if (!parsed.success) return res.status(400).json({ error: 'Choose valid dates (up to three years) and location/kitchen filters.' });
+  try { res.json(await readManagerRevenue(req.neonUser!.id, parsed.data)); }
+  catch (error) { return errorResponse(res, error); }
+});
 
 // Get revenue overview for manager
 router.get(

@@ -11,7 +11,7 @@
  * - Composing smaller components from revenue/components/
  */
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import { SiStripe } from "react-icons/si"
 import { mt } from "@/i18n/manager"
 import { useFirebaseAuth } from "@/hooks/use-auth"
@@ -25,17 +25,15 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { ChefPageHeader } from "@/components/chef/ui"
 
 // Import from our revenue module
-import { useRevenueChartData, useTransactions, useInvoices, usePayouts, useStripeConnectStatus, downloadInvoice, downloadPayoutStatement, getDefaultDateRange, type DateRange, type LocationOption } from "@/components/manager/revenue"
+import { useTransactions, useInvoices, usePayouts, useStripeConnectStatus, downloadInvoice, downloadPayoutStatement, type DateRange, type LocationOption } from "@/components/manager/revenue"
 
-import { RevenueMetricCards } from "@/components/manager/revenue/components/RevenueMetricCards"
 import { TransactionTable } from "@/components/manager/revenue/components/TransactionTable"
 import { DateRangePicker } from "@/components/manager/revenue/components/DateRangePicker"
-import { RevenueTrendChart } from "@/components/manager/revenue/components/RevenueCharts"
 import { formatBookingDate, formatCurrency, formatDate, generateInvoiceNumber } from "@/lib/formatters"
 import { useToast } from "@/hooks/use-toast"
 import StripeConnectSetup from "@/components/manager/StripeConnectSetup"
-import { useUpcomingPayouts } from '@/components/manager/revenue/hooks/use-revenue-data'
-import { KitchenPayoutStatus } from '@/components/booking/KitchenPayoutStatus'
+import { RevenueLedger } from "@/components/manager/revenue/components/RevenueLedger"
+import { useManagerRevenue } from "@/components/manager/revenue/hooks/use-manager-revenue"
 
 // ═══════════════════════════════════════════════════════════════════════
 // COMPONENT PROPS
@@ -83,6 +81,7 @@ function RevenueSectionError({ section, onRetry }: { section: string; onRetry: (
 
 function RevenueAnalytics({
   selectedLocation,
+  locations,
   onNavigate,
   hasPublishedKitchen = false,
   showReconnectNotice = false,
@@ -97,15 +96,11 @@ function RevenueAnalytics({
   })
   const isEnabled = !!firebaseUser
 
-  // Filter State
-  const [dateRange, setDateRange] = useState<DateRange>(getDefaultDateRange)
-
-  // Data Hooks
-  const { data: chartData = [], isLoading: isLoadingCharts, isError: isErrorCharts, refetch: refetchCharts } = useRevenueChartData(
-    dateRange,
-    "all",
-    isEnabled
-  )
+  const [dateRange, setDateRange] = useState<DateRange>(() => ({ from: new Date(new Date().getFullYear(), new Date().getMonth(), 1), to: new Date() }))
+  const [locationId, setLocationId] = useState<number | undefined>(selectedLocation?.id)
+  const [kitchenId, setKitchenId] = useState<number | undefined>()
+  useEffect(() => { setLocationId(selectedLocation?.id); setKitchenId(undefined) }, [selectedLocation?.id])
+  const ledger = useManagerRevenue(dateRange, locationId, kitchenId, isEnabled)
 
   const {
     data: transactionsData,
@@ -114,19 +109,18 @@ function RevenueAnalytics({
     refetch: refetchTransactions,
   } = useTransactions({
     dateRange,
-    locationId: "all",
+    locationId,
     enabled: isEnabled,
   })
 
   const { data: invoices = [], isLoading: isLoadingInvoices, isError: isErrorInvoices, refetch: refetchInvoices } = useInvoices(
     dateRange,
-    "all",
+    locationId,
     10,
     isEnabled
   )
 
   const { data: payouts = [], isLoading: isLoadingPayouts, isError: isErrorPayouts, refetch: refetchPayouts } = usePayouts(isEnabled)
-  const upcoming = useUpcomingPayouts(isEnabled)
 
   const { data: stripeStatus } = useStripeConnectStatus(isEnabled)
 
@@ -182,6 +176,18 @@ function RevenueAnalytics({
                 : <SiStripe className="size-4 text-stripe" aria-hidden="true" />}
               {mt("viewStripeDashboard")}<ChevronRight className="size-4" aria-hidden="true" />
             </Button>}
+            <label className="text-sm">{mt('r1Location')}
+              <select className="ml-2 rounded-md border bg-background p-2" value={locationId || 'all'} onChange={event => { setLocationId(event.target.value === 'all' ? undefined : Number(event.target.value)); setKitchenId(undefined) }}>
+                <option value="all">{mt('r1AllLocations')}</option>
+                {(ledger.data?.filters.locations || locations).map(location => <option key={location.id} value={location.id}>{location.name}</option>)}
+              </select>
+            </label>
+            <label className="text-sm">{mt('r1Kitchen')}
+              <select className="ml-2 rounded-md border bg-background p-2" value={kitchenId || 'all'} onChange={event => setKitchenId(event.target.value === 'all' ? undefined : Number(event.target.value))}>
+                <option value="all">{mt('r1AllKitchens')}</option>
+                {ledger.data?.filters.kitchens.filter(k => !locationId || k.locationId === locationId).map(kitchen => <option key={kitchen.id} value={kitchen.id}>{kitchen.name}</option>)}
+              </select>
+            </label>
             {/* Date Range Picker */}
             <DateRangePicker
               dateRange={dateRange}
@@ -200,39 +206,13 @@ function RevenueAnalytics({
         </AlertDescription>
       </Alert>}
 
-      {!hasPublishedKitchen && !isLoadingTransactions && !isErrorTransactions && transactionsData?.total === 0 && !isLoadingCharts && !isErrorCharts && chartData.length === 0 && <Card>
-        <CardContent className="flex flex-wrap items-center justify-between gap-4 p-5 md:p-6">
-          <div>
-            <p className="font-semibold">{mt("revenueNoPaymentsTitle")}</p>
-            <p className="mt-1 text-sm text-muted-foreground">{mt("revenueNoPaymentsBody")}</p>
-          </div>
-          {!hasPublishedKitchen && onNavigate && <Button variant="outline" size="sm" onClick={() => onNavigate("kitchens")}>{mt("overviewReviewListing")}</Button>}
-        </CardContent>
-      </Card>}
-
-      {/* Revenue Metrics */}
-      {!isErrorCharts && <RevenueMetricCards data={chartData} isLoading={isLoadingCharts} upcomingPayoutCents={upcoming.data?.totalCents} />}
-      {/* Payout after closeout: scheduled and on-hold kitchen shares, kept apart from paid earnings. */}
-      {upcoming.isError ? <RevenueSectionError section={mt('revenueUpcomingPayouts')} onRetry={() => void upcoming.refetch()} />
-        : upcoming.isLoading ? <Skeleton className="h-28 w-full" /> : !!upcoming.data?.payouts.length && <Card className="rounded-2xl border-border/70" data-testid="upcoming-payouts">
-          <CardHeader><CardTitle>{mt('revenueUpcomingPayouts')}</CardTitle></CardHeader>
-          <CardContent><ul className="space-y-3">{upcoming.data.payouts.map(payout => <li key={payout.bookingId}>
-            <a className="inline-block text-sm font-medium underline underline-offset-4" href={`/manager/booking/${payout.bookingId}`}>
-              {mt('revenueUpcomingBooking', { reference: payout.referenceCode })}</a>
-            <KitchenPayoutStatus payout={payout} timezone={payout.timezone} />
-          </li>)}</ul></CardContent>
-        </Card>}
-
-      {isErrorCharts ? <RevenueSectionError section={mt("revenueEarningsActivity")} onRetry={() => void refetchCharts()} />
-        : <RevenueTrendChart data={chartData} dateRange={dateRange} isLoading={isLoadingCharts} />}
-
-      {/* Transaction History */}
-      {isErrorTransactions ? <RevenueSectionError section={mt("transactionHistory")} onRetry={() => void refetchTransactions()} /> : <TransactionTable
-        transactions={transactionsData?.transactions || []}
-        isLoading={isLoadingTransactions}
-        onDownloadInvoice={handleDownloadInvoice}
-      />}
-
+      {ledger.isLoading ? <Skeleton className="h-64 w-full" /> : ledger.isError ? <RevenueSectionError section={mt('navRevenue')} onRetry={() => void ledger.refetch()} />
+        : ledger.data && <RevenueLedger data={ledger.data} dateRange={dateRange} documents={<div className="space-y-6">
+          <details><summary className="cursor-pointer text-sm font-medium">{mt('r1PaymentDetails')}</summary>
+            {isErrorTransactions ? <RevenueSectionError section={mt('transactionHistory')} onRetry={() => void refetchTransactions()} /> : <TransactionTable
+              transactions={(transactionsData?.transactions || []).filter(t => !kitchenId || t.kitchenId === kitchenId)}
+              isLoading={isLoadingTransactions} onDownloadInvoice={handleDownloadInvoice} />}
+          </details>
       {/* Recent Invoices */}
       {isErrorInvoices ? <RevenueSectionError section={mt("recentInvoices")} onRetry={() => void refetchInvoices()} /> : invoices.length > 0 && (
         <Card>
@@ -401,6 +381,7 @@ function RevenueAnalytics({
           )}
         </CardContent>
       </Card>
+        </div>} />}
     </div>
   )
 }

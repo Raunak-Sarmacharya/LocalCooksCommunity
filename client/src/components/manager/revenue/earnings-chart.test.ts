@@ -2,6 +2,12 @@ import { describe, expect, it } from "vitest";
 import { buildEarningsBuckets } from "./earnings-chart";
 
 describe("earnings chart", () => {
+  it('keeps a partial month report in its monthly bucket', () => {
+    const buckets = buildEarningsBuckets([{ date: '2026-10-01', totalRevenue: 500, managerRevenue: 500, platformFee: 0, bookingCount: 1 }],
+      new Date(2026, 9, 15), new Date(2026, 9, 31), true);
+    expect(buckets).toHaveLength(1);
+    expect(buckets[0].netEarnings).toBe(500);
+  });
   it("keeps empty dates and places a later refund in its own period", () => {
     const buckets = buildEarningsBuckets([
       { date: "2026-09-01", totalRevenue: 12000, grossRevenue: 12000, refundedAmount: 0, paidEarnings: 10000, refundDebit: 0, managerRevenue: 10000, platformFee: 0, bookingCount: 1 },

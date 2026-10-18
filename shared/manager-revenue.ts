@@ -22,7 +22,7 @@ export type RevenueReportGroup = RevenueAmounts & {
   key: string; bookingsCount: number; hoursBooked: number; paymentCount: number;
 };
 export type RevenueSummary = {
-  paidOut: number; upcoming: { total: number; nextPayout: { date: string; amount: number } | null };
+  paidOut: number; upcoming: { total: number; nextPayout: { date: string; amount: number; timezone?: string } | null };
   onHold: { count: number; amount: number }; netEarnings: number;
 };
 export type ManagerRevenue = {
