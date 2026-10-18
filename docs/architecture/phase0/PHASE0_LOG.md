@@ -1141,6 +1141,12 @@ Already-failing tests found before any change (baseline, not ours): 21 in `tour-
 - Unmerged `ff053a17` reviewed: code fix already on development; doc note cherry-picked (`c9a857a1`); last old worktree removed.
 - Real-Postgres parity: script compares all 1243 Drizzle columns with dev — 0 missing (0099/0102/0103/0104 present; triggers present).
 
+### Oct 18 — CP11 live run (dev, Stripe sandbox)
+- `booking_multiday_enabled` switched **on for dev** (platform_settings; harness guard = Supabase dev only).
+- Chef picked Sat Oct 24 / Thu Oct 29 / Sat Oct 31 full days at kitchen 54: summary 3 x $180, HST $81.00, fee $37.80, **total $658.80** (= team test plan example), "Extra time: $25.00/hour" shown before paying, one deadline "Cancel by Fri, Oct 23, 6:00 a.m.", response deadline shown. Stripe hosted checkout CA$658.80 with one line per day.
+- **Bug 1 (copy):** a day blocked by the chef's own pending request said "Booked by someone else" -> now "Already booked" (all 3 locales, `ec27d60b`).
+- **Bug 2 (blocker, real Postgres only):** webhook fulfillment failed "Dated booking visit schedule is missing" -> checkout incident 53 needs_support, success page "Local Cooks needs to review this checkout". Cause: `currentManagerDecisionReminders` and the request-expiry notice called `firstBookingVisitStart` (visit clock) without visit rows; dated tests mock lifecycle/reminders so it never ran. Fix: use `bookingFirstStart` (frozen dated policy sessions) (`66352b57`); regression test runs the real reminder code on a pending dated booking (fails on old code with the live error). Other no-visit callers checked: they run after the confirmed closeout is saved or catch and show no time.
+
 ### Handover — next session (start here)
 1. Done Oct 18: pushed (CP7 + fixes, extra time rate, CP10; 0104 on dev DB). Check the Vercel dev deploy succeeded and smoke-test kitchen pricing + a booking page.
 2. CP10 independent money review (Cursor Auto) -> fix round (Codex).
