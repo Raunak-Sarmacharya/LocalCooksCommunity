@@ -50,7 +50,7 @@ export function revenueHoldAction(row: RevenuePayoutRow): 'payments' | 'booking'
 
 /** One plain sentence: what happens next and when — "sent to Stripe" is never confused with "in your bank". */
 export function revenuePayoutStatus(row: RevenuePayoutRow) {
-  if (row.status === 'paid' && row.reversedCents > 0) return mt('r1PaidReversed', {
+  if (row.status === 'paid' && row.reversedCents > 0) return mt('r1bPaidReversed', {
     date: revenueDateTime(row.paidAt!, row.timezone), amount: revenueMoney(row.amountCents), reversed: revenueMoney(row.reversedCents),
   });
   if (row.status === 'paid') return mt('r1bPaidStatus', { date: revenueDateTime(row.paidAt!, row.timezone), amount: revenueMoney(row.amountCents) });

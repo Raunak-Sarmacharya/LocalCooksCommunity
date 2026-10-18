@@ -8,9 +8,9 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { Boxes, CookingPot, Download, ExternalLink, ShieldCheck, Timer, Wallet, Banknote, Send } from '@/components/ui/manager-icons';
+import { Boxes, ChevronDown, CookingPot, Download, ExternalLink, ShieldCheck, Timer, Wallet, Banknote, Send } from '@/components/ui/manager-icons';
 import { RevenueReports } from './RevenueReports';
+import { SegmentedControl } from './SegmentedControl';
 import { revenueRowsToCSV } from '../ledger-export';
 import {
   revenueDayHeading, revenueDayLabel, revenueHoldAction, revenueLocalDay, revenueMoney, revenueNextPayout, revenuePayoutState,
@@ -47,15 +47,13 @@ export function RevenueSummaryCards({ summary, compact = false, range, onReviewH
     { key: 'r1PaidOut', amount: summary.paidOut, scope: period, detail: mt(range ? 'r1bPaidOutDetail' : 'r1PeriodPaid') },
     ...(!compact ? [{ key: 'r1NetEarnings', amount: summary.netEarnings, scope: period, detail: mt('r1NetExplanation') }] : []),
   ];
-  return <div className={cn('grid grid-cols-1 gap-3 min-[400px]:grid-cols-2 sm:gap-4', compact ? 'lg:grid-cols-3' : 'lg:grid-cols-4')}>
+  return <div className={cn('grid grid-cols-2 gap-3 sm:gap-4', compact ? 'lg:grid-cols-3' : 'lg:grid-cols-4')}>
     {cards.map(card => <Card key={card.key} data-testid={card.key}
       className={cn('rounded-2xl border-border/70 shadow-none', card.attention && 'border-amber-300 bg-amber-50/60 dark:border-amber-500/40 dark:bg-amber-500/5')}>
       <CardContent className="flex h-full flex-col p-4 sm:p-5">
-        <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
-          <p className="text-sm font-medium text-muted-foreground">{mt(card.key)}</p>
-          {card.scope && <p className="text-[11px] text-muted-foreground/80">{card.scope}</p>}
-        </div>
-        <p className="mt-2 text-2xl font-semibold tracking-tight tabular-nums sm:text-3xl">{money(card.amount)}</p>
+        <p className="text-sm font-medium text-muted-foreground">{mt(card.key)}</p>
+        {card.scope && <p className="mt-0.5 text-[11px] text-muted-foreground/80">{card.scope}</p>}
+        <p className="mt-2 break-words text-xl font-semibold tracking-tight tabular-nums sm:text-3xl">{money(card.amount)}</p>
         <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{card.detail}</p>
       </CardContent>
     </Card>)}
@@ -69,8 +67,12 @@ function PayoutJourney() {
     { icon: Send, title: 'r1bJourneyStep2Title', body: 'r1bJourneyStep2Body' },
     { icon: Banknote, title: 'r1bJourneyStep3Title', body: 'r1bJourneyStep3Body' },
   ];
-  return <section aria-labelledby="revenue-journey" className="rounded-2xl border border-border/60 bg-muted/30 p-4 sm:p-5">
-    <h3 id="revenue-journey" className="text-sm font-semibold">{mt('r1bJourneyTitle')}</h3>
+  // Open on wider screens; folded to one line on phones so the money stays above the fold.
+  const [open, setOpen] = useState(() => typeof window !== 'undefined' && !!window.matchMedia?.('(min-width: 640px)').matches);
+  return <details open={open} onToggle={event => setOpen(event.currentTarget.open)} className="group rounded-2xl border border-border/60 bg-muted/30 p-4 sm:p-5">
+    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold [&::-webkit-details-marker]:hidden">
+      {mt('r1bJourneyTitle')}<ChevronDown className="size-4 text-muted-foreground transition-transform group-open:rotate-180" aria-hidden="true" />
+    </summary>
     <ol className="mt-3 grid gap-4 sm:grid-cols-3 sm:gap-6">
       {steps.map(({ icon: Icon, title, body }, index) => <li key={title} className="flex gap-3">
         <span className="flex size-8 shrink-0 items-center justify-center rounded-full border bg-background text-muted-foreground" aria-hidden="true"><Icon className="size-4" /></span>
@@ -80,7 +82,7 @@ function PayoutJourney() {
         </div>
       </li>)}
     </ol>
-  </section>;
+  </details>;
 }
 
 function PayoutItem({ row, onOpenPaymentSettings }: { row: RevenuePayoutRow; onOpenPaymentSettings?: () => void }) {
@@ -163,12 +165,9 @@ function UpcomingPanel({ rows, filter, onFilter, onOpenPaymentSettings }: {
     if (group) group.rows.push(row); else groups.push({ key, title, rows: [row], tone: key === 'hold' ? 'hold' : undefined });
   }
   return <div className="space-y-4">
-    {rows.length > 0 && <ToggleGroup type="single" value={filter} onValueChange={value => value && onFilter(value as UpcomingFilter)}
-      aria-label={mt('r1bFilterLabel')} className="justify-start">
-      {(['all', 'scheduled', 'on_hold'] as const).map(value => <ToggleGroupItem key={value} value={value} size="sm" variant="outline" className="gap-1.5 rounded-full px-3">
-        {mt(`r1bFilter_${value}`)}<span className="tabular-nums text-muted-foreground">{counts[value]}</span>
-      </ToggleGroupItem>)}
-    </ToggleGroup>}
+    {rows.length > 0 && <SegmentedControl label={mt('r1bFilterLabel')} value={filter} onChange={onFilter}
+      options={(['all', 'scheduled', 'on_hold'] as const).map(value => ({ value,
+        label: <>{mt(`r1bFilter_${value}`)}<span className="tabular-nums opacity-70">{counts[value]}</span></> }))} />}
     {!visible.length ? <EmptyState title={mt(filter === 'on_hold' ? 'r1bEmptyOnHold' : 'r1bEmptyUpcomingTitle')} body={filter === 'on_hold' ? undefined : mt('r1bEmptyUpcomingBody')} />
       : <PayoutGroups groups={groups} onOpenPaymentSettings={onOpenPaymentSettings} />}
     <ShowMore shown={Math.min(limit, visible.length)} total={visible.length} onMore={() => setLimit(visible.length)} />

@@ -234,7 +234,7 @@ function RevenueAnalytics({
       </Alert>}
 
       {ledger.isLoading ? <div className="space-y-4">
-        <div className="grid grid-cols-1 gap-3 min-[400px]:grid-cols-2 lg:grid-cols-4">{[0, 1, 2, 3].map(i => <Skeleton key={i} className="h-32 rounded-2xl" />)}</div>
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">{[0, 1, 2, 3].map(i => <Skeleton key={i} className="h-32 rounded-2xl" />)}</div>
         <Skeleton className="h-64 w-full rounded-2xl" />
       </div> : ledger.isError ? <RevenueSectionError section={mt('navRevenue')} onRetry={() => void ledger.refetch()} />
         : ledger.data && <RevenueLedger data={ledger.data} dateRange={dateRange} onOpenPaymentSettings={onNavigate ? handleNavigateToPayments : undefined}

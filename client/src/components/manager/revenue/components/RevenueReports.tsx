@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { SegmentedControl } from './SegmentedControl';
 import { Download } from '@/components/ui/manager-icons';
 import { RevenueTrendChart } from './RevenueCharts';
 import { revenueAmountColumns, revenueGroupsToCSV } from '../ledger-export';
@@ -80,11 +80,8 @@ function Breakdown({ data }: { data: ManagerRevenue }) {
     <CardHeader className="gap-3 pb-3">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <CardTitle className="text-base">{mt('r1bBreakdownTitle')}</CardTitle>
-        <ToggleGroup type="single" value={view} onValueChange={value => { if (value) { setView(value as View); setLimit(PAGE); } }} aria-label={mt('r1bBreakdownTitle')} className="justify-start">
-          {(['month', 'chef', 'type'] as const).map(value => <ToggleGroupItem key={value} value={value} size="sm" variant="outline" className="rounded-full px-3">
-            {mt(value === 'month' ? 'r1ByMonth' : value === 'chef' ? 'r1ByChef' : 'r1ByType')}
-          </ToggleGroupItem>)}
-        </ToggleGroup>
+        <SegmentedControl label={mt('r1bBreakdownTitle')} value={view} onChange={value => { setView(value); setLimit(PAGE); }}
+          options={(['month', 'chef', 'type'] as const).map(value => ({ value, label: mt(value === 'month' ? 'r1ByMonth' : value === 'chef' ? 'r1ByChef' : 'r1ByType') }))} />
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
@@ -106,7 +103,7 @@ function Breakdown({ data }: { data: ManagerRevenue }) {
               <p className="min-w-0 truncate text-sm font-semibold">{row.label}</p>
               <p className="text-sm font-semibold tabular-nums">{revenueMoney(row.netPayout)}</p>
             </div>
-            <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+            <dl className="mt-2 grid grid-cols-1 gap-x-6 gap-y-1 text-xs min-[480px]:grid-cols-2">
               {columns.filter(c => c.key !== 'netPayout').map(c => <div key={c.key} className="flex justify-between gap-2">
                 <dt className="truncate text-muted-foreground">{c.label}</dt><dd className="tabular-nums">{c.value(row)}</dd>
               </div>)}
@@ -119,8 +116,8 @@ function Breakdown({ data }: { data: ManagerRevenue }) {
               <TableHead className="sticky left-0 z-10 bg-background">{groupHeader}</TableHead>
               {columns.map(c => <TableHead key={c.key} className={cn('whitespace-nowrap', c.money && 'text-right')}>{c.label}</TableHead>)}
             </TableRow></TableHeader>
-            <TableBody>{body.map(row => <TableRow key={row.key + (row.total ? '-total' : '')} className={cn(row.total && 'bg-muted/40 font-semibold hover:bg-muted/40')}>
-              <TableCell className="sticky left-0 z-10 whitespace-nowrap bg-background font-medium">{row.label}</TableCell>
+            <TableBody>{body.map(row => <TableRow key={row.key + (row.total ? '-total' : '')} className={cn(row.total && 'bg-muted font-semibold hover:bg-muted')}>
+              <TableCell className={cn('sticky left-0 z-10 whitespace-nowrap font-medium', row.total ? 'bg-muted' : 'bg-background')}>{row.label}</TableCell>
               {columns.map(c => <TableCell key={c.key} className={cn('whitespace-nowrap tabular-nums', c.money && 'text-right', c.key === 'netPayout' && 'font-semibold')}>{c.value(row)}</TableCell>)}
             </TableRow>)}</TableBody>
           </Table>
@@ -139,8 +136,8 @@ export function RevenueReports({ data, dateRange, documents }: { data: ManagerRe
     platformFee: 0, bookingCount: m.bookingsCount, paidEarnings: Math.max(0, m.netPayout), refundDebit: Math.max(0, -m.netPayout) }));
   return <div className="space-y-6">
     <div className="grid gap-6 lg:grid-cols-5">
-      <div className="lg:col-span-2"><Statement totals={report.totals} period={revenuePeriodLabel(data.range.startDate, data.range.endDate)} /></div>
-      <div className="lg:col-span-3"><RevenueTrendChart data={chartData} dateRange={dateRange} isLoading={false} monthly /></div>
+      <div className="min-w-0 lg:col-span-2"><Statement totals={report.totals} period={revenuePeriodLabel(data.range.startDate, data.range.endDate)} /></div>
+      <div className="min-w-0 lg:col-span-3"><RevenueTrendChart data={chartData} dateRange={dateRange} isLoading={false} monthly /></div>
     </div>
     <Breakdown data={data} />
     {documents}

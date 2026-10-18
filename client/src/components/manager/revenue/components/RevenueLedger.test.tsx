@@ -65,11 +65,11 @@ describe('Revenue & payouts — headline numbers', () => {
     expect(screen.getByTestId('r1OnHold')).toHaveTextContent('r1bNothingOnHold');
     expect(screen.getByTestId('r1OnHold').className).not.toContain('border-amber');
   });
-  it('keeps the compact three-card variant and stacks cards on phones', () => {
+  it('keeps the compact three-card variant; two columns on phones', () => {
     const { container } = render(<RevenueSummaryCards summary={data.summary} compact />);
     expect(screen.getByTestId('r1OnHold')).toHaveTextContent('r1HoldCount:count=1');
     expect(screen.queryByTestId('r1NetEarnings')).not.toBeInTheDocument();
-    expect(container.firstElementChild!.className).toMatch(/grid-cols-1 .*min-\[400px\]:grid-cols-2.*lg:grid-cols-3/);
+    expect(container.firstElementChild!.className).toMatch(/^grid grid-cols-2 .*lg:grid-cols-3/);
   });
   it('explains the three hops: chef pays, sent to Stripe, arrives in the bank', () => {
     render(<RevenueLedger data={data} dateRange={dateRange} />);
@@ -113,7 +113,7 @@ describe('Revenue & payouts — Upcoming', () => {
   });
   it('filters scheduled / on hold and shows a calm empty state', () => {
     render(<RevenueLedger data={data} dateRange={dateRange} />);
-    fireEvent.click(screen.getByRole('radio', { name: /r1bFilter_scheduled/ }));
+    fireEvent.click(screen.getByRole('button', { name: /r1bFilter_scheduled/ }));
     expect(screen.getAllByTestId('revenue-payout')).toHaveLength(1);
     cleanup();
     render(<RevenueLedger data={empty} dateRange={dateRange} />);
@@ -144,7 +144,7 @@ describe('Revenue & payouts — Paid', () => {
   it('shows a reversed transfer with both amounts', () => {
     render(<RevenueLedger data={{ ...data, paid: [{ ...data.paid[0], reversedCents: 1000 }] }} dateRange={dateRange} />);
     tab(/r1Tab_paid/);
-    expect(screen.getByTestId('revenue-payout')).toHaveTextContent(/r1PaidReversed:.*amount=\$50\.00,reversed=\$10\.00/);
+    expect(screen.getByTestId('revenue-payout')).toHaveTextContent(/r1bPaidReversed:.*amount=\$50\.00,reversed=\$10\.00/);
     expect(screen.getByTestId('revenue-payout')).toHaveTextContent('r1bStatus_reversed');
   });
   it('has an empty state that points to Upcoming', () => {
@@ -177,9 +177,9 @@ describe('Revenue & payouts — Reports', () => {
     fireEvent.click(screen.getByRole('switch'));
     expect(within(table()).getByText('r1Column_equipment')).toBeInTheDocument();
     expect(within(table()).getByText('r1Column_paymentCount')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('radio', { name: 'r1ByChef' }));
+    fireEvent.click(screen.getByRole('button', { name: 'r1ByChef' }));
     expect(within(table()).getByText('Jamie')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('radio', { name: 'r1ByType' }));
+    fireEvent.click(screen.getByRole('button', { name: 'r1ByType' }));
     expect(within(table()).getByText('r1Type_kitchen_time')).toBeInTheDocument();
   });
   it('lays the breakdown out as cards on phones and a table from md up', () => {
@@ -219,7 +219,7 @@ describe('Revenue & payouts — CSV', () => {
   });
   it('exports exactly the payouts the filter shows', () => {
     render(<RevenueLedger data={data} dateRange={dateRange} />);
-    fireEvent.click(screen.getByRole('radio', { name: /r1bFilter_on_hold/ }));
+    fireEvent.click(screen.getByRole('button', { name: /r1bFilter_on_hold/ }));
     fireEvent.click(screen.getByRole('button', { name: 'r1Export' }));
     expect(lastCSV().split('\n')).toHaveLength(2);
     expect(lastCSV()).toContain('KB-HOLD');
