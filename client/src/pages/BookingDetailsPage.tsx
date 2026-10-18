@@ -1262,6 +1262,7 @@ export default function BookingDetailsPage() {
   const tz = booking?.location?.timezone || undefined;
   const lang = i18n.language;
   const closeoutVisits = booking?.closeout?.visits || [];
+  const nowMs = Date.now();
   const headerDay = datedBooking ? bookingDays.find(visit => {
     if (visit.scheduleState !== 'active' || visit.checkinStatus === 'checked_out') return false;
     const clock = closeoutVisits.find(clock => clock.visitId === visit.id);
@@ -1332,7 +1333,6 @@ export default function BookingDetailsPage() {
   const inspectionHref = booking ? `/manager/booking/${booking.id}/inspection${inspectionVisitId ? `?visitId=${inspectionVisitId}` : ''}` : '';
   // The booked end (after any extension) of the visit the chef is still checked in to.
   const overstayEndAt = closeoutVisits.find(visit => visit.arrivalRecorded && lateCheckoutOpen(visit))?.scheduledEndAt ?? visitBounds?.endAt ?? null;
-  const nowMs = Date.now();
   const startPassed = !!visitBounds && nowMs >= visitBounds.startAt.getTime();
   const runningLateOpen = !isManagerView && !!booking && !!visitBounds
     && canReportRunningLate({ status: booking.status, checkedIn: visitStarted, start: visitBounds.startAt, end: visitBounds.endAt }, nowMs);

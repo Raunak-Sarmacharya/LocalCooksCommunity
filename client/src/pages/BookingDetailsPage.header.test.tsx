@@ -748,3 +748,18 @@ it('shows a dated chef booking as a span, day count and chronological day list w
   expect(screen.getByTestId('payment-card')).toHaveTextContent('$300.00');
   expect(screen.getByTestId('cancellation-card')).toHaveTextContent(/Jan 14.*50%.*every day/);
 });
+
+it('opens a pending dated request for the kitchen when every day has its own clock (live crash, Oct 18)', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(START - 3 * 86_400_000);
+  h.manager = true;
+  const days = [15, 17, 19];
+  h.booking = { ...base(), scheduleRevision: 1, createdAt: new Date(START - 3 * 86_400_000 - 3_600_000).toISOString(),
+    cancellationPolicySnapshot: { noticeHours: 24, lateChargePercent: 100, timezone: 'America/St_Johns', sessions: days.map(day => ({ startAt: `2030-01-${day}T13:30:00Z` })), deadlineBasis: 'booking_first_day' },
+    visits: days.map((day, i) => ({ id: i + 10, blockIndex: i, visitDate: `2030-01-${day}`, scheduleRevision: 1, scheduleState: 'active',
+      startTime: '10:00', endTime: '12:00', checkinStatus: 'not_checked_in', updatedAt: '2030-01-10T12:00:00Z' })),
+    closeout: { phase: 'upcoming', timezone: 'America/St_Johns', visits: days.map((day, i) => ({ key: `v${i}`, visitId: i + 10, phase: 'upcoming', arrivalRecorded: false,
+      scheduledStartAt: `2030-01-${day}T13:30:00Z`, scheduledEndAt: `2030-01-${day}T15:30:00Z`,
+      inspection: { outcome: 'not_due', dueAt: null, deadline: null, closedAt: null, canRespond: false } })) } };
+  render(<BookingDetailsPage />);
+  expect(await screen.findByTestId('booking-header')).toHaveTextContent('3 days');
+});
