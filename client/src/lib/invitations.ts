@@ -18,6 +18,7 @@ export type Invitation = {
   /** Every invited day; one entry for a legacy one-date invitation. */
   dayCount: number; days: InvitationDay[]; /** A frozen day set (CP10), rather than a legacy one-date invitation. */
   dated: boolean;
+  extraTimeRateCents?: number | null;
   pricing: InvitationPricing; note: string | null; expiresAt: string; createdAt: string; bookingId: number | null;
   startAt: string; unavailableReason?: string;
   /** One refund deadline for the whole booking, from the first day. */
