@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useId, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "wouter";
 import { ChevronLeft, ChevronRight } from "lucide-react";
@@ -6,7 +6,8 @@ import { mt } from "@/i18n/manager";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { PILL, StatusPill } from "@/components/booking/BookingNowCard";
 import { timeRange, type BookingPillTone } from "@/lib/booking-header-state";
 import { formatTime } from "@/lib/formatters";
@@ -16,7 +17,8 @@ import { cn } from "@/lib/utils";
 /**
  * The kitchen's calendar on the dashboard: everything that happens in the kitchen on a day — booked days (one per day of
  * a multi-day booking), tours, closures and special hours, storage move-ins and move-outs — coloured like the booking
- * pills, each opening its own page. Week by default (columns on desktop, stacked days on a phone), with Day and Month.
+ * pills, each opening its own page. Week by default on desktop; a phone opens on the Agenda (today and the next days
+ * that have something on), with Day, Week and Month a tap away. Cancelled bookings are hidden until "Show cancelled".
  * Display only; the events are built by the overview from data it already reads.
  */
 export type CalendarEvent = {
@@ -35,13 +37,19 @@ export type CalendarEvent = {
   tone: BookingPillTone;
   /** Finished or cancelled: drawn quietly. */
   muted?: boolean;
+  /** Cancelled: hidden from the calendar until "Show cancelled", and kept out of the Today list. */
+  cancelled?: boolean;
   /** The chef is in the kitchen now. */
   now?: boolean;
   href?: string;
   onOpen?: () => void;
 };
 
-type View = "day" | "week" | "month";
+type View = "agenda" | "day" | "week" | "month";
+const VIEWS: Array<[View, string]> = [["agenda", "ovrAgendaView"], ["day", "ovrDayView"], ["week", "weekView"], ["month", "monthView"]];
+/** A phone opens on the Agenda: seven stacked week days are too long to scroll past on a 390 px screen. */
+export const defaultCalendarView = (): View => typeof window !== "undefined" && window.matchMedia?.("(max-width: 767px)")?.matches ? "agenda" : "week";
+const AGENDA_DAYS = 7;
 
 const asDate = (key: string) => new Date(`${key}T12:00:00Z`);
 const dayFormat = (locale: string, options: Intl.DateTimeFormatOptions) => (key: string) => new Intl.DateTimeFormat(locale, { timeZone: "UTC", ...options }).format(asDate(key));
@@ -53,6 +61,17 @@ export const eventTime = (event: CalendarEvent, locale: string) =>
 export function sortEvents(events: CalendarEvent[]) {
   return [...events].sort((a, b) => Number(!allDay(a)) - Number(!allDay(b))
     || (a.sortAt ?? 0) - (b.sortAt ?? 0) || (a.start ?? "").localeCompare(b.start ?? ""));
+}
+
+/**
+ * The Today card's order: who is in the kitchen now, then what is next (by start), then the day's context (closures,
+ * special hours, storage move-ins/outs), then anything earlier today that is still open. Finished and cancelled items
+ * are set apart (`done`) so they never sit above tonight's booking.
+ */
+export function splitToday(events: CalendarEvent[], now = Date.now()) {
+  const rank = (event: CalendarEvent) => event.now ? 0 : event.kind !== "booking" && event.kind !== "tour" ? 2 : (event.sortAt ?? Infinity) >= now ? 1 : 3;
+  const sorted = sortEvents(events);
+  return { active: sorted.filter(event => !event.muted).sort((a, b) => rank(a) - rank(b)), done: sorted.filter(event => event.muted) };
 }
 
 function EventLink({ event, className, children, label }: { event: CalendarEvent; className: string; children: ReactNode; label?: string }) {
@@ -68,14 +87,15 @@ export function CalendarEventRow({ event, locale }: { event: CalendarEvent; loca
   return (
     <EventLink event={event} className={cn("group flex w-full items-start gap-3 rounded-lg px-2 py-2.5 transition-colors duration-200 motion-reduce:transition-none hover:bg-muted/60", event.muted && "opacity-70")}>
       <span aria-hidden="true" className={cn("mt-1.5 size-2 shrink-0 rounded-full", PILL[event.tone].dot)} />
+      {/* The pill sits beside the time so the name gets the full width and wraps instead of being cut off. */}
       <span className="min-w-0 flex-1">
-        <span className="block text-sm font-medium tabular-nums">{time || event.label}</span>
-        <span className={cn("block truncate text-sm", event.muted && "line-through decoration-muted-foreground/60")}>{event.title}</span>
-        {event.detail && <span className="mt-0.5 block truncate text-xs text-muted-foreground">{event.detail}</span>}
-      </span>
-      <span className="flex shrink-0 flex-col items-end gap-1">
-        <StatusPill tone={event.tone}>{event.label}</StatusPill>
-        {event.now && <span className="text-xs font-medium text-success">{mt("ovrInKitchenNowBadge")}</span>}
+        <span className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+          <span className="text-sm font-medium tabular-nums">{time || event.label}</span>
+          <StatusPill tone={event.tone}>{event.label}</StatusPill>
+        </span>
+        <span className={cn("mt-0.5 block break-words text-sm", event.muted && "line-through decoration-muted-foreground/60")}>{event.title}</span>
+        {event.detail && <span className="mt-0.5 block break-words text-xs text-muted-foreground">{event.detail}</span>}
+        {event.now && <span className="mt-1 block text-xs font-medium text-success">{mt("ovrInKitchenNowBadge")}</span>}
       </span>
       {(event.href || event.onOpen) && <ChevronRight className="mt-1 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
     </EventLink>
@@ -93,6 +113,21 @@ function EventChip({ event, locale }: { event: CalendarEvent; locale: string }) 
   );
 }
 
+/** Agenda line: who, then time and state; two short lines so a phone reads it without cutting the name off. */
+function AgendaRow({ event, locale }: { event: CalendarEvent; locale: string }) {
+  const time = eventTime(event, locale);
+  return (
+    <EventLink event={event} className={cn("flex w-full items-start gap-2.5 rounded-md px-2 py-2 hover:bg-muted/60", event.muted && "opacity-70")}>
+      <span aria-hidden="true" className={cn("mt-1.5 size-2 shrink-0 rounded-full", PILL[event.tone].dot)} />
+      <span className="min-w-0 flex-1">
+        <span className={cn("block break-words text-sm font-medium", event.muted && "line-through decoration-muted-foreground/60")}>{event.title}</span>
+        <span className="block text-xs text-muted-foreground tabular-nums">{[time, event.label].filter(Boolean).join(" · ")}</span>
+      </span>
+      {(event.href || event.onOpen) && <ChevronRight className="mt-1 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
+    </EventLink>
+  );
+}
+
 const LEGEND: Array<[BookingPillTone, string]> = [["green", "ovrLegendBooked"], ["amber", "ovrLegendRequested"], ["blue", "ovrLegendTour"], ["purple", "ovrLegendStorage"], ["grey", "ovrLegendClosed"]];
 
 interface BookingCalendarWidgetProps {
@@ -106,15 +141,18 @@ interface BookingCalendarWidgetProps {
 export default function BookingCalendarWidget({ events, isLoading, today, onNavigateToBookings }: BookingCalendarWidgetProps) {
   const { i18n } = useTranslation();
   const locale = i18n.language;
-  const [view, setView] = useState<View>("week");
+  const [view, setView] = useState<View>(defaultCalendarView);
   const [anchor, setAnchor] = useState(today);
+  const [showCancelled, setShowCancelled] = useState(false);
+  const cancelledId = useId();
+  const hasCancelled = events.some(event => event.cancelled);
 
   const byDay = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>();
-    for (const event of events) map.set(event.date, [...(map.get(event.date) ?? []), event]);
+    for (const event of events) if (showCancelled || !event.cancelled) map.set(event.date, [...(map.get(event.date) ?? []), event]);
     map.forEach((list, key) => map.set(key, sortEvents(list)));
     return map;
-  }, [events]);
+  }, [events, showCancelled]);
 
   const weekStart = weekStartKey(anchor);
   const week = Array.from({ length: 7 }, (_, index) => addDaysKey(weekStart, index));
@@ -123,13 +161,16 @@ export default function BookingCalendarWidget({ events, isLoading, today, onNavi
   const monthDays: string[] = [];
   for (let key = weekStartKey(monthStart); key <= addDaysKey(weekStartKey(monthEnd), 6); key = addDaysKey(key, 1)) monthDays.push(key);
 
+  // Agenda: the anchor day (always shown) and the next six days that have something on.
+  const agenda = Array.from({ length: AGENDA_DAYS }, (_, index) => addDaysKey(anchor, index)).filter((key, index) => !index || byDay.get(key)?.length);
   const shift = (direction: 1 | -1) => setAnchor(view === "day" ? addDaysKey(anchor, direction)
-    : view === "week" ? addDaysKey(anchor, 7 * direction) : `${(direction > 0 ? addDaysKey(monthEnd, 1) : addDaysKey(monthStart, -1)).slice(0, 7)}-01`);
+    : view === "week" || view === "agenda" ? addDaysKey(anchor, 7 * direction) : `${(direction > 0 ? addDaysKey(monthEnd, 1) : addDaysKey(monthStart, -1)).slice(0, 7)}-01`);
   const openDay = (key: string) => { setAnchor(key); setView("day"); };
 
   const short = dayFormat(locale, { month: "short", day: "numeric" });
   const range = view === "day" ? dayFormat(locale, { weekday: "long", month: "long", day: "numeric", year: "numeric" })(anchor)
     : view === "week" ? `${short(week[0])} – ${dayFormat(locale, { month: "short", day: "numeric", year: "numeric" })(week[6])}`
+    : view === "agenda" ? `${short(anchor)} – ${dayFormat(locale, { month: "short", day: "numeric", year: "numeric" })(addDaysKey(anchor, AGENDA_DAYS - 1))}`
     : dayFormat(locale, { month: "long", year: "numeric" })(monthStart);
   const weekday = dayFormat(locale, { weekday: "short" });
   const dayNumber = dayFormat(locale, { day: "numeric" });
@@ -149,14 +190,18 @@ export default function BookingCalendarWidget({ events, isLoading, today, onNavi
               <Button variant="ghost" size="icon" className="size-9" onClick={() => shift(-1)} aria-label={mt("previous")}><ChevronLeft className="size-4" aria-hidden="true" /></Button>
               <Button variant="ghost" size="icon" className="size-9" onClick={() => shift(1)} aria-label={mt("next")}><ChevronRight className="size-4" aria-hidden="true" /></Button>
             </div>
-            <ToggleGroup type="single" value={view} onValueChange={value => value && setView(value as View)} aria-label={mt("ovrCalendarView")}
-              className="rounded-lg bg-muted p-0.5">
-              {(["day", "week", "month"] as const).map(option => (
-                <ToggleGroupItem key={option} value={option} size="sm" className="h-8 rounded-md px-3 text-xs data-[state=on]:bg-background data-[state=on]:shadow-sm">
-                  {mt(option === "day" ? "ovrDayView" : option === "week" ? "weekView" : "monthView")}
-                </ToggleGroupItem>
+            {/* Plain buttons, not Radix ToggleGroup: its items are role="radio", and index.css sizes every
+                [data-radix-collection-item][role="radio"] to 16x16 with !important, which squeezed the labels into
+                "Day WeekMonth" (the same reason EquipmentListingManagement's AvailabilityToggle is hand-rolled). */}
+            <div role="group" aria-label={mt("ovrCalendarView")} className="inline-flex items-center gap-0.5 rounded-lg bg-muted p-0.5">
+              {VIEWS.map(([option, key]) => (
+                <button key={option} type="button" aria-pressed={view === option} onClick={() => setView(option)}
+                  className={cn("h-8 rounded-md px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+                    view === option ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
+                  {mt(key)}
+                </button>
               ))}
-            </ToggleGroup>
+            </div>
           </div>
         </div>
 
@@ -181,6 +226,25 @@ export default function BookingCalendarWidget({ events, isLoading, today, onNavi
               );
             })}
             {weekEmpty && <p className="rounded-xl bg-muted/40 p-4 text-sm text-muted-foreground md:col-span-7">{mt("ovrNothingThisWeek")}</p>}
+          </div>
+        ) : view === "agenda" ? (
+          <div className="mt-4 space-y-3">
+            {agenda.map(key => {
+              const list = byDay.get(key) ?? [];
+              const isToday = key === today;
+              return (
+                <section key={key} aria-label={dayFormat(locale, { weekday: "long", month: "long", day: "numeric" })(key)}>
+                  <button type="button" onClick={() => openDay(key)} className="flex w-full items-baseline gap-1.5 rounded-md px-2 py-1 text-left hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                    <span className={cn("text-sm font-semibold", isToday && "text-primary")}>{isToday ? mt("today") : weekday(key)}</span>
+                    <span className="text-sm text-muted-foreground">{short(key)}</span>
+                  </button>
+                  <div className="divide-y divide-border/50">
+                    {list.map(event => <AgendaRow key={event.key} event={event} locale={locale} />)}
+                    {!list.length && <p className="px-2 py-2 text-sm text-muted-foreground">{mt("ovrNothingScheduled")}</p>}
+                  </div>
+                </section>
+              );
+            })}
           </div>
         ) : view === "day" ? (
           <div className="mt-4 divide-y divide-border/50">
@@ -217,6 +281,10 @@ export default function BookingCalendarWidget({ events, isLoading, today, onNavi
           <ul className="flex flex-wrap gap-x-4 gap-y-1">
             {LEGEND.map(([tone, key]) => <li key={key} className="flex items-center gap-1.5 text-xs text-muted-foreground"><span aria-hidden="true" className={cn("size-2 rounded-full", PILL[tone].dot)} />{mt(key)}</li>)}
           </ul>
+          {hasCancelled && <div className="flex items-center gap-2">
+            <Switch id={cancelledId} checked={showCancelled} onCheckedChange={setShowCancelled} />
+            <Label htmlFor={cancelledId} className="text-xs font-normal text-muted-foreground">{mt("ovrShowCancelled")}</Label>
+          </div>}
           <Button variant="ghost" size="sm" onClick={onNavigateToBookings}>{mt("viewAllBookings")}<ChevronRight className="size-4" aria-hidden="true" /></Button>
         </div>
       </CardContent>
