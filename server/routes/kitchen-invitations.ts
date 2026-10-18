@@ -55,7 +55,8 @@ const asyncRoute = (fn: (req: Request, res: Response) => Promise<unknown>) => as
 
 router.post('/manager/invitations/preview', requireManager, asyncRoute(async (req, res) => {
   const result = await previewKitchenInvitation(req.neonUser!.id, req.body);
-  const { internal: _, ...response } = result;
+  // The internal pricing context never leaves the server, whichever preview shape produced it.
+  const { internal: _, ...response } = result as Record<string, unknown>;
   res.json(response);
 }));
 router.post('/manager/invitations', requireManager, asyncRoute(async (req, res) => {

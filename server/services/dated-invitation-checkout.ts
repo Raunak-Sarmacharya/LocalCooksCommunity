@@ -60,9 +60,10 @@ export async function checkoutDatedInvitation(chefId: number, row: InvitationRow
     dailyRate: Number(row2.kitchen.dailyRate ?? 0) }, listings);
   const offered = new Map(snapshot.map(day => [day.date, day.offeredKitchenCents]));
   const manifestDays = priced.map(day => {
-    const kitchenCents = offered.get(day.date);
-    if (!Number.isSafeInteger(kitchenCents)) throw new InvitationError('The invited days changed. Refresh and try again.', 409);
-    return { ...day, kitchenCents };
+    const offeredCents = offered.get(day.date);
+    if (typeof offeredCents !== 'number' || !Number.isSafeInteger(offeredCents))
+      throw new InvitationError('The invited days changed. Refresh and try again.', 409);
+    return { ...day, kitchenCents: offeredCents };
   });
   const subtotalCents = manifestDays.reduce((sum, day) => sum + day.kitchenCents
     + day.equipment.reduce((s, item) => s + item.cents, 0), 0);

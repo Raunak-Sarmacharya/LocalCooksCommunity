@@ -63,6 +63,17 @@ export class InvitationError extends Error {
   constructor(message: string, public status = 400, public code = 'invalid_invitation') { super(message); }
 }
 
+type PreviewInternal = {
+  ctx: Awaited<ReturnType<typeof context>>;
+  policy: Awaited<ReturnType<typeof publishedCancellationPolicy>>;
+  bufferMinutes: number;
+  override: BookingRuleOverride | undefined;
+  timezone?: string;
+  days?: InvitationDaySnapshot[];
+  /** Legacy one-date preview only. */
+  windowStartTime?: string; pricingMode?: string; slots?: unknown;
+};
+
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 const timePattern = /^(?:[01]\d|2[0-3]):(?:00|30)$/;
 
@@ -131,7 +142,7 @@ function overlaps(a: { startTime: string; endTime: string }, b: { startTime: str
   return a.startTime < b.endTime && b.startTime < a.endTime;
 }
 
-async function pendingRequestConflict(input: InvitationInput) {
+async function pendingRequestConflict(input: InvitationInput & { date: string; startTime: string; endTime: string }) {
   const rows = await db.select({ startTime: kitchenBookings.startTime, endTime: kitchenBookings.endTime })
     .from(kitchenBookings).where(and(eq(kitchenBookings.kitchenId, input.kitchenId), eq(kitchenBookings.chefId, input.chefId),
       eq(kitchenBookings.status, 'pending'), sql`${kitchenBookings.bookingDate}::date = ${input.date}::date`));
@@ -242,7 +253,11 @@ function requestedDayListCents(days: InvitationDayInput[], rates: { hourlyRate: 
       const listing = listings.find(row => row.id === id);
       return sum + (listing?.availabilityType === 'included' ? 0 : Math.round(Number(listing?.sessionRate ?? 0)));
     }, 0);
-    return { date: day.date, kitchenCents: Math.max(0, Math.round(kitchenCents)), equipmentCents };
+    return { date: day.date, kitchenCents: Math.max(0, Math.round(kitchenCents)),
+      equipment: Array.from(new Set(ids)).map(id => {
+        const listing = listings.find(row => row.id === id);
+        return { cents: listing?.availabilityType === 'included' ? 0 : Math.round(Number(listing?.sessionRate ?? 0)) };
+      }) };
   });
 }
 
@@ -280,14 +295,16 @@ async function previewDatedInvitation(input: InvitationInput, ctx: Awaited<Retur
       offeredKitchenCents: pricing.allocation[index] }))
     : [];
   const listEquipmentCents = check.ok ? snapshot.reduce((sum, day) => sum + day.equipment.reduce((s, item) => s + item.cents, 0), 0)
-    : listed.days.reduce((sum, day) => sum + day.equipmentCents, 0);
+    : listed.days.reduce((sum, day) => sum + day.equipment.reduce((s, item) => s + item.cents, 0), 0);
   const offeredSubtotalCents = pricing.offeredKitchenCents + listEquipmentCents;
   const taxCents = Math.round(offeredSubtotalCents * Number(ctx.taxRatePercent || 0) / 100);
   const fees = await calculateCheckoutFeesAsync(offeredSubtotalCents, { taxAmountCents: taxCents });
   const policy = await publishedCancellationPolicy(input.kitchenId);
-  const first = check.ok ? snapshot[0] : { date: [...requested].sort((a, b) => a.date.localeCompare(b.date))[0].date,
-    startTime: [...requested].sort((a, b) => a.date.localeCompare(b.date))[0].slots?.[0]?.startTime ?? '',
-    windowStartTime: [...requested].sort((a, b) => a.date.localeCompare(b.date))[0].slots?.[0]?.startTime ?? '' };
+  const sortedRequested = [...requested].sort((a, b) => a.date.localeCompare(b.date));
+  const firstRequestedSlots = Array.isArray(sortedRequested[0]?.slots) ? sortedRequested[0].slots as Array<{ startTime?: string }> : [];
+  const first = check.ok ? snapshot[0] : { date: sortedRequested[0].date,
+    startTime: firstRequestedSlots[0]?.startTime ?? sortedRequested[0].startTime ?? '',
+    windowStartTime: firstRequestedSlots[0]?.startTime ?? sortedRequested[0].startTime ?? '' };
   const calendarDate = calendarDateForOperatingTime(first.date, first.startTime || '00:00', first.windowStartTime || first.startTime || '00:00');
   const startInstant = matchingLocalInstants(calendarDate, first.startTime || '00:00', ctx.timezone || 'America/St_Johns')[0];
   const latestExpiry = new Date(startInstant - (policy.noticeHours * 60 + 37) * 60_000);
@@ -358,28 +375,29 @@ export async function createKitchenInvitation(managerId: number, input: Invitati
   }
   const preview = await previewKitchenInvitation(managerId, input);
   if (!preview.available || !preview.pricing) throw new InvitationError(preview.unavailableReason || 'These dates are unavailable.', 409);
-  const days = (preview.internal as { days?: InvitationDaySnapshot[] }).days ?? null;
+  const internal = preview.internal as PreviewInternal;
+  const days = internal.days ?? null;
   const first = days?.[0];
   let row: typeof kitchenInvitations.$inferSelect;
   try { row = await db.transaction(async tx => {
     const id = randomUUID();
     const [created] = await tx.insert(kitchenInvitations).values({
-      id, requestKey: input.requestKey, kitchenId: input.kitchenId, locationId: preview.internal.ctx.locationId,
+      id, requestKey: input.requestKey, kitchenId: input.kitchenId, locationId: internal.ctx.locationId,
       managerId, chefId: input.chefId, status: 'sent', version: 1,
       date: first?.date ?? input.date!, startTime: first?.startTime ?? input.startTime!, endTime: first?.endTime ?? input.endTime!,
-      operatingWindowStartTime: first?.windowStartTime ?? preview.internal.windowStartTime!,
-      timezone: (preview.internal as { timezone?: string }).timezone || preview.internal.ctx.timezone || 'America/St_Johns',
-      pricingMode: first?.pricingMode ?? preview.internal.pricingMode!, selectedSlots: first?.slots ?? preview.internal.slots!,
+      operatingWindowStartTime: first?.windowStartTime ?? internal.windowStartTime!,
+      timezone: internal.timezone || internal.ctx.timezone || 'America/St_Johns',
+      pricingMode: first?.pricingMode ?? internal.pricingMode!, selectedSlots: first?.slots ?? internal.slots!,
       ...(days ? { daysSnapshot: days } : {}),
       listSubtotalCents: preview.pricing.listSubtotalCents, offeredSubtotalCents: preview.pricing.offeredSubtotalCents,
       discountType: input.discount?.type, discountValue: input.discount?.value,
       taxCents: preview.pricing.taxCents, serviceFeeCents: preview.pricing.serviceFeeCents,
       totalCents: preview.pricing.totalCents, managerEstimatedPayoutCents: preview.pricing.managerEstimatedPayoutCents,
-      cancellationPolicyHours: preview.internal.policy.noticeHours,
-      cancellationChargePercent: preview.internal.policy.lateChargePercent,
+      cancellationPolicyHours: internal.policy.noticeHours,
+      cancellationChargePercent: internal.policy.lateChargePercent,
       note: input.note?.trim() || null, expiresInHours: input.expiresInHours, expiresAt: new Date(preview.expiresAt),
-      bufferMinutesSnapshot: preview.internal.bufferMinutes,
-      bookingRuleOverrides: scopedRecord(preview.internal.override, { id, kitchenId: input.kitchenId, chefId: input.chefId }),
+      bufferMinutesSnapshot: internal.bufferMinutes,
+      bookingRuleOverrides: scopedRecord(internal.override, { id, kitchenId: input.kitchenId, chefId: input.chefId }),
     }).returning();
     await event(tx, created, 'created', managerId, 'manager', undefined,
       created.bookingRuleOverrides ? { ruleOverride: created.bookingRuleOverrides } : {});
@@ -563,7 +581,8 @@ export async function replaceKitchenInvitation(id: string, managerId: number, ve
   }
   const preview = await previewKitchenInvitation(managerId, input);
   if (!preview.available || !preview.pricing) throw new InvitationError(preview.unavailableReason || 'These dates are unavailable.', 409);
-  const days = (preview.internal as { days?: InvitationDaySnapshot[] }).days ?? null;
+  const internal = preview.internal as PreviewInternal;
+  const days = internal.days ?? null;
   const first = days?.[0];
   const row = await db.transaction(async tx => {
     const [old] = await tx.select().from(kitchenInvitations)
@@ -573,22 +592,22 @@ export async function replaceKitchenInvitation(id: string, managerId: number, ve
     const replacementId = randomUUID();
     const [replacement] = await tx.insert(kitchenInvitations).values({
       id: replacementId, requestKey: input.requestKey, replacesId: id, kitchenId: input.kitchenId,
-      locationId: preview.internal.ctx.locationId, managerId, chefId: input.chefId, status: 'sent', version: version + 1,
+      locationId: internal.ctx.locationId, managerId, chefId: input.chefId, status: 'sent', version: version + 1,
       date: first?.date ?? input.date!, startTime: first?.startTime ?? input.startTime!, endTime: first?.endTime ?? input.endTime!,
-      operatingWindowStartTime: first?.windowStartTime ?? preview.internal.windowStartTime!,
-      timezone: (preview.internal as { timezone?: string }).timezone || preview.internal.ctx.timezone || 'America/St_Johns',
-      pricingMode: first?.pricingMode ?? preview.internal.pricingMode!, selectedSlots: first?.slots ?? preview.internal.slots!,
+      operatingWindowStartTime: first?.windowStartTime ?? internal.windowStartTime!,
+      timezone: internal.timezone || internal.ctx.timezone || 'America/St_Johns',
+      pricingMode: first?.pricingMode ?? internal.pricingMode!, selectedSlots: first?.slots ?? internal.slots!,
       ...(days ? { daysSnapshot: days } : {}),
       listSubtotalCents: preview.pricing.listSubtotalCents,
       offeredSubtotalCents: preview.pricing.offeredSubtotalCents, discountType: input.discount?.type,
       discountValue: input.discount?.value, taxCents: preview.pricing.taxCents,
       serviceFeeCents: preview.pricing.serviceFeeCents, totalCents: preview.pricing.totalCents,
       managerEstimatedPayoutCents: preview.pricing.managerEstimatedPayoutCents, note: input.note?.trim() || null,
-      cancellationPolicyHours: preview.internal.policy.noticeHours,
-      cancellationChargePercent: preview.internal.policy.lateChargePercent,
+      cancellationPolicyHours: internal.policy.noticeHours,
+      cancellationChargePercent: internal.policy.lateChargePercent,
       expiresInHours: input.expiresInHours, expiresAt: new Date(preview.expiresAt),
-      bufferMinutesSnapshot: preview.internal.bufferMinutes,
-      bookingRuleOverrides: scopedRecord(preview.internal.override, { id: replacementId, kitchenId: input.kitchenId, chefId: input.chefId }),
+      bufferMinutesSnapshot: internal.bufferMinutes,
+      bookingRuleOverrides: scopedRecord(internal.override, { id: replacementId, kitchenId: input.kitchenId, chefId: input.chefId }),
     }).returning();
     const [changed] = await tx.update(kitchenInvitations).set({ status: 'superseded', version: version + 1, updatedAt: new Date() })
       .where(and(eq(kitchenInvitations.id, id), eq(kitchenInvitations.version, version), eq(kitchenInvitations.status, 'sent'))).returning();
