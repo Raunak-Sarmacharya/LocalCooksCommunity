@@ -1602,6 +1602,10 @@ export default function BookingDetailsPage() {
   // The header describes the days still booked; cancelled days stay listed below with their status.
   const keptDays = bookingDays.some(day => day.scheduleState !== 'cancelled') ? bookingDays.filter(day => day.scheduleState !== 'cancelled') : bookingDays;
   const daySpan = keptDays.length ? `${[formatDate(keptDays[0].visitDate!), formatDate(keptDays[keptDays.length - 1].visitDate!)].filter((v, i, all) => all.indexOf(v) === i).join(' – ')} · ${policyT('mdSelectedDays', { count: keptDays.length })}` : '';
+  // Multi-day, once today's day is checked out: point the chef at the next booked day.
+  const nextDay = datedBooking && booking?.status === 'confirmed' && (!headerDay || ['checkout_requested', 'checked_out'].includes(headerDay.checkinStatus ?? ''))
+    ? keptDays.find(day => day.scheduleState === 'active' && (day.checkinStatus ?? 'not_checked_in') === 'not_checked_in' && day.id !== headerDay?.id
+      && (!headerDay?.visitDate || day.visitDate! > headerDay.visitDate)) : undefined;
   const whenLine = datedBooking && bookingDays.length ? daySpan : booking ? [
     visitBounds ? new Intl.DateTimeFormat(lang, { timeZone: tz, weekday: 'short', month: 'short', day: 'numeric' }).format(visitBounds.startAt)
       : new Date(`${bookingStartDateKey(booking) ?? booking.bookingDate.slice(0, 10)}T12:00:00Z`).toLocaleDateString(lang, { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' }),
@@ -1647,7 +1651,10 @@ export default function BookingDetailsPage() {
       whenLine={whenLine}
       pill={{ label: proposal ? t(isManagerView ? 'paPillKitchen' : 'paPillChef') : t(now.pill.key), tone: now.pill.tone }}
       sentence={proposal ? t(isManagerView ? 'paSentenceKitchen' : 'paSentenceChef', { kitchen: kitchenName, chef: chefName }) : now.sentence}
-      sentenceExtra={isManagerView && booking.runningLate && booking.status === 'confirmed' && !visitStarted && visitBounds && nowMs < visitBounds.endAt.getTime() ? (
+      sentenceExtra={!isManagerView && nextDay ? (
+        <p className="text-sm font-medium" data-testid="booking-next-day">{t('mdNextDay', { number: keptDays.indexOf(nextDay) + 1, total: keptDays.length,
+          date: formatDate(nextDay.visitDate!), time: formatKitchenClock(nextDay.startTime) })}</p>
+      ) : isManagerView && booking.runningLate && booking.status === 'confirmed' && !visitStarted && visitBounds && nowMs < visitBounds.endAt.getTime() ? (
         <p className="text-sm font-medium text-sky-900" data-testid="booking-running-late">
           {t('rlManagerLine', { chef: chefName, duration: t(`rlDurationShort${booking.runningLate.minutes}`), time: clockTime(booking.runningLate.reportedAt) })}
           {booking.runningLate.note && <span className="block text-xs font-normal text-muted-foreground">{t('rlManagerNote', { note: booking.runningLate.note })}</span>}

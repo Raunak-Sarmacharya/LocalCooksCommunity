@@ -3506,6 +3506,7 @@
   "bnChefTodayOpensAt": "Check-in opens {time}. Open your visit when you arrive.",
   "bnChefCheckinOpenLate": "Check-in is open. Your booking still ends at {end}.",
   "bnChefCheckoutSubmitted": "Checkout submitted at {time}. You’re all set — we’ll let you know if the kitchen reports anything.",
+  "mdNextDay": "Next: day {number} of {total} · {date} at {time}.",
   "bnChefCheckoutSubmittedNoTime": "Checkout submitted. You’re all set — we’ll let you know if the kitchen reports anything.",
   "bnChefCompleted": "Visit complete. Thanks for leaving the kitchen ready.",
   "bnChefCompletedCleared": "Visit complete. {kitchen} checked the space — all good.",

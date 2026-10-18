@@ -3506,6 +3506,7 @@
   "bnChefTodayOpensAt": "L’enregistrement ouvre {time}. Ouvrez votre visite à votre arrivée.",
   "bnChefCheckinOpenLate": "L’enregistrement est ouvert. Votre réservation se termine quand même à {end}.",
   "bnChefCheckoutSubmitted": "Départ envoyé à {time}. Tout est en ordre — nous vous préviendrons si la cuisine signale quoi que ce soit.",
+  "mdNextDay": "Prochain : jour {number} sur {total} · {date} à {time}.",
   "bnChefCheckoutSubmittedNoTime": "Départ envoyé. Tout est en ordre — nous vous préviendrons si la cuisine signale quoi que ce soit.",
   "bnChefCompleted": "Visite terminée. Merci d’avoir laissé la cuisine prête.",
   "bnChefCompletedCleared": "Visite terminée. {kitchen} a vérifié l’espace — tout est en ordre.",
