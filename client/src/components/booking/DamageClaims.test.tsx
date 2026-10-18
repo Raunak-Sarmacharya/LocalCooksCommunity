@@ -169,3 +169,20 @@ it('shows the missing move-in photo note in the shared chef and staff evidence v
   mount(<ClaimEvidence claim={value} />);
   expect(screen.getByText('No move-in photos were taken.')).toBeInTheDocument();
 });
+
+describe('tracking claims', () => {
+  it('each claim names its booking, day, chef and filing date, linking to the booking', () => {
+    mount(<DamageClaimCard manager claim={claim({ bookingReference: 'KB-7DWHMT', day: { number: 1, total: 2, date: '2026-10-18' }, createdAt: '2026-10-18T23:30:00Z',
+      visitEvidence: { ...claim().visitEvidence!, chefName: 'Sam Chef' } })} onChanged={() => {}} />);
+    const line = screen.getByTestId('claim-context');
+    expect(line).toHaveTextContent(/KB-7DWHMT · Day 1 of 2 · Sun, Oct 18 · Sam Chef · Filed Oct 18 · DC-ONE/);
+    expect(screen.getByRole('link', { name: 'KB-7DWHMT' })).toHaveAttribute('href', '/manager/booking/7');
+  });
+  it('the kitchen claims page lists open claims first, then closed ones', async () => {
+    const { DamageClaimQueue } = await import('@/components/manager/damage-claims/DamageClaimQueue');
+    state.claims = [claim({ id: 1, status: 'resolved' }), claim({ id: 2, status: 'submitted' }), claim({ id: 3, status: 'in_review' })];
+    mount(<DamageClaimQueue />);
+    expect(await screen.findByTestId('claims-open')).toHaveTextContent('Open (2)');
+    expect(screen.getByTestId('claims-closed')).toHaveTextContent('Closed (1)');
+  });
+});

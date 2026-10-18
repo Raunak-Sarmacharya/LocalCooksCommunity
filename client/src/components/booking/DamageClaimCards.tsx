@@ -58,6 +58,13 @@ export function DamageClaimCard({ claim, manager = false, hideTitle = false, onC
     <div>{!hideTitle && <h3 className="font-semibold">{t(manager ? 'dcV2ClaimTitleOwn' : 'dcV2ClaimTitle', { kitchen, amount })}</h3>}<p className={hideTitle ? 'text-sm font-medium' : 'mt-1 text-sm'}>{manager
       ? t(`dcV2Status_${claim.status}`, { defaultValue: claim.status })
       : t(`dcV2ChefStatus_${claim.status}`, { defaultValue: t(`dcV2Status_${claim.status}`, { defaultValue: claim.status }) })}</p></div>
+    {claim.bookingId && <p className="text-xs text-muted-foreground" data-testid="claim-context">
+      <a className="underline underline-offset-2" href={`${manager ? '/manager' : ''}/booking/${claim.bookingId}`}>{claim.bookingReference || t('dcV2Booking')}</a>
+      {claim.day && ` · ${t('historyDay', { number: claim.day.number, total: claim.day.total,
+        date: new Intl.DateTimeFormat(i18n.language, { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' }).format(new Date(`${claim.day.date}T12:00:00Z`)) })}`}
+      {manager && claim.visitEvidence?.chefName && ` · ${claim.visitEvidence.chefName}`}
+      {claim.createdAt && ` · ${t('dcV2Filed', { date: new Intl.DateTimeFormat(i18n.language, { month: 'short', day: 'numeric' }).format(new Date(claim.createdAt)) })}`}
+      {claim.referenceCode && ` · ${claim.referenceCode}`}</p>}
     {manager && claim.status === 'in_review' && <p role="status">{t('dcV2FirstReview')}</p>}
     {claim.claimVersion !== 2 && <p>{t('dcV2LegacySupport')} <a className="underline" href={manager ? '/manager/dashboard?view=support' : '/dashboard?view=support'}>{t('dcV2Contact')}</a></p>}
     <p className="whitespace-pre-wrap text-sm">{claim.description}</p>

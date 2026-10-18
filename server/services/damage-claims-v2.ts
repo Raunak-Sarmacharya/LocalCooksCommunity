@@ -156,6 +156,15 @@ export async function publicClaim(claim: Claim, tx: ClaimTx = db as unknown as C
   const history = await tx.select({ id: damageClaimHistory.id, action: damageClaimHistory.action, status: damageClaimHistory.newStatus,
     createdAt: damageClaimHistory.createdAt, actionBy: damageClaimHistory.actionBy }).from(damageClaimHistory)
     .where(eq(damageClaimHistory.damageClaimId, claim.id)).orderBy(asc(damageClaimHistory.id));
+  // Which booking and day the claim is about, so a list of claims can be tracked without opening each one.
+  const [parent] = claim.kitchenBookingId ? await tx.select({ referenceCode: kitchenBookings.referenceCode, scheduleRevision: kitchenBookings.scheduleRevision })
+    .from(kitchenBookings).where(eq(kitchenBookings.id, claim.kitchenBookingId)).orderBy(asc(kitchenBookings.id)) : [];
+  const days = parent?.scheduleRevision && claim.kitchenBookingVisitId ? (await tx.select().from(kitchenBookingVisits)
+    .where(eq(kitchenBookingVisits.bookingId, claim.kitchenBookingId!)).orderBy(asc(kitchenBookingVisits.id))).filter(visit => visit.scheduleRevision === parent.scheduleRevision && !!visit.visitDate)
+    .sort((a, b) => String(a.visitDate).localeCompare(String(b.visitDate))) : [];
+  const dayIndex = days.findIndex(visit => visit.id === claim.kitchenBookingVisitId);
+  const context = { bookingReference: parent?.referenceCode ?? null,
+    day: dayIndex >= 0 ? { number: dayIndex + 1, total: days.length, date: String(days[dayIndex].visitDate).slice(0, 10) } : null };
   const chef = audience === 'chef', lastAdmin = history.filter(row => row.actionBy === 'admin' && row.action.startsWith('claim_')).at(-1);
   // Reply evidence and its history row use the same PostgreSQL transaction timestamp (including old replies).
   const replyTimes = new Set(history.filter(row => row.action === 'kitchen_reply').map(row => row.createdAt.getTime()));
@@ -167,7 +176,7 @@ export async function publicClaim(claim: Claim, tx: ClaimTx = db as unknown as C
   const sentIndex = history.findIndex(row => row.action === 'claim_send');
   const visibleHistory = !chef || claim.claimVersion !== 2 ? history : sentIndex >= 0 ? history.slice(sentIndex)
     : history.filter(row => claim.chefVisibleAt && row.createdAt >= claim.chefVisibleAt);
-  return { id: claim.id, referenceCode: claim.referenceCode, bookingId: claim.kitchenBookingId, storageRentalId: claim.storageBookingId, visitId: claim.kitchenBookingVisitId,
+  return { id: claim.id, referenceCode: claim.referenceCode, bookingId: claim.kitchenBookingId, storageRentalId: claim.storageBookingId, visitId: claim.kitchenBookingVisitId, ...context,
     chefId: claim.chefId, managerId: claim.managerId, status: claim.status, claimVersion: claim.claimVersion,
     createdAt: claim.createdAt, claimTitle: claim.claimTitle,
     description: claim.claimDescription, amountCents: claim.finalAmountCents ?? claim.claimedAmountCents, claimedAmountCents: claim.claimedAmountCents,
