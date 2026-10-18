@@ -59,8 +59,8 @@ describe("KitchenChangeRecovery", () => {
     mount({ ...recoveryChange, original: dated, destination: dated,
       money: { ...recoveryChange.money, payCents: 0, refundCents: 31969 } });
     await screen.findByTestId('kitchen-change-recovery');
-    expect(screen.getByTestId('change-recovery-finish')).toHaveClass('bg-primary');
-    expect(screen.getByTestId('change-recovery-close_keep_refund')).not.toHaveClass('bg-primary');
+    expect(screen.getByTestId('change-recovery-finish')).toHaveClass('bg-[#E10939]');
+    expect(screen.getByTestId('change-recovery-close_keep_refund')).not.toHaveClass('bg-[#E10939]');
     expect(screen.getByText(en.bsChangeDatedKeepRefundHold)).toBeVisible();
   });
 
