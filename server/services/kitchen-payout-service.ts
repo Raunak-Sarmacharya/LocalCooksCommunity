@@ -223,7 +223,9 @@ export async function readKitchenPayout(bookingId: number, tx: Tx = db as unknow
   const source = await originalSource(bookingId, tx);
   if (source?.payoutPartition === 'per_day') {
     const daily = await import('./kitchen-day-payouts');
-    return daily.summarizeDayPayouts(await daily.readDayPayouts([bookingId], tx));
+    const days = await daily.readDayPayouts([bookingId], tx);
+    // No day rows until capture: an authorized request shows the same estimate as a single-day booking.
+    if (days.length) return daily.summarizeDayPayouts(days);
   }
   // Never throws (manager/admin payload): an unreadable extension list falls back to the booking's own payout.
   const extensions = source ? await extensionSources([bookingId], tx).catch(error => {
@@ -272,7 +274,8 @@ async function attachWithExtensions<T extends { id: number; status?: string; clo
   const days = daily ? await daily.readDayPayouts(ids) : [];
   return items.map(item => {
     const source = sources.find(row => row.bookingId === item.id);
-    if (source?.payoutPartition === 'per_day' && daily) return { ...item, payout: daily.summarizeDayPayouts(days.filter(d => d.bookingId === item.id)), trailingCents: 0 };
+    const own = days.filter(d => d.bookingId === item.id);
+    if (source?.payoutPartition === 'per_day' && daily && own.length) return { ...item, payout: daily.summarizeDayPayouts(own), trailingCents: 0 };
     const fact = facts.find(row => Number(row.booking_id) === item.id);
     if (!source || !fact || !item.closeout) return combine(item, kitchenPayout(source));
     const eligibility = payoutEligibility(item.status || item.closeout.status, item.closeout, { openFlag: fact.flag === true,

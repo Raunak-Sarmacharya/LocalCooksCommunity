@@ -253,6 +253,11 @@ describe('closeout scheduling, notice and sweep', () => {
     expect(await readKitchenPayout(7)).toEqual({ timing: 'after_closeout', status: 'scheduled', holdReason: null,
       expectedAt: '2026-10-16T10:30:00.000Z', sentAt: null, amountCents: 10942 });
   });
+  it('a dated request has no day payouts yet: the kitchen sees the estimate, never "no payout is owed" (live, Oct 18)', async () => {
+    state.source = { ...state.source, payoutPartition: 'per_day', status: 'authorized', stripeProcessingFee: '0' };
+    state.booking = { ...state.booking, status: 'pending' };
+    expect(await readKitchenPayout(7)).toMatchObject({ status: 'scheduled', amountCents: 11300 });
+  });
 });
 
 describe('session-extension charges in payout totals', () => {
