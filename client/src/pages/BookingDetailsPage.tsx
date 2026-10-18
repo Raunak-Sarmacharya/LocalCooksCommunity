@@ -1956,7 +1956,7 @@ export default function BookingDetailsPage() {
   );
 
   const history = booking && (
-    <BookingHistoryPanel timezone={booking.location?.timezone} id={booking.id} reference={booking.referenceCode} role={isManagerView ? 'manager' : 'chef'} cancelCause={cancelCause} chefName={booking.chef?.fullName || booking.chef?.username || null} version={booking.updatedAt || booking.createdAt} limit={3} />
+    <BookingHistoryPanel timezone={booking.location?.timezone} id={booking.id} reference={booking.referenceCode} role={isManagerView ? 'manager' : 'chef'} cancelCause={cancelCause} chefName={booking.chef?.fullName || booking.chef?.username || null} version={booking.updatedAt || booking.createdAt} limit={3} days={bookingDays} />
   );
 
   const help = booking && (

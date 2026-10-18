@@ -266,6 +266,7 @@
   "historyPartial": "Les activités antérieures peuvent ne pas être disponibles pour cette réservation.",
   "historyEmpty": "Aucune mise à jour pour l’instant.",
   "historyVisit": "Visite nº {id}",
+  "historyDay": "Jour {number} sur {total} · {date}",
   "historyItem_storage": "Entreposage nº {id}",
   "historyItem_equipment": "Équipement nº {id}",
   "historyEvents": {

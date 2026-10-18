@@ -266,6 +266,7 @@
   "historyPartial": "Попередня активність цього бронювання може бути недоступна.",
   "historyEmpty": "Оновлень ще немає.",
   "historyVisit": "Візит № {id}",
+  "historyDay": "День {number} із {total} · {date}",
   "historyItem_storage": "Зберігання № {id}",
   "historyItem_equipment": "Обладнання № {id}",
   "historyEvents": {

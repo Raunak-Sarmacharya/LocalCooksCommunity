@@ -7,7 +7,7 @@ vi.mock('@/lib/firebase', () => ({ auth: { currentUser: { getIdToken: async () =
 vi.mock('react-i18next', async () => {
   const { default: locale } = await import('../../../../shared/i18n/locales/en-CA/booking.json');
   return { useTranslation: () => ({ i18n: { resolvedLanguage: 'en-CA' }, t: (key: string, options?: any) =>
-    String(key.split('.').reduce((value: any, part) => value?.[part], locale) || key).replace('{{id}}', String(options?.id)).replace(/\{(amount|chef|minutes|ref)\}/g, (_m, key) => String(options?.[key])) }) };
+    String(key.split('.').reduce((value: any, part) => value?.[part], locale) || key).replace('{{id}}', String(options?.id)).replace(/\{(amount|chef|minutes|ref|number|total|date)\}/g, (_m, key) => String(options?.[key])) }) };
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 function mount(role: 'chef' | 'manager' = 'chef', chefName: string | null = null) {
@@ -162,5 +162,17 @@ it.each(['chef', 'manager'] as const)('checkout history uses the %s voice', asyn
   const { client } = mount(role);
   expect(await screen.findByText(role === 'chef' ? 'You checked out' : 'Checked out')).toBeInTheDocument();
   expect(screen.queryByText(role === 'chef' ? 'Checked out' : 'You checked out')).not.toBeInTheDocument();
+  client.clear();
+});
+
+it('names a multi-day visit by its day and date, never an internal id', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ complete: true, events: [
+    { key: '1', kind: 'checkin_recorded', recordedAt: '2026-10-18T16:52:00Z', visitId: 156 },
+  ] }) })));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(<QueryClientProvider client={client}><BookingHistoryPanel timezone="America/St_Johns" id={10} reference="KB-TEST" version="v" role="chef"
+    days={[{ id: 156, visitDate: '2026-10-18T02:30:00.000Z' }, { id: 157, visitDate: '2026-10-21T02:30:00.000Z' }]} /></QueryClientProvider>);
+  expect(await screen.findByText(/Day 1 of 2 · Oct 18/)).toBeInTheDocument();
+  expect(screen.queryByText(/#156/)).not.toBeInTheDocument();
   client.clear();
 });

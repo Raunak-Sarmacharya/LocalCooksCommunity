@@ -266,6 +266,7 @@
   "historyPartial": "Earlier activity may not be available for this booking.",
   "historyEmpty": "No updates to show yet.",
   "historyVisit": "Visit #{id}",
+  "historyDay": "Day {number} of {total} · {date}",
   "historyItem_storage": "Storage #{id}",
   "historyItem_equipment": "Equipment #{id}",
   "historyEvents": {

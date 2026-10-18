@@ -9,7 +9,9 @@ import { Button } from '@/components/ui/button';
 import { bookingReference } from '@/lib/booking-reference';
 import type { BookingCancelCause } from '@/lib/booking-cancel-cause';
 
-export function BookingHistoryPanel({ id, version, reference, role, timezone, cancelCause, chefName, limit }: { id: number; version: string; reference?: string | null; role: 'chef' | 'manager'; timezone?: string | null;
+export function BookingHistoryPanel({ id, version, reference, role, timezone, cancelCause, chefName, limit, days = [] }: { id: number; version: string; reference?: string | null; role: 'chef' | 'manager'; timezone?: string | null;
+  /** Multi-day: the booking's days in order, so a visit event reads "Day 1 of 2 · Oct 18" (never an internal id). */
+  days?: Array<{ id: number; visitDate?: string | null }>;
   /** Why the request ended, when known: relabels the cancelled entry (declined, expired, withdrawn). */
   cancelCause?: BookingCancelCause | null;
   /** The chef's name, used in the kitchen's line about a Local Cooks refund. */
@@ -83,7 +85,9 @@ export function BookingHistoryPanel({ id, version, reference, role, timezone, ca
                     : t(`historyEvents.${event.kind}` as const)}</p>
                 <time dateTime={event.recordedAt} title={when(event.recordedAt)} className="text-[10px] leading-4 text-muted-foreground sm:whitespace-nowrap sm:text-right">{when(event.recordedAt, true)}</time>
               </div>
-              {event.visitId && <p className="text-muted-foreground">{t('historyVisit', { id: event.visitId })}</p>}
+              {(() => { const index = days.findIndex(day => day.id === event.visitId); const day = days[index];
+                return day?.visitDate ? <p className="text-muted-foreground">{t('historyDay', { number: index + 1, total: days.length,
+                  date: new Intl.DateTimeFormat(i18n.language, { timeZone: 'UTC', month: 'short', day: 'numeric' }).format(new Date(`${day.visitDate.slice(0, 10)}T12:00:00Z`)) })}</p> : null; })()}
               {event.itemKind && event.kind !== 'addon_removed' && <p className="text-muted-foreground">{t(`historyItem_${event.itemKind}` as const, { id: event.itemId })}</p>}
             </li>)}
           </ol>
