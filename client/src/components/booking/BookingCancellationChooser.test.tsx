@@ -222,4 +222,77 @@ describe('one parent cancellation chooser', () => {
       expect(requests[0].operationKey).toBe(requests[1].operationKey);
     });
   });
+  describe('dated multi-day bookings', () => {
+    const datedVisits = [
+      { id: 101, visitDate: '2030-10-24', scheduleRevision: 1, scheduleState: 'active', startTime: '06:00', endTime: '07:00', pricingMode: 'hourly', checkinStatus: 'not_checked_in' },
+      { id: 102, visitDate: '2030-10-27', scheduleRevision: 1, scheduleState: 'active', startTime: '06:00', endTime: '07:00', pricingMode: 'hourly', checkinStatus: 'not_checked_in' },
+      { id: 103, visitDate: '2030-10-31', scheduleRevision: 1, scheduleState: 'active', startTime: '06:00', endTime: '07:00', pricingMode: 'daily', checkinStatus: 'not_checked_in' },
+    ];
+    const dayMoney = [
+      { visitId: 101, allocatedCents: 12000, refundedCents: 0, kitchenRemainingCents: 10000 },
+      { visitId: 102, allocatedCents: 12000, refundedCents: 0, kitchenRemainingCents: 10000 },
+      { visitId: 103, allocatedCents: 18000, refundedCents: 0, kitchenRemainingCents: 15000 },
+    ];
+    const dayQuote = {
+      quoteReady: true, chefRefundCents: 11750, feeRetainedCents: 250, retainedCents: 250, beforeDeadline: true,
+      deadlineAt: '2030-10-23T12:00:00Z', remainingDays: 2, cancelsBooking: false,
+      days: [{ visitId: 101, date: '2030-10-24', refundCents: 11750, feeCents: 250 }],
+    };
+    const openDated = (extra: Record<string, unknown> = {}) => render(
+      <BookingCancellationChooser bookingId={10} status="confirmed" paymentStatus="paid" items={equipmentOnly}
+        visits={datedVisits} scheduleRevision={1} dayMoney={dayMoney}
+        summary={{ kitchenName: 'Harbour Kitchen', schedule: 'Saturday, October 24, 2030\n6:00–7:00 a.m., 6:00–7:00 a.m., 6:00–7:00 a.m.', amount: '$420.00' }}
+        onChanged={async () => {}} {...extra} />);
+    it('shows a date span and day count in the header, never a slot dump', async () => {
+      openDated();
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel booking' }));
+      await screen.findByTestId('cancel-refund-headline');
+      const summary = screen.getByTestId('cancel-summary');
+      expect(summary).toHaveTextContent(/Oct 24/);
+      expect(summary).toHaveTextContent(/Oct 31/);
+      expect(summary).toHaveTextContent(/3 days/);
+      expect(summary).not.toHaveTextContent(/6:00/);
+      expect(summary).not.toHaveTextContent(/a\.m\./i);
+      expect(screen.queryByLabelText(/Selected add-ons/)).not.toBeInTheDocument();
+    });
+    it('quotes selected days, shows the server refund, and posts visitIds with expectedRefundCents', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      vi.mocked(fetch).mockImplementation((async (url: string, init?: RequestInit) => {
+        if (typeof url === 'string' && url.includes('cancellation-quote?days=')) return { ok: true, json: async () => dayQuote };
+        if (typeof url === 'string' && url.endsWith('cancellation-quote')) return { ok: true, json: async () => ({ quoteReady: true, chefRefundCents: 41000, feeRetainedCents: 800, retainedCents: 800 }) };
+        if (typeof url === 'string' && url.includes('/days/cancel')) return { ok: true, json: async () => ({ success: true, action: 'days_cancelled', refundCents: 11750, state: 'refunded' }) };
+        return { ok: true, json: async () => ({ action: 'cancelled' }) };
+      }) as any);
+      openDated();
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel booking' }));
+      await screen.findByTestId('cancel-refund-headline');
+      fireEvent.click(screen.getByLabelText(/Cancel some days/));
+      fireEvent.click(screen.getByLabelText(/Oct 24/));
+      await vi.advanceTimersByTimeAsync(300);
+      expect(await screen.findByTestId('cancel-refund-headline')).toHaveTextContent(/You’ll get .*117\.50 back/);
+      expect(screen.getByTestId('cancel-day-refund-101')).toHaveTextContent(/117\.50/);
+      expect(calls('cancellation-quote?days=101')).toHaveLength(1);
+      fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel selected days' }));
+      await waitFor(() => expect(calls('/days/cancel')).toHaveLength(1));
+      const post = calls('/days/cancel')[0];
+      expect(post[0]).toBe('/api/chef/bookings/10/days/cancel');
+      expect(JSON.parse(post[1]!.body as string)).toMatchObject({ visitIds: [101], expectedRefundCents: 11750, operationKey: expect.any(String) });
+      expect(await screen.findByRole('status')).toHaveTextContent(/117\.50/);
+      vi.useRealTimers();
+    });
+    it('keeps the whole-booking cancel path on a dated booking', async () => {
+      vi.mocked(fetch).mockImplementation((async (url: string) => ({
+        ok: true,
+        json: async () => typeof url === 'string' && url.endsWith('cancellation-quote')
+          ? { quoteReady: true, chefRefundCents: 41000, feeRetainedCents: 800, retainedCents: 800 }
+          : { action: 'cancelled', message: 'Your booking is cancelled.' },
+      })) as any);
+      openDated();
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel booking' }));
+      expect(await screen.findByTestId('cancel-refund-headline')).toHaveTextContent(/410\.00/);
+      fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel booking' }));
+      await waitFor(() => expect(vi.mocked(fetch).mock.calls.some(call => call[0] === '/api/chef/bookings/10/cancel')).toBe(true));
+      expect(JSON.parse(vi.mocked(fetch).mock.calls.find(call => call[0] === '/api/chef/bookings/10/cancel')![1]!.body as string)).toMatchObject({ expectedRefundCents: 41000 });
+    });
+  });
 });

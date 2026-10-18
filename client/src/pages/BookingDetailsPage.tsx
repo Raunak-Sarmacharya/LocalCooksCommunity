@@ -1983,11 +1983,14 @@ export default function BookingDetailsPage() {
       {!isManagerView && (
         <BookingCancellationChooser hideTrigger open={cancelOpen} onOpenChange={setCancelOpen} visitActive={visitActive} bookingId={booking.id} status={booking.status} paymentStatus={booking.paymentStatus}
           summary={{ kitchenName, reference: booking.referenceCode || undefined,
-            schedule: `${formatDate(bookingStartDateKey(booking) ?? booking.bookingDate)}\n${bookingTimeSlots.join(', ')} · ${friendlyTimezoneName(booking.location?.timezone, i18n.language)}`,
+            schedule: datedBooking && bookingDays.length
+              ? `${[formatDate(bookingDays[0].visitDate!), formatDate(bookingDays[bookingDays.length - 1].visitDate!)].join(' – ')} · ${policyT('mdSelectedDays', { count: bookingDays.length })}`
+              : `${formatDate(bookingStartDateKey(booking) ?? booking.bookingDate)}\n${bookingTimeSlots.join(', ')} · ${friendlyTimezoneName(booking.location?.timezone, i18n.language)}`,
             amount: booking.paymentTransaction ? formatCurrency(booking.paymentTransaction.amount) : undefined }}
           cancellationDeadline={cancellationDeadlineText}
           decisionPending={booking.paymentDecision?.state === 'pending'} declined={!!booking.cancellationRequestDeclinedAt}
           paidCancellationAvailable={paidCancellationAvailable}
+          visits={booking.visits} scheduleRevision={booking.scheduleRevision ?? 0} dayMoney={booking.dayMoney}
           items={[...(booking.storageBookings || []).map(item => ({ id: item.id, kind: 'storage' as const,
             name: item.storageListing?.name || `Storage #${item.id}`, status: item.status, dates: `${formatShortDate(item.startDate)} – ${formatShortDate(item.endDate)}` })),
             ...(booking.equipmentBookings || []).map(item => ({ id: item.id, kind: 'equipment' as const,

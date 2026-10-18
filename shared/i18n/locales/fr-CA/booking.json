@@ -1359,5 +1359,21 @@
   "invHoursMode": "Heures",
   "invStartFor": "Heure de début pour le {day}",
   "invEquipmentIncluded": "{name} (inclus)",
-  "invEquipmentLine": "{name} · {price} par jour"
+  "invEquipmentLine": "{name} · {price} par jour",
+  "cpCancelWhole": "Annuler toute la réservation",
+  "cpCancelWholeHint": "Tous les jours restants de cette réservation",
+  "cpCancelSomeDays": "Annuler certains jours",
+  "cpCancelSomeDaysHint": "Choisissez les jours à retirer; les autres restent réservés",
+  "cpChooseDays": "Choisir les jours",
+  "cpDayPaid": "{amount} payé",
+  "cpDayRefundLine": "{date} : {refund} remboursé",
+  "cpDaysStay": "{count, plural, one {# jour reste réservé · {total}} other {# jours restent réservés · {total}}}",
+  "cpDaysCancelled": "Jours sélectionnés annulés.",
+  "cpDaysRefundOnWay": "Votre remboursement de {refund} est en cours. Les banques l’affichent généralement en 5 à 10 jours ouvrables.",
+  "cpDaysNoRefundDone": "Ces jours sont annulés. Aucun remboursement ne s’applique.",
+  "cpDaysDeadline": "Annulez avant le {deadline} pour un remboursement moins les frais de traitement de carte. Ensuite, les frais de retard de la cuisine s’appliquent aux jours annulés.",
+  "cpDaysDeadlinePast": "La date limite de remboursement est passée ({deadline}). Les jours annulés suivent les frais de retard de la cuisine.",
+  "cpDaysOffer": "La cuisine a annulé un jour. Vous pouvez annuler les jours restants sans frais de retard jusqu’au {deadline}.",
+  "cpDaysChooseHint": "Sélectionnez au moins un jour pour continuer.",
+  "cpCancelDaysButton": "Annuler les jours sélectionnés"
 }
