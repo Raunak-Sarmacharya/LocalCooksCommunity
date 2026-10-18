@@ -15,7 +15,7 @@ import { StatusPill } from "@/components/booking/BookingNowCard";
 import type { BookingHeaderPhase } from "@/lib/booking-header-state";
 import { bookingCancelCause } from "@/lib/booking-cancel-cause";
 import {
-  bookingListPill, listTimezone, listWhenLine, managerBookingGroups, managerRowAction, showArrivalLine, waitingForChef,
+  bookingListPill, listTimezone, listWhenLine, managerBookingGroups, managerRowAction, showArrivalLine, waitingForChef, managerDatedListDay,
   type ListedBooking, type ManagerListGroup, type ManagerRowAction,
 } from "@/lib/booking-list-status";
 import { friendlyTimezoneName } from "@shared/timezone-utils";
@@ -59,7 +59,7 @@ export function ManagerBookingsAgenda({ bookings, onReviewRequest }: {
   const [tab, setTab] = useState<Tab>("upcoming");
   const [query, setQuery] = useState("");
   const words = { today: mt("mblToday"), tomorrow: ct("ovTomorrow") };
-  const groups = useMemo(() => managerBookingGroups(bookings), [bookings]);
+  const groups = useMemo(() => managerBookingGroups(bookings.map(row => managerDatedListDay(row))), [bookings]);
   const upcomingCount = groups.needs_action.length + groups.today.length + groups.upcoming.length;
   const activeTab: Tab = tab === "cancelled" && !groups.cancelled.length ? "upcoming" : tab;
   const sections: Array<{ key: ManagerListGroup; title?: string }> = activeTab === "upcoming"

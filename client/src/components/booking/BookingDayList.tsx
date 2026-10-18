@@ -6,7 +6,7 @@ export type BookingDayVisit = { id: number; visitDate?: string | null; startTime
   scheduleRevision?: number | null; scheduleState?: string | null; pricingMode?: string | null; checkinStatus?: string | null;
   operatingWindowStartTime?: string | null; closeout?: { scheduledStartAt?: string; scheduledEndAt?: string } };
 
-export function currentBookingDays(visits: BookingDayVisit[], revision: number) {
+export function currentBookingDays<V extends BookingDayVisit>(visits: V[], revision: number) {
   return visits.filter(visit => visit.visitDate && visit.scheduleRevision === revision && visit.scheduleState !== 'superseded')
     .sort((a, b) => a.visitDate!.localeCompare(b.visitDate!));
 }

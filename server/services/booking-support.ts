@@ -309,6 +309,7 @@ export async function readBookingSupport(id: number) {
     captureTerms: ReturnType<typeof bookingCaptureTerms> | null } | null = null;
   let cancellationQuote: Awaited<ReturnType<typeof readCancellationRefund>> | null = null;
   let evidenceUnavailable = false;
+  let outsideRefunds: Array<{ refundId: string; amountCents: number }> = [];
   if (ctx.booking.paymentIntentId) try {
     const intent = await getBookingPaymentIntent(ctx.booking.paymentIntentId);
     let termsVerified = false;
@@ -322,6 +323,14 @@ export async function readBookingSupport(id: number) {
       }
     }
     const facts = intent.status === 'succeeded' ? await getCancellationPaymentFacts(intent.id) : null;
+    if (ctx.booking.scheduleRevision && facts) {
+      const known = new Set(ctx.payments.flatMap(source => {
+        const m = (source.metadata || {}) as Record<string, any>;
+        return [...(m.cancellationRefundOperations || []), m.cancellationRefundOperation, ...(m.outsideRefunds || [])].filter(Boolean).map(row => row.refundId);
+      }));
+      outsideRefunds = facts.refunds.filter(refund => refund.status === 'succeeded' && !known.has(refund.id))
+        .map(refund => ({ refundId: refund.id, amountCents: refund.amount }));
+    }
     paymentEvidence = { id: intent.id, status: intent.status, authorizedCents: intent.amount, capturedCents: intent.amount_received,
       refundedCents: facts?.refunded ?? null, processingFeeCents: facts?.processingCost ?? null, termsVerified, captureTerms };
     if (ctx.booking.status === 'cancellation_requested' && ctx.manager?.id) cancellationQuote = await readCancellationRefund(id, ctx.manager.id, 'manager');
@@ -394,6 +403,7 @@ export async function readBookingSupport(id: number) {
     deadlines: { responseAt: ctx.booking.status === 'pending' ? ctx.responseDeadlineAt?.toISOString() ?? null : null,
       inspectionAt: closeout.checkoutReviewDeadline || null, closeoutAt: closeout.closeout.serviceEndedAt, closeout: closeout.closeout },
     visits: ctx.visits.map(visit => ({ id: visit.id, blockIndex: visit.blockIndex, checkinStatus: visit.checkinStatus,
+      visitDate: visit.visitDate, startTime: visit.startTime, endTime: visit.endTime, pricingMode: visit.pricingMode, scheduleRevision: visit.scheduleRevision, scheduleState: visit.scheduleState,
       updatedAt: visit.updatedAt, checkedInAt: visit.checkedInAt, checkoutRequestedAt: visit.checkoutRequestedAt,
       checkoutApprovedAt: visit.checkoutApprovedAt })),
     visitCodes: codes.map(code => ({ targetKey: code.targetKey, visitId: code.visitId, mode: code.mode, codeRequired: code.codeRequired,
@@ -410,7 +420,9 @@ export async function readBookingSupport(id: number) {
       acceptedAt: operation.acceptedAt || source.updatedAt?.toISOString?.() || new Date(0).toISOString(), hasReceipt: hasReservedReceipt(source, operation, refundEvidence) })),
     kitchenRefundDebts: ctx.payments.flatMap(source => ((source.metadata as Record<string, any> | null)?.kitchenRefundDebts || []).map((debt: any) => ({ ...debt, transactionId: source.id }))),
     payout: await (await import('./kitchen-payout-service')).readKitchenPayout(id),
-    money: { ...money(ctx), dayPayouts }, dayCancellation, paymentEvidence, evidenceUnavailable, cancellationQuote: cancellationQuote && 'quoteHash' in cancellationQuote ? {
+    money: { ...money(ctx), dayPayouts }, dayCancellation, outsideRefunds,
+    ...(ctx.booking.scheduleRevision ? { scheduleRevision: ctx.booking.scheduleRevision, dayMoney: await (await import('./booking-day-money')).readBookingDayMoney(id) } : {}),
+    paymentEvidence, evidenceUnavailable, cancellationQuote: cancellationQuote && 'quoteHash' in cancellationQuote ? {
       quoteHash: cancellationQuote.quoteHash, chefReceivesCents: cancellationQuote.sources.reduce((sum, row) => sum + row.managerRefund, 0),
       parentVersion: cancellationQuote.parentVersion } : null,
     flags: ctx.flags.map(flag => ({ id: flag.id, kind: flag.kind, providerRef: flag.providerRef, openedAt: flag.openedAt })),

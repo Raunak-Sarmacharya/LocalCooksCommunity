@@ -68,6 +68,7 @@ import { RunningLateCard } from "@/components/booking/RunningLateCard";
 import { SessionExtensionsCard, type ExtensionTool } from "@/components/booking/SessionExtensionsCard";
 import type { RunningLateState } from "@shared/running-late";
 import { VisitCodePanel, POLL_LEAD_MINUTES } from "@/components/manager/bookings/VisitCodePanel";
+import { ManagerBookingDays } from '@/components/manager/bookings/ManagerBookingDays';
 import { bookingResponseDeadline, formatResponseDeadline } from '@/lib/booking-response-deadline';
 import { createBookingDateTime, friendlyTimezoneName } from '@shared/timezone-utils';
 import { lateCheckoutOpen } from '@shared/clock-closeout';
@@ -99,6 +100,7 @@ function useMedia(query: string) {
 
 interface BookingDetails {
   scheduleRevision?: number;
+  dayMoney?: import('@shared/booking-day-money').BookingDayMoney[];
   cancellationPolicySnapshot?: import('@shared/cancellation-policy').CancellationPolicySnapshot | null;
   payout?: import('@shared/kitchen-payout').KitchenPayout;
   closeout?: import("@shared/clock-closeout").BookingCloseout;
@@ -1251,7 +1253,7 @@ export default function BookingDetailsPage() {
   })();
   // ── State, times and facts for the Now card (design-booking-consolidation.md §2) ─────────────────────────────
   const hasMultipleVisits = (booking?.visits?.length ?? 0) > 1;
-  const datedBooking = !isManagerView && !!booking?.scheduleRevision;
+  const datedBooking = !!booking?.scheduleRevision;
   const bookingDays = datedBooking ? currentBookingDays(booking?.visits ?? [], booking!.scheduleRevision!) : [];
   const tz = booking?.location?.timezone || undefined;
   const lang = i18n.language;
@@ -1987,7 +1989,9 @@ export default function BookingDetailsPage() {
       {/* Wide screens: the Now card, then a main column and a sidebar of at most three cards. Narrow: one column in §2.1 order. */}
       <div className="space-y-5">
         {nowCard}
-        {datedBooking && booking && <BookingDayList bookingId={booking.id} visits={bookingDays} timezone={booking.location?.timezone || 'America/St_Johns'} status={booking.status} />}
+        {datedBooking && booking && (isManagerView ? <ManagerBookingDays bookingId={booking.id} revision={booking.scheduleRevision!} visits={bookingDays} money={booking.dayMoney} payout={booking.payout}
+          timezone={booking.location?.timezone || 'America/St_Johns'} status={booking.status} onChanged={reloadBookingDetails} />
+          : <BookingDayList bookingId={booking.id} visits={bookingDays} timezone={booking.location?.timezone || 'America/St_Johns'} status={booking.status} />)}
         {wide ? (
           <div className="grid grid-cols-3 gap-5">
             <div className="col-span-2 min-w-0 space-y-5">{visitRecord}{feedback}{personCard}{addOns}{note}{history}</div>

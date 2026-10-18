@@ -959,13 +959,14 @@ router.get('/bookings/:id/day-cancellation-quote', requireFirebaseAuthWithUser, 
 router.post('/bookings/:id/days/cancel', requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   const id = Number(req.params.id), visitIds = kitchenDayIds(req.body?.visitIds);
   if (!visitIds?.length) return res.status(400).json({ error: 'Choose the days the kitchen can’t host.' });
+  if (req.body.expectedRefundCents !== undefined && (!Number.isSafeInteger(req.body.expectedRefundCents) || req.body.expectedRefundCents < 0)) return res.status(400).json({ error: 'Review the refund amount.' });
   if (typeof req.body?.reason !== 'string' || !req.body.reason.trim() || req.body.reason.length > 2000) return res.status(400).json({ error: 'Please explain why the kitchen needs to cancel' });
   if (!/^[a-zA-Z0-9:_-]{8,160}$/.test(req.body.operationKey || '')) return res.status(400).json({ error: 'A cancellation operation key is required' });
   try {
     const [booking] = await db.select({ scheduleRevision: kitchenBookings.scheduleRevision }).from(kitchenBookings).where(eq(kitchenBookings.id, id)).limit(1);
     if (!(booking?.scheduleRevision > 0)) return res.status(409).json({ error: 'This booking has one day. Cancel the booking instead.' });
     const { cancelKitchenCausedBooking } = await import('../services/booking-cancellation-refund');
-    const result = await cancelKitchenCausedBooking(id, req.neonUser!.id, req.neonUser!.id, req.body.operationKey, req.body.reason, { visitIds });
+    const result = await cancelKitchenCausedBooking(id, req.neonUser!.id, req.neonUser!.id, req.body.operationKey, req.body.reason, { visitIds, expectedRefundCents: req.body.expectedRefundCents });
     await (await import('../services/booking-lifecycle-delivery')).deliverBookingLifecycleEvents(10, 20_000, id).catch(error => logger.warn('Day cancellation notice pending retry', error));
     await import('../services/booking-documents').then(d => d.issueBookingDocumentsSafely(id, 'kitchen_cancelled')).catch(() => undefined);
     res.json(result);
@@ -4070,12 +4071,13 @@ router.get(
         // Cancelled or superseded days of a multi-day booking are not visits on the board.
         const visits = (datedVisits.get(booking.id) || await readKitchenBookingVisits(booking.id)).filter(visit => isCurrentVisit(booking, visit));
         if (!visits.length) return [{ ...booking, operationsComplete: bookingOperationsComplete(booking) }];
-        return visits.map(visit => ({
+        return visits.map((visit, index) => ({
           ...booking,
           ...(visit.visitDate ? { bookingDate: new Date(`${visit.visitDate}T12:00:00Z`), visitDate: visit.visitDate } : {}),
           operationsComplete: bookingOperationsComplete(booking),
           visitId: visit.id,
           visitBlockIndex: visit.blockIndex,
+          ...(booking.scheduleRevision > 0 ? { dayNumber: index + 1, dayCount: visits.length } : {}),
           startTime: visit.startTime,
           endTime: visit.endTime,
           checkinStatus: visit.checkinStatus,
@@ -4484,6 +4486,7 @@ router.get(
       res.json({
         ...derived,
         payout: await readKitchenPayout(id),
+        ...(booking.scheduleRevision > 0 ? { dayMoney: await (await import('../services/booking-day-money')).readBookingDayMoney(id) } : {}),
         // Read-only: extra time and claim payments on this booking, with the kitchen's share of each.
         additionalCharges: await (await import('../services/booking-additional-charges')).readAdditionalCharges(db, id, 'manager', booking.paymentIntentId).catch(() => []),
         responseDeadlineAt: await getBookingResponseDeadlineAt(booking, undefined, location.timezone),

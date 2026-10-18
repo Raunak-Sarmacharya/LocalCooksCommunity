@@ -318,5 +318,18 @@
   "bsProposalTermsValue": "{newTotal} (was {oldTotal}) without {items}",
   "bsDeadlineChefAnswer": "Chef answers by",
   "bsProposalSupportReason": "Support note",
-  "bsProposalState_hold_ended": "Card hold ended"
+  "bsProposalState_hold_ended": "Card hold ended",
+  "bsDatedDays": "Booking days",
+  "bsDatedDay": "Booking day",
+  "bsAllRemainingDays": "All remaining days",
+  "bsOutsideRefund": "Refund made outside the app",
+  "bsChooseRefund": "Choose a refund",
+  "bsChooseDay": "Choose a day",
+  "bsKitchenShare": "Kitchen share ($)",
+  "bsKitchenShareHelp": "Enter 0 for Local Cooks to fund the whole refund. A kitchen share is charged only to the selected day.",
+  "bsErrOutsideRefund": "Choose a verified refund.",
+  "bsDayOf": "Day {number} of {total}",
+  "bsDayState": "Day status: {state}",
+  "bsDayAllocation": "Allocated: {amount}",
+  "bsDayRefunded": "Refunded: {amount}"
 }

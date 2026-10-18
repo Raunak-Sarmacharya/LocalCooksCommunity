@@ -32,6 +32,8 @@ import { readVisitDuties, type DutySection, type VisitDuties } from '@shared/vis
 const EMPTY = '__empty__';
 
 type Evidence = {
+  visitDate?: string | null; operatingWindowStartTime?: string | null;
+  scheduleState?: string | null; scheduleRevision?: number | null;
   closeout?: import("@shared/clock-closeout").VisitCloseout;
   id: number; updatedAt: string; startTime: string; endTime: string; checkinStatus?: string | null;
   checkedInAt?: string | null; checkedInMethod?: string | null; checkoutRequestedAt?: string | null;
@@ -151,7 +153,7 @@ function InspectionVisits({ booking, refresh, stale }: { booking: ManagerInspect
 
     // Never the year. Time only on the visit day; otherwise "Oct 15, 7:04 p.m.".
     const dayKey = (at: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(at);
-    const visitDay = booking.bookingDate.slice(0, 10);
+    const visitDay = selected?.visitDate?.slice(0, 10) || booking.bookingDate.slice(0, 10);
     formatEvent = value => {
       if (!value) return t('inspectCopy31');
       const at = new Date(value);
@@ -160,9 +162,10 @@ function InspectionVisits({ booking, refresh, stale }: { booking: ManagerInspect
       return dayKey(at) === visitDay ? clock : `${new Intl.DateTimeFormat(locale, { timeZone: timezone, month: 'short', day: 'numeric' }).format(at)}, ${clock}`;
     };
     if (selected) {
-      const day = booking.bookingDate.slice(0, 10);
-      const startDay = calendarDateForOperatingTime(day, selected.startTime, booking.operatingWindowStartTime || booking.startTime);
-      const endDay = calendarDateForBookingTime(day, selected.endTime, booking.operatingWindowStartTime, booking.startTime);
+      const day = selected.visitDate?.slice(0, 10) || booking.bookingDate.slice(0, 10);
+      const anchor = selected.operatingWindowStartTime || booking.operatingWindowStartTime || booking.startTime;
+      const startDay = calendarDateForOperatingTime(day, selected.startTime, anchor);
+      const endDay = calendarDateForBookingTime(day, selected.endTime, anchor, selected.startTime);
       schedule = `${formatVisitWhen(createBookingDateTime(startDay, selected.startTime, timezone), createBookingDateTime(endDay, selected.endTime, timezone), timezone, locale)} · ${friendlyTimezoneName(timezone, locale)}`;
     }
   } catch (cause) { contextError = cause instanceof Error ? cause.message : t('inspectCopy33'); }
@@ -193,7 +196,10 @@ function InspectionVisits({ booking, refresh, stale }: { booking: ManagerInspect
       {inSessionEnds(booking).map(session => <ManagerInSessionBadge key={session.visitId ?? 'booking'} endsAt={session.endsAt} timezone={timezone}
         label={session.visitId && booking.visits.length > 1 ? t('inspectVisit', { number: (booking.visits.find(visit => visit.id === session.visitId)?.blockIndex ?? 0) + 1 }) : undefined} />)}
     </div>}
-    {!selected ? <p role="alert">{visitId ? t('inspectCopy39') : t('inspectCopy40')}</p> : <InspectionTask key={booking.visits.length ? selected.id : 'booking'} booking={booking} evidence={selected}
+    {!selected ? <p role="alert">{visitId ? t('inspectCopy39') : t('inspectCopy40')}</p> : <InspectionTask key={booking.visits.length ? selected.id : 'booking'} booking={{ ...booking, payout: selected.visitDate ? (() => {
+      const day = booking.payout?.installments?.find(item => item.visitId === selected.id);
+      return day ? { ...day, timing: 'after_closeout', sentAt: day.sentAt || null, expectedAt: day.expectedAt || null, holdReason: day.holdReason || null } : undefined;
+    })() : booking.payout }} evidence={selected}
       visitId={booking.visits.length ? selected.id : undefined} formatEvent={formatEvent} refresh={refresh} blocked={stale || !!contextError}
       note={notes[noteKey] || ''} onNoteChange={value => setNotes(current => ({ ...current, [noteKey]: value }))} />}
     <Link href="/manager/dashboard?view=support" className="inline-block text-sm underline">{t('inspectCopy41')}</Link>

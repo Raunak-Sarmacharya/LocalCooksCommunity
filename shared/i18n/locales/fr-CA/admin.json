@@ -318,5 +318,18 @@
   "bsProposalTermsValue": "{newTotal} (au lieu de {oldTotal}) sans {items}",
   "bsDeadlineChefAnswer": "Réponse du chef d’ici le",
   "bsProposalSupportReason": "Note du soutien",
-  "bsProposalState_hold_ended": "Blocage sur la carte terminé"
+  "bsProposalState_hold_ended": "Blocage sur la carte terminé",
+  "bsDatedDays": "Jours de réservation",
+  "bsDatedDay": "Jour de réservation",
+  "bsAllRemainingDays": "Tous les jours restants",
+  "bsOutsideRefund": "Remboursement fait hors de l’application",
+  "bsChooseRefund": "Choisir un remboursement",
+  "bsChooseDay": "Choisir un jour",
+  "bsKitchenShare": "Part de la cuisine ($)",
+  "bsKitchenShareHelp": "Entrez 0 pour que Local Cooks finance tout le remboursement. La part de la cuisine est imputée uniquement au jour choisi.",
+  "bsErrOutsideRefund": "Choisissez un remboursement vérifié.",
+  "bsDayOf": "Jour {number} sur {total}",
+  "bsDayState": "État du jour : {state}",
+  "bsDayAllocation": "Montant attribué : {amount}",
+  "bsDayRefunded": "Remboursement : {amount}"
 }

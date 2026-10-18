@@ -14,6 +14,7 @@ export type SearchRow = {
 export type Party = { id: number | null; name: string | null; email: string | null; phone: string | null };
 
 export type CaseVisit = {
+  visitDate?: string | null; startTime?: string; endTime?: string; pricingMode?: string | null; scheduleRevision?: number | null; scheduleState?: string | null;
   id: number; blockIndex: number; checkinStatus: string | null; updatedAt: string;
   checkedInAt: string | null; checkoutRequestedAt: string | null; checkoutApprovedAt: string | null;
 };
@@ -41,6 +42,10 @@ export type ChronologyEntry =
 export type CloseoutVisit = { key?: string; visitId?: number; blockIndex: number; phase?: string; inspection?: { outcome?: string; dueAt?: string | null } };
 
 export type SupportCase = {
+  scheduleRevision?: number;
+  dayMoney?: import('@shared/booking-day-money').BookingDayMoney[];
+  outsideRefunds?: Array<{ refundId: string; amountCents: number }>;
+  dayCancellation?: { remainingVisitIds: number[]; error?: string | null; all: DayCancellationPreview | null; days: Array<DayCancellationPreview & { visitId: number; date: string | null }> } | null;
   refundOperations?: Array<{ transactionId: number; refundOperationId: string; itemName: string; amountCents: number | null; status: string; acceptedAt: string; hasReceipt: boolean }>;
   kitchenRefundDebts?: Array<{ operationId: string; itemName: string; amountCents: number; status: string; recordedAt: string }>;
   cancellationPolicySnapshot?: import('@shared/cancellation-policy').CancellationPolicySnapshot | null;
@@ -66,7 +71,7 @@ export type SupportCase = {
   money: {
     capturedCents: number; refundedCents: number; platformFeeCents: number; processingFeeCents: number;
     currency: string; providerVerified: boolean;
-    dayPayouts?: { installmentId: number; sourceId: number; operatingDate: string | null; status: string; amountCents: number; feePending: boolean; transferId: string | null; retryReason: string | null }[];
+    dayPayouts?: { installmentId: number; sourceId: number; visitId?: number; operatingDate: string | null; status: string; amountCents: number; feePending: boolean; transferId: string | null; retryReason: string | null }[];
     transfers: { transactionId: number; transferId: string | null; status: string; managerRevenueCents: number; sent?: boolean; sentAt?: string | null; amountCents?: number }[];
   };
   paymentEvidence: {
@@ -80,6 +85,9 @@ export type SupportCase = {
   supportActions: SupportActionRecord[];
   availableActions: AvailableSupportAction[];
 };
+
+export type DayCancellationMoney = { chefReceivesCents: number; managerPaysCents: number; localCooksPaysCents: number };
+export type DayCancellationPreview = { forChef?: DayCancellationMoney | null; byKitchen?: DayCancellationMoney | null };
 
 export type ActionResult = {
   action: { id: number; operationKey: string; status: SupportStatus; exception: boolean };

@@ -5,7 +5,7 @@ export const REQUEST_SOURCES: RequestSource[] = ["call", "message", "email", "in
 
 export type FieldId =
   | "items" | "quote" | "codeTarget" | "arrival" | "visit" | "actualAt" | "attendance"
-  | "claim" | "amount" | "resend" | "flag" | "message" | "fundKitchenRefund" | "refundOperation";
+  | "claim" | "amount" | "resend" | "flag" | "message" | "fundKitchenRefund" | "refundOperation" | "outsideRefund";
 
 type Spec = {
   acting: ActingFor[];
@@ -44,14 +44,14 @@ export const ACTION_SPECS: Record<SupportActionType, Spec> = {
   resolve_flag: { acting: ANY, reasons: ["internal_review", "other"], fields: ["flag"], notifies: false },
   release_payout: { acting: ["local_cooks"], reasons: ["internal_review", "other"], fields: [], notifies: "kitchen" },
   resolve_money_attempt: { acting: ["local_cooks"], reasons: ["payment_problem", "internal_review", "other"], fields: [], notifies: false },
-  // shortcut: the refund/day/kitchen-share inputs aren't in this dialog yet (sent via the support API); add them with the CP9 support UI.
-  assign_outside_refund: { acting: ["local_cooks"], reasons: ["payment_problem", "internal_review", "other"], fields: [], notifies: false },
+  assign_outside_refund: { acting: ["local_cooks"], reasons: ["payment_problem", "internal_review", "other"], fields: ["outsideRefund"], notifies: false },
 };
 
 export type ActionForm = {
   actingFor: ActingFor; requestSource: RequestSource; sourceRef: string;
   reason: string; reasonOther: string; note: string;
   amount: string; message: string; refundOperation: string;
+  outsideRefundId: string; kitchenShare: string; cancellationDay: string;
   itemDecisions: Record<string, "confirmed" | "cancelled">;
   visitId: string; targetKey: string; allTargets: boolean; mode: "staffed" | "self";
   actualAt: string; attendanceAction: "report_no_show" | "report_attended" | "withdraw_attendance"; confirmsChefAbsent: boolean;
@@ -76,6 +76,7 @@ export function initialForm(type: SupportActionType, c: SupportCase): ActionForm
   return {
     actingFor: spec.acting[0], requestSource: "call", sourceRef: "", reason: spec.reasons[0], reasonOther: "", note: "",
     amount: "", message: "", refundOperation: (c.refundOperations || []).find(row => type !== "mark_refunded" || row.hasReceipt)?.refundOperationId || "",
+    outsideRefundId: c.outsideRefunds?.[0]?.refundId || '', kitchenShare: '0', cancellationDay: '',
     itemDecisions: Object.fromEntries(pendingItems(c).map((i) => [i.key, "confirmed" as const])),
     visitId: visit ? String(visit.id) : "", targetKey: targets[0]?.targetKey ?? "", allTargets: false, mode: "staffed",
     actualAt: "", attendanceAction: "report_attended", confirmsChefAbsent: false,
@@ -135,9 +136,24 @@ export function buildActionRequest(
   if (message && !between(message, 10, selfArrival ? 500 : 2000)) errors.message = selfArrival ? "bsErrMessageShort500" : "bsErrMessageShort";
 
   const visit = c.visits.find((v) => String(v.id) === form.visitId);
+  if (c.dayCancellation && ['cancel_kitchen_caused', 'request_cancellation_for_chef'].includes(type)) {
+    const chosen = form.cancellationDay ? c.dayCancellation.days.find(day => String(day.visitId) === form.cancellationDay) : c.dayCancellation.all;
+    const quote = chosen?.[type === 'request_cancellation_for_chef' ? 'forChef' : 'byKitchen'];
+    if (!quote) errors.form = 'bsErrNoQuote';
+    else if (form.cancellationDay) details.visitIds = [Number(form.cancellationDay)];
+  }
   if (spec.fields.includes("visit") && c.visits.length > 0 && !visit) errors.visitId = "bsErrChooseVisit";
 
   for (const field of spec.fields) {
+    if (field === 'outsideRefund') {
+      const refund = c.outsideRefunds?.find(row => row.refundId === form.outsideRefundId);
+      const share = /^0(?:\.0{1,2})?$/.test(form.kitchenShare.trim()) ? 0 : dollarsToCents(form.kitchenShare);
+      const day = c.dayMoney?.find(row => row.visitId === Number(form.visitId));
+      if (!refund) errors.outsideRefundId = 'bsErrOutsideRefund';
+      if (share === null || refund && share > refund.amountCents || share && (day?.kitchenRemainingCents == null || share > day.kitchenRemainingCents)) errors.kitchenShare = 'bsErrAmountMax';
+      if (share && !day) errors.visitId = 'bsErrChooseVisit';
+      if (refund && share !== null) { details.refundId = refund.refundId; details.kitchenDebitCents = share; if (share && day) details.visitId = day.visitId; }
+    }
     if (field === "refundOperation") {
       const target = c.refundOperations?.find(row => row.refundOperationId === form.refundOperation && (type !== "mark_refunded" || row.hasReceipt));
       if (!target) errors.form = "bsErrRefundOperation";

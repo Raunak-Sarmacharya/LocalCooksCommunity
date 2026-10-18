@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { formatTime } from '@/lib/formatters';
 import { currentBookingDays, type BookingDayVisit } from '@/components/booking/BookingDayList';
 
-export type RequestedDay = BookingDayVisit & { priceSnapshot?: { subtotalCents?: number } | null };
+export type RequestedDay = BookingDayVisit & { priceSnapshot?: { kitchenCents?: number; equipment?: Array<{ cents: number }> } | null };
 
 /** The request is one decision; these rows describe the individual visits it includes. */
 export function RequestedBookingDays({ visits, revision, equipment = [] }: {
@@ -18,7 +18,7 @@ export function RequestedBookingDays({ visits, revision, equipment = [] }: {
       <p className="font-semibold">{new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium', timeZone: 'UTC' }).format(new Date(`${day.visitDate!.slice(0, 10)}T12:00:00Z`))}</p>
       <p>{day.pricingMode === 'daily' ? t('kitchenSessionFullDay') : `${formatTime(day.startTime, i18n.language)} – ${formatTime(day.endTime, i18n.language)}`}</p>
       {equipment.filter(item => item.visitDate?.slice(0, 10) === day.visitDate!.slice(0, 10) && !item.rejected).map((item, i) => <p key={i} className="text-muted-foreground">{item.name}</p>)}
-      {day.priceSnapshot?.subtotalCents != null && <p>{t('mdDaySubtotal', { amount: new Intl.NumberFormat(i18n.language, { style: 'currency', currency: 'CAD' }).format(day.priceSnapshot.subtotalCents / 100) })}</p>}
+      {day.priceSnapshot?.kitchenCents != null && <p>{t('mdDaySubtotal', { amount: new Intl.NumberFormat(i18n.language, { style: 'currency', currency: 'CAD' }).format((day.priceSnapshot.kitchenCents + (day.priceSnapshot.equipment || []).reduce((sum, item) => sum + item.cents, 0)) / 100) })}</p>}
     </li>)}</ul>
   </section>;
 }

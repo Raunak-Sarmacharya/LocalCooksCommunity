@@ -79,7 +79,12 @@ function ActionDialogContent({ action, supportCase: c, getFirebaseToken, onClose
   const setActualAt = (date: string, time: string) => set("actualAt", date || time ? `${date}T${time}` : "");
 
   const actionLabel = t(`bsAction_${type}`, { defaultValue: action.label });
-  const preview = previewForDisplay(type, action.moneyPreview, form.amount);
+  const cancellation = c.dayCancellation && ['cancel_kitchen_caused', 'request_cancellation_for_chef'].includes(type)
+    ? (form.cancellationDay ? c.dayCancellation.days.find(day => String(day.visitId) === form.cancellationDay) : c.dayCancellation.all)?.[type === 'request_cancellation_for_chef' ? 'forChef' : 'byKitchen'] : null;
+  const outsideRefund = c.outsideRefunds?.find(row => row.refundId === form.outsideRefundId);
+  const preview = cancellation ? { ...action.moneyPreview, ...cancellation } : type === 'assign_outside_refund' && outsideRefund
+    ? { ...action.moneyPreview, chefReceivesCents: outsideRefund.amountCents, managerPaysCents: Math.round(Number(form.kitchenShare || 0) * 100), localCooksPaysCents: outsideRefund.amountCents - Math.round(Number(form.kitchenShare || 0) * 100) }
+    : previewForDisplay(type, action.moneyPreview, form.amount);
   const isGoodwill = type === "goodwill_refund";
   const currency = preview.currency;
   // Ordinary goodwill limit for this booking = what was already sent + what is left of the allowance.
@@ -178,13 +183,37 @@ function ActionDialogContent({ action, supportCase: c, getFirebaseToken, onClose
   const items = pendingItems(c);
   const messageOffered = spec.fields.includes("message");
   const selfArrival = type === "set_arrival_mode" && !form.allTargets && form.mode === "self";
-  const visitLabel = (v: SupportCase["visits"][number]) => t("bsVisitN", { n: v.blockIndex + 1 });
+  const visitLabel = (v: SupportCase["visits"][number]) => v.visitDate ? `${v.visitDate} · ${v.startTime}–${v.endTime}` : t("bsVisitN", { n: v.blockIndex + 1 });
 
   return (
     <AppDialogContent className="p-0 gap-0 overflow-hidden sm:max-w-xl">
       {header}
       <form onSubmit={(e) => { e.preventDefault(); void send(false); }} className="flex min-h-0 flex-1 flex-col">
         <AppDialogBody className="space-y-5">
+          {c.dayCancellation && ['cancel_kitchen_caused', 'request_cancellation_for_chef'].includes(type) && <Field label={t('bsDatedDays')} htmlFor="bs-cancellation-day">
+            <NativeSelect id="bs-cancellation-day" value={form.cancellationDay} disabled={readOnly} onChange={e => set('cancellationDay', e.target.value)}>
+              <option value="">{t('bsAllRemainingDays')}</option>
+              {c.dayCancellation.days.map(day => <option key={day.visitId} value={day.visitId}>{day.date}</option>)}
+            </NativeSelect>
+            {c.dayCancellation.error && <p role="alert">{c.dayCancellation.error}</p>}
+          </Field>}
+          {spec.fields.includes('outsideRefund') && <>
+            <Field label={t('bsOutsideRefund')} error={err('outsideRefundId')} htmlFor="bs-outside-refund">
+              <NativeSelect id="bs-outside-refund" value={form.outsideRefundId} disabled={readOnly} onChange={e => set('outsideRefundId', e.target.value)}>
+                <option value="">{t('bsChooseRefund')}</option>
+                {c.outsideRefunds?.map(refund => <option key={refund.refundId} value={refund.refundId}>{refund.refundId} · {fmtMoney(refund.amountCents, c.money.currency)}</option>)}
+              </NativeSelect>
+            </Field>
+            <Field label={t('bsDatedDay')} error={err('visitId')} htmlFor="bs-refund-day">
+              <NativeSelect id="bs-refund-day" value={form.visitId} disabled={readOnly} onChange={e => set('visitId', e.target.value)}>
+                <option value="">{t('bsChooseDay')}</option>
+                {c.visits.filter(visit => !!visit.visitDate).map(visit => <option key={visit.id} value={visit.id}>{visitLabel(visit)}</option>)}
+              </NativeSelect>
+            </Field>
+            <Field label={t('bsKitchenShare')} hint={t('bsKitchenShareHelp')} error={err('kitchenShare')} htmlFor="bs-kitchen-share">
+              <Input id="bs-kitchen-share" inputMode="decimal" value={form.kitchenShare} disabled={readOnly} onChange={e => set('kitchenShare', e.target.value)} />
+            </Field>
+          </>}
           {type === 'release_payout' && c.money.dayPayouts?.length ? <Field label="Day installment">
             <NativeSelect value={installmentId} onChange={e => setInstallmentId(e.target.value)}>
               <option value="">All eligible day installments</option>
