@@ -4251,5 +4251,8 @@
   "mdFailed": "Could not complete this action. Try again.",
   "mdRefunded": "Refunded {amount}",
   "mdAllocation": "This day: {amount}",
-  "mdBookingTotal": "Whole booking"
+  "mdBookingTotal": "Whole booking",
+  "mdInspection": "Inspection",
+  "mdTransfer": "This transfer: {amount}",
+  "mdReversed": "Reversed: {amount}"
 }

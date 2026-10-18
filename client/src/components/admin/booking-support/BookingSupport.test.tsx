@@ -397,3 +397,22 @@ describe('CP5 daily installments', () => {
     expect(screen.getByText(/Waiting for actual processing fee/)).toBeVisible();
   });
 });
+
+
+describe('CP9 outside refund assignment', () => {
+  const dated = () => baseCase({ scheduleRevision: 1, outsideRefunds: [{ refundId: 're_outside', amountCents: 2500 }], dayMoney: [{ visitId: 9, allocatedCents: 10000, refundedCents: 0, kitchenRemainingCents: 4000 }] });
+  it('sends Local Cooks funding with no day debit', () => {
+    const c = dated(), f = { ...initialForm('assign_outside_refund', c), note: 'Reviewed provider refund' };
+    const result = buildActionRequest('assign_outside_refund', c, f, 'assign-outside-1', false);
+    expect(result.ok && result.body.details).toEqual({ refundId: 're_outside', kitchenDebitCents: 0 });
+  });
+  it('sends the selected day and exact kitchen cents', () => {
+    const c = dated(), f = { ...initialForm('assign_outside_refund', c), note: 'Kitchen agreed to refund', kitchenShare: '12.34' };
+    const result = buildActionRequest('assign_outside_refund', c, f, 'assign-outside-2', false);
+    expect(result.ok && result.body.details).toEqual({ refundId: 're_outside', kitchenDebitCents: 1234, visitId: 9 });
+  });
+  it.each(['25.01', '-1', 'abc'])('refuses an invalid kitchen share %s', share => {
+    const c = dated(), f = { ...initialForm('assign_outside_refund', c), note: 'Reviewed provider refund', kitchenShare: share };
+    expect(buildActionRequest('assign_outside_refund', c, f, 'assign-outside-3', false).ok).toBe(false);
+  });
+});

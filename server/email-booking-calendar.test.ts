@@ -87,3 +87,17 @@ describe('staff confirmation payout line', () => {
     expect(generateBookingConfirmationEmail({ ...base, payoutCents: 100, processingFeeCents: 500 }).text).toContain('CAD $0.00');
   });
 });
+
+
+it('CP9: dated email calendars preserve gaps, visit identity, revision and cancelled days', () => {
+  const email = generateBookingConfirmationEmail({ chefEmail: 'chef@example.test', chefName: 'Sam', kitchenName: 'Kitchen',
+    bookingId: 42, bookingDate: '2030-01-15', startTime: '22:00', endTime: '02:00', timezone: 'UTC', scheduleRevision: 3,
+    days: [{ id: 8, date: '2030-01-15', startTime: '22:00', endTime: '02:00', operatingWindowStartTime: '20:00' },
+      { id: 9, date: '2030-01-18', startTime: '09:00', endTime: '10:00', cancelled: true }] });
+  const ics = String(email.attachments?.[0]?.content);
+  expect(ics.match(/BEGIN:VEVENT/g)).toHaveLength(2);
+  expect(ics).toContain('UID:booking-42-visit-8@localcooks.ca'); expect(ics).toContain('UID:booking-42-visit-9@localcooks.ca');
+  expect(ics).toContain('DTSTART:20300115T220000Z'); expect(ics).toContain('DTEND:20300116T020000Z');
+  expect(ics).toContain('SEQUENCE:3'); expect(ics).toContain('STATUS:CANCELLED');
+  expect(email.text).toContain('Jan 15'); expect(email.text).toContain('Jan 18'); expect(email.text).toContain('2 days');
+});

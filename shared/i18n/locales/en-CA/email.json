@@ -366,5 +366,7 @@
   "bcRefundKeptAdminBody": "{chef}’s change at {kitchen} from {old} to {new} didn’t go through. The booking stays {old}. The refund of {amount} stands and is funded by Local Cooks. The kitchen payout is unchanged by this recovery.",
   "bcRefundIfApprovedLine": "If they approve, you’ll get {amount} back.",
   "bcRequestedManagerSameTitle": "Change request · {reference}",
-  "bcRequestedManagerSameBody": "{chef} asked to move {reference} from {old} to {new}. Same price, so your payout doesn’t change. Answer by {deadline}. Their refund deadline would move to {freeCancel}."
+  "bcRequestedManagerSameBody": "{chef} asked to move {reference} from {old} to {new}. Same price, so your payout doesn’t change. Answer by {deadline}. Their refund deadline would move to {freeCancel}.",
+  "bookingDaysCount": "{count} days",
+  "bookingWholeTotal": "Whole booking total"
 }

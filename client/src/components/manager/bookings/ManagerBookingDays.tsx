@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { formatTime } from '@/lib/formatters';
 import { apiClient } from '@/lib/api';
 import { currentBookingDays, type BookingDayVisit } from '@/components/booking/BookingDayList';
 import { RequestedBookingDays, type RequestedDay } from './RequestedBookingDays';
@@ -66,14 +67,14 @@ export function ManagerBookingDays({ bookingId, revision, visits, money = [], pa
         : new Date(`${day.visitDate}T00:00:00Z`).getTime() > Date.now();
       return <li key={day.id} className="space-y-2 py-4">
         <p className="text-sm font-semibold">{t('mdDayOf', { number: index + 1, total: days.length })} · {new Intl.DateTimeFormat(i18n.language, { timeZone: 'UTC', dateStyle: 'medium' }).format(new Date(`${day.visitDate!.slice(0, 10)}T12:00:00Z`))}</p>
-        <p className="text-sm">{day.pricingMode === 'daily' ? t('kitchenSessionFullDay') : `${day.startTime} – ${day.endTime}`} · {day.scheduleState === 'cancelled' ? t('cancelled') : day.checkinStatus ? t(day.checkinStatus, { defaultValue: day.checkinStatus.replaceAll('_', ' ') }) : ''}</p>
+        <p className="text-sm">{day.pricingMode === 'daily' ? t('kitchenSessionFullDay') : `${formatTime(day.startTime, i18n.language)} – ${formatTime(day.endTime, i18n.language)}`} · {day.scheduleState === 'cancelled' ? t('cancelled') : day.checkinStatus ? t(day.checkinStatus, { defaultValue: day.checkinStatus.replaceAll('_', ' ') }) : ''}</p>
         {facts && <p className="text-sm">{t('mdAllocation', { amount: cash(facts.allocatedCents) })} · {t('mdRefunded', { amount: cash(facts.refundedCents) })}</p>}
         {installments.map(installment => installment.status === 'scheduled' ? <p key={installment.installmentId} className="text-sm text-muted-foreground">{t('mdPaysAfter')}</p>
           : installment.status === 'sent' && installment.sentAt ? <p key={installment.installmentId} className="text-sm">{t('mdPaidOut', { amount: cash(installment.amountCents), date: new Intl.DateTimeFormat(i18n.language, { timeZone: timezone, dateStyle: 'medium' }).format(new Date(installment.sentAt)) })}</p>
           : <KitchenPayoutStatus key={installment.installmentId} payout={{ ...installment, timing: 'after_closeout', holdReason: installment.holdReason || null, expectedAt: installment.expectedAt || null, sentAt: installment.sentAt || null }} timezone={timezone} />)}
-        {active && <div className="flex flex-wrap gap-2">
-          <Button asChild variant="outline" className="min-h-11"><a href={`/manager/booking/${bookingId}/inspection?visitId=${day.id}`}>{t('inspectVisit')}</a></Button>
-          {future && <Button variant="outline" className="min-h-11" onClick={() => void open(day, 'cancel')}>{t('mdCancelDay')}</Button>}
+        {['confirmed', 'completed', 'cancelled'].includes(status) && <div className="flex flex-wrap gap-2">
+          {active && <Button asChild variant="outline" className="min-h-11"><a href={`/manager/booking/${bookingId}/inspection?visitId=${day.id}`}>{t('mdInspection')}</a></Button>}
+          {active && future && (!day.checkinStatus || day.checkinStatus === 'not_checked_in') && <Button variant="outline" className="min-h-11" onClick={() => void open(day, 'cancel')}>{t('mdCancelDay')}</Button>}
           {!!facts?.kitchenRemainingCents && <Button variant="outline" className="min-h-11" onClick={() => void open(day, 'refund')}>{t('mdRefundDay')}</Button>}
         </div>}
       </li>;

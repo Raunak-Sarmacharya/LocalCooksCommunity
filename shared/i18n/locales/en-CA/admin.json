@@ -331,5 +331,7 @@
   "bsDayOf": "Day {number} of {total}",
   "bsDayState": "Day status: {state}",
   "bsDayAllocation": "Allocated: {amount}",
-  "bsDayRefunded": "Refunded: {amount}"
+  "bsDayRefunded": "Refunded: {amount}",
+  "bsAction_refund_day_for_manager": "Refund more for one day for the kitchen",
+  "bsAction_assign_outside_refund": "Assign a refund made outside the app"
 }

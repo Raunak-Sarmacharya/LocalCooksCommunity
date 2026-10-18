@@ -331,5 +331,7 @@
   "bsDayOf": "Jour {number} sur {total}",
   "bsDayState": "État du jour : {state}",
   "bsDayAllocation": "Montant attribué : {amount}",
-  "bsDayRefunded": "Remboursement : {amount}"
+  "bsDayRefunded": "Remboursement : {amount}",
+  "bsAction_refund_day_for_manager": "Rembourser davantage pour un jour au nom de la cuisine",
+  "bsAction_assign_outside_refund": "Attribuer un remboursement fait hors de l’application"
 }

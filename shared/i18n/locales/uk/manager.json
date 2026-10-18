@@ -4251,5 +4251,8 @@
   "mdFailed": "Не вдалося виконати дію. Спробуйте ще раз.",
   "mdRefunded": "Повернено {amount}",
   "mdAllocation": "Цей день: {amount}",
-  "mdBookingTotal": "Усе бронювання"
+  "mdBookingTotal": "Усе бронювання",
+  "mdInspection": "Перевірка",
+  "mdTransfer": "Цей переказ: {amount}",
+  "mdReversed": "Сторновано: {amount}"
 }

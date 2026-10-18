@@ -126,6 +126,10 @@ export function ManagerBookingsAgenda({ bookings, onReviewRequest }: {
                         {/* The whole row opens the booking; the action and the payment breakdown sit above the link. */}
                         <Link href={`/manager/booking/${row.id}`} className="outline-none after:absolute after:inset-0 after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-ring">
                           {listWhenLine(row, locale, words)}
+                          {row.scheduleRevision ? <span className="mt-1 block text-xs font-normal text-muted-foreground">{(() => {
+                            const days = bookings.find(booking => booking.id === row.id)?.visitStates || [];
+                            return mt('mdDayOf', { number: days.findIndex(day => day.id === row.visitStates?.[0]?.id) + 1, total: days.length });
+                          })()}</span> : null}
                         </Link>
                       </p>
                       <div className="mt-0.5 min-w-0 md:mt-0">

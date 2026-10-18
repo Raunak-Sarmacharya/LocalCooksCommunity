@@ -331,5 +331,7 @@
   "bsDayOf": "День {number} із {total}",
   "bsDayState": "Стан дня: {state}",
   "bsDayAllocation": "Розподілено: {amount}",
-  "bsDayRefunded": "Повернено: {amount}"
+  "bsDayRefunded": "Повернено: {amount}",
+  "bsAction_refund_day_for_manager": "Повернути більше за один день від імені кухні",
+  "bsAction_assign_outside_refund": "Призначити повернення поза застосунком"
 }

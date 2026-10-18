@@ -141,8 +141,9 @@ function InspectionVisits({ booking, refresh, stale }: { booking: ManagerInspect
   const [, navigate] = useLocation();
   const visitId = new URLSearchParams(search).get('visitId') || '';
   const [notes, setNotes] = useState<Record<string, string>>({});
-  const selected = booking.visits.length ? booking.visits.find(visit => String(visit.id) === visitId)
+  const candidate = booking.visits.length ? booking.visits.find(visit => String(visit.id) === visitId)
     || (!visitId && booking.visits.length === 1 ? booking.visits[0] : undefined) : !visitId ? booking : undefined;
+  const selected = candidate?.visitDate && candidate.scheduleState !== 'active' ? undefined : candidate;
   const timezone = booking.location.timezone;
   const noteKey = booking.visits.length ? `visit:${selected?.id || visitId}` : 'booking';
   let contextError = '';
@@ -185,11 +186,11 @@ function InspectionVisits({ booking, refresh, stale }: { booking: ManagerInspect
           <SelectTrigger id="inspection-visit" className="ml-2 max-w-full"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value={EMPTY}>{t('inspectCopy37')}</SelectItem>
-            {booking.visits.map(visit => <SelectItem key={visit.id} value={String(visit.id)}>{t('formVisitRange', 'Visit {number}: {start}–{end}', { number: visit.blockIndex + 1, start: formatTime(visit.startTime, locale), end: formatTime(visit.endTime, locale) })}</SelectItem>)}
+            {booking.visits.map(visit => <SelectItem key={visit.id} value={String(visit.id)} disabled={!!visit.visitDate && visit.scheduleState !== 'active'}>{visit.visitDate ? visit.visitDate + ' · ' + t('mdDayOf', { number: booking.visits.findIndex(day => day.id === visit.id) + 1, total: booking.visits.length }) : t('formVisitRange', 'Visit {number}: {start}–{end}', { number: visit.blockIndex + 1, start: formatTime(visit.startTime, locale), end: formatTime(visit.endTime, locale) })}</SelectItem>)}
           </SelectContent>
         </Select><span className="mt-1 block text-muted-foreground">{t('inspectCopy38')}</span>
       </div>}
-    {selected && <p className="text-[15px] font-medium leading-[22px] tabular-nums">{booking.visits.length ? t('inspectVisitOf', { number: booking.visits.findIndex(visit => visit.id === selected.id) + 1, total: booking.visits.length }) + ' · ' : ''}{schedule}</p>}
+    {selected && <p className="text-[15px] font-medium leading-[22px] tabular-nums">{booking.visits.length ? t(selected.visitDate ? 'mdDayOf' : 'inspectVisitOf', { number: booking.visits.findIndex(visit => visit.id === selected.id) + 1, total: booking.visits.length }) + ' · ' : ''}{schedule}</p>}
     </section>
     {contextError && <p role="alert">{contextError}</p>}
     {inSessionEnds(booking).length > 0 && <div className="flex flex-wrap gap-2">

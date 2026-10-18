@@ -4251,5 +4251,8 @@
   "mdFailed": "Impossible de terminer cette action. Réessayez.",
   "mdRefunded": "Remboursement de {amount}",
   "mdAllocation": "Ce jour : {amount}",
-  "mdBookingTotal": "Réservation entière"
+  "mdBookingTotal": "Réservation entière",
+  "mdInspection": "Inspection",
+  "mdTransfer": "Ce virement : {amount}",
+  "mdReversed": "Repris : {amount}"
 }

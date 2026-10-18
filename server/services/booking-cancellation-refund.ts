@@ -18,8 +18,8 @@ import { policySessionStart } from './cancellation-policy-settings';
 import { finalizeDatedRefund, isDatedBooking, type DayTarget } from './dated-booking-cancellation';
 
 /** Staff use the same instant frozen-policy command as the chef. */
-export async function requestChefCancellation(bookingId: number, chefId: number, actorId: number, publicMessage?: string, operationKey = `support-chef-cancel-${bookingId}`, visitIds?: number[]) {
-  return cancelChefBooking(bookingId, chefId, operationKey, publicMessage, actorId, undefined, visitIds);
+export async function requestChefCancellation(bookingId: number, chefId: number, actorId: number, publicMessage?: string, operationKey = `support-chef-cancel-${bookingId}`, visitIds?: number[], expectedRefundCents?: number) {
+  return cancelChefBooking(bookingId, chefId, operationKey, publicMessage, actorId, expectedRefundCents, visitIds);
 }
 
 /** Local Cooks goodwill changes neither the manager transfer nor their entitlement. */

@@ -20,6 +20,7 @@ const C: ActingFor[] = ["chef"];
 const ANY: ActingFor[] = ["local_cooks", "manager", "chef"];
 
 export const ACTION_SPECS: Record<SupportActionType, Spec> = {
+  refund_day_for_manager: { acting: M, reasons: ['manager_asked', 'other'], fields: ['visit', 'amount'], notifies: 'both' },
   retry_refund: { acting: ["local_cooks"], reasons: ["payment_problem", "internal_review", "other"], fields: ["refundOperation"], notifies: "both" },
   mark_refunded: { acting: ["local_cooks"], reasons: ["internal_review", "other"], fields: ["refundOperation"], notifies: "both" },
   confirm_for_manager: { acting: M, reasons: ["manager_asked", "no_response_from_manager", "other"], fields: ["items"], notifies: "both" },
@@ -140,7 +141,7 @@ export function buildActionRequest(
     const chosen = form.cancellationDay ? c.dayCancellation.days.find(day => String(day.visitId) === form.cancellationDay) : c.dayCancellation.all;
     const quote = chosen?.[type === 'request_cancellation_for_chef' ? 'forChef' : 'byKitchen'];
     if (!quote) errors.form = 'bsErrNoQuote';
-    else if (form.cancellationDay) details.visitIds = [Number(form.cancellationDay)];
+    else { details.expectedRefundCents = quote.chefReceivesCents; if (form.cancellationDay) details.visitIds = [Number(form.cancellationDay)]; }
   }
   if (spec.fields.includes("visit") && c.visits.length > 0 && !visit) errors.visitId = "bsErrChooseVisit";
 
@@ -215,6 +216,7 @@ export function buildActionRequest(
     if (field === "amount") {
       const cents = dollarsToCents(form.amount);
       if (cents === null) errors.amount = "bsErrAmount";
+      else if (type === 'refund_day_for_manager' && (c.dayMoney?.find(day => day.visitId === visit?.id)?.kitchenRemainingCents == null || cents > c.dayMoney.find(day => day.visitId === visit?.id)!.kitchenRemainingCents!)) errors.amount = 'bsErrAmountMax';
       else if (preview?.maximumCents != null && cents > preview.maximumCents) errors.amount = "bsErrAmountMax";
       else {
         amountCents = cents;

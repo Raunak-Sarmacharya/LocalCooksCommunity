@@ -8,5 +8,7 @@ export async function readBookingDayMoney(bookingId: number) {
   const rows = await db.select({ allocation: kitchenBookingDayAllocations }).from(kitchenBookingDayAllocations)
     .innerJoin(paymentTransactions, eq(paymentTransactions.id, kitchenBookingDayAllocations.sourceId))
     .where(eq(paymentTransactions.bookingId, bookingId));
-  return bookingDayMoney(rows.map(row => row.allocation));
+  const latest = new Map<number, number>();
+  for (const { allocation } of rows) latest.set(allocation.sourceId, Math.max(latest.get(allocation.sourceId) || 0, allocation.allocationRevision));
+  return bookingDayMoney(rows.map(row => row.allocation).filter(row => row.allocationRevision === latest.get(row.sourceId)));
 }

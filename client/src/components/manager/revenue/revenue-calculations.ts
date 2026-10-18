@@ -116,6 +116,13 @@ export function transactionsToManagerRevenueCSV(
     transactions: Transaction[],
     includeHeaders: boolean = true
 ): string {
+    if (transactions.some(transaction => transaction.dayBreakdown?.length)) {
+        const header = ['Booking', 'Booking total', 'Day', 'This day allocation', 'Transfer', 'This transfer', 'Transfer reversed', 'Sent at'];
+        const rows = transactions.flatMap(transaction => transaction.dayBreakdown?.length
+            ? transaction.dayBreakdown.map((day, index) => [transaction.referenceCode || transaction.bookingId, index === 0 ? formatCurrency(transaction.bookingTotalCents || 0) : '', day.date, formatCurrency(day.allocatedCents), day.transferId || '', day.transferCents == null ? '' : formatCurrency(day.transferCents), formatCurrency(day.reversedCents), day.sentAt || ''])
+            : [[transaction.referenceCode || transaction.bookingId, formatCurrency(transaction.chargeAmount || transaction.totalPrice), formatBookingDate(transaction.bookingDate), formatCurrency(transaction.chargeAmount || transaction.totalPrice), '', formatCurrency(transaction.managerRevenue), '', transaction.paidAt || '']]);
+        return (includeHeaders ? [header, ...rows] : rows).map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
+    }
     const headers = ["Date", "Chef", "Kitchen", "Location", "Subtotal", "Tax", "Tax Rate", "Stripe Fee", "Refunded", "Net Revenue", "Status"];
 
     const rows = transactions.map(transaction => {

@@ -240,7 +240,7 @@ interface BookingDetails {
     kitchenShareCents?: number; refundedCents: number; paidAt: string | null; status: string }>;
   /** The chef's latest "running late" heads-up to the kitchen. */
   runningLate?: RunningLateState | null;
-  visits?: Array<{ id: number; updatedAt: string; blockIndex: number; startTime: string; endTime: string; checkinStatus: string; checkedInAt: string | null; checkoutRequestedAt: string | null; checkedOutAt: string | null; checkoutApprovedAt: string | null; noShowDetectedAt: string | null; checkoutManagerMessage?: string | null; visitDate?: string | null; scheduleRevision?: number | null; scheduleState?: string | null; pricingMode?: string | null }>;
+  visits?: Array<{ id: number; updatedAt: string; blockIndex: number; startTime: string; endTime: string; checkinStatus: string; checkedInAt: string | null; checkoutRequestedAt: string | null; checkedOutAt: string | null; checkoutApprovedAt: string | null; noShowDetectedAt: string | null; checkoutManagerMessage?: string | null; visitDate?: string | null; scheduleRevision?: number | null; scheduleState?: string | null; pricingMode?: string | null; operatingWindowStartTime?: string | null; priceSnapshot?: { kitchenCents?: number; equipment?: Array<{ cents: number }> } | null; closeout?: { scheduledStartAt?: string; scheduledEndAt?: string } }>;
 }
 
 async function getAuthHeaders(): Promise<HeadersInit> {
@@ -776,6 +776,8 @@ export default function BookingDetailsPage() {
   };
 
   const bookingForAction: BookingForAction | null = booking ? {
+    scheduleRevision: booking.scheduleRevision,
+    visits: booking.visits,
     id: booking.id,
     kitchenName: booking.kitchen?.name,
     chefName: booking.chef?.fullName || booking.chef?.username,
@@ -1687,7 +1689,7 @@ export default function BookingDetailsPage() {
               arrivalMode={booking.arrivalMode} timezone={booking.location?.timezone} visitStartAt={visitBounds?.startAt ?? null} />
           </ClampedBlock>
         )}
-        {now.body === 'code' && booking.status === 'confirmed' && !hasArrival && (
+        {booking.status === 'confirmed' && (isManagerView && datedBooking || now.body === 'code' && !hasArrival) && (
           // The code panel brings its own frame; no second box around it.
           <div data-testid="now-body">
             <VisitCodePanel key={`visit-code-${booking.id}`} bookingId={booking.id} bookingStatus={booking.status} embedded collapsed={!withinCodeLead}

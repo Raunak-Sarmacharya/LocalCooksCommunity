@@ -82,7 +82,7 @@ function ActionDialogContent({ action, supportCase: c, getFirebaseToken, onClose
   const cancellation = c.dayCancellation && ['cancel_kitchen_caused', 'request_cancellation_for_chef'].includes(type)
     ? (form.cancellationDay ? c.dayCancellation.days.find(day => String(day.visitId) === form.cancellationDay) : c.dayCancellation.all)?.[type === 'request_cancellation_for_chef' ? 'forChef' : 'byKitchen'] : null;
   const outsideRefund = c.outsideRefunds?.find(row => row.refundId === form.outsideRefundId);
-  const preview = cancellation ? { ...action.moneyPreview, ...cancellation } : type === 'assign_outside_refund' && outsideRefund
+  const preview = type === 'refund_day_for_manager' ? { ...action.moneyPreview, chefReceivesCents: Math.round(Number(form.amount || 0) * 100), managerPaysCents: Math.round(Number(form.amount || 0) * 100), localCooksPaysCents: 0 } : cancellation ? { ...action.moneyPreview, ...cancellation } : type === 'assign_outside_refund' && outsideRefund
     ? { ...action.moneyPreview, chefReceivesCents: outsideRefund.amountCents, managerPaysCents: Math.round(Number(form.kitchenShare || 0) * 100), localCooksPaysCents: outsideRefund.amountCents - Math.round(Number(form.kitchenShare || 0) * 100) }
     : previewForDisplay(type, action.moneyPreview, form.amount);
   const isGoodwill = type === "goodwill_refund";
