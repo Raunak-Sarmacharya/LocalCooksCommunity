@@ -140,6 +140,13 @@ describe('CP7 money review regressions', () => {
     await expect(readDatedCancellationQuote(1, chef, { visitIds: [2] }, NOW)).rejects.toThrow('Local Cooks');
   });
 
+  it('M1: even a fully refunded kept source blocks the booking before captured-source filtering', async () => {
+    await h.db.update(s.paymentTransactions).set({ status: 'refunded' }).where(eq(s.paymentTransactions.id, 1));
+    await expect(engine.previewKitchenChange(1, chef, { destination: days(full(TUE), full(THU), full('2099-11-07')) }, NOW))
+      .rejects.toMatchObject({ code: 'datedChangeSupport' });
+    expect(refundsAllocated((await h.db.select().from(s.paymentTransactions))[0])).toBe(false);
+  });
+
   it('M1 lateral: kept refund blocks an equal-price move too', async () => {
     await expect(engine.previewKitchenChange(1, chef, { destination: days(full(TUE), full(THU), full('2099-11-07')) }, NOW))
       .rejects.toMatchObject({ code: 'datedChangeSupport' });

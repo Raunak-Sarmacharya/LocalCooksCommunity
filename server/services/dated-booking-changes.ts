@@ -93,6 +93,7 @@ type SourceLedger = { source: Payment; live: Allocation[]; active: Allocation[];
 async function ledger(tx: Tx, booking: Booking, days: Days, changeId?: string) {
   const all = await tx.select().from(paymentTransactions).where(and(eq(paymentTransactions.bookingId, booking.id),
     inArray(paymentTransactions.bookingType, ['kitchen', 'bundle']))).orderBy(asc(paymentTransactions.id));
+  if (all.some(hasUnreconciledChangeRefund)) throw support('a kept change refund needs reconciliation');
   const sources = all.filter(row => ['succeeded', 'partially_refunded'].includes(row.status) && !(changeId && meta(row).kitchenChangeId === changeId));
   const parent = sources.find(row => !!row.paymentIntentId && row.paymentIntentId === booking.paymentIntentId);
   if (!parent || !['paid', 'partially_refunded'].includes(booking.paymentStatus || ''))
@@ -107,7 +108,6 @@ async function ledger(tx: Tx, booking: Booking, days: Days, changeId?: string) {
   const result: SourceLedger[] = [];
   for (const source of sources) {
     const m = meta(source);
-    if (hasUnreconciledChangeRefund(source)) throw support('a kept change refund needs reconciliation');
     if (m.cancellationRefundOperation && m.cancellationRefundOperation.status !== 'succeeded')
       throw new KitchenChangeError('A payment for this booking is still being checked. Refresh in a moment.', 409, 'paymentChecking');
     const own = changeId ? m.changeGrossRefundOperations?.[changeId] : undefined;
