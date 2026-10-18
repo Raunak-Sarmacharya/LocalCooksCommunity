@@ -98,3 +98,66 @@ on dev after deploy is still to do (not deployed by this stage).
 - `client/src/components/booking/BookingNowCard.tsx` — `PILL` exported (no visual change).
 - 45 new `ovr*` strings in en-CA, fr-CA, uk (`manager.json`).
 - Tests: `KitchenDashboardOverview.test.tsx` (+5), `BookingCalendarWidget.test.tsx` (new, 3), `lib/manager-dashboard-numbers.test.ts` (new, 7).
+
+## Round 2 (Oct 18, 2026) — lead's live review on dev (1280 and 390)
+
+Display only, as before. Baseline is dev running round 1 (PHASE0 Test Kitchen); these fixes are not deployed yet.
+
+1. **Follow-ups named the wrong day.** The booking row's own `checkinStatus` and times are day 1's and go stale on a
+   dated multi-day booking. On dev, bookings 207 and 209 still said `not_checked_in` with day 1's times, so the
+   booking-level check flagged them as "Follow up ended bookings". The row then took its day from the agenda's
+   next-day choice ("Day 2 of 2 · Fri, Oct 23"). In fact both had day 1 checked out (Today shows them as Completed).
+   Booking 212's day 1 *was* waiting (`checkout_requested`) but was missed, because its booking row hadn't "ended".
+   Now a dated booking's follow-ups are decided **day by day**. Each day that ended and is still open (checkout to
+   review, or nothing recorded) becomes its own item: "Day N of M · date · times", linked to
+   `/manager/booking/:id/inspection?visitId=<that day>`. Single-day bookings keep the old rule. Every follow-up item
+   now opens the inspection; before, "ended bookings" opened the booking page. On dev today this means the two wrong
+   "Follow up ended bookings" rows go away and booking 212 day 1 appears under "Kitchen check-out reviews".
+2. **Today card.** Order: in the kitchen now, then next up (by start), then the day's context (closures, special
+   hours, storage), then anything earlier today still open. Cancelled and finished items are folded into one line
+   under the list ("2 cancelled · 2 finished", a button with `aria-expanded`) and appear when opened. The pill sits
+   next to the time, and the name wraps instead of being cut off ("TestSprite ch…").
+3. **Calendar.** Cancelled bookings are hidden. A **Show cancelled** switch (Radix Switch with a label, `role=switch`)
+   appears in the footer only when something is cancelled. Completed, requested, booked, tours, storage and closures
+   stay visible. New **Agenda** view: the first day (always shown) plus the next six days that have something on, as
+   two-line rows (name, then time · state). Below 768 px the calendar **opens on Agenda**; desktop still opens on Week.
+4. **View switch overlap ("Day WeekMonth").** Root cause: Radix ToggleGroup items are `role="radio"` +
+   `data-radix-collection-item`, and `index.css` sizes exactly that pair to 16×16 with `!important` for the app's radio
+   dots. Now plain buttons in a `role=group` with `aria-pressed`, the same fix as `EquipmentListingManagement`'s
+   AvailabilityToggle. (Anything else built on ToggleGroup would hit the same rule; only this widget and that page
+   used it.)
+5. **Revenue card uses the Revenue page's words**: Paid out / Upcoming / On hold (`r1PaidOut`, `r1Upcoming`,
+   `r1OnHold`), with "Next payout {date} · {amount}". uk "On hold" count line now says "призупинено" to match
+   Revenue.
+
+### For the owner (changed or removed from view)
+- **"Pending payments" footer is no longer shown** on the dashboard card. It came from the old revenue overview's
+  `pendingPayments` and read $0.00 next to "Upcoming $471.12". The data is still read (`revenue.pendingPayments`); only
+  the line is gone. "Paid bookings" stays in the footer.
+- **"Follow up ended bookings" now opens the day's inspection**, not the booking page.
+- Cancelled bookings are no longer on the calendar unless "Show cancelled" is on, and not in the Today list unless
+  the folded line is opened.
+- Unused strings left in the catalogs (`overviewPaidEarnings`, `overviewPendingPayments`, `ovrOnHold`): kept because
+  other surfaces may use them later. Say if you want them removed.
+
+### Gaps noticed (not changed)
+- If the Revenue ledger read fails, the card falls back to the old overview, where "Paid out" is the month's
+  completed net revenue rather than transfers sent.
+- The week grid's chips still shorten long names (they carry the full name in their label); the Agenda and Day views
+  show full names.
+
+### Layout check
+At 390 px the calendar header wraps to two lines (Today and prev/next; then the four-way switch). Agenda replaces the
+seven stacked days, and with cancelled hidden a busy day shrinks (Mon 19 on dev lists 7 events, 5 of them
+cancelled by the lead's count). At 1280 the Today card keeps its 320 px slot. The fold line sits under the active rows, so a
+day with cancellations no longer pushes tonight's booking below the fold. Checked with tests and by reading the code;
+dev screenshots are the round-1 baseline only.
+
+### Tests (round 2)
+- `KitchenDashboardOverview.test.tsx` (+7): the follow-up names the ended day and opens its inspection; every ended
+  day is listed under its own group; a checked-out day 1 with a stale booking row is not flagged (dev 209); a day-1
+  checkout is listed though the booking row hasn't ended (dev 212); Today leads with tonight's booking and folds 2
+  cancelled + 1 finished; the fold opens; revenue card words with no "Pending payments".
+- `BookingCalendarWidget.test.tsx` (+4): segmented control with `aria-pressed` and no `role=radio`; cancelled hidden
+  until the switch is on (completed/closures stay); no switch when nothing is cancelled; Agenda is the default on a
+  phone, showing only days with events.
