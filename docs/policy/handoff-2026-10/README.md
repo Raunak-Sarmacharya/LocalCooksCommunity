@@ -17,6 +17,20 @@ publish.
 | `05-damage-claims-and-problems.md` | Damage & Cleaning Claims + Problems (replaces the current claims component text) | Replace the text in `client/src/components/legal/DamageCleaningPolicy.tsx` (shown inside the Terms) and publish at `/policies/claims` |
 | `06-terms-of-service-changes.md` | Clause-by-clause replacements for the in-app Terms where they contradict the product | `client/src/components/legal/TermsContent.tsx` (+ fr/uk) — §2.1, 4.3, 4.7, 4.9, 5.1, 5.3, 5.4, 9.1–9.4, 12.1, 14.2 |
 
+## Changes — October 17, 2026
+
+- **02** — new section "Booking several days": any days up to the kitchen's limit (no more than 14), all within 14 days of the
+  first; one request and one card hold; the kitchen accepts all days or declines; one refund deadline before the first day; dropping
+  days before and after it; started or missed days not refundable; one change request for the whole booking; what happens when the
+  kitchen cancels a day (a lead decision the owner may override). The old "charged only for what it accepts" wording is replaced by
+  the chef-approval rule (the kitchen asks the chef to approve a new total, nothing is charged until they accept, and the
+  last-minute 3-hour guard). Added the buffer, weekly hours limit and longest-booking settings, including that full days at the daily
+  rate are always bookable.
+- **04** — per-day payouts for multi-day bookings (after that day's inspection or 24 hours after it), a problem on a day holding
+  that day's payout, and how a partial acceptance is captured and paid.
+- **06** — §4.7, §4.9, §5.1, §5.3 and §9.2 updated to match the multi-day, item-approval and per-day payout rules.
+- **01, 03, 05** — unchanged.
+
 ## Publishing checklist (top-platform pattern)
 
 1. Lawyer review of all six files (and the open points below).
@@ -37,6 +51,7 @@ publish.
 | E3 | **SMS**: Twilio is configured and some booking actions can text the phone on file. Decide keep or remove; if kept, add a "Text me booking updates" toggle (off by default) and STOP handling. | Consent + accuracy of §5 and §8.2. |
 | E4 | **Kitchen Stripe Connected Account Agreement** link shown before a kitchen connects Stripe. | Stripe requires platforms to present it. |
 | E5 | Remove the dormant Google Analytics / Tag Manager `dns-prefetch` lines (`client/index.html:109–110`) or, if you add analytics later, update §7 (cookies) first. | Policy says no third-party advertising/analytics trackers. |
+| E6 | **Multi-day booking creation** is built (CP6/CP8) but still switched off on dev; **partial acceptance** is built and needs live verification after migration 0103 is applied. Turn both on and verify before publishing the multi-day and item-approval rules. | The text describes what the product does; these paths aren't live yet. |
 
 ## Open points for you and your lawyer
 
