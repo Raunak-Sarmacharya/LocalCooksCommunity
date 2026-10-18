@@ -1,647 +1,223 @@
+import { useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { Link } from "wouter";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { mt } from "@/i18n/manager";
-import { useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Calendar , Clock, CalendarIcon, CheckCircle2, AlertCircle, XCircle, LayoutGrid, List, CalendarDays } from "lucide-react";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays, addMonths, subMonths, addWeeks, subWeeks, isSameMonth, isSameDay, isSameWeek, isToday, getHours, getMinutes } from "date-fns";
-import { enCA, frCA, uk as ukLocale } from "date-fns/locale";
-import { formatTime as formatTimeLocale } from "@/lib/formatters";
-import { kitchenBookingBlocks } from "@/lib/kitchen-booking-blocks";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { PILL, StatusPill } from "@/components/booking/BookingNowCard";
+import { timeRange, type BookingPillTone } from "@/lib/booking-header-state";
+import { formatTime } from "@/lib/formatters";
+import { addDaysKey, weekStartKey } from "@/lib/manager-week-stats";
+import { cn } from "@/lib/utils";
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// BOOKING CALENDAR WIDGET - Premium Design
-// Inspired by Untitled UI, Peerspace, and top booking platforms
-// Features: Month View, Week View with time slots, Day detail panel
-// ═══════════════════════════════════════════════════════════════════════════════
+/**
+ * The kitchen's calendar on the dashboard: everything that happens in the kitchen on a day — booked days (one per day of
+ * a multi-day booking), tours, closures and special hours, storage move-ins and move-outs — coloured like the booking
+ * pills, each opening its own page. Week by default (columns on desktop, stacked days on a phone), with Day and Month.
+ * Display only; the events are built by the overview from data it already reads.
+ */
+export type CalendarEvent = {
+  key: string;
+  kind: "booking" | "tour" | "closed" | "hours" | "moveIn" | "moveOut";
+  /** Kitchen operating day, YYYY-MM-DD. */
+  date: string;
+  start?: string;
+  end?: string;
+  /** Real start instant for ordering (an overnight slot sorts after the evening). */
+  sortAt?: number;
+  title: string;
+  detail?: string;
+  /** State in words ("Confirmed", "Tour requested", "Closed"). */
+  label: string;
+  tone: BookingPillTone;
+  /** Finished or cancelled: drawn quietly. */
+  muted?: boolean;
+  /** The chef is in the kitchen now. */
+  now?: boolean;
+  href?: string;
+  onOpen?: () => void;
+};
 
-type CalendarView = 'month' | 'week';
+type View = "day" | "week" | "month";
 
-interface Booking {
-  id: number;
-  bookingDate: string;
-  startTime: string;
-  endTime: string;
-  selectedSlots?: Array<string | { startTime: string; endTime: string }> | null;
-  operatingWindowStartTime?: string | null;
-  status: 'pending' | 'confirmed' | 'cancelled' | 'completed';
-  chefName?: string;
-  portalUserName?: string;
-  kitchenName?: string;
-  locationName?: string;
-  specialNotes?: string;
+const asDate = (key: string) => new Date(`${key}T12:00:00Z`);
+const dayFormat = (locale: string, options: Intl.DateTimeFormatOptions) => (key: string) => new Intl.DateTimeFormat(locale, { timeZone: "UTC", ...options }).format(asDate(key));
+const allDay = (event: CalendarEvent) => !event.start;
+
+export const eventTime = (event: CalendarEvent, locale: string) =>
+  event.start && event.end ? timeRange(formatTime(event.start, locale), formatTime(event.end, locale)) : event.start ? formatTime(event.start, locale) : "";
+
+export function sortEvents(events: CalendarEvent[]) {
+  return [...events].sort((a, b) => Number(!allDay(a)) - Number(!allDay(b))
+    || (a.sortAt ?? 0) - (b.sortAt ?? 0) || (a.start ?? "").localeCompare(b.start ?? ""));
 }
 
+function EventLink({ event, className, children, label }: { event: CalendarEvent; className: string; children: ReactNode; label?: string }) {
+  const focus = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1";
+  if (event.href) return <Link href={event.href} aria-label={label} className={cn(className, focus)}>{children}</Link>;
+  if (event.onOpen) return <button type="button" aria-label={label} onClick={event.onOpen} className={cn("text-left", className, focus)}>{children}</button>;
+  return <div className={className}>{children}</div>;
+}
+
+/** One event as a full row: time, who/what, state. Shared by the Day view and the dashboard's Today card. */
+export function CalendarEventRow({ event, locale }: { event: CalendarEvent; locale: string }) {
+  const time = eventTime(event, locale);
+  return (
+    <EventLink event={event} className={cn("group flex w-full items-start gap-3 rounded-lg px-2 py-2.5 transition-colors duration-200 motion-reduce:transition-none hover:bg-muted/60", event.muted && "opacity-70")}>
+      <span aria-hidden="true" className={cn("mt-1.5 size-2 shrink-0 rounded-full", PILL[event.tone].dot)} />
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-medium tabular-nums">{time || event.label}</span>
+        <span className={cn("block truncate text-sm", event.muted && "line-through decoration-muted-foreground/60")}>{event.title}</span>
+        {event.detail && <span className="mt-0.5 block truncate text-xs text-muted-foreground">{event.detail}</span>}
+      </span>
+      <span className="flex shrink-0 flex-col items-end gap-1">
+        <StatusPill tone={event.tone}>{event.label}</StatusPill>
+        {event.now && <span className="text-xs font-medium text-success">{mt("ovrInKitchenNowBadge")}</span>}
+      </span>
+      {(event.href || event.onOpen) && <ChevronRight className="mt-1 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
+    </EventLink>
+  );
+}
+
+function EventChip({ event, locale }: { event: CalendarEvent; locale: string }) {
+  const time = eventTime(event, locale);
+  return (
+    <EventLink event={event} label={[time, event.title, event.label].filter(Boolean).join(" · ")}
+      className={cn("block w-full rounded-md border px-2 py-1.5 text-xs leading-4 transition-[filter] hover:brightness-95", PILL[event.tone].surface, event.muted && "opacity-60")}>
+      <span className="block font-semibold tabular-nums">{time || event.label}</span>
+      <span className={cn("block truncate", event.muted && "line-through")}>{event.title}</span>
+    </EventLink>
+  );
+}
+
+const LEGEND: Array<[BookingPillTone, string]> = [["green", "ovrLegendBooked"], ["amber", "ovrLegendRequested"], ["blue", "ovrLegendTour"], ["purple", "ovrLegendStorage"], ["grey", "ovrLegendClosed"]];
+
 interface BookingCalendarWidgetProps {
-  bookings: Booking[];
+  events: CalendarEvent[];
   isLoading: boolean;
+  /** The kitchen's today, YYYY-MM-DD. */
+  today: string;
   onNavigateToBookings: () => void;
 }
 
-export default function BookingCalendarWidget({
-  bookings,
-  isLoading,
-  onNavigateToBookings,
-}: BookingCalendarWidgetProps) {
+export default function BookingCalendarWidget({ events, isLoading, today, onNavigateToBookings }: BookingCalendarWidgetProps) {
   const { i18n } = useTranslation();
-  const dateLocale = i18n.language.startsWith("fr")
-    ? frCA
-    : i18n.language.startsWith("uk")
-      ? ukLocale
-      : enCA;
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const [selectedDate, setSelectedDate] = useState<Date | null>(new Date());
-  const [view, setView] = useState<CalendarView>('month');
+  const locale = i18n.language;
+  const [view, setView] = useState<View>("week");
+  const [anchor, setAnchor] = useState(today);
 
-  // Navigate
-  const goToPrev = () => {
-    if (view === 'month') {
-      setCurrentDate(subMonths(currentDate, 1));
-    } else {
-      setCurrentDate(subWeeks(currentDate, 1));
-    }
-  };
+  const byDay = useMemo(() => {
+    const map = new Map<string, CalendarEvent[]>();
+    for (const event of events) map.set(event.date, [...(map.get(event.date) ?? []), event]);
+    map.forEach((list, key) => map.set(key, sortEvents(list)));
+    return map;
+  }, [events]);
 
-  const goToNext = () => {
-    if (view === 'month') {
-      setCurrentDate(addMonths(currentDate, 1));
-    } else {
-      setCurrentDate(addWeeks(currentDate, 1));
-    }
-  };
+  const weekStart = weekStartKey(anchor);
+  const week = Array.from({ length: 7 }, (_, index) => addDaysKey(weekStart, index));
+  const monthStart = `${anchor.slice(0, 7)}-01`;
+  const monthEnd = addDaysKey(`${addDaysKey(monthStart, 32).slice(0, 7)}-01`, -1);
+  const monthDays: string[] = [];
+  for (let key = weekStartKey(monthStart); key <= addDaysKey(weekStartKey(monthEnd), 6); key = addDaysKey(key, 1)) monthDays.push(key);
 
-  const goToToday = () => {
-    setCurrentDate(new Date());
-    setSelectedDate(new Date());
-  };
+  const shift = (direction: 1 | -1) => setAnchor(view === "day" ? addDaysKey(anchor, direction)
+    : view === "week" ? addDaysKey(anchor, 7 * direction) : `${(direction > 0 ? addDaysKey(monthEnd, 1) : addDaysKey(monthStart, -1)).slice(0, 7)}-01`);
+  const openDay = (key: string) => { setAnchor(key); setView("day"); };
 
-  // Group bookings by date
-  const bookingsByDate = useMemo(() => {
-    const grouped: Record<string, Booking[]> = {};
-    bookings.forEach((booking) => {
-      if (!booking.bookingDate) return;
-      const dateStr = booking.bookingDate.split('T')[0];
-      if (!grouped[dateStr]) {
-        grouped[dateStr] = [];
-      }
-      grouped[dateStr].push(booking);
-    });
-    // Sort bookings within each day by start time
-    Object.keys(grouped).forEach((key) => {
-      grouped[key].sort((a, b) => {
-        if (!a.startTime || !b.startTime) return 0;
-        return a.startTime.localeCompare(b.startTime);
-      });
-    });
-    return grouped;
-  }, [bookings]);
-
-  // Get bookings for a specific date
-  const getBookingsForDate = (date: Date): Booking[] => {
-    const dateStr = format(date, 'yyyy-MM-dd');
-    return bookingsByDate[dateStr] || [];
-  };
-
-  // Generate calendar days for month view
-  const calendarDays = useMemo(() => {
-    const monthStart = startOfMonth(currentDate);
-    const monthEnd = endOfMonth(monthStart);
-    const startDate = startOfWeek(monthStart, { weekStartsOn: 0 });
-    const endDate = endOfWeek(monthEnd, { weekStartsOn: 0 });
-
-    const days: Date[] = [];
-    let day = startDate;
-    while (day <= endDate) {
-      days.push(day);
-      day = addDays(day, 1);
-    }
-    return days;
-  }, [currentDate]);
-
-  // Generate week days for week view
-  const weekDays = useMemo(() => {
-    const weekStart = startOfWeek(currentDate, { weekStartsOn: 0 });
-    const days: Date[] = [];
-    for (let i = 0; i < 7; i++) {
-      days.push(addDays(weekStart, i));
-    }
-    return days;
-  }, [currentDate]);
-
-  // Get bookings for selected date
-  const selectedDateBookings = selectedDate ? getBookingsForDate(selectedDate) : [];
-
-  // Include the overnight tail of each operating day.
-  const timeSlots = useMemo(() => {
-    const slots: number[] = [];
-    for (let hour = 6; hour <= 29; hour++) {
-      slots.push(hour);
-    }
-    return slots;
-  }, []);
-
-  // Format time helper
-  const formatTime = (time: string) => formatTimeLocale(time, i18n.language);
-
-  // Format hour for time slots
-  const formatHour = (hour: number) => {
-    const d = new Date();
-    d.setHours(hour % 24, 0, 0, 0);
-    return new Intl.DateTimeFormat(i18n.language, { hour: "numeric" }).format(d);
-  };
-
-  // Get booking position and height for week view
-  const getBookingStyle = (startTime: string, endTime: string) => {
-    if (!startTime || !endTime) return { display: 'none' };
-    
-    const [startHour, startMin] = startTime.split(':').map(Number);
-    const [endHour, endMin] = endTime.split(':').map(Number);
-    
-    const displayStart = startHour < 6 ? startHour + 24 : startHour;
-    const displayEnd = endHour < displayStart ? endHour + 24 : endHour;
-    const startOffset = ((displayStart - 6) * 60 + startMin) / 60; // hours from 6 AM
-    const duration = ((displayEnd - displayStart) * 60 + (endMin - startMin)) / 60; // duration in hours
-    
-    return {
-      top: `${startOffset * 48}px`, // 48px per hour
-      height: `${Math.max(duration * 48, 24)}px`, // minimum 24px height
-    };
-  };
-
-  // Status config
-  const statusConfig = {
-    confirmed: {
-      color: 'bg-emerald-500',
-      textColor: 'text-emerald-700',
-      bgColor: 'bg-emerald-50',
-      borderColor: 'border-emerald-200',
-      hoverBg: 'hover:bg-emerald-100',
-      icon: CheckCircle2,
-      label: mt("confirmed"),
-    },
-    pending: {
-      color: 'bg-amber-500',
-      textColor: 'text-amber-700',
-      bgColor: 'bg-amber-50',
-      borderColor: 'border-amber-200',
-      hoverBg: 'hover:bg-amber-100',
-      icon: AlertCircle,
-      label: mt("pending"),
-    },
-    cancelled: {
-      color: 'bg-gray-400',
-      textColor: 'text-gray-600',
-      bgColor: 'bg-gray-50',
-      borderColor: 'border-gray-200',
-      hoverBg: 'hover:bg-gray-100',
-      icon: XCircle,
-      label: mt("cancelled"),
-    },
-    completed: {
-      color: 'bg-emerald-400',
-      textColor: 'text-emerald-700',
-      bgColor: 'bg-emerald-50',
-      borderColor: 'border-emerald-200',
-      hoverBg: 'hover:bg-emerald-100',
-      icon: CheckCircle2,
-      label: mt("completed"),
-    },
-  };
-
-  const dayNames = Array.from({ length: 7 }, (_, i) =>
-    new Intl.DateTimeFormat(i18n.language, { weekday: "short" }).format(new Date(2024, 0, 7 + i))
-  );
-
-  // Get date range text
-  const getDateRangeText = () => {
-    if (view === 'month') {
-      return `${format(startOfMonth(currentDate), 'MMM d', { locale: dateLocale })} – ${format(endOfMonth(currentDate), 'MMM d, yyyy', { locale: dateLocale })}`;
-    } else {
-      const weekStart = startOfWeek(currentDate, { weekStartsOn: 0 });
-      const weekEnd = endOfWeek(currentDate, { weekStartsOn: 0 });
-      return `${format(weekStart, 'MMM d', { locale: dateLocale })} – ${format(weekEnd, 'MMM d, yyyy', { locale: dateLocale })}`;
-    }
-  };
+  const short = dayFormat(locale, { month: "short", day: "numeric" });
+  const range = view === "day" ? dayFormat(locale, { weekday: "long", month: "long", day: "numeric", year: "numeric" })(anchor)
+    : view === "week" ? `${short(week[0])} – ${dayFormat(locale, { month: "short", day: "numeric", year: "numeric" })(week[6])}`
+    : dayFormat(locale, { month: "long", year: "numeric" })(monthStart);
+  const weekday = dayFormat(locale, { weekday: "short" });
+  const dayNumber = dayFormat(locale, { day: "numeric" });
+  const weekEmpty = week.every(key => !byDay.get(key)?.length);
 
   return (
-    <Card className="border border-gray-200 shadow-sm bg-white overflow-hidden">
-      {/* Calendar Header */}
-      <CardHeader className="p-4 pb-3 border-b border-gray-100">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          {/* Left: Date Badge & Title */}
-          <div className="flex items-center gap-3">
-            {/* Date Badge */}
-            <div className="flex flex-col items-center justify-center w-14 h-14 bg-gradient-to-br from-rose-500 to-pink-600 rounded-xl text-white shadow-lg shadow-rose-500/20">
-              <span className="text-[10px] font-semibold uppercase tracking-wider opacity-90">
-                {format(new Date(), 'MMM', { locale: dateLocale })}
-              </span>
-              <span className="text-xl font-bold leading-none">
-                {format(new Date(), 'd')}
-              </span>
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900">
-                {format(currentDate, 'MMMM yyyy', { locale: dateLocale })}
-              </h3>
-              <p className="text-xs text-gray-500">{getDateRangeText()}</p>
-            </div>
+    <Card className="min-w-0 rounded-[20px] border border-border/70 bg-card shadow-[0_2px_12px_-6px_rgba(15,23,42,0.12)]" data-testid="overview-calendar">
+      <CardContent className="p-5 md:p-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">{mt("ovrCalendar")}</p>
+            <h2 className="mt-1 text-xl font-semibold tracking-tight" aria-live="polite">{range}</h2>
           </div>
-
-          {/* Right: Controls */}
-          <div className="flex items-center gap-2">
-            {/* Today Button */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={goToToday}
-              className="text-xs h-8 px-3 border-gray-200 hover:bg-gray-50"
-            >
-              {mt("today")}
-            </Button>
-
-            {/* View Toggle */}
-            <div className="flex items-center bg-gray-100 rounded-lg p-0.5">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setView('month')}
-                className={`h-7 px-2.5 text-xs rounded-md transition-all ${
-                  view === 'month'
-                    ? 'bg-white text-gray-900 shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                <LayoutGrid className="h-3.5 w-3.5 mr-1" />
-                {mt("monthView")}
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setView('week')}
-                className={`h-7 px-2.5 text-xs rounded-md transition-all ${
-                  view === 'week'
-                    ? 'bg-white text-gray-900 shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                <List className="h-3.5 w-3.5 mr-1" />
-                {mt("weekView")}
-              </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" className="h-9" onClick={() => setAnchor(today)}>{mt("today")}</Button>
+            <div className="flex items-center rounded-lg border border-border/70">
+              <Button variant="ghost" size="icon" className="size-9" onClick={() => shift(-1)} aria-label={mt("previous")}><ChevronLeft className="size-4" aria-hidden="true" /></Button>
+              <Button variant="ghost" size="icon" className="size-9" onClick={() => shift(1)} aria-label={mt("next")}><ChevronRight className="size-4" aria-hidden="true" /></Button>
             </div>
-
-            {/* Navigation */}
-            <div className="flex items-center bg-gray-100 rounded-lg p-0.5">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={goToPrev}
-                className="h-7 w-7 p-0 hover:bg-white rounded-md"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={goToNext}
-                className="h-7 w-7 p-0 hover:bg-white rounded-md"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
+            <ToggleGroup type="single" value={view} onValueChange={value => value && setView(value as View)} aria-label={mt("ovrCalendarView")}
+              className="rounded-lg bg-muted p-0.5">
+              {(["day", "week", "month"] as const).map(option => (
+                <ToggleGroupItem key={option} value={option} size="sm" className="h-8 rounded-md px-3 text-xs data-[state=on]:bg-background data-[state=on]:shadow-sm">
+                  {mt(option === "day" ? "ovrDayView" : option === "week" ? "weekView" : "monthView")}
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
           </div>
         </div>
-      </CardHeader>
 
-      <CardContent className="p-0">
-        <div className="flex flex-col lg:flex-row">
-          {/* Calendar Grid - Month View */}
-          {view === 'month' && (
-            <div className="flex-1 p-4">
-              {/* Week Days Header */}
-              <div className="grid grid-cols-7 mb-2">
-                {dayNames.map((day) => (
-                  <div
-                    key={day}
-                    className="text-center text-xs font-medium text-gray-500 py-2"
-                  >
-                    {day}
+        {isLoading ? <Skeleton className="mt-5 h-48 rounded-xl" /> : view === "week" ? (
+          <div className="mt-5 grid gap-2 md:grid-cols-7">
+            {week.map(key => {
+              const list = byDay.get(key) ?? [];
+              const isToday = key === today;
+              return (
+                <section key={key} aria-label={dayFormat(locale, { weekday: "long", month: "long", day: "numeric" })(key)}
+                  className={cn("min-w-0 rounded-xl border border-border/60 p-2 md:min-h-40", isToday ? "border-primary/40 bg-primary/[0.03]" : "bg-muted/20", !list.length && !isToday && "hidden md:block")}>
+                  <button type="button" onClick={() => openDay(key)} className="flex w-full items-baseline gap-1.5 rounded-md px-1 py-1 text-left hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                    <span className={cn("text-xs font-medium", isToday ? "text-primary" : "text-muted-foreground")}>{weekday(key)}</span>
+                    <span className={cn("text-base font-semibold tabular-nums", isToday && "text-primary")}>{dayNumber(key)}</span>
+                    {isToday && <span className="ml-auto text-xs font-medium text-primary md:hidden">{mt("today")}</span>}
+                  </button>
+                  <div className="mt-1 space-y-1.5">
+                    {list.map(event => <EventChip key={event.key} event={event} locale={locale} />)}
+                    {!list.length && !weekEmpty && <p className="px-1 py-1 text-xs text-muted-foreground md:hidden">{mt("ovrNothingScheduled")}</p>}
                   </div>
-                ))}
-              </div>
-
-              {/* Calendar Days */}
-              <div className="grid grid-cols-7 gap-px bg-gray-100 rounded-lg overflow-hidden">
-                {calendarDays.map((day, idx) => {
-                  const dayBookings = getBookingsForDate(day);
-                  const isCurrentMonth = isSameMonth(day, currentDate);
-                  const isSelected = selectedDate && isSameDay(day, selectedDate);
-                  const isTodayDate = isToday(day);
-                  const hasBookings = dayBookings.length > 0;
-                  const hasPending = dayBookings.some((b) => b.status === 'pending');
-                  const hasConfirmed = dayBookings.some((b) => b.status === 'confirmed');
-
-                  return (
-                    <button
-                      key={idx}
-                      onClick={() => setSelectedDate(day)}
-                      className={`
-                        relative min-h-[80px] p-1.5 bg-white transition-all duration-150
-                        hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:ring-inset
-                        ${!isCurrentMonth ? 'bg-gray-50/50' : ''}
-                        ${isSelected ? 'ring-2 ring-rose-500 ring-inset bg-rose-50/50' : ''}
-                      `}
-                    >
-                      {/* Day Number */}
-                      <div className="flex items-start justify-between mb-1">
-                        <span
-                          className={`
-                            inline-flex items-center justify-center w-7 h-7 text-sm font-medium rounded-full transition-colors
-                            ${isTodayDate ? 'bg-rose-500 text-white' : ''}
-                            ${!isTodayDate && isSelected ? 'bg-rose-100 text-rose-700' : ''}
-                            ${!isTodayDate && !isSelected && isCurrentMonth ? 'text-gray-900' : ''}
-                            ${!isCurrentMonth ? 'text-gray-400' : ''}
-                          `}
-                        >
-                          {format(day, 'd')}
-                        </span>
-                        {hasBookings && (
-                          <div className="flex gap-0.5">
-                            {hasConfirmed && (
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                            )}
-                            {hasPending && (
-                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                            )}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Booking Previews */}
-                      {isCurrentMonth && hasBookings && (
-                        <div className="space-y-0.5">
-                          {dayBookings.slice(0, 2).map((booking, i) => (
-                            <div
-                              key={booking.id || i}
-                              className={`
-                                text-[10px] px-1.5 py-0.5 rounded truncate font-medium text-left
-                                ${booking.status === 'confirmed' ? 'bg-emerald-100 text-emerald-700' : ''}
-                                ${booking.status === 'pending' ? 'bg-amber-100 text-amber-700' : ''}
-                                ${booking.status === 'cancelled' ? 'bg-gray-100 text-gray-500' : ''}
-                              `}
-                            >
-                              <span className="opacity-70">{formatTime(booking.startTime)}</span>
-                              <span className="ml-1">{booking.chefName || booking.portalUserName || mt("chef")}</span>
-                            </div>
-                          ))}
-                          {dayBookings.length > 2 && (
-                            <div className="text-[10px] text-gray-500 font-medium px-1.5">
-                              {mt("plusMoreCount", { count: dayBookings.length - 2 })}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Legend */}
-              <div className="flex items-center gap-4 mt-4 pt-3 border-t border-gray-100">
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                  <span className="text-xs text-gray-600">{mt("confirmed")}</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-amber-500" />
-                  <span className="text-xs text-gray-600">{mt("pending")}</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-gray-400" />
-                  <span className="text-xs text-gray-600">{mt("cancelled")}</span>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Calendar Grid - Week View */}
-          {view === 'week' && (
-            <div className="flex-1 overflow-hidden">
-              {/* Week Header */}
-              <div className="grid grid-cols-8 border-b border-gray-100">
-                <div className="p-2 text-center text-xs text-gray-400">
-                  {/* Empty corner */}
-                </div>
-                {weekDays.map((day, idx) => {
-                  const isTodayDate = isToday(day);
-                  const isSelected = selectedDate && isSameDay(day, selectedDate);
-
-                  return (
-                    <button
-                      key={idx}
-                      onClick={() => setSelectedDate(day)}
-                      className={`
-                        p-3 text-center transition-colors hover:bg-gray-50
-                        ${isSelected ? 'bg-rose-50' : ''}
-                      `}
-                    >
-                      <p className={`text-xs font-medium ${isTodayDate ? 'text-rose-600' : 'text-gray-500'}`}>
-                        {dayNames[idx]}
-                      </p>
-                      <p className={`
-                        text-lg font-semibold mt-0.5
-                        ${isTodayDate ? 'text-rose-600' : 'text-gray-900'}
-                        ${isSelected && !isTodayDate ? 'text-rose-600' : ''}
-                      `}>
-                        {format(day, 'd')}
-                      </p>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Time Grid */}
-              <div className="overflow-y-auto max-h-[400px]">
-                <div className="grid grid-cols-8 relative">
-                  {/* Time Labels */}
-                  <div className="border-r border-gray-100">
-                    {timeSlots.map((hour) => (
-                      <div
-                        key={hour}
-                        className="h-12 flex items-start justify-end pr-2 text-[10px] text-gray-400 font-medium"
-                        style={{ paddingTop: '2px' }}
-                      >
-                        {formatHour(hour)}
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Day Columns */}
-                  {weekDays.map((day, dayIdx) => {
-                    const dayBookings = getBookingsForDate(day);
-                    const isTodayDate = isToday(day);
-
-                    return (
-                      <div
-                        key={dayIdx}
-                        className={`
-                          relative border-r border-gray-50 last:border-r-0
-                          ${isTodayDate ? 'bg-rose-50/30' : ''}
-                        `}
-                      >
-                        {/* Hour Grid Lines */}
-                        {timeSlots.map((hour) => (
-                          <div
-                            key={hour}
-                            className="h-12 border-b border-gray-50"
-                          />
-                        ))}
-
-                        {/* Bookings */}
-                        <div className="absolute inset-0 p-0.5">
-                          {dayBookings.flatMap((booking, idx) => kitchenBookingBlocks(booking).map((block, blockIdx) => {
-                            const style = getBookingStyle(block.startTime, block.endTime);
-                            const config = statusConfig[booking.status];
-
-                            return (
-                              <div
-                                key={`${booking.id || idx}-${blockIdx}`}
-                                className={`
-                                  absolute left-0.5 right-0.5 rounded-md px-1.5 py-1 overflow-hidden
-                                  cursor-pointer transition-all duration-150
-                                  ${config.bgColor} ${config.borderColor} border
-                                  ${config.hoverBg}
-                                `}
-                                style={style}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setSelectedDate(day);
-                                }}
-                              >
-                                <p className={`text-[10px] font-semibold ${config.textColor} truncate`}>
-                                  {booking.chefName || booking.portalUserName || mt("chef")}
-                                </p>
-                                <p className={`text-[9px] ${config.textColor} opacity-70`}>
-                                  {formatTime(block.startTime)}
-                                </p>
-                              </div>
-                            );
-                          }))}
-                        </div>
-
-                        {/* Current Time Indicator */}
-                        {isTodayDate && (
-                          <div
-                            className="absolute left-0 right-0 z-10 pointer-events-none"
-                            style={{
-                              top: `${((new Date().getHours() - 6) * 60 + new Date().getMinutes()) / 60 * 48}px`,
-                            }}
-                          >
-                            <div className="flex items-center">
-                              <div className="w-2 h-2 bg-rose-500 rounded-full -ml-1" />
-                              <div className="flex-1 h-0.5 bg-rose-500" />
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Selected Day Detail Panel */}
-          <div className="lg:w-72 border-t lg:border-t-0 lg:border-l border-gray-100 bg-gray-50/50 p-4">
-            <div className="flex items-center justify-between mb-4">
-              <h4 className="font-semibold text-gray-900 text-sm">
-                {selectedDate
-                  ? format(selectedDate, 'EEEE, MMMM d, yyyy', { locale: dateLocale })
-                  : mt("selectADate")}
-              </h4>
-            </div>
-
-            {isLoading ? (
-              <div className="space-y-3 py-4" role="status" aria-label="Loading bookings">
-                {Array.from({ length: 3 }, (_, index) => <Skeleton key={index} className="h-14 w-full rounded-lg" />)}
-              </div>
-            ) : selectedDateBookings.length === 0 ? (
-              <div className="text-center py-8">
-                <CalendarIcon className="h-10 w-10 text-gray-300 mx-auto mb-2" />
-                <p className="text-sm text-gray-500">{mt("noBookingsShort")}</p>
-                <p className="text-xs text-gray-400 mt-1">
-                  {mt("thisDayAvailableForBooking")}
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-3 max-h-[400px] overflow-y-auto">
-                {selectedDateBookings.map((booking, idx) => {
-                  const config = statusConfig[booking.status];
-                  const StatusIcon = config.icon;
-
-                  return (
-                    <div
-                      key={booking.id || idx}
-                      className={`
-                        p-3 rounded-xl border transition-all duration-200
-                        hover:shadow-sm cursor-pointer
-                        ${config.bgColor} ${config.borderColor}
-                      `}
-                      onClick={onNavigateToBookings}
-                    >
-                      <div className="flex items-start gap-3">
-                        {/* Status Indicator */}
-                        <div className={`w-1 h-full min-h-[40px] rounded-full ${config.color}`} />
-                        
-                        <div className="flex-1 min-w-0">
-                          {/* Time */}
-                          <div className="flex items-center gap-1.5 mb-1">
-                            <Clock className={`h-3 w-3 ${config.textColor}`} />
-                            <span className={`text-xs font-semibold ${config.textColor}`}>
-                              {kitchenBookingBlocks(booking).map(block =>
-                                `${formatTime(block.startTime)} - ${formatTime(block.endTime)}`).join(', ')}
-                            </span>
-                          </div>
-
-                          {/* Chef Name */}
-                          <p className="font-medium text-gray-900 text-sm truncate mb-1">
-                            {booking.chefName || booking.portalUserName || mt("guestChef")}
-                          </p>
-
-                          {/* Kitchen */}
-                          {booking.kitchenName && (
-                            <div className="flex items-center gap-1 text-xs text-gray-500">
-                              <CalendarIcon className="h-3 w-3" />
-                              <span className="truncate">{booking.kitchenName}</span>
-                            </div>
-                          )}
-
-                          {/* Status Badge */}
-                          <div className="flex items-center gap-1 mt-2">
-                            <StatusIcon className={`h-3 w-3 ${config.textColor}`} />
-                            <span className={`text-xs font-medium ${config.textColor}`}>
-                              {config.label}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-
-                {/* View All Button */}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={onNavigateToBookings}
-                  className="w-full text-rose-600 hover:text-rose-700 hover:bg-rose-50 mt-2"
-                >
-                  {mt("viewAllBookings")}
-                  <ChevronRight className="h-4 w-4 ml-1" />
-                </Button>
-              </div>
-            )}
+                </section>
+              );
+            })}
+            {weekEmpty && <p className="rounded-xl bg-muted/40 p-4 text-sm text-muted-foreground md:col-span-7">{mt("ovrNothingThisWeek")}</p>}
           </div>
+        ) : view === "day" ? (
+          <div className="mt-4 divide-y divide-border/50">
+            {(byDay.get(anchor) ?? []).map(event => <CalendarEventRow key={event.key} event={event} locale={locale} />)}
+            {!byDay.get(anchor)?.length && <p className="rounded-xl bg-muted/40 p-4 text-sm text-muted-foreground">{mt("ovrNothingScheduled")}</p>}
+          </div>
+        ) : (
+          <div className="mt-5">
+            <div className="grid grid-cols-7 pb-1 text-center text-xs font-medium text-muted-foreground" aria-hidden="true">
+              {week.map(key => <span key={key}>{weekday(key)}</span>)}
+            </div>
+            <div className="grid grid-cols-7 gap-px overflow-hidden rounded-xl border border-border/60 bg-border/60">
+              {monthDays.map(key => {
+                const list = byDay.get(key) ?? [];
+                const inMonth = key.slice(0, 7) === monthStart.slice(0, 7);
+                return (
+                  <button key={key} type="button" onClick={() => openDay(key)}
+                    aria-label={`${dayFormat(locale, { weekday: "long", month: "long", day: "numeric" })(key)} · ${mt("ovrEventCount", { count: list.length })}`}
+                    className={cn("flex min-h-14 flex-col items-stretch gap-1 bg-card p-1 text-left hover:bg-muted/50 focus-visible:relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary md:min-h-24 md:p-1.5", !inMonth && "bg-muted/30 text-muted-foreground")}>
+                    <span className={cn("inline-flex size-6 items-center justify-center self-start rounded-full text-xs font-medium tabular-nums", key === today && "bg-primary text-primary-foreground")}>{dayNumber(key)}</span>
+                    <span className="flex flex-wrap gap-0.5 md:hidden" aria-hidden="true">{list.slice(0, 3).map(event => <span key={event.key} className={cn("size-1.5 rounded-full", PILL[event.tone].dot)} />)}</span>
+                    <span className="hidden space-y-0.5 md:block" aria-hidden="true">
+                      {list.slice(0, 2).map(event => <span key={event.key} className={cn("block truncate rounded px-1 py-0.5 text-[11px] leading-4", PILL[event.tone].surface, event.muted && "opacity-60 line-through")}>{eventTime(event, locale) ? `${eventTime(event, locale).split("–")[0]} ` : ""}{event.title}</span>)}
+                      {list.length > 2 && <span className="block px-1 text-[11px] text-muted-foreground">{mt("plusMoreCount", { count: list.length - 2 })}</span>}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-3">
+          <ul className="flex flex-wrap gap-x-4 gap-y-1">
+            {LEGEND.map(([tone, key]) => <li key={key} className="flex items-center gap-1.5 text-xs text-muted-foreground"><span aria-hidden="true" className={cn("size-2 rounded-full", PILL[tone].dot)} />{mt(key)}</li>)}
+          </ul>
+          <Button variant="ghost" size="sm" onClick={onNavigateToBookings}>{mt("viewAllBookings")}<ChevronRight className="size-4" aria-hidden="true" /></Button>
         </div>
       </CardContent>
     </Card>

@@ -21,7 +21,7 @@ const ClaimPayment = lazy(() => import('./DamageClaimPayment'));
 type Translate = (key: string, options?: Record<string, unknown>) => string;
 
 /** One badge set for every booking status (lists and header): soft surface, small leading dot. */
-const PILL: Record<BookingPillTone, { surface: string; dot: string }> = {
+export const PILL: Record<BookingPillTone, { surface: string; dot: string }> = {
   amber: { surface: 'border-amber-200 bg-amber-50 text-amber-900', dot: 'bg-amber-500' },
   blue: { surface: 'border-sky-200 bg-sky-50 text-sky-900', dot: 'bg-sky-500' },
   green: { surface: 'border-emerald-200 bg-emerald-50 text-emerald-900', dot: 'bg-emerald-500' },
