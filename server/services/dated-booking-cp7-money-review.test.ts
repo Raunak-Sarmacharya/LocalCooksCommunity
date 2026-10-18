@@ -14,7 +14,7 @@ vi.mock('../logger', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.
 vi.mock('../config', () => ({ getAppBaseUrl: () => 'https://app.test' }));
 vi.mock('./booking-support-flags', () => ({ lockBookingMoneySources: async () => undefined }));
 vi.mock('./booking-money-guard', async () => ({ ...await vi.importActual<object>('./booking-money-guard'), assertBookingMoneyWritable: async () => undefined }));
-vi.mock('./visit-code-challenge', () => ({ revokeForBooking: vi.fn(), revokeForVisit: vi.fn(), ensureChallengesForBooking: async () => 0 }));
+vi.mock('./visit-code-challenge', () => ({ arrivalModeForChangedBooking: async () => undefined, revokeForBooking: vi.fn(), revokeForVisit: vi.fn(), ensureChallengesForBooking: async () => 0 }));
 vi.mock('./booking-lifecycle-delivery', () => ({ queueBookingLifecycleEvent: async () => undefined }));
 vi.mock('./booking-policy-settings', () => ({ kitchenBookingPolicies: async () => h.policy }));
 vi.mock('../domains/users/chef.service', () => ({ chefService: { getApplicationStatusForBooking: async () => ({ canBook: true }) } }));

@@ -343,5 +343,6 @@
   "mdState_checkout_claim_filed": "Problème signalé",
   "mdState_active": "Actif",
   "mdState_cancelled": "Annulé",
-  "mdState_superseded": "Remplacé"
+  "mdState_superseded": "Remplacé",
+  "bsChangeDatedKeepRefundHold": "Conserver le remboursement n?cessite un rapprochement par Local Cooks. Tous les versements de la r?servation restent suspendus."
 }

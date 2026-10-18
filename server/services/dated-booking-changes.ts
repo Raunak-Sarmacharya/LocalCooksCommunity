@@ -35,7 +35,7 @@ import { policySessionStart } from './cancellation-policy-settings';
 import { lockKitchenInventory } from './kitchen-checkout-holds';
 import { ensureKitchenBookingVisits } from './kitchen-booking-visits';
 import { ensureDayPayoutRows, dayTransferKey, refundsAllocated, hasUnreconciledChangeRefund } from './kitchen-day-payouts';
-import { ensureChallengesForBooking, revokeForVisit } from './visit-code-challenge';
+import { ensureChallengesForBooking, revokeForVisit, arrivalModeForChangedBooking } from './visit-code-challenge';
 import { closeoutTiming } from './clock-closeout';
 import { KitchenChangeError, type RefundSource } from './kitchen-booking-changes';
 
@@ -296,6 +296,7 @@ export async function applyDatedChange(tx: Tx, row: DatedRow, change: { id: stri
   const snapshot = booking.cancellationPolicySnapshot as CancellationPolicySnapshot;
   const timezone = snapshot.timezone || row.timezone;
   const state = await currentDays(tx, booking), book = await ledger(tx, booking, state, change.id);
+  const arrivalMode = await arrivalModeForChangedBooking(tx, booking.id);
   // 1. The old days stop: their codes are revoked and their equipment rows end. Cancelled days stay cancelled (their refund evidence).
   for (const visit of state.active) await revokeForVisit(tx, booking.id, visit.id, 'booking_changed');
   await tx.update(kitchenBookingVisits).set({ scheduleState: 'superseded', updatedAt: now }).where(inArray(kitchenBookingVisits.id, state.active.map(visit => visit.id)));
@@ -313,9 +314,16 @@ export async function applyDatedChange(tx: Tx, row: DatedRow, change: { id: stri
     operatingWindowStartTime: day.windowStartTime, selectedSlots: day.slots,
     priceSnapshot: { contract: 'kitchen-change-days-v1', changeId: change.id, rateCents: day.rateCents, kitchenCents: day.kitchenCents, equipment: day.equipment } })));
   // 3. One equipment row per new day and item, already paid for by the booking's sources.
+  const oldComponentCents = (date: string, listingId?: number) => sum(book.sources, entry => sum(entry.active.filter(part => {
+    if (state.active.find(visit => visit.id === part.visitId)?.visitDate !== date) return false;
+    return listingId === undefined ? part.componentKey === 'kitchen'
+      : state.equipment.some(item => item.id === Number(part.componentKey.slice('equipment:'.length)) && item.equipmentListingId === listingId);
+  }), part => part.subtotalCents));
+  const increases: number[] = [];
   const components: DayComponent[] = [], equipmentItems: Record<string, unknown>[] = [];
   for (const [sessionIndex, day] of Array.from(days.entries())) {
     const visit = visits.find(item => item.visitDate === day.date)!;
+    increases.push(Math.max(0, day.kitchenCents - oldComponentCents(day.date)));
     components.push({ visitId: visit.id, sessionIndex, componentKey: 'kitchen', kind: 'kitchen', bookingId: booking.id, subtotalCents: day.kitchenCents });
     const startDate = new Date(instant(day.date, day.startTime, day.windowStartTime, timezone));
     const endDate = new Date(Date.parse(instant(day.date, day.slots.at(-1)!.startTime, day.windowStartTime, timezone)) + 3_600_000);
@@ -324,15 +332,20 @@ export async function applyDatedChange(tx: Tx, row: DatedRow, change: { id: stri
         equipmentListingId: item.listingId, startDate, endDate, status: 'confirmed', paymentStatus: 'paid', paymentIntentId: booking.paymentIntentId,
         totalPrice: String(item.cents), pricingModel: 'daily', damageDeposit: '0' }).returning();
       equipmentItems.push({ id: saved.id, equipmentBookingId: saved.id, equipmentListingId: item.listingId, visitId: visit.id, date: day.date, name: item.name, totalPrice: item.cents, status: 'confirmed' });
+      increases.push(Math.max(0, item.cents - oldComponentCents(day.date, item.listingId)));
       components.push({ visitId: visit.id, sessionIndex, componentKey: `equipment:${saved.id}`, kind: 'equipment', bookingId: saved.id, subtotalCents: item.cents });
     }
   }
   // 4. The money ledger follows the new days.
-  await moveLedger(tx, book.sources, components, change, state.active[0], (change.policy as { refundSources?: RefundSource[] }).refundSources || [], now);
+  const addedSubtotals = quote.payCents > 0
+    ? allocateCents(quote.newTerms.kitchenCents - quote.oldTerms.kitchenCents, increases) : components.map(() => 0);
+  // Net increases fund the extra charge; each original source moves over the complementary residual.
+  const residualComponents = components.map((item, i) => ({ ...item, subtotalCents: item.subtotalCents - addedSubtotals[i] }));
+  await moveLedger(tx, book.sources, residualComponents, change, state.active[0], (change.policy as { refundSources?: RefundSource[] }).refundSources || [], now);
   if (quote.payCents > 0) {
-    // CP5 splits the separate change charge over the new days from this manifest (its subtotal by each day's new subtotal).
+    // CP5 splits the separate change charge by positive component deltas, matched by date and item.
     const [extra] = await tx.select().from(paymentTransactions).where(and(eq(paymentTransactions.bookingId, booking.id), eq(paymentTransactions.paymentIntentId, change.intentId || '')));
-    const subs = allocateCents(quote.newTerms.kitchenCents - quote.oldTerms.kitchenCents, components.map(item => item.subtotalCents));
+    const subs = addedSubtotals;
     if (!extra || meta(extra).kitchenChangeId !== change.id || Number(extra.baseAmount) - Number(extra.taxAmount) !== sum(subs, n => n)) throw Error('The change charge does not match its quote');
     await tx.update(paymentTransactions).set({ metadata: { ...meta(extra), dayComponents: components.map((item, i) => ({ ...item, subtotalCents: subs[i] })) } })
       .where(eq(paymentTransactions.id, extra.id));
@@ -342,7 +355,7 @@ export async function applyDatedChange(tx: Tx, row: DatedRow, change: { id: stri
   const all = await tx.select().from(kitchenBookingVisits).where(eq(kitchenBookingVisits.bookingId, booking.id));
   const clockCloseout = makeCloseoutSnapshot(moved as unknown as ClockBooking, row.timezone, await closeoutTiming(row.kitchen.locationId, tx), all);
   await tx.update(kitchenBookings).set({ equipmentItems, visitDuties: { ...(moved.visitDuties as object || {}), clockCloseout } }).where(eq(kitchenBookings.id, booking.id));
-  await ensureChallengesForBooking(tx, booking.id);
+  await ensureChallengesForBooking(tx, booking.id, undefined, arrivalMode);
   return { startAt: new Date(dayStart({ date: first.date, slots: first.slots, windowStart: first.windowStartTime }, timezone)),
     endAt: new Date(dayEnd({ date: days.at(-1)!.date, slots: days.at(-1)!.slots, windowStart: days.at(-1)!.windowStartTime }, timezone)) };
 }

@@ -6,7 +6,7 @@
  *
  * Worked example (team test plan C): Mon/Wed/Fri full days at $180, 15% HST, 7% service fee; total $658.80, actual card fee $19.41.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { eq } from 'drizzle-orm';
 import * as s from '@shared/schema';
@@ -23,8 +23,14 @@ vi.mock('../config', () => ({ getAppBaseUrl: () => 'https://app.test' }));
 vi.mock('../utils/user-display', () => ({ getUserDisplayName: async () => 'Ana' }));
 vi.mock('./booking-support-flags', () => ({ lockBookingMoneySources: async () => undefined }));
 vi.mock('./booking-money-guard', async () => ({ ...await vi.importActual<object>('./booking-money-guard'), assertBookingMoneyWritable: async () => undefined }));
-vi.mock('./visit-code-challenge', () => ({ revokeForBooking: vi.fn(), revokeForVisit: async (_tx: any, _b: number, visitId: number) => { h.revoked.push(visitId); },
-  ensureChallengesForBooking: async (_tx: any, bookingId: number) => { h.enrolled.push(bookingId); return 0; } }));
+vi.mock('./visit-code-challenge', async () => {
+  const actual = await vi.importActual<typeof import('./visit-code-challenge')>('./visit-code-challenge');
+  return { ...actual, revokeForBooking: vi.fn(), revokeForVisit: async (tx: any, bookingId: number, visitId: number) => {
+    h.revoked.push(visitId); return actual.revokeForVisit(tx, bookingId, visitId, 'booking_changed');
+  }, ensureChallengesForBooking: async (tx: any, bookingId: number, actor?: number, mode?: any) => {
+    h.enrolled.push(bookingId); return actual.ensureChallengesForBooking(tx, bookingId, actor, mode);
+  } };
+});
 vi.mock('./booking-lifecycle-delivery', () => ({ queueBookingLifecycleEvent: async (tx: any, bookingId: number, kind: string, title: string, message: string, actorId: number | undefined, metadata: any) => {
   await tx.insert(s.bookingLifecycleEvents).values({ bookingId, kind, title, message, actorId: actorId ?? null, metadata: metadata ?? {}, emails: [] });
 } }));
@@ -200,6 +206,7 @@ const originalIntact = async (held = false) => {
 };
 
 beforeEach(async () => { vi.setSystemTime(NOW); await seed(); });
+afterEach(() => vi.unstubAllEnvs());
 
 describe('CP7 dated changes: validation and eligibility', () => {
   it('offers a change on a dated booking with its current days, before the one deadline only', async () => {
@@ -238,6 +245,48 @@ describe('CP7 dated changes: validation and eligibility', () => {
 });
 
 describe('CP7 dated changes: money and apply', () => {
+  it.each(['self', 'staffed'] as const)('N2: moved days inherit the most recent kitchen mode: %s', async (latestMode) => {
+    vi.stubEnv('VISIT_CODE_HMAC_SECRET', 'cp7-test-key-with-at-least-thirty-two-characters');
+    const codes = await import('./visit-code-challenge');
+    await codes.ensureChallengesForBooking(h.db, 1);
+    const previousMode = latestMode === 'self' ? 'staffed' : 'self';
+    await h.db.update(s.kitchenVisitArrivalChallenges).set({ mode: previousMode, modeChangedAt: new Date('2099-10-20T12:00:00Z'),
+      modeChangedByUserId: 2, modeReason: 'Previously selected by the kitchen' });
+    await h.db.update(s.kitchenVisitArrivalChallenges).set({ mode: latestMode, modeChangedAt: new Date('2099-10-24T12:00:00Z'),
+      modeChangedByUserId: 2, modeReason: 'Most recent kitchen decision' }).where(eq(s.kitchenVisitArrivalChallenges.visitId, 2));
+    await request(days(full(TUE), full(THU), full(SAT)));
+    await decide('approve');
+    const codesAfter = await get(s.kitchenVisitArrivalChallenges);
+    expect(codesAfter.filter((c: any) => c.visitId <= 3).every((c: any) => !!c.revokedAt)).toBe(true);
+    const newCodes = codesAfter.filter((c: any) => c.visitId > 3);
+    expect(newCodes).toHaveLength(3);
+    expect(newCodes.every((c: any) => c.mode === latestMode && c.modeChangedByUserId === 2 && c.modeReason === 'Most recent kitchen decision')).toBe(true);
+    expect(new Set(newCodes.map((c: any) => c.nonce)).size).toBe(3);
+  });
+
+  it('S2: chef and kitchen must answer or withdraw an open change before dropping a day', async () => {
+    await request(days(full(TUE), full(THU), full(SAT)));
+    await expect(readDatedCancellationQuote(1, chef, { visitIds: [2] }, NOW))
+      .rejects.toThrow("You have a change request waiting for the kitchen. Withdraw it first, or wait for the kitchen's answer.");
+    await expect(readDatedCancellationQuote(1, manager, { visitIds: [2] }, NOW))
+      .rejects.toThrow('This booking has a change request waiting for your answer. Approve or decline it first.');
+    await decide('withdraw');
+    await expect(readDatedCancellationQuote(1, chef, { visitIds: [2] }, NOW)).resolves.toMatchObject({ chefRefundCents: 21313 });
+  });
+
+  it('S1: a source residual drains with its remaining 970-cent fee, rather than re-rounding 971', async () => {
+    await request(days(hourly(TUE, 9, 13), full(THU)));
+    await decide('approve');
+    const [original] = await get(s.paymentTransactions);
+    const { id, ...copy } = original;
+    await h.db.insert(s.paymentTransactions).values({ ...copy, id: 2, paymentIntentId: 'pi_residual', chargeId: 'ch_residual' });
+    const rows = live(await get(s.kitchenBookingDayAllocations));
+    await h.db.insert(s.kitchenBookingDayAllocations).values(rows.map(({ id: _id, ...part }: any) => ({ ...part, sourceId: 2 })));
+    // The newer source has already returned 32940 gross, leaving 32940 gross and only 970 of its original 1941 fee.
+    const quote = await engine.previewKitchenChange(1, chef, { destination: days(hourly(MON, 9, 13), full(WED)) }, NOW);
+    expect(quote.money).toMatchObject({ oldTotalCents: 65880, newTotalCents: 32940, refundCents: 31970, feeKeptCents: 970 });
+  });
+
   it('equal price, mixed mode: approval moves Mon/Wed/Fri to Tue (8 hours)/Thu/Sat at once, with new visits, codes, sessions (0098) and a moved ledger', async () => {
     // 8 hours x $22.50 = one $180 full day, so the whole total is unchanged.
     const { quote } = await request(days(hourly(TUE, 9, 17), full(THU), full(SAT)));
@@ -322,8 +371,8 @@ describe('CP7 dated changes: money and apply', () => {
     const visits = (await get(s.kitchenBookingVisits)).filter((v: any) => v.scheduleRevision === 2);
     const [mixer] = (await get(s.equipmentBookings)).filter((e: any) => e.status === 'confirmed');
     expect([mixer.kitchenBookingVisitId, mixer.totalPrice]).toEqual([visits[1].id, '2500']);
-    expect(sources[1].metadata.dayComponents.map((c: any) => [c.visitId, c.componentKey, c.subtotalCents])).toEqual([[visits[0].id, 'kitchen', 2066],
-      [visits[1].id, 'kitchen', 2066], [visits[1].id, `equipment:${mixer.id}`, 287], [visits[2].id, 'kitchen', 516], [visits[3].id, 'kitchen', 2065]]);
+    expect(sources[1].metadata.dayComponents.map((c: any) => [c.visitId, c.componentKey, c.subtotalCents])).toEqual([[visits[0].id, 'kitchen', 0],
+      [visits[1].id, 'kitchen', 0], [visits[1].id, `equipment:${mixer.id}`, 854], [visits[2].id, 'kitchen', 0], [visits[3].id, 'kitchen', 6146]]);
     // CP5 then allocates that separate charge (with its own verified fee) over the new days.
     await syncDayPayoutSource(2);
     const extra = (await get(s.kitchenBookingDayAllocations)).filter((r: any) => r.sourceId === 2);
@@ -396,6 +445,11 @@ describe('CP7 dated changes: closing and recovery', () => {
     expect(refundsAllocated((await get(s.paymentTransactions))[0])).toBe(false);
     expect(await get(s.bookingFlags)).toEqual([expect.objectContaining({ bookingId: 1, kind: 'support', visitId: null, resolvedAt: null })]);
     await originalIntact();
+    const installments = await get(s.kitchenBookingDayPayouts);
+    for (const item of installments) {
+      expect(await releaseDayPayout(item.id, new Date('2099-11-10T12:00:00Z'))).toMatchObject({ transferred: false });
+    }
+    expect((await get(s.kitchenBookingDayPayouts)).every((item: any) => item.holdReason === 'support_flag')).toBe(true);
 
     await seed();
     h.failAfterMoney = true;
