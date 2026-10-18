@@ -29,7 +29,7 @@ import { bookingFreeCancelHours } from '@shared/booking-response-deadline';
 import { rescheduleEligibility, rescheduleMoney, RESCHEDULE_MESSAGES, type ChangeMoneyFull, type PriceTerms } from '@shared/kitchen-booking-reschedule';
 import { makeCloseoutSnapshot, type ClockBooking } from '@shared/clock-closeout';
 import { validateBookingDays } from './booking-days-validation';
-import { priceBookingDays, allocateDatedCapture, type DayComponent, type DatedBookingManifest, type PricedBookingDay } from './dated-booking-quote';
+import { priceBookingDays, allocateDatedCapture, type DayComponent, type DatedBookingManifest, type PricedBookingDay, type KeptDayPrices } from './dated-booking-quote';
 import { calculateCheckoutFeesAsync } from './stripe-checkout-fee-service';
 import { policySessionStart } from './cancellation-policy-settings';
 import { lockKitchenInventory } from './kitchen-checkout-holds';
@@ -202,7 +202,7 @@ export async function priceDatedChange(tx: Tx, row: DatedRow, validated: Awaited
   const ids = Array.from(new Set(validated.flatMap(day => day.equipmentIds)));
   const listings = ids.length ? await tx.select().from(equipmentListings).where(and(inArray(equipmentListings.id, ids), eq(equipmentListings.kitchenId, booking.kitchenId))) : [];
   // Only matching paid days bypass current rates; inventory and equipment eligibility were validated above.
-  const keptPrices = new Map<string, Pick<PricedBookingDay, 'kitchenCents' | 'equipment'>>();
+  const keptPrices = new Map<string, KeptDayPrices>();
   const paidFor = (visitId: number, key: string) => sum(book.sources, entry => sum(entry.active.filter(part => part.visitId === visitId && part.componentKey === key), part => part.subtotalCents));
   for (const day of validated) {
     const same = current.active.find(visit => samePaidDay(visit, day));
@@ -285,7 +285,7 @@ function planLedger(sources: SourceLedger[], state: Days, quote: DatedChangeMone
   const components: DayComponent[] = [];
   const oldParts: Allocation[][] = [];
   const increases: number[] = [];
-  for (const [sessionIndex, day] of quote.datedDays.entries()) {
+  for (const [sessionIndex, day] of Array.from(quote.datedDays.entries())) {
     const visit = state.active.find(visit => String(visit.visitDate).slice(0, 10) === day.date);
     for (const item of [{ listingId: undefined, cents: day.kitchenCents }, ...day.equipment]) {
       const booked = item.listingId === undefined ? undefined : state.equipment.find(row => row.status === 'confirmed'
@@ -331,7 +331,7 @@ function planLedger(sources: SourceLedger[], state: Days, quote: DatedChangeMone
       throw support('the sources cannot fund the quoted destination columns');
     const available = remaining.map(part => part[key]);
     // Reserve unchanged paid components first, then allocate every source against the shared residual budget.
-    for (const [index, entry] of sources.entries()) {
+    for (const [index, entry] of Array.from(sources.entries())) {
       const preferred = budget.map((cap, i) => Math.min(cap, sum(oldParts[i].filter(part => part.sourceId === entry.source.id), part => part[key])));
       const reserved = allocateCents(Math.min(available[index], sum(preferred, n => n)), preferred);
       reserved.forEach((n, i) => { moved[index][i][key] += n; budget[i] -= n; available[index] -= n; });
@@ -463,7 +463,7 @@ export async function applyDatedChange(tx: Tx, row: DatedRow, change: { id: stri
 
 async function moveLedger(tx: Tx, sources: SourceLedger[], components: DayComponent[], moved: LedgerPart[][], change: { id: string }, firstOld: Visit, plans: RefundSource[], now: Date) {
   const at = now.toISOString();
-  for (const [sourceIndex, entry] of sources.entries()) {
+  for (const [sourceIndex, entry] of Array.from(sources.entries())) {
     const { source } = entry, revision = entry.revision + 1, plan = plans.find(item => item.transactionId === source.id);
     const proof = { chargeId: source.chargeId, balanceTransactionId: meta(source).balanceTransactionId ?? null, feeStatus: 'verified', changeId: change.id };
     if (plan) {

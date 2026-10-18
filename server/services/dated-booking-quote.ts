@@ -13,6 +13,7 @@ export type PricedBookingDay = ValidatedBookingDay & {
   rateCents: number; kitchenCents: number;
   equipment: Array<{ listingId: number; name: string; cents: number }>;
 };
+export type KeptDayPrices = { kitchenCents: number; equipment: Array<{ listingId: number; cents: number }> };
 /** The invitation's one offered booking subtotal and its deterministic per-day split (CP10). */
 export type InvitationQuoteBlock = {
   id: string; version: number; listKitchenCents: number; offeredKitchenCents: number;
@@ -39,7 +40,7 @@ export const datedManifestHash = (manifest: DatedBookingManifest) => createHash(
 
 export function priceBookingDays(days: ValidatedBookingDay[], rates: { hourlyRate: number; dailyRate: number },
   listings: Array<{ id: number; equipmentType: string; availabilityType: string | null; sessionRate: string | null }>,
-  keptPrices = new Map<string, Pick<PricedBookingDay, 'kitchenCents' | 'equipment'>>()): PricedBookingDay[] {
+  keptPrices = new Map<string, KeptDayPrices>()): PricedBookingDay[] {
   return [...days].sort((a, b) => a.date.localeCompare(b.date)).map(day => {
     assertConsecutiveBookingSlots(day.slots, day.windowStartTime);
     const kept = keptPrices.get(day.date);
