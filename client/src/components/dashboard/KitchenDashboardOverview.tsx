@@ -28,6 +28,7 @@ import { RevenuePayoutsCard } from "./RevenuePayoutsCard";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { HAPPENING_NOW, managerDatedListDay, managerListDays } from "@/lib/booking-list-status";
 import { kitchenBookingBlocks } from "@/lib/kitchen-booking-blocks";
+import type { BookingPillTone } from "@/lib/booking-header-state";
 import { addDaysKey, kitchenTodayKey, spanMinutes, weekStartKey, weekStats, type DateOverride, type WeeklyHours } from "@/lib/manager-week-stats";
 import { revenueSummaryFromCurrent } from "@/lib/manager-revenue-summary";
 import { chipForRental, chipNeedsAction, occupiesUnit, pendingRequests, type StorageRental } from "@/lib/storage-board";
@@ -342,7 +343,7 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
   const tourDay = (tour: Viewing) => kitchenTodayKey(DEFAULT_TIMEZONE, Date.parse(tour.viewing.scheduledAt));
   // With the Today card on screen, Upcoming starts tomorrow so nothing is listed twice.
   const later = (key: string) => hasActivity ? key > today : true;
-  const scheduleRows = [
+  const scheduleRows: Array<{ key: string; id: string; title: string; detail: string; time: number; href?: string; view: string; param?: string; label: string; pill?: { key: string; tone: BookingPillTone } }> = [
     // The booking page's pill and 12-hour, friendly "Day 1 of 2 · Tue, Oct 20 · 2:00–4:00 p.m." line, one per day.
     ...upcoming.filter(day => later(day.dayKey)).map(day => { const booking = day.row; const phase = bookingListPhase(booking); return ({key:`booking-${booking.id}-${day.visitId ?? 0}`,id:String(booking.id),title:chefDisplayName(booking),detail:[dayLabel(day),listWhenLine(booking,i18n.language,words),booking.kitchenName].filter(Boolean).join(" · "),time:bookingListBounds(booking)?.startAt.getTime() ?? NaN,href:`/manager/booking/${booking.id}`,view:"bookings",param:undefined,label:"",pill:bookingListPill(phase,true,bookingCancelCause({ status: booking.status, chefId: booking.chefId, paymentDecision: booking.paymentDecision as never }))}); }),
     ...locationRentals.filter(rental => rental.state === "reserved" && later(rental.startOn.slice(0, 10)) && rental.startOn.slice(0, 10) >= today).map(rental => ({key:`rental-${rental.id}`,id:String(rental.id),title:rentalTitle(rental),detail:mt("ovrStorageStarts",{date:storageDay(rental.startOn,i18n.language)}),time:Date.parse(`${rental.startOn.slice(0, 10)}T12:00:00Z`),href:`/manager/storage/${rental.id}`,view:"storage-bookings",param:undefined,label:mt("ovrMoveIn")})),
