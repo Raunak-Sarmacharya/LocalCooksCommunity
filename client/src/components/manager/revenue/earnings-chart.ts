@@ -10,13 +10,13 @@ export interface EarningsBucket {
 }
 
 /** Keep empty periods visible; a refund can make a period negative. All values remain cents. */
-export function buildEarningsBuckets(rows: RevenueByDate[], from: Date, to: Date): EarningsBucket[] {
+export function buildEarningsBuckets(rows: RevenueByDate[], from: Date, to: Date, monthly = false): EarningsBucket[] {
   const utcDay = (value: Date) => Date.UTC(value.getFullYear(), value.getMonth(), value.getDate());
   const start = utcDay(from);
   const end = utcDay(to);
   if (end < start) return [];
   const days = Math.floor((end - start) / 86_400_000) + 1;
-  const interval = days <= 31 ? "day" : days <= 120 ? "week" : "month";
+  const interval = monthly ? "month" : days <= 31 ? "day" : days <= 120 ? "week" : "month";
   const buckets = new Map<string, EarningsBucket>();
   const keyFor = (time: number) => {
     const date = new Date(interval === "week" ? start + Math.floor((time - start) / (7 * 86_400_000)) * 7 * 86_400_000 : time);
@@ -35,7 +35,7 @@ export function buildEarningsBuckets(rows: RevenueByDate[], from: Date, to: Date
   }
   for (const row of rows) {
     const time = Date.parse(`${row.date}T00:00:00Z`);
-    if (!Number.isFinite(time) || time < start || time > end) continue;
+    if (!Number.isFinite(time) || (monthly ? keyFor(time) < keyFor(start) : time < start) || time > end) continue;
     const bucket = buckets.get(keyFor(time));
     if (!bucket) continue;
     bucket.grossRevenue += row.grossRevenue ?? row.totalRevenue;

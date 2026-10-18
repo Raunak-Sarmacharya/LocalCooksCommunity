@@ -28,6 +28,8 @@ import { StatusPill } from "@/components/booking/BookingNowCard";
 import { bookingCancelCause } from "@/lib/booking-cancel-cause";
 import { bookingListBounds, bookingListPhase, bookingListPill, listWhenLine, type BookingListRow } from "@/lib/booking-list-status";
 import { ct } from "@/i18n/chef-ns";
+import { useManagerRevenue } from '@/components/manager/revenue/hooks/use-manager-revenue';
+import { RevenueSummaryCards } from '@/components/manager/revenue/components/RevenueLedger';
 
 interface Location { id: number; name: string; address: string; kitchenLicenseUrl?: string | null; kitchenLicenseStatus?: string | null; kitchenLicenseExpiry?: string | null; timezone?: string; kitchenLicensePendingUrl?: string | null; kitchenLicensePendingExpiry?: string | null }
 interface Kitchen { id: number; locationId: number; name: string; isActive: boolean; listingStatus?: string }
@@ -57,7 +59,6 @@ interface Booking {
 }
 interface Viewing { viewing: { id: number; locationId: number; status: string; scheduledAt: string; createdAt?: string; updatedAt?: string; durationMinutes?: number; requestedRescheduleAt?: string | null; disruptionReason?: string | null; outcomeHistory?: unknown; checkedInAt?: string | null; checkedOutAt?: string | null; attendanceHistory?: unknown; targetedKitchenId?: number | null; adminReviewDecision?: string | null; cancelledBy?: string | null }; chefName?: string; kitchenName?: string; locationName?: string }
 interface Application { chefId?: number; createdAt?: string; updatedAt?: string; fullName?: string; id: number; locationId: number; status: string; current_tier?: number; currentTier?: number; tier2_completed_at?: string | null }
-interface Revenue { completedNetRevenue?: number; netRevenue?: number; pendingPayments?: number; completedPayments?: number; paidBookingCount?: number }
 
 interface Props {
   selectedLocation: Location | null;
@@ -180,15 +181,12 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
   const month = useMemo(() => {
     const now = new Date();
     const start = new Date(now.getFullYear(), now.getMonth(), 1);
-    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    const end = now;
     const toKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-    return { start: toKey(start), end: toKey(end) };
+    return { start: toKey(start), end: toKey(end), from: start, to: end };
   }, []);
-  const { data: revenue, isLoading: isLoadingRevenue, isError: isErrorRevenue } = useQuery<Revenue>({
-    queryKey: ["/api/manager/revenue/overview", month.start, month.end, selectedLocation?.id],
-    queryFn: () => apiGet(`/manager/revenue/overview?startDate=${month.start}&endDate=${month.end}${selectedLocation ? `&locationId=${selectedLocation.id}` : ""}`),
-    enabled: !!user && (liveKitchens.length > 0 || bookings.length > 0 || activity.storageBookings.length > 0),
-  });
+  const { data: revenue, isLoading: isLoadingRevenue, isError: isErrorRevenue } = useManagerRevenue(month, selectedLocation?.id, undefined,
+    !!user && (liveKitchens.length > 0 || bookings.length > 0 || activity.storageBookings.length > 0));
 
   const tourTime = (tour: Viewing) => Number.isFinite(Date.parse(tour.viewing.scheduledAt)) ? new Date(tour.viewing.scheduledAt).toLocaleTimeString(i18n.language, { hour: "numeric", minute: "2-digit", timeZone: DEFAULT_TIMEZONE }) : "";
   const today = todayKey();
@@ -417,10 +415,7 @@ return <div key={kitchen.id}><button type="button" onClick={() => onNavigate(lis
           <div className="flex min-w-0 items-center gap-3"><span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/[0.08] text-primary"><DollarSign className="size-4" /></span><div><h2 className="text-sm font-semibold">{mt("overviewThisMonthRevenue")}</h2><p className="mt-0.5 text-xs text-muted-foreground">{new Date().toLocaleDateString(i18n.language, { month: "long", year: "numeric" })}</p></div></div>
           <Button variant="ghost" size="sm" className="shrink-0" onClick={() => onNavigate("revenue")}>{mt("overviewRevenueDetails")}<ChevronRight className="ml-1 size-4" /></Button>
         </div>
-        {isLoadingRevenue ? <div className="grid gap-3 sm:grid-cols-3"><Skeleton className="h-20 rounded-xl" /><Skeleton className="h-20 rounded-xl" /><Skeleton className="h-20 rounded-xl" /></div> : isErrorRevenue ? <p role="status" className="rounded-xl bg-muted/40 p-4 text-sm text-destructive">{mt("overviewRevenueError")}</p> : <div className="grid gap-4 sm:grid-cols-[1.4fr_1fr_1fr] sm:items-center">
-          <div className="min-w-0 rounded-xl border border-primary/10 bg-gradient-to-br from-primary/5 to-transparent px-4 py-3"><span className="block text-xs font-medium text-muted-foreground">{mt("overviewPaidEarnings")}</span><strong className="mt-1 block break-words text-3xl font-semibold tracking-tight tabular-nums">{formatCurrency(revenue?.completedNetRevenue ?? revenue?.netRevenue ?? 0)}</strong></div>
-          <div className="grid grid-cols-2 gap-4 sm:col-span-2">{[{label:"overviewPendingPayments",value:formatCurrency(revenue?.pendingPayments ?? 0)},{label:"overviewPaidBookings",value:revenue?.paidBookingCount ?? 0}].map((metric,index) => <div key={metric.label} className={`min-w-0 ${index ? "border-l border-border/70 pl-4" : "sm:pl-2"}`}><span className="block text-xs text-muted-foreground">{mt(metric.label)}</span><strong className="mt-1 block break-words text-xl font-semibold tracking-tight tabular-nums">{metric.value}</strong></div>)}</div>
-        </div>}
+        {isLoadingRevenue ? <div className="grid gap-3 sm:grid-cols-3"><Skeleton className="h-20 rounded-xl" /><Skeleton className="h-20 rounded-xl" /><Skeleton className="h-20 rounded-xl" /></div> : isErrorRevenue ? <p role="status" className="rounded-xl bg-muted/40 p-4 text-sm text-destructive">{mt("overviewRevenueError")}</p> : revenue ? <RevenueSummaryCards summary={revenue.summary} compact /> : null}
       </CardContent>
     </Card>}
 

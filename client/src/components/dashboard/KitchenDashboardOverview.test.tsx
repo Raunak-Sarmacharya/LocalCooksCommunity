@@ -16,10 +16,11 @@ const state = vi.hoisted(() => ({
 vi.mock("@/hooks/use-auth", () => ({ useFirebaseAuth: () => ({ user: { uid: "manager-1", displayName: "Alex" } }) }));
 vi.mock("@/hooks/use-manager-dashboard", () => ({ useManagerDashboard: () => ({ bookings: state.bookings, isLoadingBookings: false, isErrorBookings: false }) }));
 vi.mock("@/hooks/use-manager-overview-activity", () => ({ useManagerOverviewActivity: () => state.activity }));
-vi.mock("@tanstack/react-query", () => ({ useQuery: ({ queryKey }: { queryKey: string[] }) => ({ data: queryKey[0] === "managerViewings" ? state.viewings : queryKey[0] === "/api/manager/kitchen-applications" ? state.applications : { totalRevenue: 0 }, isLoading: false, isError: false }) }));
+vi.mock("@tanstack/react-query", () => ({ useQuery: ({ queryKey }: { queryKey: string[] }) => ({ data: queryKey[0] === "managerViewings" ? state.viewings : queryKey[0] === "/api/manager/kitchen-applications" ? state.applications : queryKey[0] === "/api/manager/revenue/ledger" ? { summary: { paidOut: 5000, upcoming: { total: 97888, nextPayout: { date: "2026-10-22T12:00:00Z", amount: 97888 } }, onHold: { count: 1, amount: 2000 }, netEarnings: 120000 } } : { totalRevenue: 0 }, isLoading: false, isError: false }) }));
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ i18n: { language: "en-CA" } }) }));
 vi.mock("wouter", () => ({ Link: ({ href, children, ...props }: { href: string; children: ReactNode }) => <a href={href} {...props}>{children}</a> }));
 vi.mock("@/i18n/manager", () => ({ mt: (key: string) => key }));
+vi.mock('@/i18n', () => ({ default: { language: 'en-CA', t: (key: string) => key } }));
 vi.mock("@/i18n/chef-ns", () => ({ ct: (key: string) => key }));
 vi.mock("@/components/booking/BookingNowCard", () => ({ StatusPill: ({ children }: { children: ReactNode }) => <span data-testid="booking-status-pill">{children}</span> }));
 vi.mock("@/lib/api", () => ({ apiGet: vi.fn() }));
@@ -57,6 +58,15 @@ beforeEach(() => {
 });
 
 describe("manager overview states", () => {
+  it('shows the shared ledger summary and keeps the Revenue link', () => {
+    state.kitchens = [{ id: 3, locationId: 1, name: 'East', isActive: true, listingStatus: 'active' }];
+    const html = render();
+    expect(html).toContain('r1PaidOut'); expect(html).toContain('$50.00');
+    expect(html).toContain('r1Upcoming'); expect(html).toContain('$978.88');
+    expect(html).toContain('r1OnHold'); expect(html).toContain('$20.00');
+    expect(html).toContain('overviewRevenueDetails');
+    expect(html).not.toContain('overviewPendingPayments');
+  });
   it('links missing departure assistance for a terminal tour and clears it after departure', () => {
     const tour = { id: 77, locationId: 1, status: 'completed', scheduledAt: '2025-01-01T12:00:00Z', durationMinutes: 30,
       checkedInAt: '2025-01-01T12:00:00Z', attendanceHistory: [{ action: 'check_in', actorId: 8, source: 'visitor',

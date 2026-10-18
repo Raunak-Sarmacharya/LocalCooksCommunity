@@ -7,7 +7,7 @@
 
 import { useState, useMemo, useCallback } from "react"
 import { mt } from "@/i18n/manager"
-import { ColumnFiltersState, SortingState, VisibilityState, flexRender, getCoreRowModel, getFilteredRowModel, getPaginationRowModel, getSortedRowModel, useReactTable } from "@tanstack/react-table"
+import { type ColumnDef, type Table as TanStackTable, ColumnFiltersState, SortingState, VisibilityState, flexRender, getCoreRowModel, getFilteredRowModel, getPaginationRowModel, getSortedRowModel, useReactTable } from "@tanstack/react-table"
 import { Search, Download, ChevronDown, Receipt, FileSpreadsheet } from "@/components/ui/manager-icons"
 
 import { Button } from "@/components/ui/button"
@@ -22,6 +22,40 @@ import { getTransactionColumns } from "../columns"
 import { formatCurrency, downloadCSV } from "@/lib/formatters"
 import type { Transaction, PaymentStatus } from "../types"
 import { getTransactionRevenueBreakdown, transactionsToManagerRevenueCSV } from "../revenue-calculations"
+
+/** The same responsive table and pagination for transaction history and the R1 ledger. */
+export function RevenueDataTable<T>({ data, columns }: { data: T[]; columns: ColumnDef<T>[] }) {
+    const table = useReactTable({ data, columns, getCoreRowModel: getCoreRowModel(), getPaginationRowModel: getPaginationRowModel(),
+        initialState: { pagination: { pageSize: 10 } } });
+    return <>
+        <RevenueTableView table={table} />
+        <div className="flex justify-end gap-2 py-4">
+            <Button variant="outline" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>{mt('previous')}</Button>
+            <Button variant="outline" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>{mt('next')}</Button>
+        </div>
+    </>;
+}
+
+function RevenueTableView<T>({ table, footer }: { table: TanStackTable<T>; footer?: React.ReactNode }) {
+    return <>
+        <MobileTableCards rows={table.getRowModel().rows} emptyMessage={mt('r1Empty')} />
+        <div className="hidden rounded-md border overflow-x-auto md:block">
+            <Table>
+                <TableHeader>{table.getHeaderGroups().map(group => <TableRow key={group.id}>
+                    {group.headers.map(header => <TableHead key={header.id} className="whitespace-nowrap text-xs sm:text-sm">
+                        {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                    </TableHead>)}
+                </TableRow>)}</TableHeader>
+                <TableBody>{table.getRowModel().rows.map(row => <TableRow key={row.id}>
+                    {row.getVisibleCells().map(cell => <TableCell key={cell.id} className="text-xs sm:text-sm">
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </TableCell>)}
+                </TableRow>)}{footer}</TableBody>
+            </Table>
+        </div>
+        {!table.getRowModel().rows.length && <p role="status" className="hidden p-6 text-sm text-muted-foreground md:block">{mt('r1Empty')}</p>}
+    </>;
+}
 
 interface TransactionTableProps {
     transactions: Transaction[]
@@ -247,43 +281,7 @@ export function TransactionTable({
                     </div>
                 ) : (
                     <>
-                        <MobileTableCards rows={table.getRowModel().rows} />
-                        <div className="hidden rounded-md border overflow-x-auto md:block">
-                            <Table>
-                                <TableHeader>
-                                    {table.getHeaderGroups().map((headerGroup) => (
-                                        <TableRow key={headerGroup.id}>
-                                            {headerGroup.headers.map((header) => (
-                                                <TableHead key={header.id} className="whitespace-nowrap text-xs sm:text-sm">
-                                                    {header.isPlaceholder
-                                                        ? null
-                                                        : flexRender(
-                                                            header.column.columnDef.header,
-                                                            header.getContext()
-                                                        )}
-                                                </TableHead>
-                                            ))}
-                                        </TableRow>
-                                    ))}
-                                </TableHeader>
-                                <TableBody>
-                                    {table.getRowModel().rows.map((row) => (
-                                        <TableRow
-                                            key={row.id}
-                                            data-state={row.getIsSelected() && "selected"}
-                                        >
-                                            {row.getVisibleCells().map((cell) => (
-                                                <TableCell key={cell.id} className="text-xs sm:text-sm whitespace-nowrap">
-                                                    {flexRender(
-                                                        cell.column.columnDef.cell,
-                                                        cell.getContext()
-                                                    )}
-                                                </TableCell>
-                                            ))}
-                                        </TableRow>
-                                    ))}
-                                    {/* Totals Row */}
-                                    <TableRow className="bg-muted/50 font-semibold">
+                        <RevenueTableView table={table} footer={<TableRow className="bg-muted/50 font-semibold">
                                         <TableCell colSpan={table.getVisibleLeafColumns().filter((column) => ["reference", "bookingDate", "chefName", "locationName", "createdAt"].includes(column.id)).length}>
                                             {mt("totalTransactionsCount", { count: filteredData.length })}
                                         </TableCell>
@@ -303,10 +301,7 @@ export function TransactionTable({
                                             {formatCurrency(totals.netRevenue)}
                                         </TableCell>
                                         <TableCell colSpan={2} />
-                                    </TableRow>
-                                </TableBody>
-                            </Table>
-                        </div>
+                                    </TableRow>} />
 
                         {/* Pagination */}
                         <div className="flex items-center justify-between space-x-2 py-4">
