@@ -112,7 +112,18 @@ that does not add up to the captured cents/fee, or a non-per-day payment. Pendin
 
 ## Verification
 
-(See final section below; filled after the runs.)
+`npm ci` installed this worktree's dependencies (no links, no manifest change). Implementation committed (`bac3daa5`, `bc5a7235`)
+before the final checks.
+
+- Focused: CP7 suite **10/10**; change/CP4/CP5/CP6/support/refund suites (18 files) **563 passed** after one CP5 test showed a missing
+  change must still refuse (fixed: only a real, not-yet-applied change waits); client change/recovery/CP8 picker suites **28 passed**.
+  `node scripts/i18n-lint.mjs` passed.
+- **Full server suite, once** (`npx vitest run --config vitest.config.server.ts --reporter=dot`): 310 files, **4059 passed, 1 failed**,
+  1 expected fail, 12 skipped. The failure, re-run alone with `--no-file-parallelism`, still fails: `stripe-webhook-contract > refuses
+  live Stripe keys`, which asserts this machine's Stripe key prefix (environment; pre-existing, listed in CP6's report).
+- **`npx tsc --noEmit -p tsconfig.json`**: first run **2 errors**, both in the new `DatedChangeEditor` (an untyped `{}` fallback for the
+  equipment response); fixed in `a80c55a4`; the one confirming run: **exit 0, zero errors**. Both runs were backgrounded with a
+  completion wait because they exceed the 10-minute foreground tool limit; nothing else ran meanwhile.
 
 ## Risks and limits
 
