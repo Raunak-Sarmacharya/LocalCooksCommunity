@@ -9,9 +9,10 @@ import type { RevenueSummary, RevenueType } from "@/lib/manager-revenue-summary"
 const TYPE_LABEL: Record<RevenueType, string> = { kitchen: "ovrTypeKitchen", equipment: "ovrTypeEquipment", storage: "ovrTypeStorage", extraTime: "ovrTypeExtraTime", claims: "ovrTypeClaims" };
 
 /**
- * Money at a glance: paid out this month, what is scheduled next (date + amount) and what is on hold — every amount
- * shown, never a Stripe id. The month's split by type appears once the summary carries it. The extra rows (pending
- * payments, paid bookings) are the card's earlier numbers, kept for the owner to decide on.
+ * Money at a glance, in the Revenue page's words (Paid out / Upcoming / On hold): paid out this month, what is
+ * scheduled next (date + amount) and what is on hold — every amount shown, never a Stripe id. The month's split by
+ * type appears once the summary carries it. `extras` is a quiet footer (paid bookings); nothing in it may contradict
+ * the three numbers above.
  */
 export function RevenuePayoutsCard({ summary, extras, isLoading, isError, locale, monthLabel, className, onDetails }: {
   summary: RevenueSummary; extras?: Array<{ label: string; value: string }>; isLoading: boolean; isError: boolean; locale: string; monthLabel: string;
@@ -34,18 +35,18 @@ export function RevenuePayoutsCard({ summary, extras, isLoading, isError, locale
           : isError ? <p role="status" className="mt-5 rounded-xl bg-muted/40 p-4 text-sm text-destructive">{mt("overviewRevenueError")}</p> : <>
           <dl className="mt-5 grid gap-4 sm:grid-cols-3">
             <div className="min-w-0 rounded-xl border border-primary/10 bg-gradient-to-br from-primary/5 to-transparent px-4 py-3">
-              <dt className="text-xs font-medium text-muted-foreground">{mt("overviewPaidEarnings")}</dt>
+              <dt className="text-xs font-medium text-muted-foreground">{mt("r1PaidOut")}</dt>
               <dd className="mt-1 break-words text-2xl font-semibold tracking-tight tabular-nums">{money(summary.paidOut ?? 0)}</dd>
             </div>
             <div className="min-w-0 px-1 py-1 sm:px-0">
-              <dt className="text-xs font-medium text-muted-foreground">{mt("revenueUpcomingPayouts")}</dt>
+              <dt className="text-xs font-medium text-muted-foreground">{mt("r1Upcoming")}</dt>
               <dd className="mt-1 text-xl font-semibold tracking-tight tabular-nums">{summary.upcoming ? money(summary.upcoming.total) : "—"}</dd>
               {summary.upcoming && <dd className="mt-1 text-xs text-muted-foreground">{summary.upcoming.next
                 ? mt("ovrNextPayout", { date: day(summary.upcoming.next.date), amount: money(summary.upcoming.next.amount) })
                 : summary.upcoming.total > 0 ? mt("ovrNextPayoutAfterCloseout") : mt("ovrNoPayoutsScheduled")}</dd>}
             </div>
             <div className="min-w-0 px-1 py-1 sm:px-0">
-              <dt className="text-xs font-medium text-muted-foreground">{mt("ovrOnHold")}</dt>
+              <dt className="text-xs font-medium text-muted-foreground">{mt("r1OnHold")}</dt>
               <dd className="mt-1 text-xl font-semibold tracking-tight tabular-nums">{summary.onHold ? money(summary.onHold.amount) : "—"}</dd>
               {summary.onHold && <dd className={`mt-1 text-xs ${summary.onHold.count ? "font-medium text-foreground" : "text-muted-foreground"}`}>{mt("ovrOnHoldCount", { count: summary.onHold.count })}</dd>}
             </div>

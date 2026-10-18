@@ -7,7 +7,7 @@ import { formatTourWhen } from '@/lib/chef-viewing-display';
 import { isPendingOrUpcomingTour } from "@/lib/chef-viewing-display";
 import { useTourClock } from "@/hooks/use-tour-clock";
 import { tourActivity } from "@shared/tour-activity";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Link } from "wouter";
@@ -16,14 +16,14 @@ import { mt } from "@/i18n/manager";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useManagerDashboard } from "@/hooks/use-manager-dashboard";
 import { useManagerOverviewActivity } from "@/hooks/use-manager-overview-activity";
-import { formatCurrency, formatDate, formatRelativeTime } from "@/lib/formatters";
+import { formatDate, formatRelativeTime } from "@/lib/formatters";
 import { kitchenIsVisibleToChefs, licenseAllowsBookings } from "@shared/kitchen-license";
 import { CheckCircle, ChevronRight } from "@/components/ui/manager-icons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import BookingCalendarWidget, { CalendarEventRow, sortEvents, type CalendarEvent } from "./BookingCalendarWidget";
+import BookingCalendarWidget, { CalendarEventRow, splitToday, type CalendarEvent } from "./BookingCalendarWidget";
 import { RevenuePayoutsCard } from "./RevenuePayoutsCard";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { HAPPENING_NOW, managerDatedListDay, managerListDays } from "@/lib/booking-list-status";
@@ -86,6 +86,8 @@ const hoursText = (minutes: number, locale: string) => new Intl.NumberFormat(loc
 /** "HH:MM" of an instant in a zone (24-hour), for placing a tour on the calendar. */
 const clockIn = (at: number, timeZone: string) => new Intl.DateTimeFormat("en-GB", { timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(at);
 const FINISHED_PHASES = ["completed", "visit_ended", "no_show", "issue", "cancelled"];
+/** Needs-attention groups about a day that has ended: each item names that day and opens its inspection. */
+const FOLLOW_UP_ACTIONS = ["overviewKitchenCheckoutReviews", "overviewBookingOutcomes"];
 const STORAGE_CHIP_KEY: Record<string, string> = { grace: "stChipGrace", holdover: "stChipHoldover", moveOutDue: "stChipMoveOutDue", needsCleaning: "stChipNeedsCleaning", removalReview: "stChipRemovalReview" };
 
 /**
@@ -155,6 +157,7 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
   const { user } = useFirebaseAuth();
   const { i18n } = useTranslation();
   const { bookings: allBookings, isLoadingBookings, isErrorBookings } = useManagerDashboard();
+  const [showDoneToday, setShowDoneToday] = useState(false);
   const locationKitchens = kitchens.filter((kitchen) => !selectedLocation || kitchen.locationId === selectedLocation.id);
   const activity = useManagerOverviewActivity(selectedLocation?.id, locationKitchens.map((kitchen) => kitchen.id));
   const licenseForKitchen = (kitchen: Kitchen) => locations.find((location) => location.id === kitchen.locationId);
@@ -281,14 +284,30 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
   const unreadThreads = activity.unreadThreads ?? [];
   for (const thread of unreadThreads) addTask("overviewUnreadMessages", { id: thread.id, title: applications.find((application) => application.id === thread.applicationId)?.fullName || mt("overviewConversationTitle", { id: thread.applicationId }), detail: mt("overviewUnreadThreadCount", { count: thread.unreadManagerCount }), view: "messages", param: "conversation" });
   if (!unreadThreads.length && activity.unreadMessages > 0) addTask("overviewUnreadMessages", { id: "messages", title: mt("overviewUnreadThreadCount", { count: activity.unreadMessages }), view: "messages" });
+  const inspectionHref = (bookingId: number, visitId?: number) => `/manager/booking/${bookingId}/inspection${visitId ? `?visitId=${visitId}` : ""}`;
   for (const booking of bookings) {
-    const label = bookingNextAction(booking, locations.find((location) => location.id === (booking.locationId ?? booking.location?.id))?.timezone);
-    if (label) {
+    const bookingZone = locations.find((location) => location.id === (booking.locationId ?? booking.location?.id))?.timezone;
+    const label = bookingNextAction(booking, bookingZone);
+    /*
+     * A dated booking's follow-up is decided day by day: the booking row's own check-in status and times are day 1's
+     * (and go stale), which flagged "ended" bookings whose day 1 was checked out and pointed at their next day. Each
+     * day that ended and is still open (checkout waiting, or nothing recorded) is its own item, named and linked to that
+     * day's inspection; a checked-out day is not.
+     */
+    const days = managerListDays(booking);
+    const perDay = !!days[0]?.dayCount && (!label || FOLLOW_UP_ACTIONS.includes(label));
+    const endedDays = perDay ? days.flatMap(day => {
+      const action = bookingNextAction(day.row, bookingZone);
+      return action && FOLLOW_UP_ACTIONS.includes(action) ? [{ day, action }] : [];
+    }) : [];
+    for (const { day, action } of endedDays) addTask(action, { id: `${booking.id}:${day.visitId}`, title: recordTitle(booking),
+      detail: [dayLabel(day), listWhenLine(day.row, i18n.language, words)].filter(Boolean).join(" · "), view: "bookings", href: inspectionHref(booking.id, day.visitId) });
+    if (label && !perDay) {
       const dated = datedDay(booking);
       const visitId = dated.row.visitStates?.length === 1 ? dated.row.visitStates[0].id : undefined;
-      // A checkout to review opens that day's inspection; everything else opens the booking.
+      // A follow-up (checkout to review, ended booking) opens that day's inspection; everything else opens the booking.
       addTask(label, { id: String(booking.id), title: recordTitle(booking), detail: [dated.label, listWhenLine(dated.row, i18n.language, words)].filter(Boolean).join(" · "), view: "bookings",
-        href: label === "overviewKitchenCheckoutReviews" ? `/manager/booking/${booking.id}/inspection${visitId ? `?visitId=${visitId}` : ""}` : `/manager/booking/${booking.id}` });
+        href: FOLLOW_UP_ACTIONS.includes(label) ? inspectionHref(booking.id, visitId) : `/manager/booking/${booking.id}` });
     }
     for (const item of booking.equipmentItems || []) if (booking.status === 'confirmed' && item.status === 'cancellation_requested')
       addTask('overviewEquipmentCancellations', { id: `${booking.id}:equipment:${item.equipmentBookingId ?? item.id}`, title: item.name || recordTitle(booking),
@@ -392,7 +411,7 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
       return kitchenBookingBlocks(row).map((block, index) => ({ key: `booking-${row.id}-${day.visitId ?? 0}-${index}`, kind: "booking" as const, date: day.dayKey,
         start: block.startTime, end: block.endTime, sortAt: startAt === undefined ? undefined : startAt + spanMinutes(row.startTime, block.startTime) % 1440 * 60_000,
         title: chefDisplayName(row), detail: [dayLabel(day), row.kitchenName].filter(Boolean).join(" · "), label: ct(pill.key), tone: pill.tone,
-        muted: FINISHED_PHASES.includes(phase), now: HAPPENING_NOW.includes(phase), href: `/manager/booking/${row.id}` }));
+        muted: FINISHED_PHASES.includes(phase), cancelled: phase === "cancelled", now: HAPPENING_NOW.includes(phase), href: `/manager/booking/${row.id}` }));
     }),
     ...locationViewings.filter(({ viewing }) => ["pending", "confirmed", "completed"].includes(viewing.status) && Number.isFinite(Date.parse(viewing.scheduledAt))).map(item => {
       const at = Date.parse(item.viewing.scheduledAt);
@@ -421,8 +440,10 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
       return events;
     }),
   ];
-  const todayEvents = sortEvents(calendarEvents.filter(event => event.date === today));
-  const inKitchenNow = todayEvents.filter(event => event.now).length;
+  // Today: in the kitchen now, then next up; finished and cancelled are folded into one line under the list.
+  const todayEvents = splitToday(calendarEvents.filter(event => event.date === today));
+  const cancelledToday = todayEvents.done.filter(event => event.cancelled).length;
+  const inKitchenNow = todayEvents.active.filter(event => event.now).length;
   const nextDay = upcoming.find(day => day.dayKey > today);
   const scheduleLoading = isLoadingBookings || isLoadingViewings || isLoadingRentals || activity.isLoading;
   const longDate = new Intl.DateTimeFormat(i18n.language, { timeZone: timezone, weekday: "long", month: "long", day: "numeric" }).format(Date.now());
@@ -546,10 +567,18 @@ return <div key={kitchen.id}><button type="button" onClick={() => onNavigate(lis
       {inKitchenNow > 0 && <Badge variant="outline" className="shrink-0 border-success/40 bg-success/10 text-foreground">{mt("ovrInKitchenNow", { count: inKitchenNow })}</Badge>}
     </div>
     <ScrollArea className={scrollClass} tabIndex={0} role="region" aria-label={mt("today")}>
-      {scheduleLoading && !todayEvents.length && <Skeleton className="h-24 rounded-xl" />}
-      <div className="divide-y divide-border/50">{todayEvents.map(event => <CalendarEventRow key={event.key} event={event} locale={i18n.language} />)}</div>
-      {!scheduleLoading && !todayEvents.length && <div className="rounded-xl bg-muted/40 p-4"><p className="text-sm font-medium">{mt("ovrNothingToday")}</p>
+      {scheduleLoading && !todayEvents.active.length && <Skeleton className="h-24 rounded-xl" />}
+      <div className="divide-y divide-border/50">{todayEvents.active.map(event => <CalendarEventRow key={event.key} event={event} locale={i18n.language} />)}</div>
+      {!scheduleLoading && !todayEvents.active.length && <div className="rounded-xl bg-muted/40 p-4"><p className="text-sm font-medium">{mt("ovrNothingToday")}</p>
         {nextDay && <p className="mt-1 text-xs text-muted-foreground">{mt("ovrNextUp", { when: [chefDisplayName(nextDay.row), dayLabel(nextDay), listWhenLine(nextDay.row, i18n.language, words)].filter(Boolean).join(" · ") })}</p>}</div>}
+      {todayEvents.done.length > 0 && <div className="mt-2 border-t border-border/50 pt-1">
+        <button type="button" aria-expanded={showDoneToday} aria-controls="overview-today-done" onClick={() => setShowDoneToday(open => !open)}
+          className="flex w-full items-center gap-1.5 rounded-lg px-2 py-2 text-left text-xs text-muted-foreground hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+          <ChevronRight aria-hidden="true" className={`size-3.5 shrink-0 transition-transform motion-reduce:transition-none ${showDoneToday ? "rotate-90" : ""}`} />
+          {[cancelledToday ? mt("ovrTodayCancelled", { count: cancelledToday }) : "", todayEvents.done.length - cancelledToday ? mt("ovrTodayFinished", { count: todayEvents.done.length - cancelledToday }) : ""].filter(Boolean).join(" · ")}
+        </button>
+        {showDoneToday && <div id="overview-today-done" className="divide-y divide-border/50">{todayEvents.done.map(event => <CalendarEventRow key={event.key} event={event} locale={i18n.language} />)}</div>}
+      </div>}
     </ScrollArea>
   </CardContent></Card>;
   const weekTiles = [
@@ -570,7 +599,8 @@ return <div key={kitchen.id}><button type="button" onClick={() => onNavigate(lis
   const revenueCard = (className: string) => <RevenuePayoutsCard className={className} locale={i18n.language} isLoading={ledger.isLoading || isLoadingRevenue || isLoadingPayouts} isError={isErrorRevenue}
     monthLabel={new Date().toLocaleDateString(i18n.language, { month: "long", year: "numeric" })} onDetails={() => onNavigate("revenue")}
     summary={revenueSummaryFromLedger(ledger.data) ?? revenueSummaryFromCurrent(revenue, upcomingPayouts, selectedLocation ? new Set(bookings.map(booking => booking.id)) : undefined)}
-    extras={[{ label: mt("overviewPendingPayments"), value: formatCurrency(revenue?.pendingPayments ?? 0, "CAD", i18n.language) }, { label: mt("overviewPaidBookings"), value: String(revenue?.paidBookingCount ?? 0) }]} />;
+    // "Pending payments" (the old overview's pendingPayments) is no longer shown: it read $0.00 beside a non-zero Upcoming.
+    extras={[{ label: mt("overviewPaidBookings"), value: String(revenue?.paidBookingCount ?? 0) }]} />;
   const switcher = locations.length > 1 && onSelectLocation && selectedLocation && <Select value={String(selectedLocation.id)} onValueChange={value => { const location = locations.find(item => String(item.id) === value); if (location) onSelectLocation(location); }}>
     <SelectTrigger className="h-10 w-full sm:w-64" aria-label={mt("ovrLocation")}><SelectValue /></SelectTrigger>
     <SelectContent>{locations.map(location => <SelectItem key={location.id} value={String(location.id)}>{location.name}</SelectItem>)}</SelectContent>

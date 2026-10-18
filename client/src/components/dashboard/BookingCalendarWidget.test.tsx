@@ -43,7 +43,7 @@ describe("BookingCalendarWidget", () => {
     expect(screen.getByRole("heading", { level: 2 }).textContent).toBe("Monday, October 19, 2026");
     const rows = screen.container.querySelectorAll(".divide-y > *");
     expect(Array.from(rows).map(row => row.textContent)).toEqual([expect.stringContaining("Jamie"), expect.stringContaining("Day 2 of 2")]);
-    fireEvent.click(screen.getByRole("radio", { name: "weekView" }));
+    fireEvent.click(screen.getByRole("button", { name: "weekView" }));
     fireEvent.click(screen.getByRole("button", { name: "next" }));
     expect(screen.getByRole("heading", { level: 2 }).textContent).toBe("Oct 25 – Oct 31, 2026");
     screen.unmount();
@@ -51,10 +51,67 @@ describe("BookingCalendarWidget", () => {
 
   it("has a month view whose days open the day view", () => {
     const screen = setup();
-    fireEvent.click(screen.getByRole("radio", { name: "monthView" }));
+    fireEvent.click(screen.getByRole("button", { name: "monthView" }));
     expect(screen.getByRole("heading", { level: 2 }).textContent).toBe("October 2026");
     fireEvent.click(screen.getByRole("button", { name: /Tuesday, October 20 · ovrEventCount/ }));
     expect(screen.getByText("Kitchen East")).toBeTruthy();
     screen.unmount();
+  });
+
+  it("switches views with a segmented control that reports the pressed view", () => {
+    const screen = setup();
+    const group = screen.getByRole("group", { name: "ovrCalendarView" });
+    const pressed = () => within(group).getAllByRole("button").filter(button => button.getAttribute("aria-pressed") === "true").map(button => button.textContent);
+    expect(within(group).getAllByRole("button").map(button => button.textContent)).toEqual(["ovrAgendaView", "ovrDayView", "weekView", "monthView"]);
+    expect(pressed()).toEqual(["weekView"]);
+    fireEvent.click(within(group).getByRole("button", { name: "monthView" }));
+    expect(pressed()).toEqual(["monthView"]);
+    // Plain buttons: Radix radio items are squashed to 16px by index.css, which overlapped the labels.
+    expect(group.querySelector('[role="radio"]')).toBeNull();
+    screen.unmount();
+  });
+
+  it("hides cancelled bookings until Show cancelled is switched on", () => {
+    vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
+    const withCancelled: CalendarEvent[] = [...events,
+      { key: "k1", kind: "booking", date: "2026-10-19", start: "10:00", end: "11:00", title: "Cancelled chef", label: "Cancelled", tone: "grey", muted: true, cancelled: true, href: "/manager/booking/95" },
+      { key: "k2", kind: "booking", date: "2026-10-19", start: "11:00", end: "12:00", title: "Done chef", label: "Completed", tone: "grey", muted: true, href: "/manager/booking/96" }];
+    const screen = render(<BookingCalendarWidget events={withCancelled} isLoading={false} today="2026-10-18" onNavigateToBookings={vi.fn()} />);
+    expect(screen.queryByText("Cancelled chef")).toBeNull();
+    // Completed bookings, tours, closures and storage stay on the calendar.
+    expect(screen.getByText("Done chef")).toBeTruthy();
+    expect(screen.getByText("Kitchen East")).toBeTruthy();
+    const toggle = screen.getByRole("switch", { name: "ovrShowCancelled" });
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByText("Cancelled chef")).toBeTruthy();
+    screen.unmount();
+  });
+
+  it("offers no Show cancelled switch when nothing is cancelled", () => {
+    const screen = setup();
+    expect(screen.queryByRole("switch")).toBeNull();
+    screen.unmount();
+  });
+
+  it("opens on the Agenda on a phone: today, then only the next days that have something on", () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 767px)", media: query, addEventListener() {}, removeEventListener() {} }));
+    const screen = setup();
+    expect(screen.getByRole("button", { name: "ovrAgendaView" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("heading", { level: 2 }).textContent).toBe("Oct 18 – Oct 24, 2026");
+    const days = screen.getAllByRole("region").map(region => region.getAttribute("aria-label"));
+    // Oct 22–24 have nothing on and are left out; Nov 2 is outside the seven days.
+    expect(days).toEqual(["Sunday, October 18", "Monday, October 19", "Tuesday, October 20", "Wednesday, October 21"]);
+    const monday = screen.getByRole("region", { name: "Monday, October 19" });
+    // Compact two-line rows: name, then time · state; the 10:00 tour before the 8 p.m. booking.
+    expect(within(monday).getByRole("button", { name: /Jamie/ }).textContent).toBe("Jamie10:00–10:30 a.m. · Tour booked");
+    expect(within(monday).getByRole("link").textContent).toBe("Morgan8:00–9:00 p.m. · Confirmed");
+    expect(monday.textContent!.indexOf("Jamie")).toBeLessThan(monday.textContent!.indexOf("Morgan"));
+    expect(screen.queryByText("Later")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "weekView" }));
+    expect(screen.getByRole("button", { name: "weekView" })).toHaveAttribute("aria-pressed", "true");
+    screen.unmount();
+    vi.unstubAllGlobals();
   });
 });

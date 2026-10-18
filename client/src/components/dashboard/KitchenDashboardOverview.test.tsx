@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { fireEvent, render as renderDom } from "@testing-library/react";
+import { fireEvent, render as renderDom, within } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
   kitchens: [] as Array<{ id: number; locationId: number; name: string; isActive: boolean; listingStatus: string }>,
@@ -312,5 +312,112 @@ describe("revamped overview (R3)", () => {
     expect(card).not.toContain("$99.99");
     expect(card).toContain("ovrNextPayout");
     expect(card).toContain("ovrOnHoldCount");
+  });
+
+  const attentionOf = (html: string) => html.slice(html.indexOf('aria-label="overviewNeedsAttention"'), html.indexOf('data-testid="overview-today"'));
+
+  it("names the day that ended in Follow up ended bookings, not the booking's next day, and opens that day's inspection", () => {
+    live();
+    state.bookings = [{ id: 90, kitchenId: 10, locationId: 1, chefName: "Morgan", kitchenName: "Kitchen East", bookingDate: plus(-1), createdAt: "2025-01-01",
+      startTime: "09:00", endTime: "10:00", status: "confirmed", checkinStatus: "not_checked_in", scheduleRevision: 1,
+      visitStates: [{ id: 901, checkinStatus: "not_checked_in", visitDate: plus(-1), startTime: "09:00", endTime: "10:00" },
+        { id: 902, checkinStatus: "not_checked_in", visitDate: plus(5), startTime: "17:00", endTime: "18:00" }] }];
+    const attention = attentionOf(render());
+    expect(attention).toContain("overviewBookingOutcomes");
+    expect(attention).toContain('href="/manager/booking/90/inspection?visitId=901"');
+    expect(attention).toContain("9:00–10:00 a.m.");
+    expect(attention).not.toContain("visitId=902");
+    expect(attention).not.toContain("5:00–6:00 p.m.");
+  });
+
+  it("lists every ended day of a multi-day booking under its own follow-up, each with its inspection", () => {
+    live();
+    state.bookings = [{ id: 90, kitchenId: 10, locationId: 1, chefName: "Morgan", kitchenName: "Kitchen East", bookingDate: plus(-2), createdAt: "2025-01-01",
+      startTime: "09:00", endTime: "10:00", status: "confirmed", checkinStatus: "checkout_requested", scheduleRevision: 1,
+      visitStates: [{ id: 901, checkinStatus: "not_checked_in", visitDate: plus(-2), startTime: "09:00", endTime: "10:00" },
+        { id: 902, checkinStatus: "checkout_requested", visitDate: plus(-1), startTime: "17:00", endTime: "18:00" },
+        { id: 903, checkinStatus: "not_checked_in", visitDate: plus(5), startTime: "12:00", endTime: "13:00" }] }];
+    const attention = attentionOf(render());
+    const group = (label: string) => attention.slice(attention.indexOf(label)).split("</section>")[0];
+    expect(group("overviewKitchenCheckoutReviews")).toContain('href="/manager/booking/90/inspection?visitId=902"');
+    expect(group("overviewKitchenCheckoutReviews")).toContain("5:00–6:00 p.m.");
+    expect(group("overviewBookingOutcomes")).toContain('href="/manager/booking/90/inspection?visitId=901"');
+    expect(group("overviewBookingOutcomes")).toContain("9:00–10:00 a.m.");
+    expect(attention).not.toContain("visitId=903");
+  });
+
+  it("does not flag a multi-day booking whose ended day was checked out (stale booking-level check-in, as on dev)", () => {
+    live();
+    // Dev booking 209: the booking row still says not_checked_in with day 1's times; day 1 was checked out, day 2 is ahead.
+    state.bookings = [{ id: 209, kitchenId: 10, locationId: 1, chefName: "Morgan", kitchenName: "Kitchen East", bookingDate: plus(-1), createdAt: "2025-01-01",
+      startTime: "17:00", endTime: "18:00", status: "confirmed", checkinStatus: "not_checked_in", attendanceReviewComplete: false, scheduleRevision: 1,
+      visitStates: [{ id: 158, checkinStatus: "checked_out", visitDate: plus(-1), startTime: "17:00", endTime: "18:30" },
+        { id: 159, checkinStatus: "not_checked_in", visitDate: plus(5), startTime: "17:00", endTime: "18:00" }] }];
+    const attention = attentionOf(render());
+    expect(attention).not.toContain("overviewBookingOutcomes");
+    expect(attention).not.toContain("visitId=159");
+    expect(attention).toContain("overviewAllCaughtUp");
+  });
+
+  it("lists a day's checkout to review even when the booking row's own times have not ended (as on dev)", () => {
+    live();
+    // Dev booking 212: day 1's checkout is waiting; the booking row says not_checked_in, so the booking-level check missed it.
+    state.bookings = [{ id: 212, kitchenId: 10, locationId: 1, chefName: "Morgan", kitchenName: "Kitchen East", bookingDate: plus(5), createdAt: "2025-01-01",
+      startTime: "20:00", endTime: "21:00", status: "confirmed", checkinStatus: "not_checked_in", scheduleRevision: 1,
+      visitStates: [{ id: 171, checkinStatus: "checkout_requested", visitDate: plus(-1), startTime: "20:00", endTime: "21:00" },
+        { id: 172, checkinStatus: "not_checked_in", visitDate: plus(5), startTime: "20:00", endTime: "21:00" }] }];
+    const attention = attentionOf(render());
+    expect(attention).toContain("overviewKitchenCheckoutReviews");
+    expect(attention).toContain('href="/manager/booking/212/inspection?visitId=171"');
+    expect(attention).not.toContain("visitId=172");
+  });
+
+  describe("Today card", () => {
+    const day = "2026-10-18";
+    const booking = (id: number, chefName: string, startTime: string, endTime: string, status: string) =>
+      ({ id, kitchenId: 10, locationId: 1, chefId: id, chefName, kitchenName: "Kitchen East", bookingDate: day, createdAt: "2025-01-01", startTime, endTime, status });
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-10-18T15:00:00Z")); // 12:30 p.m. in St. John's
+      live();
+      state.bookings = [booking(91, "Cancelled Chef One", "10:00", "11:00", "cancelled"), booking(92, "Cancelled Chef Two", "10:00", "11:00", "cancelled"),
+        booking(93, "TestSprite chef with a long display name", "20:00", "21:00", "confirmed"), booking(94, "Finished Chef", "08:00", "09:00", "completed")];
+    });
+    afterEach(() => vi.useRealTimers());
+    const todayOf = (html: string) => html.slice(html.indexOf('data-testid="overview-today"'), html.indexOf('data-testid="overview-week"'));
+
+    it("leads with tonight's booking and folds cancelled and finished into one line", () => {
+      const card = todayOf(render());
+      expect(card).toContain("TestSprite chef with a long display name");
+      expect(card).not.toContain("Cancelled Chef");
+      expect(card).not.toContain("Finished Chef");
+      expect(card).toMatch(/aria-expanded="false"[^>]*>.*ovrTodayCancelled · ovrTodayFinished/);
+      expect(card).not.toContain("ovrNothingToday");
+      // The name wraps in the narrow column instead of being cut off.
+      expect(card).not.toMatch(/truncate[^"]*">TestSprite/);
+    });
+
+    it("shows the cancelled and finished rows when the line is opened", () => {
+      vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
+      const screen = renderDom(<KitchenDashboardOverview selectedLocation={location()} locations={[location()]} kitchens={state.kitchens} onNavigate={vi.fn()} />);
+      const card = screen.getByTestId("overview-today");
+      const toggle = within(card).getByRole("button", { name: /ovrTodayCancelled/ });
+      fireEvent.click(toggle);
+      expect(toggle).toHaveAttribute("aria-expanded", "true");
+      const text = card.textContent!;
+      expect(text.indexOf("TestSprite")).toBeLessThan(text.indexOf("Cancelled Chef One"));
+      expect(text).toContain("Cancelled Chef Two");
+      expect(text).toContain("Finished Chef");
+      screen.unmount();
+      vi.unstubAllGlobals();
+    });
+  });
+
+  it("uses the Revenue page's words and drops the contradicting Pending payments footer", () => {
+    live();
+    state.bookings = [{ id: 90, kitchenId: 10, locationId: 1, bookingDate: plus(1), createdAt: "2025-01-01", startTime: "09:00", endTime: "10:00", status: "confirmed" }];
+    const card = render().split('data-testid="overview-revenue"')[1];
+    for (const key of ["r1PaidOut", "r1Upcoming", "r1OnHold", "overviewPaidBookings"]) expect(card).toContain(key);
+    for (const key of ["overviewPaidEarnings", "revenueUpcomingPayouts", "overviewPendingPayments"]) expect(card).not.toContain(key);
   });
 });
