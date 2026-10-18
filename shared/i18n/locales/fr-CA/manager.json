@@ -4289,7 +4289,7 @@
   "r2Refunded": "Remboursé {amount}",
   "r2NoBookingsMatch": "Aucune réservation ne correspond à ces filtres.",
   "r2YouReceiveColumn": "Vous recevez",
-  "r2YouReceive": "Vous recevez {amount}",
+  "r2YouReceive": "Vous recevez : {amount}",
   "r1PaidOut": "Versements effectués",
   "r1Upcoming": "À venir",
   "r1OnHold": "En attente",

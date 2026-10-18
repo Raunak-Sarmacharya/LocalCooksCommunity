@@ -4289,7 +4289,7 @@
   "r2Refunded": "Повернено {amount}",
   "r2NoBookingsMatch": "Немає бронювань за цими фільтрами.",
   "r2YouReceiveColumn": "Ви отримуєте",
-  "r2YouReceive": "Ви отримуєте {amount}",
+  "r2YouReceive": "Ви отримуєте: {amount}",
   "r1PaidOut": "Виплачено",
   "r1Upcoming": "Майбутні виплати",
   "r1OnHold": "Призупинено",
