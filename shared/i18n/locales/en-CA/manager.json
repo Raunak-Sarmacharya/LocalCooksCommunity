@@ -4273,5 +4273,18 @@
   "extraTimeRateMustBeAPositiveNumberOrEmpty": "Extra time rate must be a positive number or empty.",
   "extraTimeRateRequiredForDailyOnly": "Extra time rate (per hour) is required when you set a daily rate and no hourly rate.",
   "listingReviewExtraTimePerHour": "/hour extra time",
-  "extraTimeRateSameAsHourly": "Same as your hourly rate · {amount}/hour"
+  "extraTimeRateSameAsHourly": "Same as your hourly rate · {amount}/hour",
+  "r2Status": "Status",
+  "r2AllStatuses": "All statuses",
+  "r2From": "From date",
+  "r2To": "To date",
+  "r2ClearFilters": "Clear filters",
+  "r2ExportCsv": "Export CSV",
+  "r2Date": "Date",
+  "r2Day": "Day",
+  "r2Chef": "Chef",
+  "r2Kitchen": "Kitchen",
+  "r2Total": "Total",
+  "r2RefundedColumn": "Refunded",
+  "r2Refunded": "Refunded {amount}"
 }

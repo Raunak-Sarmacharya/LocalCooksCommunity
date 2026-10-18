@@ -5,6 +5,7 @@
 import { mt } from "@/i18n/manager";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { resolveDisplayedKitchenNetPayoutCents } from "@shared/booking-pricing-breakdown";
+import type { KitchenPayout } from "@shared/kitchen-payout";
 import type { BookingListRow } from "@/lib/booking-list-status";
 
 // Storage/Equipment item types from JSONB fields
@@ -32,6 +33,7 @@ export type EquipmentItem = {
 
 // Define the Booking type
 export type Booking = BookingListRow & {
+    payout?: KitchenPayout;
     id: number;
     referenceCode?: string | null;
     kitchenId: number;
@@ -199,97 +201,11 @@ export function ManagerPaymentSummary({ booking }: { booking: Booking }) {
   const isRefunded = paymentStatus === 'refunded' || paymentStatus === 'partially_refunded';
   const hasRefund = refundAmount > 0;
 
-  // Cancelled bookings with refunds: show refund info instead of "You receive"
-  if (isCancelled && hasRefund && hasTransactionData) {
-      const isFullRefund = paymentStatus === 'refunded';
-      return (
-          <TooltipProvider>
-              <Tooltip>
-                  <TooltipTrigger asChild>
-                      <div className="text-right cursor-help">
-                          <div className="font-medium text-sm text-muted-foreground line-through">{formatPrice(displayAmount)}</div>
-                          <div className="text-xs text-muted-foreground">{mt("refundedAmount", { amount: formatPrice(refundAmount) })}</div>
-                      </div>
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-xs">
-                      <div className="space-y-1 text-sm">
-                          <p className="font-medium text-orange-700">{isFullRefund ? mt("fullyRefunded") : mt("partiallyRefunded")}</p>
-                          <div className="flex justify-between gap-4 text-muted-foreground">
-                              <span>{mt("originalCharge")}</span>
-                              <span className="font-mono line-through">{formatPrice(displayAmount)}</span>
-                          </div>
-                          <div className="flex justify-between gap-4 font-semibold text-orange-600">
-                              <span>{mt("refundedToChef")}</span>
-                              <span>{formatPrice(refundAmount)}</span>
-                          </div>
-                          {stripeFee > 0 && (
-                              <div className="flex justify-between gap-4 text-muted-foreground text-xs">
-                                  <span>{mt("stripeFeeSunkCost")}</span>
-                                  <span>{formatPrice(stripeFee)}</span>
-                              </div>
-                          )}
-                      </div>
-                  </TooltipContent>
-              </Tooltip>
-          </TooltipProvider>
-      );
-  }
-
-  // Active bookings with partial refund (e.g., some addons cancelled + refunded, kitchen still confirmed)
-  if (!isCancelled && hasRefund && hasTransactionData) {
-      // refundAmount is the total returned to the chef. It can include the
-      // platform-owned service fee, so never present that portion as money
-      // taken from the manager's payout.
-      const managerRefundAmount = Math.min(refundAmount, netAmount);
-      const platformRefundAmount = Math.max(0, refundAmount - managerRefundAmount);
-      const adjustedNet = Math.max(0, netAmount - managerRefundAmount);
-      const isFullRefund = refundAmount >= Math.max(0, displayAmount - stripeFee);
-      return (
-          <TooltipProvider>
-              <Tooltip>
-                  <TooltipTrigger asChild>
-                      <div className="text-right cursor-help">
-                          <div className="font-medium text-sm">{formatPrice(displayAmount)}</div>
-                          <div className="text-xs text-muted-foreground">{mt("refundAmountLabel", { amount: formatPrice(refundAmount) })}</div>
-                      </div>
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-xs">
-                      <div className="space-y-1 text-sm">
-                          <p className="font-medium text-amber-700">{isFullRefund ? mt("fullRefundIssued") : mt("partialRefundIssued")}</p>
-                          <div className="flex justify-between gap-4">
-                              <span>{mt("totalCharged2")}</span>
-                              <span className="font-medium font-mono">{formatPrice(displayAmount)}</span>
-                          </div>
-                          <div className="flex justify-between gap-4 text-muted-foreground">
-                              <span>{mt("bookingSubtotal")}</span>
-                              <span>{formatPrice(subtotal)}</span>
-                          </div>
-                          {taxAmount > 0 && <div className="flex justify-between gap-4 text-amber-600"><span>{mt("taxPercentLabel", { percent: taxRatePercent })}</span><span>+{formatPrice(taxAmount)}</span></div>}
-                          {stripeFee > 0 && (
-                              <div className="flex justify-between gap-4 text-muted-foreground">
-                                  <span>{mt("stripeFeeNonRefundable")}</span>
-                                  <span>{formatPrice(stripeFee)}</span>
-                              </div>
-                          )}
-                          <div className="flex justify-between gap-4 text-orange-600">
-                              <span>{mt("refundedFromManagerPayout")}</span>
-                              <span>-{formatPrice(managerRefundAmount)}</span>
-                          </div>
-                          {platformRefundAmount > 0 && (
-                              <div className="flex justify-between gap-4 text-blue-600">
-                                  <span>{mt("refundedByLocalCooks")}</span>
-                                  <span>{formatPrice(platformRefundAmount)}</span>
-                              </div>
-                          )}
-                          <div className="border-t pt-1 flex justify-between gap-4 font-semibold text-green-600">
-                              <span>{mt("managerRevenueRemaining")}</span>
-                              <span>{formatPrice(adjustedNet)}</span>
-                          </div>
-                      </div>
-                  </TooltipContent>
-              </Tooltip>
-          </TooltipProvider>
-      );
+  if (hasRefund && hasTransactionData) {
+      return <div className="text-right">
+          <div className="font-medium text-sm">{mt("youReceiveAmount", { amount: formatPrice(bookingReceiveCents(booking)) })}</div>
+          <div className="text-xs text-muted-foreground">{mt("r2Refunded", { amount: formatPrice(refundAmount) })}</div>
+      </div>;
   }
 
   // Cancelled bookings awaiting refund: show pending refund state
@@ -377,4 +293,12 @@ export function ManagerPaymentSummary({ booking }: { booking: Booking }) {
           </Tooltip>
       </TooltipProvider>
   );
+}
+
+/** The existing payout projection owns refund allocation; chef refunds can include platform money. */
+export function bookingReceiveCents(booking: Booking): number {
+  const installments = booking.payout?.installments;
+  const visitId = booking.scheduleRevision ? booking.visitStates?.[0]?.id : undefined;
+  if (installments && visitId != null) return installments.filter(item => item.visitId === visitId).reduce((sum, item) => sum + item.amountCents, 0);
+  return booking.payout?.amountCents ?? booking.managerRemainingBalance ?? 0;
 }
