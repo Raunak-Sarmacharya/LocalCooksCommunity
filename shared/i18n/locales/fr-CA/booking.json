@@ -1350,7 +1350,7 @@
   "invNoEquipmentDay": "Aucun équipement ce jour-là.",
   "invChefDaysEditable": "La cuisine a choisi ces jours et ces heures. Vous pouvez modifier l’équipement de chaque journée.",
   "invChargedWhen": "La cuisine a déjà approuvé ces journées. Votre carte est débitée en totalité lorsque le paiement est terminé.",
-  "invOneDeadline": "Une seule date limite de remboursement pour toutes les journées : {deadline}.",
+  "invOneDeadline": "Une seule date limite de remboursement pour toutes les journées : {deadline}",
   "invEquipmentFor": "Équipement pour le {day}",
   "invManagerDayHours": "Heures pour le {day}",
   "invDayMode": "Type de journée pour le {day}",

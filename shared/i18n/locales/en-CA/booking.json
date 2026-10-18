@@ -1350,7 +1350,7 @@
   "invNoEquipmentDay": "No equipment that day.",
   "invChefDaysEditable": "The kitchen chose these days and hours. You can change the equipment for each day.",
   "invChargedWhen": "The kitchen already approved these days. Your card is charged in full when payment completes.",
-  "invOneDeadline": "One refund deadline for every day: {deadline}.",
+  "invOneDeadline": "One refund deadline for every day: {deadline}",
   "invEquipmentFor": "Equipment for {day}",
   "invManagerDayHours": "Hours for {day}",
   "invDayMode": "Day type for {day}",

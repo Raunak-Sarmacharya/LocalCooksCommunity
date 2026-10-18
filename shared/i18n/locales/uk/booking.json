@@ -1350,7 +1350,7 @@
   "invNoEquipmentDay": "Цього дня обладнання немає.",
   "invChefDaysEditable": "Кухня обрала ці дні та години. Ви можете змінити обладнання для кожного дня.",
   "invChargedWhen": "Кухня вже підтвердила ці дні. Кошти списуються повністю після завершення оплати.",
-  "invOneDeadline": "Один термін повернення для всіх днів: {deadline}.",
+  "invOneDeadline": "Один термін повернення для всіх днів: {deadline}",
   "invEquipmentFor": "Обладнання на {day}",
   "invManagerDayHours": "Години на {day}",
   "invDayMode": "Тип дня на {day}",
