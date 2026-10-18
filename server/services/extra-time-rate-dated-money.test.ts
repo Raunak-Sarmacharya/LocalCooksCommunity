@@ -17,7 +17,10 @@ const h = vi.hoisted(() => ({
 vi.mock('../db', () => ({ db: new Proxy({}, { get: (_t, key) => typeof h.db[key] === 'function' ? h.db[key].bind(h.db) : h.db[key] }) }));
 vi.mock('../logger', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
 vi.mock('./clock-closeout', () => ({ closeoutTiming: async () => ({ serviceEndGraceMinutes: 30, inspectionAutoCloseHours: 24, checkinWindowMinutesBefore: 30 }) }));
-vi.mock('./booking-lifecycle-delivery', () => ({ enqueueBookingLifecycleEvent: h.event }));
+vi.mock('./booking-lifecycle-delivery', () => ({
+  enqueueBookingLifecycleEvent: h.event,
+  queueBookingLifecycleEvent: h.event,
+}));
 vi.mock('./booking-documents', () => ({ issueBookingDocumentsSafely: vi.fn() }));
 vi.mock('./booking-support-flags', () => ({ lockBookingMoneySources: async () => undefined }));
 vi.mock('./booking-money-guard', async () => ({ ...await vi.importActual<object>('./booking-money-guard'), assertBookingMoneyWritable: async () => undefined }));
@@ -193,6 +196,11 @@ describe('extra time rate × dated money safety', () => {
   });
 
   it('(c) CP7: whole-booking change after a paid extension fails support-only (never moves extension money)', async () => {
+    // Change eligibility requires no day started; clear day-1 closeout so the ledger refusal (extension allocation) is what we assert.
+    await h.db.update(s.kitchenBookingVisits).set({
+      checkinStatus: 'not_checked_in', checkedInAt: null, checkoutRequestedAt: null, checkedOutAt: null,
+      checkoutApprovedBy: null, checkoutApprovedAt: null,
+    }).where(eq(s.kitchenBookingVisits.bookingId, 1));
     const read = await engine.readKitchenChanges(1, chef, new Date('2099-10-20T12:00:00Z'));
     expect(read.canRequest).toMatchObject({ allowed: false, code: 'datedChangeSupport' });
   });

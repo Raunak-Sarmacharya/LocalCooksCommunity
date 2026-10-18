@@ -129,12 +129,13 @@ const ask = (minutes = 60, amount = 3000, now = IN_FINAL_HOUR) =>
 describe('chef asks for more time (approval mode, the default)', () => {
   it('prices dated extra time from the snapshot, not the applied daily rate on hourly_rate', async () => {
     const { priceTerms } = await import('./session-extensions');
+    const { db } = await import('../db');
     setup({ scheduleRevision: 1, pricingMode: 'daily', hourlyRate: '18000', extraTimeRateCents: 2500 });
     // Dated parent metadata often lacks approvedSubtotal; baseAmount − tax must still conserve.
     state.tables.payment_transactions[0] = { id: 1, bookingId: 10, bookingType: 'kitchen', paymentIntentId: 'pi_parent', status: 'succeeded',
       chefId: 3, managerId: 7, amount: '6000', baseAmount: '5750', taxAmount: '750', serviceFee: '250',
       payoutPartition: 'per_day', payoutTiming: 'after_closeout', metadata: { datedQuote: { hash: 'x' } } };
-    expect(await priceTerms({} as any, state.context)).toEqual({
+    expect(await priceTerms(db as any, state.context)).toEqual({
       hourlyRateCents: 2500,
       ratios: { subtotalCents: 5000, taxCents: 750, commissionCents: 250 },
     });
@@ -162,8 +163,9 @@ describe('chef asks for more time (approval mode, the default)', () => {
   });
   it('falls back to the kitchen hourly rate for a legacy daily booking without a snapshot', async () => {
     const { priceTerms } = await import('./session-extensions');
+    const { db } = await import('../db');
     setup({ pricingMode: 'daily', hourlyRate: '18000', extraTimeRateCents: null }, { hourlyRate: '2500' });
-    expect(await priceTerms({} as any, state.context)).toMatchObject({ hourlyRateCents: 2500 });
+    expect(await priceTerms(db as any, state.context)).toMatchObject({ hourlyRateCents: 2500 });
   });
   it('places an on-session card hold after committing the decision, holds the time, and alerts the kitchen', async () => {
     const result = await ask();
