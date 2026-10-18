@@ -20,6 +20,7 @@ const state = vi.hoisted(() => ({
 vi.mock("@/hooks/use-auth", () => ({ useFirebaseAuth: () => ({ user: { uid: "manager-1", displayName: "Alex" } }) }));
 vi.mock("@/hooks/use-manager-dashboard", () => ({ useManagerDashboard: () => ({ bookings: state.bookings, isLoadingBookings: false, isErrorBookings: false }) }));
 vi.mock("@/hooks/use-manager-overview-activity", () => ({ useManagerOverviewActivity: () => state.activity }));
+vi.mock("@/components/manager/revenue/hooks/use-manager-revenue", () => ({ useManagerRevenue: () => ({ data: undefined, isLoading: false }) }));
 vi.mock("@tanstack/react-query", () => ({
   useQuery: ({ queryKey }: { queryKey: string[] }) => ({ data: queryKey[0] === "managerViewings" ? state.viewings : queryKey[0] === "/api/manager/kitchen-applications" ? state.applications
     : queryKey[0] === "/api/manager/storage-rentals" ? state.rentals : queryKey[0] === "/api/manager/revenue/upcoming-payouts" ? state.payouts : { totalRevenue: 0 }, isLoading: false, isError: false }),

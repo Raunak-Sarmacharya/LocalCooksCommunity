@@ -45,7 +45,8 @@ export function revenueSummaryFromLedger(ledger: import('@shared/manager-revenue
   if (!ledger) return null;
   const { summary, report } = ledger, totals = report.totals;
   return { paidOut: summary.paidOut,
-    upcoming: { total: summary.upcoming.total, next: summary.upcoming.nextPayout ? { date: summary.upcoming.nextPayout.date, amount: summary.upcoming.nextPayout.amount } : null },
+    // The ledger's next payout is a timestamp; the card shows the kitchen's local day.
+    upcoming: { total: summary.upcoming.total, next: summary.upcoming.nextPayout ? { date: dayOf(summary.upcoming.nextPayout.date, summary.upcoming.nextPayout.timezone || 'America/St_Johns'), amount: summary.upcoming.nextPayout.amount } : null },
     onHold: summary.onHold,
     monthToDate: { kitchen: totals.kitchenTime, equipment: totals.equipment, storage: totals.storage, extraTime: totals.extraTime, claims: totals.claimsReceived } };
 }
