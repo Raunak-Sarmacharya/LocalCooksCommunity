@@ -168,7 +168,7 @@ export function MoneyCard({ c }: { c: SupportCase }) {
           <p className="text-sm font-medium">Daily payout installments</p>
           {/* Each payment has a row per day; its $0 rows (another payment funds that day) are noise for support. */}
           <ul>{m.dayPayouts.filter(day => day.transferId || day.feePending || day.amountCents > 0).map(day => <li key={day.installmentId} className="py-1 text-sm">
-            {adminDay(day.operatingDate)} - {day.feePending ? 'Waiting for actual processing fee' : fmtMoney(day.amountCents, m.currency)} - {humanize(day.status)}
+            {day.operatingDate ? adminDay(day.operatingDate) : '—'} - {day.feePending ? 'Waiting for actual processing fee' : fmtMoney(day.amountCents, m.currency)} - {humanize(day.status)}
             {day.transferId && <span className="ml-2 text-muted-foreground">{day.transferId}</span>}
             {day.retryReason && <p className="text-muted-foreground">{humanize(day.retryReason)}</p>}
           </li>)}</ul>
