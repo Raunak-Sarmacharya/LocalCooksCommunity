@@ -363,7 +363,8 @@ export default function ManagerInvitationNewPage() {
                       </Select></label>
                     {shared.pricingMode === 'hourly' && <>
                       <label className={field}>{t('invStart')}
-                        <TimeSelect value={shared.start} onChange={value => { if (value) setShared(current => ({ ...current, start: value })); }} aria-label={t('invStart')} className="mt-1" /></label>
+                        <TimeSelect value={shared.start} onChange={value => { if (value) setShared(current => ({ ...current, start: value })); }}
+                          min={selectedDates.map(date => slotsFor(date)[0]?.time).filter(Boolean).sort()[0]} aria-label={t('invStart')} className="mt-1" /></label>
                       <label className={field}>{t('invLength')}
                         <Select value={String(shared.hours)} onValueChange={value => setShared(current => ({ ...current, hours: Number(value) }))}>
                           <SelectTrigger className={box}><SelectValue /></SelectTrigger>
