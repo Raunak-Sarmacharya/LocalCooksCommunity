@@ -124,7 +124,7 @@ it.each(['confirmed', 'cancelled'])('shows the projected kitchen remainder and r
     timing: 'after_closeout', status: 'scheduled', holdReason: null, expectedAt: null, sentAt: null, amountCents: 3175,
   } })]);
   if (status === 'cancelled') fireEvent.mouseDown(screen.getByRole('tab', { name: /Cancelled/ }), { button: 0 });
-  expect(screen.getByText('You receive $31.75')).toBeInTheDocument();
+  expect(screen.getByText('You receive: $31.75')).toBeInTheDocument();
   expect(screen.getByText('Refunded $20.00')).toBeInTheDocument();
 });
 
