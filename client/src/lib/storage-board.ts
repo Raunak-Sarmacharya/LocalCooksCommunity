@@ -1,5 +1,5 @@
 /**
- * Storage board model (WP-ST11). Pure: no I/O, no clock, no React.
+ * Storage board model (WP-ST11). No I/O or React; the clock only labels overdue move-ins.
  *
  * The kitchen's board answers "which unit is in use, and what needs me now" from two read models:
  *  - `GET /api/manager/storage-rentals` → `StorageRental[]` (the readRental DTO, one per rental);
@@ -10,6 +10,7 @@
  * row is the unit, not the rental; a free unit is a row with `rental: null`.
  */
 import type { RentalPhase, RentalState } from "@shared/storage-rental";
+import { localToday } from "@shared/storage-rental";
 
 export interface StorageRentalTerm {
   id: number;
@@ -80,6 +81,7 @@ export type UnitChip =
   | "outOfService"
   | "free"
   | "reserved"
+  | "moveInOverdue"
   | "occupied"
   | "endingSoon"
   | "grace"
@@ -89,7 +91,7 @@ export type UnitChip =
   | "removalReview";
 
 /** The single date a unit row shows, with the sentence that frames it. */
-export type UnitDateKey = "startsOn" | "paidThrough" | "extendBy" | "graceEnded" | "releasedOn";
+export type UnitDateKey = "startsOn" | "startedOn" | "paidThrough" | "extendBy" | "graceEnded" | "releasedOn";
 
 export interface UnitRow {
   /** Stable across re-renders: listing + unit. */
@@ -124,10 +126,10 @@ export function occupiesUnit(rental: StorageRental): boolean {
 }
 
 /** The chip shown for a rental that owns a unit. `ended` here always means "waiting to be cleaned". */
-export function chipForRental(rental: StorageRental): UnitChip {
+export function chipForRental(rental: StorageRental, now = new Date()): UnitChip {
   switch (rental.state) {
     case "reserved":
-      return "reserved";
+      return rental.startOn < localToday(now, rental.timezone || 'America/St_Johns') ? "moveInOverdue" : "reserved";
     case "move_out_requested":
       return "moveOutDue";
     case "removal_review":
@@ -144,11 +146,13 @@ export function chipForRental(rental: StorageRental): UnitChip {
 }
 
 /** The one date that matters for a chip: what the kitchen acts on next. */
-export function unitDateFor(rental: StorageRental): UnitRow["date"] {
-  const chip = chipForRental(rental);
+export function unitDateFor(rental: StorageRental, now = new Date()): UnitRow["date"] {
+  const chip = chipForRental(rental, now);
   switch (chip) {
     case "reserved":
       return { key: "startsOn", value: rental.startOn };
+    case "moveInOverdue":
+      return { key: "startedOn", value: rental.startOn };
     case "grace":
       return { key: "extendBy", value: rental.graceEndsOn };
     case "holdover":
@@ -160,7 +164,7 @@ export function unitDateFor(rental: StorageRental): UnitRow["date"] {
   }
 }
 
-const NEEDS_ACTION_CHIPS: UnitChip[] = ["grace", "holdover", "moveOutDue", "needsCleaning", "removalReview"];
+const NEEDS_ACTION_CHIPS: UnitChip[] = ["moveInOverdue", "grace", "holdover", "moveOutDue", "needsCleaning", "removalReview"];
 
 export function chipNeedsAction(chip: UnitChip): boolean {
   return NEEDS_ACTION_CHIPS.includes(chip);
@@ -175,7 +179,7 @@ function unitIndex(rental: StorageRental): number {
  * One row per unit for every listing, in listing order, unit 1..unitCount. A unit with no occupying
  * rental is a FREE row. When (defensively) two rentals claim one unit, the most actionable wins.
  */
-export function unitRows(rentals: StorageRental[], listings: StorageListing[]): UnitRow[] {
+export function unitRows(rentals: StorageRental[], listings: StorageListing[], now = new Date()): UnitRow[] {
   const claims = new Map<string, StorageRental>();
   for (const rental of rentals) {
     if (!occupiesUnit(rental)) continue;
@@ -189,7 +193,7 @@ export function unitRows(rentals: StorageRental[], listings: StorageListing[]): 
     for (let unit = 1; unit <= unitCount; unit += 1) {
       const rental = claims.get(`${listing.id}:${unit}`) ?? null;
       const outOfService = listing.outOfServiceUnits?.[String(unit)];
-      const chip = rental ? chipForRental(rental) : outOfService ? "outOfService" : "free";
+      const chip = rental ? chipForRental(rental, now) : outOfService ? "outOfService" : "free";
       rows.push({
         key: `${listing.id}:${unit}`,
         listingId: listing.id,
@@ -201,7 +205,7 @@ export function unitRows(rentals: StorageRental[], listings: StorageListing[]): 
         outOfService,
         rental,
         occupantName: rental?.chef?.name?.trim() || null,
-        date: rental ? unitDateFor(rental) : null,
+        date: rental ? unitDateFor(rental, now) : null,
         needsAction: chipNeedsAction(chip),
       });
     }
@@ -245,9 +249,10 @@ export function rentalTotalCents(rental: StorageRental): number {
 }
 
 /** Which filter tab a unit row belongs to. */
-export type BoardFilter = "all" | "needsAction" | "free";
+export type BoardFilter = "all" | "needsAction" | "free" | "past";
 
 export function filterUnitRows(rows: UnitRow[], filter: BoardFilter): UnitRow[] {
+  if (filter === "past") return [];
   if (filter === "needsAction") return rows.filter((row) => row.needsAction);
   if (filter === "free") return rows.filter((row) => row.chip === "free");
   return rows;

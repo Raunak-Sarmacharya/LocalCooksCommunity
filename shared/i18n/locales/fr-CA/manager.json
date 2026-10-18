@@ -4273,5 +4273,21 @@
   "extraTimeRateMustBeAPositiveNumberOrEmpty": "Le tarif pour le temps supplémentaire doit être un nombre positif ou vide.",
   "extraTimeRateRequiredForDailyOnly": "Le tarif pour le temps supplémentaire (par heure) est requis lorsque vous fixez un tarif journalier sans tarif horaire.",
   "listingReviewExtraTimePerHour": "/heure de temps supplémentaire",
-  "extraTimeRateSameAsHourly": "Identique à votre tarif horaire · {amount}/heure"
+  "extraTimeRateSameAsHourly": "Identique à votre tarif horaire · {amount}/heure",
+  "r2Status": "Statut",
+  "r2AllStatuses": "Tous les statuts",
+  "r2From": "Date de début",
+  "r2To": "Date de fin",
+  "r2ClearFilters": "Effacer les filtres",
+  "r2ExportCsv": "Exporter en CSV",
+  "r2Date": "Date",
+  "r2Day": "Jour",
+  "r2Chef": "Chef",
+  "r2Kitchen": "Cuisine",
+  "r2Total": "Total",
+  "r2RefundedColumn": "Remboursé",
+  "r2Refunded": "Remboursé {amount}",
+  "r2NoBookingsMatch": "Aucune réservation ne correspond à ces filtres.",
+  "r2YouReceiveColumn": "Vous recevez",
+  "r2YouReceive": "Vous recevez {amount}"
 }

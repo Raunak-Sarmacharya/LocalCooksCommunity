@@ -12,6 +12,7 @@ import { getAuthHeaders } from '@/lib/api';
 
 const DATE_KEY: Record<UnitDateKey, string> = {
   startsOn: "stDateStartsOn",
+  startedOn: "stDateStartedOn",
   paidThrough: "stDatePaidThrough",
   extendBy: "stDateExtendBy",
   graceEnded: "stDateGraceEnded",
@@ -42,7 +43,7 @@ export function StorageUnitCard({ row, onDone }: { row: UnitRow; onDone?: () => 
       <CardContent className="flex h-full flex-col gap-3 p-4">
         <div className="flex items-center justify-between gap-2">
           <span className="font-medium">{t("stUnitLabel", { index: row.unitIndex })}</span>
-          <StorageStatusChip chip={row.chip} />
+          <StorageStatusChip chip={row.chip} detail={row.chip === 'moveInOverdue' && row.date ? t('stDateStartedOn', { date: formatBookingDate(row.date.value) }) : undefined} />
         </div>
         {row.outOfService && row.chip !== 'outOfService' && <StorageStatusChip chip="outOfService" />}
         {row.outOfService && <p className="text-sm text-muted-foreground">{row.outOfService.reason}</p>}
@@ -51,7 +52,7 @@ export function StorageUnitCard({ row, onDone }: { row: UnitRow; onDone?: () => 
             <User className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
             <span className="truncate">{row.occupantName ?? t("stNoOccupant")}</span>
           </p>
-          {row.date && (
+          {row.date && row.chip !== 'moveInOverdue' && (
             <p className="flex items-center gap-1.5 text-muted-foreground">
               <Calendar className="h-4 w-4 shrink-0" aria-hidden="true" />
               <span>{t(DATE_KEY[row.date.key] as never, { date: formatBookingDate(row.date.value) })}</span>

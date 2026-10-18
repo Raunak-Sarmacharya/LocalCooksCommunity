@@ -4273,5 +4273,21 @@
   "extraTimeRateMustBeAPositiveNumberOrEmpty": "Ставка за додатковий час має бути додатним числом або порожньою.",
   "extraTimeRateRequiredForDailyOnly": "Ставка за додатковий час (за годину) обов’язкова, якщо ви вказали денну ставку без погодинної.",
   "listingReviewExtraTimePerHour": "/год додаткового часу",
-  "extraTimeRateSameAsHourly": "Як ваша погодинна ставка · {amount}/год"
+  "extraTimeRateSameAsHourly": "Як ваша погодинна ставка · {amount}/год",
+  "r2Status": "Статус",
+  "r2AllStatuses": "Усі статуси",
+  "r2From": "Початкова дата",
+  "r2To": "Кінцева дата",
+  "r2ClearFilters": "Скинути фільтри",
+  "r2ExportCsv": "Експортувати CSV",
+  "r2Date": "Дата",
+  "r2Day": "День",
+  "r2Chef": "Кухар",
+  "r2Kitchen": "Кухня",
+  "r2Total": "Загалом",
+  "r2RefundedColumn": "Повернено",
+  "r2Refunded": "Повернено {amount}",
+  "r2NoBookingsMatch": "Немає бронювань за цими фільтрами.",
+  "r2YouReceiveColumn": "Ви отримуєте",
+  "r2YouReceive": "Ви отримуєте {amount}"
 }

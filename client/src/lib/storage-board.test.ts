@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-09-30T12:00:00Z')); });
+afterEach(() => vi.useRealTimers());
 import {
   actionAmountCents, actionBody, actionDef, allowedActions, boardSummary, chipForRental, filterUnitRows,
   groupRowsByListing, occupiesUnit, pendingRequests, rentalTotalCents, termPayout, unitRows,
@@ -66,6 +68,17 @@ describe("unitRows", () => {
 });
 
 describe("chips, dates and filters", () => {
+  it('marks yesterday’s reservation overdue in kitchen time and includes it in needs action', () => {
+    vi.setSystemTime(new Date('2026-10-18T01:00:00Z')); // Still Oct 17 in Newfoundland.
+    const reserved = rental({ state: 'reserved', startOn: '2026-10-17' });
+    expect(chipForRental(reserved)).toBe('reserved');
+    vi.setSystemTime(new Date('2026-10-18T12:00:00Z'));
+    const [row] = unitRows([reserved], [listing()]);
+    expect(row.chip).toBe('moveInOverdue');
+    expect(row.date).toEqual({ key: 'startedOn', value: '2026-10-17' });
+    expect(filterUnitRows([row], 'needsAction')).toEqual([row]);
+    expect(filterUnitRows([row], 'past')).toEqual([]);
+  });
   it("maps state and phase to the chip the kitchen acts on", () => {
     expect(chipForRental(rental({ state: "reserved", phase: null }))).toBe("reserved");
     expect(chipForRental(rental({ state: "move_out_requested" }))).toBe("moveOutDue");

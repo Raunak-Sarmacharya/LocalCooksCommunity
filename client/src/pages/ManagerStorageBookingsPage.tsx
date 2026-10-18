@@ -9,6 +9,8 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import { Link } from "wouter";
+import { formatBookingDate, formatCurrency } from "@/lib/formatters";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -23,7 +25,7 @@ import { StorageRequestCard } from "@/components/manager/storage/StorageRequestC
 import { StorageUnitCard } from "@/components/manager/storage/StorageUnitCard";
 
 export default function ManagerStorageBookingsPage() {
-  const { t } = useTranslation("storage");
+  const { t, i18n } = useTranslation("storage");
   const { kitchens } = useManagerDashboard();
   const kitchenIds = useMemo(() => kitchens.map((kitchen) => kitchen.id), [kitchens]);
   const [filter, setFilter] = useState<BoardFilter>("all");
@@ -62,6 +64,8 @@ export default function ManagerStorageBookingsPage() {
   });
 
   const rentals = rentalsQuery.data ?? [];
+  const pastRentals = rentals.filter(rental => rental.state === "ended")
+    .sort((a, b) => (b.releasedOn || b.paidThrough).localeCompare(a.releasedOn || a.paidThrough));
   const occupiedListingIds = useMemo(() => new Set(rentals.map((rental) => rental.listing.id)), [rentals]);
   const listings = useMemo(
     () => (listingsQuery.data ?? []).filter((listing) => listing.visible !== false || occupiedListingIds.has(listing.id)),
@@ -80,6 +84,7 @@ export default function ManagerStorageBookingsPage() {
     ["all", t("stFilterAll")],
     ["needsAction", t("stFilterNeedsAction")],
     ["free", t("stFilterFree")],
+    ["past", t("stPastRentals")],
   ];
 
   return (
@@ -126,7 +131,7 @@ export default function ManagerStorageBookingsPage() {
             ))}
           </div>
 
-          {filter !== "free" && (
+          {filter !== "free" && filter !== "past" && (
             <section className="space-y-3" aria-labelledby="storage-requests-heading">
               <h2 id="storage-requests-heading" className="text-base font-semibold">{t("stRequestsHeading")}</h2>
               {requests.length === 0
@@ -135,7 +140,7 @@ export default function ManagerStorageBookingsPage() {
             </section>
           )}
 
-          <section className="space-y-4" aria-labelledby="storage-units-heading">
+          {filter !== "past" && <section className="space-y-4" aria-labelledby="storage-units-heading">
             <h2 id="storage-units-heading" className="text-base font-semibold">{t("stUnitsHeading")}</h2>
             {groups.length === 0 ? (
               <Card>
@@ -156,7 +161,20 @@ export default function ManagerStorageBookingsPage() {
                 </div>
               </div>
             ))}
-          </section>
+          </section>}
+          {(filter === "all" || filter === "past") && <section className="space-y-3" aria-labelledby="storage-past-heading">
+            <h2 id="storage-past-heading" className="text-base font-semibold">{t("stPastRentals")}</h2>
+            {pastRentals.length === 0 && <p>{t("stPastRentalsEmpty")}</p>}
+            {pastRentals.map(rental => <Card key={rental.id}>
+              <CardContent className="space-y-2 p-4">
+                <Link className="underline" href={`/manager/storage/${rental.id}`}>{rental.ref || rental.listing.name} · {rental.kitchen.name} · {rental.listing.name}</Link>
+                <p>{formatBookingDate(rental.startOn)} – {formatBookingDate(rental.releasedOn || rental.paidThrough)}</p>
+                {rental.chef?.id ? <Link className="underline" href={`/manager/customers/${rental.chef.id}`}>{rental.chef.name}</Link> : <p>{rental.chef?.name || t("stTheChef")}</p>}
+                <p>{t("stRentalEarnings", { amount: formatCurrency(rental.terms.reduce((sum, term) => sum + (term.payoutCents ?? 0), 0), 'CAD', i18n.language) })}</p>
+                <Link className="underline" href="/manager/dashboard?view=revenue">{t("stViewPayouts")}</Link>
+              </CardContent>
+            </Card>)}
+          </section>}
         </>
       )}
     </div>
