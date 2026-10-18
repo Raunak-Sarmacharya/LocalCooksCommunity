@@ -14,4 +14,9 @@ describe('day money display', () => {
   it('does not offer a guessed refund ceiling while any card fee is pending', () => {
     expect(bookingDayMoney([row, { ...row, stripeFeeCents: null }])[0].kitchenRemainingCents).toBeNull();
   });
+  it('labels a reserved refund as processing until its original receipt is verified', () => {
+    const rows = [{ ...row, evidence: { refunds: [{ operationId: 'day-refund', customerCents: 2000, kitchenCents: 2000 }] } }];
+    expect(bookingDayMoney(rows, new Set())[0]).toMatchObject({ refundedCents: 0, pendingRefundCents: 2000, kitchenRemainingCents: 9100 });
+    expect(bookingDayMoney(rows, new Set(['day-refund']))[0]).toMatchObject({ refundedCents: 2000, kitchenRemainingCents: 9100 });
+  });
 });

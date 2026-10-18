@@ -333,5 +333,15 @@
   "bsDayAllocation": "Розподілено: {amount}",
   "bsDayRefunded": "Повернено: {amount}",
   "bsAction_refund_day_for_manager": "Повернути більше за один день від імені кухні",
-  "bsAction_assign_outside_refund": "Призначити повернення поза застосунком"
+  "bsAction_assign_outside_refund": "Призначити повернення поза застосунком",
+  "bsDayRefundProcessing": "Повернення обробляється: {amount}",
+  "mdState_not_checked_in": "Прибуття не зареєстровано",
+  "mdState_checked_in": "Прибуття зареєстровано",
+  "mdState_checkout_requested": "Виїзд очікує перевірки",
+  "mdState_checked_out": "Виїзд зареєстровано",
+  "mdState_no_show": "Неявка",
+  "mdState_checkout_claim_filed": "Проблему повідомлено",
+  "mdState_active": "Активний",
+  "mdState_cancelled": "Скасований",
+  "mdState_superseded": "Замінений"
 }

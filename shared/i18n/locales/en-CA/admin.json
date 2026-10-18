@@ -333,5 +333,15 @@
   "bsDayAllocation": "Allocated: {amount}",
   "bsDayRefunded": "Refunded: {amount}",
   "bsAction_refund_day_for_manager": "Refund more for one day for the kitchen",
-  "bsAction_assign_outside_refund": "Assign a refund made outside the app"
+  "bsAction_assign_outside_refund": "Assign a refund made outside the app",
+  "bsDayRefundProcessing": "Refund processing: {amount}",
+  "mdState_not_checked_in": "Not checked in",
+  "mdState_checked_in": "Checked in",
+  "mdState_checkout_requested": "Checkout requested",
+  "mdState_checked_out": "Checked out",
+  "mdState_no_show": "No-show",
+  "mdState_checkout_claim_filed": "Issue filed",
+  "mdState_active": "Active",
+  "mdState_cancelled": "Cancelled",
+  "mdState_superseded": "Superseded"
 }

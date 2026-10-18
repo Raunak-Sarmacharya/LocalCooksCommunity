@@ -141,8 +141,9 @@ export function MoneyCard({ c }: { c: SupportCase }) {
             const day = c.dayMoney?.find(row => row.visitId === visit.id);
             return <div key={visit.id} className="rounded-lg border p-3 text-sm">
               <p className="font-medium">{t('bsDayOf', { number: index + 1, total: days.length })} · {visit.visitDate} · {visit.startTime}–{visit.endTime}</p>
-              <p>{t('bsDayState', { state: visit.scheduleState })}</p>
+              <p>{t('bsDayState', { state: t(`mdState_${visit.scheduleState}`, { defaultValue: visit.scheduleState }) })}</p>
               {day && <><p>{t('bsDayAllocation', { amount: fmtMoney(day.allocatedCents, m.currency) })}</p><p>{t('bsDayRefunded', { amount: fmtMoney(day.refundedCents, m.currency) })}</p></>}
+              {!!day?.pendingRefundCents && <p role="status">{t('bsDayRefundProcessing', { amount: fmtMoney(day.pendingRefundCents, m.currency) })}</p>}
               {m.dayPayouts?.filter(payout => payout.visitId === visit.id).map(payout => <p key={payout.installmentId}>{fmtMoney(payout.amountCents, m.currency)} · {humanize(payout.status)}{payout.transferId ? ` · ${payout.transferId}` : ''}</p>)}
             </div>;
           })}

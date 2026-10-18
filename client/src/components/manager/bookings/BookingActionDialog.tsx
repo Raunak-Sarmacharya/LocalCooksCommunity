@@ -586,7 +586,7 @@ function BookingActionDialogContent({
           </div>
           <BookingItemDecision
             name={booking.scheduleRevision ? mt('mdAllDays') : booking.pricingMode === 'daily' ? `${mt("kitchenSession")} · ${mt("kitchenSessionFullDay")}` : mt("kitchenSession")}
-            details={booking.scheduleRevision ? mt('mdOneDecision') : kitchenBookingBlocks(booking).map(block =>
+            details={booking.scheduleRevision ? undefined : kitchenBookingBlocks(booking).map(block =>
               `${formatTime(block.startTime)} – ${formatTime(block.endTime)}`).join(', ')}
             price={booking.totalPrice}
             icon={<Calendar className="h-4 w-4" />}

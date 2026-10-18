@@ -215,8 +215,9 @@ export function buildActionRequest(
     }
     if (field === "amount") {
       const cents = dollarsToCents(form.amount);
+      const dayCeiling = c.dayMoney?.find(day => day.visitId === visit?.id)?.kitchenRemainingCents;
       if (cents === null) errors.amount = "bsErrAmount";
-      else if (type === 'refund_day_for_manager' && (c.dayMoney?.find(day => day.visitId === visit?.id)?.kitchenRemainingCents == null || cents > c.dayMoney.find(day => day.visitId === visit?.id)!.kitchenRemainingCents!)) errors.amount = 'bsErrAmountMax';
+      else if (type === 'refund_day_for_manager' && (dayCeiling == null || cents > dayCeiling)) errors.amount = 'bsErrAmountMax';
       else if (preview?.maximumCents != null && cents > preview.maximumCents) errors.amount = "bsErrAmountMax";
       else {
         amountCents = cents;

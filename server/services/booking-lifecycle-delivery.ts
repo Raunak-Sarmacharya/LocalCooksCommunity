@@ -319,7 +319,8 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
     // A multi-day notice about one day (a dropped day, a removed item) names that day, not the booking's first date.
     const noticeDay = metadata.noticeDay as { date?: string; startTime?: string; endTime?: string } | undefined;
     const eventDay = typeof metadata.visitId === 'number' ? days.find(day => day.id === metadata.visitId) : undefined;
-    const affectedDays = noticeDay?.date ? days.filter(day => day.date === noticeDay.date) : eventDay ? [eventDay] : days;
+    const affectedVisitIds = (metadata.dayCancellation as { visitIds?: number[] } | undefined)?.visitIds;
+    const affectedDays = affectedVisitIds?.length ? days.filter(day => affectedVisitIds.includes(day.id)) : noticeDay?.date ? days.filter(day => day.date === noticeDay.date) : eventDay ? [eventDay] : days;
     const datedSummary = affectedDays.length ? bookingDaysSummary(affectedDays, person.locale || 'en-CA') + (datedPayment ? ` · ${tEmail(person.locale, 'bookingWholeTotal')}: CAD $${(Number(datedPayment.amount) / 100).toFixed(2)}` : '') : '';
     const whenDate = noticeDay?.date ? new Date(`${noticeDay.date}T12:00:00Z`) : context.bookingDate, whenTime = noticeDay?.startTime || context.startTime;
     const visitWhen = () => `${new Intl.DateTimeFormat(person.locale || 'en-CA', { timeZone: 'UTC', dateStyle: 'medium' }).format(whenDate)}, ${emailClock(whenTime, person.locale || 'en-CA')}`;

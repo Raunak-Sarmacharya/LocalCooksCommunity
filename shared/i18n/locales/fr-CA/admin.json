@@ -333,5 +333,15 @@
   "bsDayAllocation": "Montant attribué : {amount}",
   "bsDayRefunded": "Remboursement : {amount}",
   "bsAction_refund_day_for_manager": "Rembourser davantage pour un jour au nom de la cuisine",
-  "bsAction_assign_outside_refund": "Attribuer un remboursement fait hors de l’application"
+  "bsAction_assign_outside_refund": "Attribuer un remboursement fait hors de l’application",
+  "bsDayRefundProcessing": "Remboursement en cours : {amount}",
+  "mdState_not_checked_in": "Arrivée non enregistrée",
+  "mdState_checked_in": "Arrivée enregistrée",
+  "mdState_checkout_requested": "Départ à vérifier",
+  "mdState_checked_out": "Départ enregistré",
+  "mdState_no_show": "Absence",
+  "mdState_checkout_claim_filed": "Problème signalé",
+  "mdState_active": "Actif",
+  "mdState_cancelled": "Annulé",
+  "mdState_superseded": "Remplacé"
 }

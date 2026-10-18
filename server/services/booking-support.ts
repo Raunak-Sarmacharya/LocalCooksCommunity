@@ -205,7 +205,7 @@ export function availableSupportActions(ctx: Pick<Context, 'booking' | 'payments
     result.push('retry_refund');
     if (automatic.some(({ source, operation }) => hasReservedReceipt(source, operation, refundEvidence))) result.push('mark_refunded');
   }
-  if (booking.scheduleRevision > 0 && !flags && !recovering && !unrelatedBusy && !unrelatedReview && ['confirmed', 'completed', 'cancelled'].includes(booking.status) && ctx.payments.some(source => source.payoutPartition === 'per_day')) result.push('refund_day_for_manager');
+  if (booking.scheduleRevision > 0 && !flags && !recovering && !unrelatedBusy && !unrelatedReview && !automatic.length && ['confirmed', 'completed', 'cancelled'].includes(booking.status) && ctx.payments.some(source => source.payoutPartition === 'per_day')) result.push('refund_day_for_manager');
   const priorGoodwill = ctx.actions.some(action => action.actionType === 'goodwill_refund' && action.status !== 'failed')
     || ctx.payments.some(source => ((source.metadata as { refunds?: Array<{ platformGoodwillCents?: number }> } | null)?.refunds || []).some(receipt => (receipt.platformGoodwillCents || 0) > 0));
   const moneyNeedsReview = ctx.payments.some(source => {
@@ -473,9 +473,10 @@ async function dispatch(ctx: Context, actorId: number, input: SupportActionInput
     }
     case 'replay_payment_decision': return reconcileBookingDecision(id);
     case 'cancel_kitchen_caused': case 'refund_captured_request': return cancelKitchenCausedBooking(id, managerId!, actorId, input.operationKey,
-      ctx.booking.scheduleRevision ? d.publicMessage || 'Kitchen unavailable' : undefined, ctx.booking.scheduleRevision ? { visitIds: d.visitIds, expectedRefundCents: d.expectedRefundCents } : {});
+      ctx.booking.scheduleRevision ? d.publicMessage || 'Kitchen unavailable' : undefined, ctx.booking.scheduleRevision ? { visitIds: d.visitIds, ...(d.expectedRefundCents !== undefined ? { expectedRefundCents: d.expectedRefundCents } : {}) } : {});
     case 'finish_kitchen_refund': return cancelKitchenCausedBooking(id, managerId!, actorId, input.operationKey, undefined, { fundedByLocalCooks: d.fundedByLocalCooks === true });
-    case 'request_cancellation_for_chef': return requestChefCancellation(id, ctx.booking.chefId!, actorId, d.publicMessage, input.operationKey, d.visitIds, d.expectedRefundCents);
+    case 'request_cancellation_for_chef': return d.expectedRefundCents === undefined ? requestChefCancellation(id, ctx.booking.chefId!, actorId, d.publicMessage, input.operationKey, d.visitIds)
+      : requestChefCancellation(id, ctx.booking.chefId!, actorId, d.publicMessage, input.operationKey, d.visitIds, d.expectedRefundCents);
     case 'accept_cancellation_for_manager': return acceptCancellationRefund(id, managerId!, d.quoteHash!, undefined, input.operationKey);
     case 'retry_refund': case 'mark_refunded': {
       if (!managerId) throw Error('The kitchen contact needs review.');

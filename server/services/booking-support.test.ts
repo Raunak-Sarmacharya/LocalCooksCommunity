@@ -592,3 +592,28 @@ describe('a committed kitchen cancellation whose refund is unfinished', () => {
     expect(state.provider).toHaveBeenCalledWith(1, expect.anything(), 7, 'finish-refund-1', undefined, { fundedByLocalCooks: true });
   });
 });
+
+
+describe('CP9 audited day refund', () => {
+  it('calls the existing day refund with the selected day, exact amount and support actor', async () => {
+    state.booking.scheduleRevision = 1; state.payments[0].payoutPartition = 'per_day';
+    const days = await import('./dated-booking-cancellation');
+    const refund = vi.spyOn(days, 'refundDatedDay').mockResolvedValue({ success: true, state: 'refunded' } as any);
+    try {
+      const result = await executeBookingSupportAction(1, 7, input('refund_day_for_manager', { actingFor: 'manager', amountCents: 1234, details: { visitId: 11 } }));
+      expect(refund).toHaveBeenCalledWith(1, 5, expect.objectContaining({ visitId: 11, amountCents: 1234, supportActorId: 7, operationKey: 'test-operation-1' }));
+      expect(result.action.status).toBe('verified');
+    } finally { refund.mockRestore(); }
+  });
+  it('keeps a processing refund in recovery and retries the same day operation', async () => {
+    state.booking.scheduleRevision = 1; state.payments[0].payoutPartition = 'per_day';
+    const days = await import('./dated-booking-cancellation');
+    const refund = vi.spyOn(days, 'refundDatedDay').mockResolvedValueOnce({ success: true, state: 'processing' } as any).mockResolvedValue({ success: true, state: 'refunded' } as any);
+    const command = input('refund_day_for_manager', { actingFor: 'manager', amountCents: 1234, details: { visitId: 11 } });
+    try {
+      expect((await executeBookingSupportAction(1, 7, command)).action.status).toBe('recovery_required');
+      expect((await executeBookingSupportAction(1, 7, command)).action.status).toBe('verified');
+      expect(refund.mock.calls[0][2]).toEqual(refund.mock.calls[1][2]);
+    } finally { refund.mockRestore(); }
+  });
+});

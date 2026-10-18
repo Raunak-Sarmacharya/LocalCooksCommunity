@@ -4254,5 +4254,18 @@
   "mdBookingTotal": "Réservation entière",
   "mdInspection": "Inspection",
   "mdTransfer": "Ce virement : {amount}",
-  "mdReversed": "Repris : {amount}"
+  "mdReversed": "Repris : {amount}",
+  "mdRefundProcessing": "Remboursement en cours : {amount}",
+  "mdMaxRefund": "Remboursement maximal : {amount}",
+  "mdRetrySame": "La tentative précédente doit être confirmée. Réessayez la même action pour la vérifier sans créer un second remboursement.",
+  "mdState_not_checked_in": "Arrivée non enregistrée",
+  "mdState_checked_in": "Arrivée enregistrée",
+  "mdState_checkout_requested": "Départ à vérifier",
+  "mdState_checked_out": "Départ enregistré",
+  "mdState_no_show": "Absence",
+  "mdState_checkout_claim_filed": "Problème signalé",
+  "mdState_active": "Actif",
+  "mdState_cancelled": "Annulé",
+  "mdState_superseded": "Remplacé",
+  "mdFeePending": "Le versement attend la confirmation des frais réels de carte."
 }
