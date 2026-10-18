@@ -281,6 +281,7 @@ interface ManagerOnboardingContextType {
       description: string;
       hourlyRate: string;
       dailyRate: string;
+      extraTimeRate: string;
       currency: string;
       minimumBookingHours: string;
       imageUrl: string;
@@ -299,6 +300,7 @@ interface ManagerOnboardingContextType {
       description: string;
       hourlyRate: string;
       dailyRate: string;
+      extraTimeRate: string;
       minimumBookingHours: string;
       imageUrl: string;
     },
@@ -421,6 +423,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     minimumBookingHours: '1',
     imageUrl: '',
     dailyRate: '',
+    extraTimeRate: '',
     features: [],
   });
 
@@ -1840,6 +1843,12 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
           dailyRate: kitchenFormData.dailyRate.trim() === ''
             ? undefined
             : Math.round(parseFloat(kitchenFormData.dailyRate) * 100),
+          // Daily-only kitchens must send this; hourly kitchens omit it (server stores null).
+          extraTimeRateCents: kitchenFormData.hourlyRate.trim() !== ''
+            ? undefined
+            : kitchenFormData.extraTimeRate.trim() === ''
+              ? undefined
+              : Math.round(parseFloat(kitchenFormData.extraTimeRate) * 100),
           currency: kitchenFormData.currency,
           // `|| 0` sent a blank field to the database as a REAL zero — a minimum booking of
           // nothing, which is the absence of the setting rather than a value. One hour is
@@ -1853,7 +1862,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       setKitchens([...kitchens, newKitchen]);
       setSelectedKitchenId(newKitchen.id);
       setShowCreateKitchen(false);
-      setKitchenFormData({ name: '', description: '', hourlyRate: '', dailyRate: '', currency: 'CAD', minimumBookingHours: '1', imageUrl: '', features: [] });
+      setKitchenFormData({ name: '', description: '', hourlyRate: '', dailyRate: '', extraTimeRate: '', currency: 'CAD', minimumBookingHours: '1', imageUrl: '', features: [] });
 
       await trackStepCompletion(currentStep?.id || 'create-kitchen');
       toast({ title: mt("success"), description: mt("kitchenCreated2") });
@@ -1882,6 +1891,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       description: string;
       hourlyRate: string;
       dailyRate: string;
+      extraTimeRate: string;
       minimumBookingHours: string;
       imageUrl: string;
     },
@@ -1910,6 +1920,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       body: JSON.stringify({
         hourlyRate: toCents(data.hourlyRate),
         dailyRate: toCents(data.dailyRate),
+        extraTimeRateCents: toCents(data.hourlyRate) ? null : toCents(data.extraTimeRate),
         currency: 'CAD',
         minimumBookingHours: parseInt(data.minimumBookingHours, 10) || 0,
       }),
@@ -2458,7 +2469,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       setSelectedKitchenId(null);
       setKitchensLoaded(false);
       setShowCreateKitchen(false);
-      setKitchenFormData({ name: '', description: '', hourlyRate: '', dailyRate: '', currency: 'CAD', minimumBookingHours: '1', imageUrl: '', features: [] });
+      setKitchenFormData({ name: '', description: '', hourlyRate: '', dailyRate: '', extraTimeRate: '', currency: 'CAD', minimumBookingHours: '1', imageUrl: '', features: [] });
       setExistingStorageListings([]);
       setExistingEquipmentListings([]);
       setHasAvailability(false);

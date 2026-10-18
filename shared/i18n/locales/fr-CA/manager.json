@@ -4267,5 +4267,10 @@
   "mdState_active": "Actif",
   "mdState_cancelled": "Annulé",
   "mdState_superseded": "Remplacé",
-  "mdFeePending": "Le versement attend la confirmation des frais réels de carte."
+  "mdFeePending": "Le versement attend la confirmation des frais réels de carte.",
+  "extraTimeRatePerHour": "Tarif pour le temps supplémentaire (par heure)",
+  "extraTimeRateHelp": "Facturé à l’heure lorsqu’un chef demande plus de temps ou reste après la fin. Les cuisines avec un tarif horaire utilisent ce tarif.",
+  "extraTimeRateMustBeAPositiveNumberOrEmpty": "Le tarif pour le temps supplémentaire doit être un nombre positif ou vide.",
+  "extraTimeRateRequiredForDailyOnly": "Le tarif pour le temps supplémentaire (par heure) est requis lorsque vous fixez un tarif journalier sans tarif horaire.",
+  "listingReviewExtraTimePerHour": "/heure de temps supplémentaire"
 }

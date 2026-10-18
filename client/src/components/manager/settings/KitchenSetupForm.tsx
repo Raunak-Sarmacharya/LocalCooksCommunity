@@ -5,7 +5,7 @@ import { mt } from "@/i18n/manager";
 import { tt } from "@/i18n/common-ns";
 import { useToast } from "@/hooks/use-toast";
 import { useSessionFileUpload } from "@/hooks/useSessionFileUpload";
-import { hasKitchenRate } from "@shared/kitchen-booking-rate";
+import { hasKitchenRate, requiresExtraTimeRate } from "@shared/kitchen-booking-rate";
 import { AlertCircle } from "@/components/ui/manager-icons";
 import { Button } from "@/components/ui/button";
 import { StatusButton } from "@/components/ui/status-button";
@@ -101,6 +101,7 @@ export function KitchenSetupForm({ locationId, onCancel, onCreated }: KitchenSet
     const [imageUrl, setImageUrl] = useState("");
     const [hourlyRate, setHourlyRate] = useState("");
     const [dailyRate, setDailyRate] = useState("");
+    const [extraTimeRate, setExtraTimeRate] = useState("");
     const [minimumBookingHours, setMinimumBookingHours] = useState("1");
     const [isCreating, setIsCreating] = useState(false);
 
@@ -116,6 +117,7 @@ export function KitchenSetupForm({ locationId, onCancel, onCreated }: KitchenSet
 
     /** The wizard's rule, from the wizard's owner. See `hasKitchenRate`. */
     const hasARate = hasKitchenRate(hourlyRate, dailyRate);
+    const needsExtraTimeRate = requiresExtraTimeRate(hourlyRate, dailyRate);
 
     /** The endpoint's own minimums, so the button never lies about being ready. */
     const isReady =
@@ -123,6 +125,7 @@ export function KitchenSetupForm({ locationId, onCancel, onCreated }: KitchenSet
         Boolean(description.trim()) &&
         Boolean(imageUrl) &&
         hasARate &&
+        (!needsExtraTimeRate || Number.parseFloat(extraTimeRate) > 0) &&
         // 1 is the floor everywhere else — a minimum of zero is the absence of one.
         parseInt(minimumBookingHours, 10) >= 1;
 
@@ -158,6 +161,8 @@ export function KitchenSetupForm({ locationId, onCancel, onCreated }: KitchenSet
                     imageUrl,
                     hourlyRate: toCents(hourlyRate),
                     dailyRate: toCents(dailyRate),
+                    // Hourly kitchens omit this (server stores null); daily-only send cents.
+                    extraTimeRateCents: toCents(hourlyRate) ? undefined : toCents(extraTimeRate),
                     currency: "CAD",
                     minimumBookingHours: parseInt(minimumBookingHours, 10) || 1,
                 }),
@@ -292,6 +297,23 @@ export function KitchenSetupForm({ locationId, onCancel, onCreated }: KitchenSet
                             className="w-32"
                         />
                     </SettingsRow>
+
+                    {needsExtraTimeRate ? (
+                        <SettingsRow
+                            id="new-kitchen-extra-time-rate"
+                            label={mt("extraTimeRatePerHour")}
+                            required
+                            hint={mt("extraTimeRateHelp")}
+                        >
+                            <CurrencyInput
+                                id="new-kitchen-extra-time-rate"
+                                value={extraTimeRate}
+                                onValueChange={setExtraTimeRate}
+                                placeholder="25.00"
+                                className="w-32"
+                            />
+                        </SettingsRow>
+                    ) : null}
 
                     <SettingsRow id="new-kitchen-minimum" label={mt("minimumBooking")} required>
                         <NumericInput

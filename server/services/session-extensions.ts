@@ -1,4 +1,5 @@
 import { effectiveBookingBufferMinutes } from '@shared/kitchen-booking-policies';
+import { positiveCentsOrNull, kitchenExtraTimeRateCents } from '@shared/kitchen-booking-rate';
 import { randomInt, randomUUID } from 'node:crypto';
 import { datedOccupiedSlots, operatingSlotInstants, pairBufferMinutes } from '@shared/booking-occupancy';
 import { minutesByWeek } from '@shared/kitchen-booking-quota';
@@ -71,11 +72,6 @@ async function lockedContext(tx: Tx, bookingId: number, actor?: ExtensionActor) 
   return context(tx, bookingId, actor);
 }
 type Context = Awaited<ReturnType<typeof context>>;
-function assertLegacyExtraTime(row: Context) {
-  // shortcut: dated extra time needs the selected visit's saved rate in a later checkpoint.
-  if ((row.booking.scheduleRevision ?? 0) > 0)
-    throw new SessionExtensionError('Extra time for dated bookings is unavailable until pricing uses the selected day. Contact Local Cooks support.');
-}
 async function parentPayment(tx: Tx, row: Context) {
   const [source] = await tx.select().from(paymentTransactions).where(and(eq(paymentTransactions.bookingId, row.booking.id),
     inArray(paymentTransactions.bookingType, ['kitchen', 'bundle']), eq(paymentTransactions.paymentIntentId, row.booking.paymentIntentId || ''))).limit(1);
@@ -83,17 +79,29 @@ async function parentPayment(tx: Tx, row: Context) {
     throw new SessionExtensionError('The original booking payment needs Local Cooks review');
   return source;
 }
+/** Extra time rate: booking snapshot, else legacy fallback (hourly single-day applied rate, or kitchen rates for daily/dated). */
+function resolveExtraTimeHourlyCents(row: Context) {
+  const snapshot = positiveCentsOrNull(row.booking.extraTimeRateCents);
+  if (snapshot) return snapshot;
+  const dated = (row.booking.scheduleRevision ?? 0) > 0;
+  const daily = row.booking.pricingMode === 'daily';
+  if (!dated && !daily) {
+    const applied = positiveCentsOrNull(row.booking.hourlyRate);
+    if (applied) return applied;
+  }
+  return kitchenExtraTimeRateCents(row.kitchen);
+}
 /** Use the latest approved booking terms; the parent's captured split remains the legacy fallback. */
 export async function priceTerms(tx: Tx, row: Context) {
-  assertLegacyExtraTime(row);
   const source = await parentPayment(tx, row), metadata = source.metadata as Record<string, unknown> | null;
+  // Dated parent metadata often lacks approvedSubtotal; baseAmount − taxAmount must still conserve amount.
   const subtotalCents = Number(metadata?.approvedSubtotal ?? Number(source.baseAmount) - Number(source.taxAmount || 0));
   const taxCents = Number(metadata?.approvedTax ?? source.taxAmount ?? 0), commissionCents = Number(metadata?.platformCommission ?? source.serviceFee ?? 0);
   if (![subtotalCents, taxCents, commissionCents].every(n => Number.isSafeInteger(n) && n >= 0) || !subtotalCents
     || subtotalCents + taxCents + commissionCents !== Number(source.amount))
     throw new SessionExtensionError('The original price split needs Local Cooks review');
-  const hourlyRateCents = Number(row.booking.hourlyRate);
-  if (!Number.isSafeInteger(hourlyRateCents) || hourlyRateCents <= 0) throw new SessionExtensionError('This booking has no hourly price, so extra time needs the kitchen. Message them.');
+  const hourlyRateCents = resolveExtraTimeHourlyCents(row);
+  if (!hourlyRateCents) throw new SessionExtensionError('This booking has no hourly price, so extra time needs the kitchen. Message them.');
   const latest = (row.booking.visitDuties as any)?.reschedulePricing;
   return { hourlyRateCents, ratios: latest ?? { subtotalCents, taxCents, commissionCents } };
 }
@@ -271,7 +279,6 @@ export async function readSessionExtensions(bookingId: number, actor: ExtensionA
   // Owner (Oct 14): the chef can ask for more time any time while checked in; the kitchen still approves. No last-hour gate.
   const finalHour = inSession;
   if (enabled) try {
-    assertLegacyExtraTime(row);
     if (clock) {
       await assertBookingMoneyWritable({ bookingId }, tx);
       if ((manager ? inSession : finalHour) && !history.some(ext => stillOpen(ext, clock.visit.blockIndex))) {
@@ -328,7 +335,6 @@ const notify = (tx: Tx, extension: Extension, event: SessionExtensionNoticeEvent
 export async function createSessionExtension(stripe: ExtensionStripe, bookingId: number, actor: ExtensionActor,
   input: { kind: ExtensionKind; minutes?: number; amountCents?: number; note?: string; requestKey: string; visitId?: number; expectedEndAt: string;
     expectedAmountCents: number; free?: boolean }, now = new Date()) {
-  assertLegacyExtraTime(await context(readTx(), bookingId, actor));
   // Free is a manager choice for offers and early starts only; the platform never decides it.
   const free = input.free === true;
   if (free && !['offer', 'early_start'].includes(input.kind)) throw new SessionExtensionError('Only the kitchen can give time for free');
@@ -336,7 +342,6 @@ export async function createSessionExtension(stripe: ExtensionStripe, bookingId:
   await expireOverdueForBooking(stripe, bookingId, now);
   const extension = await db.transaction(async tx => {
     const row = await lockedContext(tx, bookingId, actor);
-    assertLegacyExtraTime(row);
     const [existing] = await tx.select().from(kitchenBookingExtensions).where(and(eq(kitchenBookingExtensions.bookingId, bookingId), eq(kitchenBookingExtensions.requestKey, input.requestKey))).limit(1);
     if (existing) {
       if (existing.requestedBy !== actor.id || existing.kind !== input.kind || existing.amountCents !== input.expectedAmountCents
@@ -448,7 +453,6 @@ export async function decideSessionExtension(stripe: ExtensionStripe, bookingId:
   let provider = false;
   await db.transaction(async tx => {
     const row = await lockedContext(tx, bookingId, actor), extension = await savedExtension(tx, bookingId, id);
-    assertLegacyExtraTime(row);
     const manager = actor.role === 'manager' && actor.id === row.managerId, chef = actor.role === 'chef' && actor.id === row.booking.chefId;
     const allowed = input.action === 'approve' || input.action === 'approve_free' ? manager && extension.kind === 'request'
       : input.action === 'decline' ? manager && extension.kind === 'request' || chef && ['offer', 'early_start'].includes(extension.kind)
@@ -649,7 +653,6 @@ export async function checkoutSessionExtension(stripe: ExtensionStripe, bookingI
   if (!stripe.checkout) throw new SessionExtensionError('Payments are unavailable. Nothing was charged.', 503, 'sxbCheckoutUnavailable');
   const extension = await db.transaction(async tx => {
     const row = await lockedContext(tx, bookingId, actor), current = await savedExtension(tx, bookingId, id);
-    assertLegacyExtraTime(row);
     if (actor.role !== 'chef' || actor.id !== row.booking.chefId) throw new SessionExtensionError('Only the booking chef can pay', 403, 'sxbPaymentReview');
     if (current.amountCents !== expectedAmountCents || current.free || current.paidAt || current.refundedAt)
       throw new SessionExtensionError('Review the price and payment before continuing', 409, 'sxbPaymentReview');
@@ -742,7 +745,6 @@ export async function reconcileSessionExtension(stripe: ExtensionStripe, id: num
   if (!extension) throw new SessionExtensionError('Extension not found', 404);
   const row = await context(readTx(), extension.bookingId), op = extension.operation;
   if (!op || op.state === 'done') return { extension: sessionExtensionDto(extension), cardFailed: !!extension.cardFailedAt };
-  if (['authorize', 'pay', 'capture'].includes(op.action)) assertLegacyExtraTime(row);
   let intent: Stripe.PaymentIntent | undefined;
   let checkoutExpired = false;
   if (op.checkout && ['authorize', 'pay'].includes(op.action)) {

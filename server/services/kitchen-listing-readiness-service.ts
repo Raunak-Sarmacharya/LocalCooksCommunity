@@ -143,6 +143,7 @@ export async function buildKitchenReadiness(
   const galleryImages = Array.isArray(kitchen.galleryImages) ? kitchen.galleryImages : [];
   const hourlyRateCents = positiveNumber(kitchen.hourlyRate);
   const dailyRateCents = positiveNumber(kitchen.dailyRate);
+  const extraTimeRateCents = positiveNumber(kitchen.extraTimeRateCents);
   const effectiveChecklist = resolveKitchenChecklist(overrideRows[0], checklistRows[0]);
   const visitChecklist = effectiveChecklist ? activeChecklist(effectiveChecklist) : null;
   const requiredCount = (items: unknown, photos: unknown) =>
@@ -204,6 +205,7 @@ export async function buildKitchenReadiness(
       description: kitchen.description ?? null,
       hourlyRateCents,
       dailyRateCents,
+      extraTimeRateCents,
       coverPhotoUrl: kitchen.imageUrl ?? null,
       galleryImageCount: galleryImages.length,
       availabilityDayCount,

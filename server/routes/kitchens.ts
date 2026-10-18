@@ -97,10 +97,13 @@ router.get("/chef/kitchens/:kitchenId/pricing", requireChef, async (req: Request
                 ? Number(kitchen.taxRatePercent)
                 : 0;
 
+        const { kitchenExtraTimeRateCents } = await import('@shared/kitchen-booking-rate');
         // Map to pricing object expected by frontend
         const pricing = {
             hourlyRate: kitchen.hourlyRate,
             dailyRate: kitchen.dailyRate,
+            // Resolved rate chefs see before booking (hourly if set, else the kitchen's extra time rate).
+            extraTimeRateCents: kitchenExtraTimeRateCents(kitchen),
             currency: kitchen.currency,
             pricingModel: kitchen.pricingModel,
             minimumBookingHours: kitchen.minimumBookingHours,

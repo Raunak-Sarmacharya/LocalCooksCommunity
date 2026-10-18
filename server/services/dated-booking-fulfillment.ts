@@ -57,13 +57,17 @@ export async function fulfillDatedKitchenBooking(session: Stripe.Checkout.Sessio
       if (Date.parse(m.policy.sessions[0].startAt) <= Date.now()) throw new KitchenSlotUnavailableError();
       for (const day of m.days) if (await hasInventoryConflict(m.kitchenId, day.date, day.slots, day.windowStartTime,
         m.headId, excludeBookingId, tx, m.bufferMinutes)) throw new KitchenSlotUnavailableError();
-      const [context] = await tx.select({ managerId: locations.managerId }).from(kitchens).innerJoin(locations, eq(locations.id, kitchens.locationId))
+      const [context] = await tx.select({
+        managerId: locations.managerId, hourlyRate: kitchens.hourlyRate, extraTimeRateCents: kitchens.extraTimeRateCents,
+      }).from(kitchens).innerJoin(locations, eq(locations.id, kitchens.locationId))
         .where(eq(kitchens.id, m.kitchenId)).limit(1);
       if (context?.managerId !== m.managerId) throw new KitchenSlotUnavailableError();
       const first = m.days[0];
+      const { snapshotExtraTimeRateCents } = await import('@shared/kitchen-booking-rate');
       const [parent] = await tx.insert(kitchenBookings).values({ referenceCode: await generateReferenceCode('kitchen_booking'),
         chefId: m.chefId, kitchenId: m.kitchenId, bookingDate: new Date(`${first.date}T12:00:00Z`), startTime: first.startTime, endTime: first.endTime,
         operatingWindowStartTime: first.windowStartTime, pricingMode: first.pricingMode, hourlyRate: String(first.rateCents),
+        extraTimeRateCents: snapshotExtraTimeRateCents(context),
         durationHours: String(m.days.reduce((sum, day) => sum + day.slots.length, 0)), scheduleRevision: 1,
         selectedSlots: m.days.flatMap(day => day.slots.map(slot => ({ ...slot, date: day.date, windowStartTime: day.windowStartTime }))),
         status: 'pending', paymentStatus: 'authorized', paymentIntentId: intent.id, totalPrice: String(m.subtotalCents), serviceFee: String(m.serviceFeeCents),

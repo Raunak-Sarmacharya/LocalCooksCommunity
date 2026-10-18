@@ -450,6 +450,7 @@ export default function KitchenBookingFlow({
   const [kitchenPricing, setKitchenPricing] = useState<{
     hourlyRate: number | null;
     dailyRate: number | null;
+    extraTimeRateCents: number | null;
     currency: string;
     minimumBookingHours: number;
     platformCommissionRate: number;
@@ -1023,6 +1024,7 @@ export default function KitchenBookingFlow({
         setKitchenPricing({
           hourlyRate: hourlyRateCents,
           dailyRate: dailyRateCents,
+          extraTimeRateCents: Number(pricing.extraTimeRateCents) > 0 ? Number(pricing.extraTimeRateCents) : null,
           currency: pricing.currency || 'CAD',
           minimumBookingHours: pricing.minimumBookingHours ?? 0,
           platformCommissionRate: Math.max(0, Number(pricing.platformCommissionRate) || 0),
@@ -1032,7 +1034,7 @@ export default function KitchenBookingFlow({
         });
       } else {
         setLoadError(t("bookingErrorLoadKitchen", "We could not load this kitchen's pricing. Reload the page before booking."));
-        setKitchenPricing({ hourlyRate: null, dailyRate: null, currency: 'CAD', minimumBookingHours: 0, platformCommissionRate: 0 });
+        setKitchenPricing({ hourlyRate: null, dailyRate: null, extraTimeRateCents: null, currency: 'CAD', minimumBookingHours: 0, platformCommissionRate: 0 });
       }
 
       // Fetch addons
@@ -1066,7 +1068,7 @@ export default function KitchenBookingFlow({
     } catch (error) {
       logger.error('Error fetching kitchen data:', error);
       setLoadError(t("bookingErrorLoadKitchen", "We could not load this kitchen's pricing. Reload the page before booking."));
-      setKitchenPricing({ hourlyRate: null, dailyRate: null, currency: 'CAD', minimumBookingHours: 0, platformCommissionRate: 0 });
+      setKitchenPricing({ hourlyRate: null, dailyRate: null, extraTimeRateCents: null, currency: 'CAD', minimumBookingHours: 0, platformCommissionRate: 0 });
       setHideDateStep(false);
       setCurrentStep("calendar");
     } finally {
@@ -1888,7 +1890,8 @@ export default function KitchenBookingFlow({
             </div>
             <BookingPriceSummary days={datedSummaryRows} kitchenSubtotal={datedKitchenSubtotal} equipmentSubtotal={datedEquipmentSubtotal}
               taxRatePercent={selectedKitchen?.taxRatePercent || 0} taxLabel={selectedKitchen?.taxLabel}
-              serviceFeeRate={kitchenPricing?.platformCommissionRate ?? 0} currency={kitchenPricing?.currency || 'CAD'} />
+              serviceFeeRate={kitchenPricing?.platformCommissionRate ?? 0} currency={kitchenPricing?.currency || 'CAD'}
+              extraTimeRateCents={kitchenPricing?.extraTimeRateCents} />
           </div>}
           {!isMultiDay && <div className="overflow-hidden rounded-[1.35rem] border divide-y bg-white">
             <div className="flex items-start justify-between gap-3 px-4 py-3.5">
@@ -2065,7 +2068,8 @@ export default function KitchenBookingFlow({
           <BookingPriceSummary days={datedSummaryRows} kitchenSubtotal={isMultiDay ? datedKitchenSubtotal : estimatedPrice?.basePrice || 0} equipmentSubtotal={isMultiDay ? datedEquipmentSubtotal : equipmentPricing.subtotal}
             taxRatePercent={selectedKitchen?.taxRatePercent || 0} taxLabel={selectedKitchen?.taxLabel}
             serviceFeeRate={kitchenPricing?.platformCommissionRate ?? 0} currency={kitchenPricing?.currency || "CAD"}
-            equipmentItems={equipmentPricing.items.map(item => ({ name: item.name, priceCents: item.rate }))} />
+            equipmentItems={equipmentPricing.items.map(item => ({ name: item.name, priceCents: item.rate }))}
+            extraTimeRateCents={kitchenPricing?.extraTimeRateCents} />
         </details>
       );
     }
@@ -2148,6 +2152,7 @@ export default function KitchenBookingFlow({
               taxLabel={selectedKitchen?.taxLabel}
               serviceFeeRate={kitchenPricing?.platformCommissionRate ?? 0}
               currency={kitchenPricing?.currency || "CAD"}
+              extraTimeRateCents={kitchenPricing?.extraTimeRateCents}
             />
           </div>
         )}
@@ -2621,6 +2626,7 @@ export default function KitchenBookingFlow({
               })}
               taxLabel={selectedKitchen?.taxLabel}
               focusAddon="equipment"
+              extraTimeRateCents={kitchenPricing?.extraTimeRateCents}
             />
             <div className="flex items-center justify-between gap-3 border-t pt-3">
               <Button variant="ghost" className="rounded-xl" onClick={() => setDiscardModal("equipment")}>{t("sheetCancelButton")}</Button>

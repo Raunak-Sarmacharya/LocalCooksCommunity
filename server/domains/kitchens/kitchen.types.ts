@@ -40,6 +40,8 @@ export interface CreateKitchenDTO {
   isActive?: boolean;
   hourlyRate?: number;
   dailyRate?: number;
+  /** Required when daily-only (no hourly). Stored null when hourly is set. */
+  extraTimeRateCents?: number | null;
   currency?: string;
   minimumBookingHours?: number;
   pricingModel?: PricingModel;
@@ -60,6 +62,8 @@ export interface UpdateKitchenDTO {
   isActive?: boolean;
   hourlyRate?: number | null;
   dailyRate?: number | null;
+  /** Required when daily-only (no hourly). Stored null when hourly is set. */
+  extraTimeRateCents?: number | null;
   currency?: string;
   minimumBookingHours?: number;
   pricingModel?: PricingModel;
@@ -94,6 +98,7 @@ export interface KitchenDTO {
   defaultDailyBookingLimit?: number | null;
   hourlyRate: number | null;
   dailyRate: number | null;
+  extraTimeRateCents: number | null;
   currency: string;
   minimumBookingHours: number;
   pricingModel: PricingModel;

@@ -68,6 +68,27 @@ export function requiresExtraTimeRate(hourlyRate: unknown, dailyRate: unknown): 
   return !isPositiveRate(hourlyRate) && isPositiveRate(dailyRate);
 }
 
+/** Clear message when a daily-only kitchen is saved without an extra time rate. */
+export const EXTRA_TIME_RATE_REQUIRED_MESSAGE =
+  'Extra time rate (per hour) is required when the kitchen has a daily rate and no hourly rate.';
+
+/**
+ * Normalize what to store for `extra_time_rate_cents`.
+ * Hourly kitchens always store null (they use the hourly rate for extra time).
+ * Daily-only kitchens require a positive rate; returns an error message when missing.
+ */
+export function normalizeExtraTimeRateCents(input: {
+  hourlyRate: unknown;
+  dailyRate: unknown;
+  extraTimeRateCents: unknown;
+}): { value: number | null; error?: string } {
+  if (isPositiveRate(input.hourlyRate)) return { value: null };
+  if (!isPositiveRate(input.dailyRate)) return { value: null };
+  const cents = positiveCentsOrNull(input.extraTimeRateCents);
+  if (!cents) return { value: null, error: EXTRA_TIME_RATE_REQUIRED_MESSAGE };
+  return { value: cents };
+}
+
 export function calculateKitchenBasePrice(
   mode: KitchenBookingRateMode,
   hourlyRateCents: number,

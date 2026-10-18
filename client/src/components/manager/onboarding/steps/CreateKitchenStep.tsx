@@ -22,7 +22,7 @@ import {
 } from "@/components/manager/kitchen/KitchenPhotoFields";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { hasKitchenRate } from "@shared/kitchen-booking-rate";
+import { hasKitchenRate, requiresExtraTimeRate } from "@shared/kitchen-booking-rate";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import { SmartImage } from "@/components/ui/smart-image";
 import { FormLegend } from "@/components/ui/form-legend";
@@ -352,6 +352,7 @@ export default function CreateKitchenStep() {
   const [localDescription, setLocalDescription] = useState(ctxData.description);
   const [localHourlyRate, setLocalHourlyRate] = useState(ctxData.hourlyRate);
   const [localDailyRate, setLocalDailyRate] = useState(ctxData.dailyRate ?? '');
+  const [localExtraTimeRate, setLocalExtraTimeRate] = useState(ctxData.extraTimeRate ?? '');
   const [localMinHours, setLocalMinHours] = useState(ctxData.minimumBookingHours);
   const [localImageUrl, setLocalImageUrl] = useState(ctxData.imageUrl);
   const [localFeatures, setLocalFeatures] = useState<string[]>(ctxData.features || []);
@@ -366,6 +367,7 @@ export default function CreateKitchenStep() {
       setLocalDescription(ctxData.description);
       setLocalHourlyRate(ctxData.hourlyRate);
       setLocalDailyRate(ctxData.dailyRate ?? '');
+      setLocalExtraTimeRate(ctxData.extraTimeRate ?? '');
       setLocalMinHours(ctxData.minimumBookingHours);
       setLocalImageUrl(ctxData.imageUrl);
       setLocalFeatures(ctxData.features || []);
@@ -391,6 +393,7 @@ export default function CreateKitchenStep() {
       description: kitchen.description ?? '',
       hourlyRate: kitchen.hourlyRate ? (Number(kitchen.hourlyRate) / 100).toFixed(2) : '',
       dailyRate: kitchen.dailyRate ? (Number(kitchen.dailyRate) / 100).toFixed(2) : '',
+      extraTimeRate: kitchen.extraTimeRateCents ? (Number(kitchen.extraTimeRateCents) / 100).toFixed(2) : '',
       minimumBookingHours: String(kitchen.minimumBookingHours ?? 1),
       imageUrl: kitchen.imageUrl ?? '',
       features: kitchen.amenities ?? kitchen.features ?? [],
@@ -400,6 +403,7 @@ export default function CreateKitchenStep() {
     setLocalDescription(seed.description);
     setLocalHourlyRate(seed.hourlyRate);
     setLocalDailyRate(seed.dailyRate);
+    setLocalExtraTimeRate(seed.extraTimeRate);
     setLocalMinHours(seed.minimumBookingHours);
     setLocalImageUrl(seed.imageUrl);
     setLocalFeatures(seed.features);
@@ -441,6 +445,7 @@ export default function CreateKitchenStep() {
       description: localDescription,
       hourlyRate: localHourlyRate,
       dailyRate: localDailyRate,
+      extraTimeRate: localExtraTimeRate,
       currency: ctxData.currency,
       minimumBookingHours: localMinHours,
       imageUrl: localImageUrl,
@@ -475,12 +480,14 @@ export default function CreateKitchenStep() {
    * step with the gate.
    */
   const hasARate = hasKitchenRate(localHourlyRate, localDailyRate);
+  const needsExtraTimeRate = requiresExtraTimeRate(localHourlyRate, localDailyRate);
 
   const editIsValid =
     Boolean(localName.trim()) &&
     Boolean(localDescription.trim()) &&
     Boolean(localImageUrl) &&
     hasARate &&
+    (!needsExtraTimeRate || Number.parseFloat(localExtraTimeRate) > 0) &&
     parseInt(localMinHours, 10) >= 1;
 
   /** Save edits to a kitchen created earlier in this flow — no dashboard hop. */
@@ -501,6 +508,7 @@ export default function CreateKitchenStep() {
         description: localDescription,
         hourlyRate: localHourlyRate,
         dailyRate: localDailyRate,
+        extraTimeRate: localExtraTimeRate,
         minimumBookingHours: localMinHours,
         imageUrl: localImageUrl,
       });
@@ -527,6 +535,7 @@ export default function CreateKitchenStep() {
     description: localDescription,
     hourlyRate: localHourlyRate,
     dailyRate: localDailyRate,
+    extraTimeRate: localExtraTimeRate,
     minimumBookingHours: localMinHours,
     imageUrl: localImageUrl,
     features: localFeatures,
@@ -712,6 +721,7 @@ export default function CreateKitchenStep() {
     description: localDescription,
     hourlyRate: localHourlyRate,
     dailyRate: localDailyRate,
+    extraTimeRate: localExtraTimeRate,
     currency: ctxData.currency,
     minimumBookingHours: localMinHours,
     imageUrl: localImageUrl,
@@ -742,6 +752,7 @@ export default function CreateKitchenStep() {
     Boolean(data.description.trim()) &&
     Boolean(data.imageUrl) &&
     hasARate &&
+    (!needsExtraTimeRate || Number.parseFloat(data.extraTimeRate) > 0) &&
     // 1 is the floor — see the minimum-hours field.
     parseInt(data.minimumBookingHours, 10) >= 1;
 
@@ -901,6 +912,23 @@ export default function CreateKitchenStep() {
                 className="w-32"
               />
             </SettingsRow>
+
+            {needsExtraTimeRate ? (
+              <SettingsRow
+                id="kitchen-extra-time-rate"
+                label={mt("extraTimeRatePerHour")}
+                required
+                hint={mt("extraTimeRateHelp")}
+              >
+                <CurrencyInput
+                  id="kitchen-extra-time-rate"
+                  value={data.extraTimeRate}
+                  onValueChange={setLocalExtraTimeRate}
+                  placeholder="25.00"
+                  className="w-32"
+                />
+              </SettingsRow>
+            ) : null}
 
             {/*
               * Required, and one hour is the floor. Zero is not a minimum booking — it is

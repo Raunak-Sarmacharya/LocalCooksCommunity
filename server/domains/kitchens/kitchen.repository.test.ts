@@ -60,6 +60,7 @@ const kitchenRow = (listingStatus: string) => ({
   listingStatus,
   hourlyRate: null,
   dailyRate: null,
+  extraTimeRateCents: null,
   currency: "CAD",
   minimumBookingHours: 1,
   pricingModel: "hourly",

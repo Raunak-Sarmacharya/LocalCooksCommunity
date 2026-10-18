@@ -142,9 +142,8 @@ export async function validateKitchenInput(data: unknown) {
     // rate survived the route only to be dropped one layer down. `insertKitchenSchema`
     // in shared/schema.ts has always declared it; this inline copy is the odd one out.
     dailyRate: z.number().positive('Daily rate must be positive').optional(),
-    // Was missing here, and `.parse()` STRIPS what a schema does not name — so a daily
-    // rate survived the route only to be dropped one layer down. `insertKitchenSchema`
-    // in shared/schema.ts has always declared it; this inline copy is the odd one out.
+    // Daily-only kitchens must set this; hourly kitchens leave it unset (stored null).
+    extraTimeRateCents: z.number().int().positive('Extra time rate must be positive').nullable().optional(),
     currency: z.string().length(3).optional(),
     minimumBookingHours: z.number().int('Minimum booking hours must be a whole number').min(0, 'Minimum booking hours cannot be negative').max(24, 'Minimum booking hours cannot exceed 24').optional(),
     pricingModel: z.enum(['hourly', 'daily', 'weekly', 'monthly-flat', 'per-cubic-foot']).optional(),

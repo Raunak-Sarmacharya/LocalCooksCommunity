@@ -318,6 +318,8 @@ export interface KitchenReadinessDetails {
   description: string | null;
   hourlyRateCents: number | null;
   dailyRateCents: number | null;
+  /** Present when the kitchen is daily-only and set an extra time rate. */
+  extraTimeRateCents: number | null;
   coverPhotoUrl: string | null;
   galleryImageCount: number;
   /** Whole days of the week with opening hours — a count, not the day names. */
