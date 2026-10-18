@@ -64,7 +64,7 @@ function sumGroup(rows: RevenueReportRow[], key: string): RevenueReportGroup {
 function groupReport(rows: RevenueReportRow[], keyFor: (row: RevenueReportRow) => string) {
   const groups = new Map<string, RevenueReportRow[]>();
   for (const row of rows) { const key = keyFor(row); groups.set(key, [...(groups.get(key) || []), row]); }
-  return [...groups].sort(([a], [b]) => a.localeCompare(b)).map(([key, values]) => sumGroup(values, key));
+  return Array.from(groups.entries()).sort(([a], [b]) => a.localeCompare(b)).map(([key, values]) => sumGroup(values, key));
 }
 
 /**
@@ -139,7 +139,7 @@ export function buildManagerRevenue(payments: LedgerPayment[], installments: Led
       const transfers = payment.transfers?.length ? payment.transfers : [{ transferId: s.transferId!,
         originalAmountCents: num(m.payoutSent?.amountCents ?? m.transfer?.transferredCents ?? s.managerRevenue),
         reversedCents: num(m.transfer?.reversedCents), sentAt: m.payoutSent?.sentAt || m.transfer?.transferredAt || iso(s.payoutReleasedAt || s.paidAt || s.createdAt)! }];
-      for (const [index, transfer] of transfers.entries()) paid.push({ ...common, id: `${common.id}-${index}`,
+      for (const [index, transfer] of Array.from(transfers.entries())) paid.push({ ...common, id: `${common.id}-${index}`,
         amountCents: transfer.originalAmountCents, netPayout: transfer.originalAmountCents - transfer.reversedCents, status: 'paid', stripeUrl: transferUrl(transfer.transferId),
         paidAt: transfer.sentAt, reversedCents: transfer.reversedCents, refunds: Math.max(0, amounts.netPayout - transfer.originalAmountCents) });
     } else if (!m.payoutNoEntitlement) {
@@ -164,7 +164,7 @@ export function buildManagerRevenue(payments: LedgerPayment[], installments: Led
     previous.expectedAt = previous.expectedAt && row.expectedAt ? [previous.expectedAt, row.expectedAt].sort().at(-1)! : null;
     if (!previous.expectedAt) previous.reason = row.reason || previous.reason || 'inspection';
   }
-  const upcoming = [...merged.values()].filter(r => r.amountCents > 0).sort((a, b) => (a.expectedAt || 'z').localeCompare(b.expectedAt || 'z'));
+  const upcoming = Array.from(merged.values()).filter(r => r.amountCents > 0).sort((a, b) => (a.expectedAt || 'z').localeCompare(b.expectedAt || 'z'));
   const periodPaid = paid.filter(r => r.paidAt && inPeriod(revenueLocalDate(r.paidAt, r.timezone))).sort((a, b) => (b.paidAt || '').localeCompare(a.paidAt || ''));
   const rows = reportRows.filter(r => inPeriod(r.date));
   const totals = sumGroup(rows, 'total'), scheduled = upcoming.filter(r => r.status === 'scheduled'), held = upcoming.filter(r => r.status === 'on_hold');

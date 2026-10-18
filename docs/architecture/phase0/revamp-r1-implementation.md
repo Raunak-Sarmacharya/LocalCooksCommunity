@@ -94,5 +94,10 @@ Server command (the new ledger/reader suites were also rerun after the final cla
 npx vitest run --config vitest.config.server.ts server/services/manager-revenue-ledger.test.ts server/services/manager-revenue-service.test.ts server/services/kitchen-payout-service.test.ts server/services/kitchen-day-payouts.test.ts server/services/storage-payouts.test.ts
 ```
 
-The single foreground `npx tsc --noEmit -p tsconfig.json` result is recorded at handoff. Lead money-display review and an
-authenticated live-dev check remain the handoff steps from the stage plan.
+The single foreground `npx tsc --noEmit -p tsconfig.json` completed with exit code 1 and ten diagnostics, all in the new
+server files: eight TS2802 iterator/downlevel-target errors and two TS2339 references to a nonexistent `users.fullName`.
+All reported issues were fixed: Map/Set/array iterators use `Array.from`, and chef labels come from profile/application
+names using the actual schema. Both new server suites were then rerun: **20/20 passed**. Per the explicit one-run limit,
+TypeScript was not run again, so a clean post-fix whole-project type check is not claimed.
+
+Lead money-display review and an authenticated live-dev check remain the handoff steps from the stage plan.

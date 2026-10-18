@@ -19,6 +19,12 @@ export const revenueQuery = z.object({ startDate: date, endDate: date,
   'Choose a date range of up to three years');
 export type RevenueQuery = z.infer<typeof revenueQuery>;
 
+// Names live on profiles/applications, not users; never turn a login email into a public chef label.
+const chefDisplayName = sql<string | null>`COALESCE(NULLIF(${users.managerProfileData}->>'fullName', ''),
+  NULLIF(${users.managerProfileData}->>'displayName', ''),
+  (SELECT c.full_name FROM chef_kitchen_applications c WHERE c.chef_id = ${users.id} AND c.location_id = ${locations.id} ORDER BY c.created_at DESC LIMIT 1),
+  (SELECT a.full_name FROM applications a WHERE a.user_id = ${users.id} AND a.status = 'approved' ORDER BY a.created_at DESC LIMIT 1))`;
+
 /** Use the claim transfer's existing read-only freeze check, without attempting or scheduling any money operation. */
 async function claimPayoutHold(bookingId: number | null, rentalId: number | null, operationKey?: string) {
   try { await assertBookingMoneyWritable({ ...(rentalId ? { storageRentalId: rentalId } : { bookingId: bookingId! }), operationKey }); return null; }
@@ -31,12 +37,12 @@ export async function readManagerRevenue(managerId: number, query: RevenueQuery)
     locationName: locations.name }).from(kitchens).innerJoin(locations, eq(locations.id, kitchens.locationId))
     .where(eq(locations.managerId, managerId));
   const filters = { kitchens: owned.map(k => ({ id: k.id, name: k.name, locationId: k.locationId })),
-    locations: [...new Map(owned.map(k => [k.locationId, { id: k.locationId, name: k.locationName }])).values()] };
+    locations: Array.from(new Map(owned.map(k => [k.locationId, { id: k.locationId, name: k.locationName }])).values()) };
   const allowed = owned.filter(k => (!query.locationId || k.locationId === query.locationId) && (!query.kitchenId || k.id === query.kitchenId));
   if (!allowed.length) return buildManagerRevenue([], [], [], query, filters);
   const rows = await db.select({ source: paymentTransactions, booking: kitchenBookings, rental: storageBookings,
     equipmentBooking: equipmentBookings, term: storageRentalTerms, kitchen: kitchens, location: locations,
-    chefName: users.fullName, claim: damageClaims,
+    chefName: chefDisplayName, claim: damageClaims,
     claimPaidAt: sql`(SELECT MAX(h.created_at) FROM damage_claim_history h WHERE h.damage_claim_id = ${damageClaims.id} AND h.action = 'kitchen_paid')`.mapWith(damageClaimHistory.createdAt),
     equipmentCents: sql<number>`COALESCE((SELECT SUM(e.total_price::numeric) FROM equipment_bookings e WHERE e.kitchen_booking_id = ${kitchenBookings.id}
       AND e.payment_intent_id = ${paymentTransactions.paymentIntentId}), 0)`,
@@ -56,21 +62,21 @@ export async function readManagerRevenue(managerId: number, query: RevenueQuery)
     .where(and(eq(locations.managerId, managerId), inArray(kitchens.id, allowed.map(k => k.id)),
       inArray(paymentTransactions.status, ['succeeded', 'partially_refunded', 'refunded']),
       sql`COALESCE(${paymentTransactions.metadata}->>'platformRecovery', 'false') <> 'true'`)).orderBy(asc(paymentTransactions.id));
-  const bookingIds = [...new Set(rows.filter(r => r.booking).map(r => r.booking!.id))];
+  const bookingIds = Array.from(new Set(rows.filter(r => r.booking).map(r => r.booking!.id)));
   const sourceIds = rows.map(r => r.source.id);
   const [visits, allocations, rawDays, liveDays, projected, transferHistory] = await Promise.all([
     bookingIds.length ? db.select().from(kitchenBookingVisits).where(inArray(kitchenBookingVisits.bookingId, bookingIds)) : [],
     sourceIds.length ? db.select().from(kitchenBookingDayAllocations).where(inArray(kitchenBookingDayAllocations.sourceId, sourceIds)) : [],
     sourceIds.length ? db.select().from(kitchenBookingDayPayouts).where(inArray(kitchenBookingDayPayouts.sourceId, sourceIds)) : [],
     readDayPayouts(bookingIds),
-    projectBookingCloseouts([...new Map(rows.filter(r => r.booking).map(r => [r.booking!.id, r.booking!])).values()]).then(attachKitchenPayouts),
+    projectBookingCloseouts(Array.from(new Map(rows.filter(r => r.booking).map(r => [r.booking!.id, r.booking!])).values())).then(attachKitchenPayouts),
     sourceIds.length ? db.select().from(paymentHistory).where(and(inArray(paymentHistory.transactionId, sourceIds),
       or(eq(paymentHistory.eventType, 'payout_transfer_verified'), sql`${paymentHistory.eventType} ILIKE '%refund%'`))).orderBy(asc(paymentHistory.id)) : [],
   ]);
   const dayFor = (bookingId: number, visitId?: number | null, fallback?: string): RevenueDay => {
     const target = visits.find(v => v.bookingId === bookingId && v.id === visitId);
     const own = visits.filter(v => v.bookingId === bookingId && (target ? v.scheduleRevision === target.scheduleRevision : v.scheduleState !== 'superseded'));
-    const dates = [...new Set(own.map(v => v.visitDate || fallback).filter((d): d is string => !!d))].sort();
+    const dates = Array.from(new Set(own.map(v => v.visitDate || fallback).filter((d): d is string => !!d))).sort();
     const date = target?.visitDate || fallback || dates[0] || '';
     return { number: Math.max(0, dates.indexOf(date)) + 1, total: Math.max(1, dates.length), date };
   };
@@ -109,7 +115,7 @@ export async function readManagerRevenue(managerId: number, query: RevenueQuery)
       reversedCents: Number(m.transfer?.reversedCents || 0), sentAt: r.claimPaidAt?.toISOString() || m.payoutSent?.sentAt || m.transfer?.transferredAt
         || (r.source.payoutReleasedAt || r.source.paidAt || r.source.createdAt).toISOString(),
     });
-    return { source: r.source, transfers: [...transfers.values()], refundDates,
+    return { source: r.source, transfers: Array.from(transfers.values()), refundDates,
       bookingId, bookingReference: r.booking?.referenceCode || r.rental?.referenceCode || `#${bookingId}`,
       bookingUrl: r.rental ? `/manager-dashboard?view=storage-bookings&storageBooking=${r.rental.id}` : `/manager/booking/${bookingId}`,
       chefId: r.source.chefId, chefName: r.chefName, kitchenId: r.kitchen.id, kitchenName: r.kitchen.name,
@@ -121,7 +127,7 @@ export async function readManagerRevenue(managerId: number, query: RevenueQuery)
   }));
   // Compensation is platform-funded and has no chef payment row. Its saved transfer is an independent receipt.
   const compensations = await db.select({ claim: damageClaims, booking: kitchenBookings, rental: storageBookings,
-    kitchen: kitchens, location: locations, chefName: users.fullName,
+    kitchen: kitchens, location: locations, chefName: chefDisplayName,
     claimPaidAt: sql`(SELECT MAX(h.created_at) FROM damage_claim_history h WHERE h.damage_claim_id = ${damageClaims.id} AND h.action = 'kitchen_paid')`.mapWith(damageClaimHistory.createdAt),
   }).from(damageClaims)
     .leftJoin(kitchenBookings, eq(kitchenBookings.id, damageClaims.kitchenBookingId))
