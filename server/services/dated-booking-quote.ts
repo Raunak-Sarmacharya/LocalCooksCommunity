@@ -38,19 +38,23 @@ function canonical(value: unknown): string {
 export const datedManifestHash = (manifest: DatedBookingManifest) => createHash('sha256').update(canonical(manifest)).digest('hex');
 
 export function priceBookingDays(days: ValidatedBookingDay[], rates: { hourlyRate: number; dailyRate: number },
-  listings: Array<{ id: number; equipmentType: string; availabilityType: string | null; sessionRate: string | null }>): PricedBookingDay[] {
+  listings: Array<{ id: number; equipmentType: string; availabilityType: string | null; sessionRate: string | null }>,
+  keptPrices = new Map<string, Pick<PricedBookingDay, 'kitchenCents' | 'equipment'>>()): PricedBookingDay[] {
   return [...days].sort((a, b) => a.date.localeCompare(b.date)).map(day => {
     assertConsecutiveBookingSlots(day.slots, day.windowStartTime);
-    const rateCents = cents(day.pricingMode === 'daily' ? rates.dailyRate : rates.hourlyRate);
-    if (!rateCents) throw Error(`This kitchen does not offer ${day.pricingMode} booking`);
+    const kept = keptPrices.get(day.date);
+    const rateCents = kept ? (day.pricingMode === 'daily' ? kept.kitchenCents : Math.round(kept.kitchenCents / day.slots.length))
+      : cents(day.pricingMode === 'daily' ? rates.dailyRate : rates.hourlyRate);
+    if (!kept && !rateCents) throw Error(`This kitchen does not offer ${day.pricingMode} booking`);
     if (new Set(day.equipmentIds).size !== day.equipmentIds.length) throw Error('Choose each equipment item once per day');
     const equipment = [...day.equipmentIds].sort((a, b) => a - b).map(id => {
       const listing = listings.find(row => row.id === id);
       if (!listing) throw Error('Quoted equipment is unavailable');
-      return { listingId: id, name: listing.equipmentType, cents: listing.availabilityType === 'included' ? 0 : cents(Number(listing.sessionRate ?? 0)) };
+      return { listingId: id, name: listing.equipmentType, cents: kept?.equipment.find(item => item.listingId === id)?.cents
+        ?? (listing.availabilityType === 'included' ? 0 : cents(Number(listing.sessionRate ?? 0))) };
     });
     return { ...day, equipmentIds: equipment.map(item => item.listingId), rateCents, equipment,
-      kitchenCents: cents(calculateKitchenBasePrice(day.pricingMode, rates.hourlyRate, rates.dailyRate, day.slots.length)) };
+      kitchenCents: cents(kept?.kitchenCents ?? calculateKitchenBasePrice(day.pricingMode, rates.hourlyRate, rates.dailyRate, day.slots.length)) };
   });
 }
 

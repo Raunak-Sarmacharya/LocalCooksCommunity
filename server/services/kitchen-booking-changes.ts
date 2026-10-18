@@ -78,7 +78,8 @@ export type ChangeOperation = { action: 'authorize' | 'capture' | 'release' | 'r
   attemptKey?: string; target?: 'declined' | 'withdrawn' | 'expired'; reason?: 'booking_cancelled'; actorId?: number; message?: string | null;
   refundKeys?: Record<string, string>; refundReplaces?: Record<string, string>; checkout?: boolean; returnUrl?: string; customerId?: string | null; paymentMethodId?: string | null; kitchenName?: string; sessionId?: string | null;
   retired?: Array<{ attemptKey: string; intentId?: string | null; sessionId?: string | null; operation?: ChangeOperation }> };
-export type RefundSource = { intentId: string; transactionId: number; capturedCents: number; processingFeeCents: number; grossCents?: number; refundCents?: number; kitchenDebitCents?: number; platformReturnCents?: number };
+export type RefundSource = { intentId: string; transactionId: number; capturedCents: number; processingFeeCents: number; grossCents?: number; refundCents?: number; kitchenDebitCents?: number; platformReturnCents?: number;
+  datedReduction?: { subtotalCents: number; taxCents: number; serviceFeeCents: number } };
 export type ChangeMeta = { version: 3; operation?: ChangeOperation | null; sent: boolean; cardDeclined?: boolean; originalStartAt: string; originalEndAt: string;
   newStartAt: string; newEndAt: string; freeCancelAfter: string; refundSource?: RefundSource | null; refundSources?: RefundSource[]; hadCardHold?: boolean;
   resolution?: { action: 'close_keep_refund'; fundedBy: 'local_cooks'; amountCents: number; resolvedBy: number; resolvedAt: string };
@@ -1252,6 +1253,10 @@ async function reconcileRefund(stripe: ChangeStripe, change: Change, row: Contex
   const provider = await import('./stripe-service');
   if (!plans.length) throw new KitchenChangeError('The refund source needs Local Cooks review.', 409, 'refundSourceReview');
   try {
+    if (datedOf(change)) await db.transaction(async tx => {
+      const { row: locked, change: current } = await lockedChange(tx, change.bookingId, change.id);
+      await assertStillValid(tx, locked, current, now);
+    });
     await moneyWritable({ bookingId: row.booking.id, operationKey: op.key }, readTx());
     const results: Array<{ plan: RefundSource; result: { refundId: string; refundAmount: number; refundStatus: string };
       facts: Awaited<ReturnType<typeof provider.getCancellationPaymentFacts>> }> = [];

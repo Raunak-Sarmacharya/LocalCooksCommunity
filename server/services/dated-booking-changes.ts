@@ -24,7 +24,7 @@ import { db } from '../db';
 import { kitchenBookings, kitchenBookingVisits, kitchenBookingDayAllocations as allocations, kitchenBookingDayPayouts as payouts,
   paymentTransactions, equipmentBookings, equipmentListings, kitchenCheckoutHolds, storageBookings } from '@shared/schema';
 import { isDatedChangeSchedule, type DatedChangeSchedule } from '@shared/kitchen-booking-change';
-import { allocateCents, roundRatio, type CancellationPolicySnapshot } from '@shared/cancellation-policy';
+import { allocateCents, type CancellationPolicySnapshot } from '@shared/cancellation-policy';
 import { bookingFreeCancelHours } from '@shared/booking-response-deadline';
 import { rescheduleEligibility, rescheduleMoney, RESCHEDULE_MESSAGES, type ChangeMoneyFull, type PriceTerms } from '@shared/kitchen-booking-reschedule';
 import { makeCloseoutSnapshot, type ClockBooking } from '@shared/clock-closeout';
@@ -201,24 +201,19 @@ export async function priceDatedChange(tx: Tx, row: DatedRow, validated: Awaited
   const booking = row.booking, current = await currentDays(tx, booking), book = await ledger(tx, booking, current, changeId);
   const ids = Array.from(new Set(validated.flatMap(day => day.equipmentIds)));
   const listings = ids.length ? await tx.select().from(equipmentListings).where(and(inArray(equipmentListings.id, ids), eq(equipmentListings.kitchenId, booking.kitchenId))) : [];
-  let days: PricedBookingDay[];
-  try { days = priceBookingDays(validated, { hourlyRate: Number(row.kitchen.hourlyRate ?? 0), dailyRate: Number(row.kitchen.dailyRate ?? 0) }, listings); }
-  catch { throw new KitchenChangeError(RESCHEDULE_MESSAGES.contactKitchen, 409, 'contactKitchen'); }
-  // Owner, Oct 18 (Airbnb rule): a day that stays exactly as booked (same date, day type and hours) keeps what was paid for it,
-  // e.g. an invited price, and so does equipment already booked on it. Only new or changed days use today's listed prices.
+  // Only matching paid days bypass current rates; inventory and equipment eligibility were validated above.
+  const keptPrices = new Map<string, Pick<PricedBookingDay, 'kitchenCents' | 'equipment'>>();
   const paidFor = (visitId: number, key: string) => sum(book.sources, entry => sum(entry.active.filter(part => part.visitId === visitId && part.componentKey === key), part => part.subtotalCents));
-  const hoursOf = (slots: Array<{ startTime: string; endTime: string }>) => slots.map(slot => `${slot.startTime}-${slot.endTime}`).join(',');
-  for (const day of days) {
-    const same = current.active.find(visit => String(visit.visitDate).slice(0, 10) === day.date && (visit.pricingMode === 'daily' ? 'daily' : 'hourly') === day.pricingMode
-      && hoursOf((visit.selectedSlots as Array<{ startTime: string; endTime: string }>) || []) === hoursOf(day.slots));
+  for (const day of validated) {
+    const same = current.active.find(visit => samePaidDay(visit, day));
     if (!same) continue;
-    day.kitchenCents = paidFor(same.id, 'kitchen');
-    day.rateCents = day.pricingMode === 'daily' ? day.kitchenCents : Math.round(day.kitchenCents / day.slots.length);
-    for (const item of day.equipment) {
-      const booked = current.equipment.find(row => row.status === 'confirmed' && row.kitchenBookingVisitId === same.id && row.equipmentListingId === item.listingId);
-      if (booked) item.cents = paidFor(same.id, `equipment:${booked.id}`);
-    }
+    keptPrices.set(day.date, { kitchenCents: paidFor(same.id, 'kitchen'),
+      equipment: current.equipment.filter(item => item.status === 'confirmed' && item.kitchenBookingVisitId === same.id)
+        .map(item => ({ listingId: item.equipmentListingId, cents: paidFor(same.id, `equipment:${item.id}`) })) });
   }
+  let days: PricedBookingDay[];
+  try { days = priceBookingDays(validated, { hourlyRate: Number(row.kitchen.hourlyRate ?? 0), dailyRate: Number(row.kitchen.dailyRate ?? 0) }, listings, keptPrices); }
+  catch { throw new KitchenChangeError(RESCHEDULE_MESSAGES.contactKitchen, 409, 'contactKitchen'); }
   const subtotal = sum(days, day => day.kitchenCents + sum(day.equipment, item => item.cents));
   const taxRate = Number(row.kitchen.taxRatePercent ?? 0);
   if (!Number.isFinite(taxRate) || taxRate < 0 || taxRate > 100) throw new KitchenChangeError('The kitchen’s tax setting needs review. Message the kitchen.', 409, 'taxReview');
@@ -250,13 +245,110 @@ export async function priceDatedChange(tx: Tx, row: DatedRow, validated: Awaited
       if (!remaining) break;
     }
     if (remaining || feeReturn) throw new KitchenChangeError('This change needs Local Cooks to refund it. Message the kitchen or contact Local Cooks.', 409, 'refundReview');
+    freezeRefundReductions(book.sources, plans, old.kitchenCents - next.kitchenCents);
     money.refundCents = sum(plans, plan => plan.refundCents!);
     money.feeKeptCents = -difference - money.refundCents;
     money.kitchenDebitCents = sum(plans, plan => plan.kitchenDebitCents!);
     money.platformReturnCents = sum(plans, plan => plan.platformReturnCents!);
     money.lines = money.lines.map(line => line.key === 'fee_kept' ? { ...line, cents: -money.feeKeptCents } : line.key === 'refund' ? { ...line, cents: money.refundCents } : line);
   }
+  planLedger(book.sources, current, money, plans);
   return { money, refundSources: plans };
+}
+
+const hoursOf = (slots: Array<{ startTime: string; endTime: string }>) => slots.map(slot => `${slot.startTime}-${slot.endTime}`).join(',');
+const samePaidDay = (visit: Visit, day: PricedBookingDay | Awaited<ReturnType<typeof validateDatedDestination>>['validated'][number]) =>
+  String(visit.visitDate).slice(0, 10) === day.date && (visit.pricingMode === 'daily' ? 'daily' : 'hourly') === day.pricingMode
+  && hoursOf((visit.selectedSlots as Array<{ startTime: string; endTime: string }>) || []) === hoursOf(day.slots);
+
+type LedgerPart = { subtotalCents: number; taxCents: number; serviceFeeCents: number; stripeFeeCents: number };
+const columns = ['subtotalCents', 'taxCents', 'serviceFeeCents'] as const;
+const validCents = (n: number) => Number.isSafeInteger(n) && n >= 0;
+
+/** Freeze the exact quoted column reductions, bounded by each selected source's available principal and tax. */
+function freezeRefundReductions(sources: SourceLedger[], plans: RefundSource[], subtotal: number) {
+  const bounds = plans.map(plan => {
+    const { moved } = sources.find(entry => entry.source.id === plan.transactionId)!;
+    const gross = plan.grossCents! - plan.platformReturnCents!;
+    return { gross, min: Math.max(0, gross - moved.tax), max: Math.min(gross, moved.sub) };
+  });
+  const minimum = sum(bounds, row => row.min), capacity = bounds.map(row => row.max - row.min);
+  if (!validCents(subtotal - minimum) || capacity.some(n => !validCents(n)) || subtotal - minimum > sum(capacity, n => n))
+    throw support('the sources cannot fund the quoted subtotal and tax reductions');
+  const extra = allocateCents(subtotal - minimum, capacity);
+  plans.forEach((plan, i) => { const sub = bounds[i].min + extra[i];
+    plan.datedReduction = { subtotalCents: sub, taxCents: bounds[i].gross - sub, serviceFeeCents: plan.platformReturnCents! }; });
+}
+
+/** Pure preflight, also used by apply: source columns and destination columns must both balance before provider money. */
+function planLedger(sources: SourceLedger[], state: Days, quote: DatedChangeMoney, plans: RefundSource[]) {
+  const components: DayComponent[] = [];
+  const oldParts: Allocation[][] = [];
+  const increases: number[] = [];
+  for (const [sessionIndex, day] of quote.datedDays.entries()) {
+    const visit = state.active.find(visit => String(visit.visitDate).slice(0, 10) === day.date);
+    for (const item of [{ listingId: undefined, cents: day.kitchenCents }, ...day.equipment]) {
+      const booked = item.listingId === undefined ? undefined : state.equipment.find(row => row.status === 'confirmed'
+        && row.kitchenBookingVisitId === visit?.id && row.equipmentListingId === item.listingId);
+      const key = item.listingId === undefined ? 'kitchen' : `equipment:${booked?.id}`;
+      const parts = sources.flatMap(entry => entry.active.filter(part => part.visitId === visit?.id && part.componentKey === key));
+      increases.push(Math.max(0, item.cents - sum(parts, part => part.subtotalCents)));
+      oldParts.push(visit && samePaidDay(visit, day) ? parts : []);
+      components.push({ visitId: sessionIndex, sessionIndex, componentKey: key, kind: item.listingId === undefined ? 'kitchen' : 'equipment',
+        bookingId: 0, subtotalCents: item.cents });
+    }
+  }
+  const manifest = (terms: PriceTerms) => ({ taxCents: terms.taxCents, serviceFeeCents: terms.feeCents,
+    totalCents: terms.kitchenCents + terms.taxCents + terms.feeCents } as DatedBookingManifest);
+  if (sum(components, part => part.subtotalCents) !== quote.newTerms.kitchenCents) throw support('the quoted day subtotals do not add up');
+  const targets = allocateDatedCapture(components, manifest(quote.newTerms), null);
+  const addedSubs = quote.payCents > 0 ? allocateCents(quote.newTerms.kitchenCents - quote.oldTerms.kitchenCents, increases) : components.map(() => 0);
+  const added = quote.payCents > 0 ? allocateDatedCapture(components.map((part, i) => ({ ...part, subtotalCents: addedSubs[i] })),
+    manifest({ kitchenCents: quote.newTerms.kitchenCents - quote.oldTerms.kitchenCents, taxCents: quote.newTerms.taxCents - quote.oldTerms.taxCents,
+      feeCents: quote.newTerms.feeCents - quote.oldTerms.feeCents }), null)
+    : components.map(part => ({ ...part, subtotalCents: 0, taxCents: 0, serviceFeeCents: 0 }));
+  if (new Set(plans.map(plan => plan.transactionId)).size !== plans.length || plans.some(plan => !sources.some(entry => entry.source.id === plan.transactionId)))
+    throw support('the refund sources do not match the ledger');
+  const remaining = sources.map(entry => {
+    const plan = plans.find(plan => plan.transactionId === entry.source.id), reduction = plan?.datedReduction;
+    if (plan && (!reduction || columns.some(key => !validCents(reduction[key]))
+      || sum(columns.map(key => reduction[key]), n => n) !== plan.grossCents || reduction.serviceFeeCents !== plan.platformReturnCents
+      || reduction.subtotalCents + reduction.taxCents - (plan.grossCents! - plan.refundCents!) !== plan.kitchenDebitCents))
+      throw support('the exact change refund split needs review');
+    const left = { subtotalCents: entry.moved.sub - (reduction?.subtotalCents || 0), taxCents: entry.moved.tax - (reduction?.taxCents || 0),
+      serviceFeeCents: entry.moved.svc - (reduction?.serviceFeeCents || 0), stripeFeeCents: entry.moved.fee - (plan ? plan.grossCents! - plan.refundCents! : 0) };
+    if (Object.values(left).some(n => !validCents(n)) || left.stripeFeeCents > left.subtotalCents + left.taxCents)
+      throw support('the exact change refund exceeds its source');
+    return left;
+  });
+  const moved: LedgerPart[][] = sources.map(() => components.map(() => ({ subtotalCents: 0, taxCents: 0, serviceFeeCents: 0, stripeFeeCents: 0 })));
+  for (const key of columns) {
+    const budget = targets.map((part, i) => part[key] - added[i][key]);
+    if (budget.some(n => !validCents(n)) || sum(budget, n => n) !== sum(remaining, part => part[key]))
+      throw support('the sources cannot fund the quoted destination columns');
+    const available = remaining.map(part => part[key]);
+    // Reserve unchanged paid components first, then allocate every source against the shared residual budget.
+    for (const [index, entry] of sources.entries()) {
+      const preferred = budget.map((cap, i) => Math.min(cap, sum(oldParts[i].filter(part => part.sourceId === entry.source.id), part => part[key])));
+      const reserved = allocateCents(Math.min(available[index], sum(preferred, n => n)), preferred);
+      reserved.forEach((n, i) => { moved[index][i][key] += n; budget[i] -= n; available[index] -= n; });
+    }
+    sources.forEach((entry, index) => {
+      const assigned = index === sources.length - 1 ? [...budget] : allocateCents(available[index], budget);
+      if (sum(assigned, n => n) !== available[index]) throw support('the last source does not fill the exact remainder');
+      assigned.forEach((n, i) => { moved[index][i][key] += n; budget[i] -= n; });
+    });
+    if (budget.some(n => n !== 0)) throw support('the destination component budget does not balance');
+  }
+  moved.forEach((parts, index) => {
+    const fees = allocateCents(remaining[index].stripeFeeCents, parts.map(part => part.subtotalCents + part.taxCents));
+    parts.forEach((part, i) => { part.stripeFeeCents = fees[i]; });
+    if ([...columns, 'stripeFeeCents' as const].some(key => sum(parts, part => part[key]) !== remaining[index][key])
+      || parts.some(part => part.stripeFeeCents > part.subtotalCents + part.taxCents)) throw support('a moved source does not conserve its cents');
+  });
+  if (targets.some((part, i) => columns.some(key => sum(moved, parts => parts[i][key]) + added[i][key] !== part[key])))
+    throw support('the destination components do not equal the quote');
+  return { moved, added };
 }
 
 export function datedChangeFingerprint(bookingId: number, destination: DatedChangeSchedule, money: DatedChangeMoney) {
@@ -298,9 +390,10 @@ export async function assertDatedStillValid(tx: Tx, row: DatedRow, change: { id:
   const { destination: fresh } = await validateDatedDestination(tx, row, destination, now, head, 'approve');
   if (JSON.stringify(normalizedDays(fresh)) !== JSON.stringify(normalizedDays(destination))) throw new KitchenChangeError('That time is no longer available.', 409, 'timeUnavailable');
   const quote = change.quote as DatedChangeMoney;
-  const old = termsOf(await ledger(tx, booking, days, change.id));
+  const book = await ledger(tx, booking, days, change.id), old = termsOf(book);
   if (old.kitchenCents !== quote.oldTerms.kitchenCents || old.taxCents !== quote.oldTerms.taxCents || old.feeCents !== quote.oldTerms.feeCents)
     throw new KitchenChangeError('The booking changed since this request was sent.', 409, 'bookingChanged');
+  planLedger(book.sources, days, quote, (change.policy as { refundSources?: RefundSource[] }).refundSources || []);
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -311,6 +404,8 @@ export async function applyDatedChange(tx: Tx, row: DatedRow, change: { id: stri
   const snapshot = booking.cancellationPolicySnapshot as CancellationPolicySnapshot;
   const timezone = snapshot.timezone || row.timezone;
   const state = await currentDays(tx, booking), book = await ledger(tx, booking, state, change.id);
+  const plans = (change.policy as { refundSources?: RefundSource[] }).refundSources || [];
+  const planned = planLedger(book.sources, state, quote, plans);
   const arrivalMode = await arrivalModeForChangedBooking(tx, booking.id);
   // 1. The old days stop: their codes are revoked and their equipment rows end. Cancelled days stay cancelled (their refund evidence).
   for (const visit of state.active) await revokeForVisit(tx, booking.id, visit.id, 'booking_changed');
@@ -329,16 +424,9 @@ export async function applyDatedChange(tx: Tx, row: DatedRow, change: { id: stri
     operatingWindowStartTime: day.windowStartTime, selectedSlots: day.slots,
     priceSnapshot: { contract: 'kitchen-change-days-v1', changeId: change.id, rateCents: day.rateCents, kitchenCents: day.kitchenCents, equipment: day.equipment } })));
   // 3. One equipment row per new day and item, already paid for by the booking's sources.
-  const oldComponentCents = (date: string, listingId?: number) => sum(book.sources, entry => sum(entry.active.filter(part => {
-    if (state.active.find(visit => visit.id === part.visitId)?.visitDate !== date) return false;
-    return listingId === undefined ? part.componentKey === 'kitchen'
-      : state.equipment.some(item => item.id === Number(part.componentKey.slice('equipment:'.length)) && item.equipmentListingId === listingId);
-  }), part => part.subtotalCents));
-  const increases: number[] = [];
   const components: DayComponent[] = [], equipmentItems: Record<string, unknown>[] = [];
   for (const [sessionIndex, day] of Array.from(days.entries())) {
     const visit = visits.find(item => item.visitDate === day.date)!;
-    increases.push(Math.max(0, day.kitchenCents - oldComponentCents(day.date)));
     components.push({ visitId: visit.id, sessionIndex, componentKey: 'kitchen', kind: 'kitchen', bookingId: booking.id, subtotalCents: day.kitchenCents });
     const startDate = new Date(instant(day.date, day.startTime, day.windowStartTime, timezone));
     const endDate = new Date(Date.parse(instant(day.date, day.slots.at(-1)!.startTime, day.windowStartTime, timezone)) + 3_600_000);
@@ -347,20 +435,15 @@ export async function applyDatedChange(tx: Tx, row: DatedRow, change: { id: stri
         equipmentListingId: item.listingId, startDate, endDate, status: 'confirmed', paymentStatus: 'paid', paymentIntentId: booking.paymentIntentId,
         totalPrice: String(item.cents), pricingModel: 'daily', damageDeposit: '0' }).returning();
       equipmentItems.push({ id: saved.id, equipmentBookingId: saved.id, equipmentListingId: item.listingId, visitId: visit.id, date: day.date, name: item.name, totalPrice: item.cents, status: 'confirmed' });
-      increases.push(Math.max(0, item.cents - oldComponentCents(day.date, item.listingId)));
       components.push({ visitId: visit.id, sessionIndex, componentKey: `equipment:${saved.id}`, kind: 'equipment', bookingId: saved.id, subtotalCents: item.cents });
     }
   }
   // 4. The money ledger follows the new days.
-  const addedSubtotals = quote.payCents > 0
-    ? allocateCents(quote.newTerms.kitchenCents - quote.oldTerms.kitchenCents, increases) : components.map(() => 0);
-  // Net increases fund the extra charge; each original source moves over the complementary residual.
-  const residualComponents = components.map((item, i) => ({ ...item, subtotalCents: item.subtotalCents - addedSubtotals[i] }));
-  await moveLedger(tx, book.sources, residualComponents, change, state.active[0], (change.policy as { refundSources?: RefundSource[] }).refundSources || [], now);
+  await moveLedger(tx, book.sources, components, planned.moved, change, state.active[0], plans, now);
   if (quote.payCents > 0) {
     // CP5 splits the separate change charge by positive component deltas, matched by date and item.
     const [extra] = await tx.select().from(paymentTransactions).where(and(eq(paymentTransactions.bookingId, booking.id), eq(paymentTransactions.paymentIntentId, change.intentId || '')));
-    const subs = addedSubtotals;
+    const subs = planned.added.map(part => part.subtotalCents);
     if (!extra || meta(extra).kitchenChangeId !== change.id || Number(extra.baseAmount) - Number(extra.taxAmount) !== sum(subs, n => n)) throw Error('The change charge does not match its quote');
     await tx.update(paymentTransactions).set({ metadata: { ...meta(extra), dayComponents: components.map((item, i) => ({ ...item, subtotalCents: subs[i] })) } })
       .where(eq(paymentTransactions.id, extra.id));
@@ -375,19 +458,17 @@ export async function applyDatedChange(tx: Tx, row: DatedRow, change: { id: stri
     endAt: new Date(dayEnd({ date: days.at(-1)!.date, slots: days.at(-1)!.slots, windowStart: days.at(-1)!.windowStartTime }, timezone)) };
 }
 
-async function moveLedger(tx: Tx, sources: SourceLedger[], components: DayComponent[], change: { id: string }, firstOld: Visit, plans: RefundSource[], now: Date) {
-  const weights = components.map(item => item.subtotalCents), at = now.toISOString();
-  for (const entry of sources) {
+async function moveLedger(tx: Tx, sources: SourceLedger[], components: DayComponent[], moved: LedgerPart[][], change: { id: string }, firstOld: Visit, plans: RefundSource[], now: Date) {
+  const at = now.toISOString();
+  for (const [sourceIndex, entry] of sources.entries()) {
     const { source } = entry, revision = entry.revision + 1, plan = plans.find(item => item.transactionId === source.id);
-    let { sub, tax, svc, fee } = entry.moved;
     const proof = { chargeId: source.chargeId, balanceTransactionId: meta(source).balanceTransactionId ?? null, feeStatus: 'verified', changeId: change.id };
     if (plan) {
       // The refunded part: fully settled, nothing left for the kitchen (its debit equals its share after the kept card fee).
-      const svcPart = plan.platformReturnCents!, gross = plan.grossCents! - svcPart, kept = plan.grossCents! - plan.refundCents!;
-      const taxPart = roundRatio(gross, tax, sub + tax), subPart = gross - taxPart;
+      const { subtotalCents: subPart, taxCents: taxPart, serviceFeeCents: svcPart } = plan.datedReduction!;
+      const kept = plan.grossCents! - plan.refundCents!;
       const refundId = meta(source).changeGrossRefundOperations?.[change.id];
-      if (!refundId || subPart < 0 || subPart > sub || taxPart > tax || svcPart > svc || kept > fee || gross - kept !== plan.kitchenDebitCents)
-        throw Error('The change refund does not fit the day ledger');
+      if (!refundId) throw Error('The change refund does not fit the day ledger');
       const [part] = await tx.insert(allocations).values({ sourceId: source.id, visitId: firstOld.id, allocationRevision: revision, componentKey: `change-refund:${change.id}`,
         subtotalCents: subPart, taxCents: taxPart, serviceFeeCents: svcPart, stripeFeeCents: kept, evidence: { ...proof, kind: 'change_refund', refundId,
           managerDebitedCents: plan.kitchenDebitCents, refunds: [{ operationId: `kitchen-change:${change.id}`, mode: 'change', at, customerCents: plan.refundCents,
@@ -396,17 +477,13 @@ async function moveLedger(tx: Tx, sources: SourceLedger[], components: DayCompon
         noEntitlement: true, transferAmountCents: 0, evidence: { changeRefund: change.id } });
       await tx.update(paymentTransactions).set({ metadata: { ...meta(source), allocatedChangeRefunds: [...(meta(source).allocatedChangeRefunds || []), refundId] } })
         .where(eq(paymentTransactions.id, source.id));
-      sub -= subPart; tax -= taxPart; svc -= svcPart; fee -= kept;
     }
-    if (sub + tax + svc > 0) {
-      if (!sub) throw Error('A moved source has no subtotal left to allocate');
-      const subs = allocateCents(sub, weights);
-      const parts = allocateDatedCapture(components.map((item, i) => ({ ...item, subtotalCents: subs[i] })),
-        { totalCents: sub + tax + svc, taxCents: tax, serviceFeeCents: svc } as DatedBookingManifest, fee);
+    const parts = moved[sourceIndex].map((part, i) => ({ ...components[i], ...part }));
+    if (parts.some(part => part.subtotalCents + part.taxCents + part.serviceFeeCents > 0)) {
       await tx.insert(allocations).values(parts.map(part => ({ sourceId: source.id, visitId: part.visitId, allocationRevision: revision, componentKey: part.componentKey,
         subtotalCents: part.subtotalCents, taxCents: part.taxCents, serviceFeeCents: part.serviceFeeCents, stripeFeeCents: part.stripeFeeCents,
         evidence: { ...proof, sessionIndex: part.sessionIndex, kind: part.kind, bookingId: part.bookingId, movedFrom: entry.active.map(row => row.id) } })));
-    } else if (fee) throw Error('A card fee is left with nothing to allocate');
+    }
     // Immutable lineage: the old parts keep their cents and say where they went; their unsent installments end at zero.
     for (const old of entry.active) await tx.update(allocations).set({ evidence: { ...evidence(old), supersededBy: { changeId: change.id, allocationRevision: revision } } })
       .where(eq(allocations.id, old.id));

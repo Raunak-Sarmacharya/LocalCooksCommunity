@@ -353,30 +353,42 @@ describe('Oct 18 live fixes: independent money proofs', () => {
       expect(sum(parts, 'subtotalCents') + sum(parts, 'taxCents') + sum(parts, 'serviceFeeCents')).toBe(Number(source.amount));
       expect(sum(parts, 'stripeFeeCents')).toBe(Number(source.stripeProcessingFee));
     }
-    // M2: per-source conservation is insufficient: independent largest-remainder splits change kept per-component cents.
+    // M2: source conservation and exact destination component cents must both hold.
     const current = (await get(s.kitchenBookingVisits)).filter((visit: any) => visit.scheduleState === 'active');
     const kitchenByDay = current.map((visit: any) => sum(moved.filter((part: any) => part.visitId === visit.id && part.componentKey === 'kitchen'), 'subtotalCents'));
-    expect(kitchenByDay.slice(0, 3)).toEqual([18001, 18000, 17999]);
+    expect(kitchenByDay.slice(0, 3)).toEqual([18000, 18000, 18000]);
     expect(kitchenByDay[3]).toBe(20000);
+    const { allocateDatedCapture } = await import('./dated-booking-quote');
+    const expected = allocateDatedCapture(quote.money.datedDays.flatMap((day: any, i: number) => [
+      { visitId: current[i].id, sessionIndex: i, componentKey: 'kitchen', kind: 'kitchen' as const, bookingId: 1, subtotalCents: day.kitchenCents },
+      ...day.equipment.map((item: any) => ({ visitId: current[i].id, sessionIndex: i, componentKey: 'equipment', kind: 'equipment' as const, bookingId: 1, subtotalCents: item.cents }))]),
+      { taxCents: quote.money.newTerms.taxCents, serviceFeeCents: quote.money.newTerms.feeCents, totalCents: quote.money.newTotalCents } as any, null);
+    for (const part of expected) {
+      const actual = moved.filter((row: any) => row.visitId === part.visitId && (part.kind === 'kitchen' ? row.componentKey === 'kitchen' : row.componentKey.startsWith('equipment:')));
+      expect(['subtotalCents', 'taxCents', 'serviceFeeCents'].map(key => sum(actual, key))).toEqual([part.subtotalCents, part.taxCents, part.serviceFeeCents]);
+    }
+    expect(moved.filter((part: any) => part.sourceId === 2 && part.subtotalCents > 0)).toHaveLength(1);
     expect(quote.money.datedDays.slice(0, 3).map((day: any) => day.kitchenCents)).toEqual([18000, 18000, 18000]);
     const next = await detailedPreview(days(full(MON), full(WED, [7]), full(FRI), full(SAT), full('2099-11-08')));
-    expect(next.money.datedDays.slice(0, 3).map((day: any) => day.kitchenCents)).toEqual([18001, 18000, 17999]);
+    expect(next.money.datedDays.slice(0, 3).map((day: any) => day.kitchenCents)).toEqual([18000, 18000, 18000]);
     await expect(readDatedCancellationQuote(1, chef, { visitIds: [8] }, NOW)).rejects.toThrow(/separate change payment|Local Cooks/);
   });
 
-  it('proof M1: a tax change rewrites kept paid subtotals after a price-down apply', async () => {
+  it('M1: a tax change preserves quoted kept subtotals after a price-down apply', async () => {
     await h.db.update(s.kitchens).set({ taxRatePercent: '10' });
     const { quote } = await request(days(full(MON), full(WED)));
     expect(quote.money.newTerms).toMatchObject({ kitchenCents: 36000, taxCents: 3600, feeCents: 2520 });
     expect((await decide('approve')).state).toBe('applied');
     const kept = live(await get(s.kitchenBookingDayAllocations)).filter((part: any) => part.componentKey === 'kitchen');
-    expect(sum(kept, 'subtotalCents')).toBe(34435);
-    expect(sum(kept, 'taxCents')).toBe(5165);
+    expect(sum(kept, 'subtotalCents')).toBe(36000);
+    expect(sum(kept, 'taxCents')).toBe(3600);
+    expect(sum(kept, 'serviceFeeCents')).toBe(2520);
+    expect((await change()).policy.refundSources[0].datedReduction).toEqual({ subtotalCents: 18000, taxCents: 4500, serviceFeeCents: 1260 });
     const again = await detailedPreview(days(full(MON), full(WED), full(FRI)));
-    expect(again.money.datedDays.slice(0, 2).map((day: any) => day.kitchenCents)).not.toEqual([18000, 18000]);
+    expect(again.money.datedDays.slice(0, 2).map((day: any) => day.kitchenCents)).toEqual([18000, 18000]);
   });
 
-  it('proof M1 rounding: unchanged tax settings still move 1 cent from tax to a kept kitchen part', async () => {
+  it('M1 rounding: unchanged tax settings preserve exact subtotal and tax cents', async () => {
     const [first] = await get(s.kitchenBookingDayAllocations);
     // Valid offered subtotal split: 54001 -> 18001,18000,18000, tax round(54001*.15)=8100.
     await h.db.update(s.kitchenBookingDayAllocations).set({ subtotalCents: 18001 }).where(eq(s.kitchenBookingDayAllocations.id, first.id));
@@ -387,8 +399,42 @@ describe('Oct 18 live fixes: independent money proofs', () => {
     expect(quote.money.newTerms).toEqual({ kitchenCents: 36010, taxCents: 5402, feeCents: 2521 });
     expect((await decide('approve')).state).toBe('applied');
     const parts = live(await get(s.kitchenBookingDayAllocations)).filter((part: any) => !part.componentKey.startsWith('change-refund:'));
-    expect([sum(parts, 'subtotalCents'), sum(parts, 'taxCents'), sum(parts, 'serviceFeeCents')]).toEqual([36011, 5401, 2521]);
-    expect(parts.filter((part: any) => part.componentKey === 'kitchen').map((part: any) => part.subtotalCents)).toEqual([18002, 18000]);
+    expect([sum(parts, 'subtotalCents'), sum(parts, 'taxCents'), sum(parts, 'serviceFeeCents')]).toEqual([36010, 5402, 2521]);
+    expect(parts.filter((part: any) => part.componentKey === 'kitchen').map((part: any) => part.subtotalCents)).toEqual([18001, 18000]);
+  });
+
+  it('refuses an exact refund split that the selected source cannot fund before provider money', async () => {
+    await request(days(full(MON), full(WED, [7]), full(FRI)));
+    expect((await decide('approve')).state).toBe('applied');
+    await syncDayPayoutSource(2);
+    await h.db.update(s.kitchens).set({ taxRatePercent: '10' });
+    // Only tax falls; the newest source cannot fund the whole reduction from its tax column.
+    await expect(engine.previewKitchenChange(1, chef, { destination: days(full(MON), full(WED, [7]), full(FRI), hourly(SAT, 9, 10)) }, NOW))
+      .rejects.toMatchObject({ code: 'pricingReview' });
+    await expect(engine.previewKitchenChange(1, chef, { destination: days(full(MON, [7]), full(WED), full(FRI)) }, NOW))
+      .rejects.toMatchObject({ code: 'datedChangeSupport' });
+    expect(h.refundCalls).toHaveLength(0);
+    expect(h.captures).toBe(1);
+  });
+
+  it.each(['charge', 'refund'])('refuses a broken saved component budget before %s money moves', async mode => {
+    await request(mode === 'charge' ? days(full(MON), full(WED), full(FRI), full(SAT)) : days(full(MON), full(WED)));
+    const saved = await change();
+    saved.quote.datedDays[0].kitchenCents++;
+    await h.db.update(s.kitchenBookingChanges).set({ quote: saved.quote });
+    await expect(decide('approve')).rejects.toMatchObject({ code: 'datedChangeSupport' });
+    expect(h.captures).toBe(0);
+    expect(h.refundCalls).toHaveLength(0);
+  });
+
+  it('refuses missing frozen refund reductions before approval', async () => {
+    await request(days(full(MON), full(WED)));
+    const saved = await change();
+    expect(saved.policy.refundSources[0].datedReduction).toEqual({ subtotalCents: 18000, taxCents: 2700, serviceFeeCents: 1260 });
+    delete saved.policy.refundSources[0].datedReduction;
+    await h.db.update(s.kitchenBookingChanges).set({ policy: saved.policy });
+    await expect(decide('approve')).rejects.toMatchObject({ code: 'datedChangeSupport' });
+    expect(h.refundCalls).toHaveLength(0);
   });
 
   it('refuses a real CP6 extra refund on a kept day', async () => {
@@ -413,11 +459,14 @@ describe('Oct 18 live fixes: independent money proofs', () => {
     expect(kept[0].subtotalCents).toBe(18000);
   });
 
-  it('proof S1: removing the current daily offering also prevents preserving already-paid daily days', async () => {
+  it('S1: removing the current daily offering still preserves already-paid daily days', async () => {
     await h.db.update(s.kitchens).set({ dailyRate: '0' });
     // The only new day is hourly; every daily day is already paid and unchanged.
-    await expect(engine.previewKitchenChange(1, chef, { destination: days(full(MON), full(WED), full(FRI), hourly(SAT, 9, 13)) }, NOW))
-      .rejects.toMatchObject({ code: 'contactKitchen' });
+    const { quote } = await request(days(full(MON), full(WED), full(FRI), hourly(SAT, 9, 13)));
+    expect(quote.money.datedDays.map((day: any) => day.kitchenCents)).toEqual([18000, 18000, 18000, 9000]);
+    expect(quote.money.payCents).toBe(10980);
+    expect((await decide('approve')).state).toBe('applied');
+    expect(h.captures).toBe(1);
   });
 
   it('sorts reordered destination days before pricing/hash; adding the same item is the same quote', async () => {
