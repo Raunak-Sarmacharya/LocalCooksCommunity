@@ -1132,6 +1132,12 @@ Already-failing tests found before any change (baseline, not ours): 21 in `tour-
 - **CP10 merged (DeepSeek, lead-reviewed; independent money review NOT yet done):** multi-day invitations via `days_snapshot` (0099), same validator/contract as chef multi-day checkout, $1 floor on the booking total, never above list, equipment never discounted, one grouped hold, version-guarded checkout, one booking/one capture on replays. 24 new tests.
 - **Verification (Oct 18, merged development):** full server suite 4070 pass + 8 load-timeout files pass serially; client 7297 pass (lead fixed CP10 plural copy: `{{count}` -> `#`; KitchenHero load flake passes alone); tsc 0 errors. **Pushed to development.**
 
+### Oct 18 (session 2)
+- Vercel dev deploy of `6ce15d09` succeeded; deleted worktrees pruned (only t3-ab494c83 kept).
+- **Extra time rate shown to chefs and admins** (`f703ad42`): public location details return `extraTimeRateCents`; kitchen preview shows "$360/day • $25/hr extra time" for daily-only kitchens (hourly kitchens already show the rate that doubles as extra time); admin location dialog shows "Extra Time Rate". Grid/discovery cards left as is (Peerspace/Turo show overtime on the listing, not search cards).
+- **N1 decided (owner): support-only at launch.** Dropping/cancelling after a paid multi-day change stays "Contact Local Cooks". Caveat logged for support: the in-app support actions (`refund_day_for_manager`, `assign_outside_refund`) also run on the first payment only, so support does it by hand in Stripe; day payouts fail closed (provider refund total mismatch) until reconciled. Policy register row added.
+- CP10 independent money review started (Cursor Auto).
+
 ### Handover — next session (start here)
 1. Done Oct 18: pushed (CP7 + fixes, extra time rate, CP10; 0104 on dev DB). Check the Vercel dev deploy succeeded and smoke-test kitchen pricing + a booking page.
 2. CP10 independent money review (Cursor Auto) -> fix round (Codex).
