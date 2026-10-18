@@ -1182,6 +1182,8 @@ Already-failing tests found before any change (baseline, not ours): 21 in `tour-
 - **Owner decision:** no general kitchen custom charge at launch (policy register); candidate after team testing.
 - Independent money review of the Oct 18 live-run money fixes (af2aa5a6, 45cce2b3, 2a0a71c7, 204c4746, ab2434cc, 66352b57, 5f2db9ea) started (Cursor Auto).
 
+- **Owner switched reviews to Codex** (Cursor Auto slow/trusted less; cancelled with no findings). **Codex money review of the Oct 18 fixes (merged `bcf8de17`):** **M1** price-down apply rebuilds refunded subtotal/tax from the old source ratio, so a kept day's live price can differ from the quote (1565¢ after a tax-rate change; 1¢ rounding) — now consequential because unchanged days keep their ledger price; **M2** `moveLedger` rounds each source independently, so after two paid changes unchanged days become 18001/18000/17999; **S1** kept days still need a current nonzero rate. Totals and Stripe amounts always conserve (no over/under charge). Verified OK: kept-price rule, quote/consent, no low-price carry on changed days, equipment by paid row, refusals, invitation prices + card saving, extension day picking, payout fallback display-only, chef day money private, lifecycle notices. Fix round -> Codex.
+
 ### Handover — next session (start here)
 1. Done Oct 18: pushed (CP7 + fixes, extra time rate, CP10; 0104 on dev DB). Check the Vercel dev deploy succeeded and smoke-test kitchen pricing + a booking page.
 2. CP10 independent money review (Cursor Auto) -> fix round (Codex).
