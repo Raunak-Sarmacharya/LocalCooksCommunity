@@ -198,12 +198,27 @@ export async function validateDatedDestination(tx: Tx, row: DatedRow, raw: unkno
  * share comes back, newest payment first, exactly as on a one-day booking.
  */
 export async function priceDatedChange(tx: Tx, row: DatedRow, validated: Awaited<ReturnType<typeof validateDatedDestination>>['validated'], changeId?: string) {
-  const booking = row.booking, book = await ledger(tx, booking, await currentDays(tx, booking), changeId);
+  const booking = row.booking, current = await currentDays(tx, booking), book = await ledger(tx, booking, current, changeId);
   const ids = Array.from(new Set(validated.flatMap(day => day.equipmentIds)));
   const listings = ids.length ? await tx.select().from(equipmentListings).where(and(inArray(equipmentListings.id, ids), eq(equipmentListings.kitchenId, booking.kitchenId))) : [];
   let days: PricedBookingDay[];
   try { days = priceBookingDays(validated, { hourlyRate: Number(row.kitchen.hourlyRate ?? 0), dailyRate: Number(row.kitchen.dailyRate ?? 0) }, listings); }
   catch { throw new KitchenChangeError(RESCHEDULE_MESSAGES.contactKitchen, 409, 'contactKitchen'); }
+  // Owner, Oct 18 (Airbnb rule): a day that stays exactly as booked (same date, day type and hours) keeps what was paid for it,
+  // e.g. an invited price, and so does equipment already booked on it. Only new or changed days use today's listed prices.
+  const paidFor = (visitId: number, key: string) => sum(book.sources, entry => sum(entry.active.filter(part => part.visitId === visitId && part.componentKey === key), part => part.subtotalCents));
+  const hoursOf = (slots: Array<{ startTime: string; endTime: string }>) => slots.map(slot => `${slot.startTime}-${slot.endTime}`).join(',');
+  for (const day of days) {
+    const same = current.active.find(visit => String(visit.visitDate).slice(0, 10) === day.date && (visit.pricingMode === 'daily' ? 'daily' : 'hourly') === day.pricingMode
+      && hoursOf((visit.selectedSlots as Array<{ startTime: string; endTime: string }>) || []) === hoursOf(day.slots));
+    if (!same) continue;
+    day.kitchenCents = paidFor(same.id, 'kitchen');
+    day.rateCents = day.pricingMode === 'daily' ? day.kitchenCents : Math.round(day.kitchenCents / day.slots.length);
+    for (const item of day.equipment) {
+      const booked = current.equipment.find(row => row.status === 'confirmed' && row.kitchenBookingVisitId === same.id && row.equipmentListingId === item.listingId);
+      if (booked) item.cents = paidFor(same.id, `equipment:${booked.id}`);
+    }
+  }
   const subtotal = sum(days, day => day.kitchenCents + sum(day.equipment, item => item.cents));
   const taxRate = Number(row.kitchen.taxRatePercent ?? 0);
   if (!Number.isFinite(taxRate) || taxRate < 0 || taxRate > 100) throw new KitchenChangeError('The kitchen’s tax setting needs review. Message the kitchen.', 409, 'taxReview');

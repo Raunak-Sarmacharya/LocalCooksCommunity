@@ -288,6 +288,17 @@ describe('CP7 dated changes: money and apply', () => {
     expect(quote.money).toMatchObject({ oldTotalCents: 65880, newTotalCents: 32940, refundCents: 31970, feeKeptCents: 970 });
   });
 
+  it('owner rule (Oct 18, Airbnb): unchanged days keep what was paid (e.g. an invited price); only new or changed days use current rates', async () => {
+    // The kitchen raises its daily rate after the booking (or the booking came from a $180 invitation on a $200 listing).
+    await h.db.update(s.kitchens).set({ dailyRate: '20000' }).where(eq(s.kitchens.id, 4));
+    const added = await engine.previewKitchenChange(1, chef, { destination: days(full(MON), full(WED), full(FRI), full(SAT)) }, NOW);
+    // 3 kept days x 18000 + Saturday x 20000 = 74000 (+15% HST, +7% fee) = 90280; not 4 x 20000 = 97600.
+    expect(added.money).toMatchObject({ oldTotalCents: 65880, newTotalCents: 90280, payCents: 24400 });
+    // A day whose hours change is a new day: Friday as 8 hours is priced at today's rate (8 x 2250 = 18000), Mon/Wed keep 18000.
+    const changed = await engine.previewKitchenChange(1, chef, { destination: days(full(MON), full(WED), hourly(FRI, 9, 17)) }, NOW);
+    expect(changed.money).toMatchObject({ oldTotalCents: 65880, newTotalCents: 65880, payCents: 0 });
+  });
+
   it('equal price, mixed mode: approval moves Mon/Wed/Fri to Tue (8 hours)/Thu/Sat at once, with new visits, codes, sessions (0098) and a moved ledger', async () => {
     // 8 hours x $22.50 = one $180 full day, so the whole total is unchanged.
     const { quote } = await request(days(hourly(TUE, 9, 17), full(THU), full(SAT)));
