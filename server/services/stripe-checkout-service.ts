@@ -81,7 +81,8 @@ export async function createDatedKitchenCheckoutSession(params: {
   }
   add(`Tax (${m.taxRatePercent}%)`, m.taxCents); add('Service Fee', m.serviceFeeCents);
   const session = await provider.checkout.sessions.create({ mode: 'payment', submit_type: 'book', payment_method_types: ['card'],
-    customer_email: params.customerEmail, expires_at: m.checkoutExpiresAt, line_items: lineItems, metadata,
+    // Same as single-day: a customer so the card can be reused off-session (extra time, overstay, claims).
+    customer_email: params.customerEmail, customer_creation: 'always', expires_at: m.checkoutExpiresAt, line_items: lineItems, metadata,
     payment_intent_data: { capture_method: 'manual', metadata, receipt_email: params.customerEmail, setup_future_usage: 'off_session' },
     success_url: params.successUrl, cancel_url: params.cancelUrl,
     custom_text: { submit: { message: params.invitation

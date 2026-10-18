@@ -158,6 +158,8 @@ describe('CP4 dated quote and authorization', () => {
     expect(verifyDatedQuote(JSON.parse(JSON.stringify(q)))).toEqual(q);
     const params = h.create.mock.calls[0][0];
     expect(params.payment_intent_data.capture_method).toBe('manual');
+    // The card is saved to a customer for later off-session charges (extra time, overstay), as single-day checkout does.
+    expect(params).toMatchObject({ customer_creation: 'always', payment_intent_data: { setup_future_usage: 'off_session' } });
     expect(params).not.toHaveProperty('transfer_data'); expect(params.payment_intent_data).not.toHaveProperty('application_fee_amount');
     expect(await rows(s.kitchenBookings)).toHaveLength(0);
   });
