@@ -227,6 +227,16 @@ describe('dated lifecycle parity with real services', () => {
     const reminders = await h.db.select().from(s.emailLogs);
     expect(reminders.some((row: any) => row.trackingId?.startsWith(`advance:booking:${id}:`) && row.status === 'scheduled')).toBe(true);
   });
+  it('sends the chef the full arrival details once (first day) and a short "Day N of 3" reminder for every day (owner, Oct 18)', async () => {
+    const id = await confirmed();
+    const rows = (await h.db.select().from(s.emailLogs)).filter((row: any) => row.trackingId?.startsWith(`advance:booking:${id}:`) && row.trackingId.includes(':email:'));
+    const chef = (kind: string) => rows.filter((row: any) => { const r = JSON.parse(row.textBody).reminder; return r.kind === kind && r.role === 'chef'; });
+    expect(chef('preparation')).toHaveLength(1);
+    expect(JSON.parse(chef('preparation')[0].textBody).reminder.resource).toMatch(/visit-0$/);
+    const arrivals = chef('arrival').map((row: any) => JSON.parse(row.textBody).reminder.message).sort();
+    expect(arrivals).toHaveLength(3);
+    expect(arrivals.map((message: string) => message.slice(0, 11))).toEqual(['Day 1 of 3.', 'Day 2 of 3.', 'Day 3 of 3.']);
+  });
   it('declines a fresh pending request and releases its hold', async () => {
     const id = await requested();
     await decide(id, 'cancelled', [], [], 2);

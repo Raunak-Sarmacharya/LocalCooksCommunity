@@ -225,8 +225,14 @@ export async function currentReminders(tx: Transaction, source: ReminderSource, 
     const duties = makeVisitDuties(row.checklist, false, settings, savedDuties?.source || 'legacy_first_action');
     // The chef's own heads-up (kind 'running_late' lifecycle events) moves the manager's no-check-in alert to their stated arrival.
     const runningLate = await (await import('./running-late')).readRunningLate(id, tx);
-    return reminderVisitTimes(row.booking, timezone, visits).flatMap(block => {
+    const blocks = reminderVisitTimes(row.booking, timezone, visits);
+    // Multi-day (owner, Oct 18; Airbnb/Peerspace pattern): the full arrival details once, before the first remaining day,
+    // then one short "Day N of M" reminder on each day. Cancelled days are already excluded from the blocks.
+    const dayStarts = row.booking.scheduleRevision ? blocks.map(block => block.start.getTime()).sort((a, b) => a - b) : [];
+    return blocks.flatMap(block => {
       if (now >= block.end) return [];
+      const dayNumber = dayStarts.indexOf(block.start.getTime()) + 1;
+      const dayPrefix = dayStarts.length > 1 ? `${tEmail(locale, 'visitDayOf', { day: dayNumber, count: dayStarts.length })} ` : '';
       const visit = visits.find(visit => visit.blockIndex === block.index);
       const state = visit?.checkinStatus || (visits.length ? 'not_checked_in' : row.booking.checkinStatus);
       const mode = codes.find(code => code.visitId === (visit?.id ?? null))?.mode || 'legacy';
@@ -256,11 +262,12 @@ export async function currentReminders(tx: Transaction, source: ReminderSource, 
           message: reminder.kind === 'preparation' ? facts + (release.instructionsReleased
             ? `${arrivalModeLine(mode, locale)} ${tEmail(locale, 'instructionsReleased')} Arrival instructions: ${endInstructionSentence(duties.arrival.instructions || '')} Departure instructions: ${endInstructionSentence(duties.departure.instructions || '')} Required tasks/photos: ${tasks || 'None requested'}. Contact: ${manager?.username || 'Support'}.`
             : arrivalModeLine(mode, locale))
-            : reminder.kind === 'arrival' ? facts + `${arrivalModeLine(mode, locale, true)} ${tEmail(locale, 'visitArrivalInstructionsLink')}`
+            : reminder.kind === 'arrival' ? dayPrefix + facts + `${arrivalModeLine(mode, locale, true)} ${tEmail(locale, 'visitArrivalInstructionsLink')}`
             : reminder.kind === 'checkin_open' ? facts + `Check-in is now available for this visit. ${arrivalModeLine(mode, locale, true)} ${tEmail(locale, 'visitArrivalInstructionsLink')}`
             : reminder.kind === 'departure' ? facts + `Your visit ends at ${formatVisitClock(block.end, timezone)}. Follow the departure instructions, then check out in Local Cooks.`
             : reminder.message,
           ...(reminder.kind !== 'preparation' && reminder.kind !== 'departure' ? { arrivalNotes: undefined, departureNotes: undefined } : {}) }));
+      if (dayNumber > 1) chefReminders.splice(0, chefReminders.length, ...chefReminders.filter(reminder => reminder.kind !== 'preparation'));
       const arrival = chefReminders.find(reminder => reminder.kind === 'arrival');
       if (!manager || !arrival) return chefReminders;
       const managerLocale = manager.preferredLocale;

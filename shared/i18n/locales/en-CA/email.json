@@ -75,6 +75,7 @@
   "arrivalModeStaffed": "When you arrive, ask kitchen staff for your 6-digit check-in code and enter it in Local Cooks. It's for checking in only; it doesn't open the door.",
   "arrivalModeSelf": "Self check-in is on for this visit. Follow the kitchen's instructions to get in, then confirm arrival in Local Cooks. No check-in code needed.",
   "arrivalEachDay": "Each day of this booking has its own check-in and code.",
+  "visitDayOf": "Day {day} of {count}.",
   "arrivalModeMixed": "Arrival method varies by visit. Open each visit for details.",
   "arrivalModeLegacy": "Follow the arrival instructions and confirm arrival in Local Cooks when you're there.",
   "arrivalActionStaffed": "Ask kitchen staff for your check-in code, then enter it in Local Cooks to check in.",
