@@ -146,11 +146,18 @@ describe("Kitchen step — part 0 without a kitchen", () => {
      * takes either, and `booking.service` prices by mode — but this form demanded the hourly, so a
      * manager who charges by the day could not leave part 1 at all.
      */
-    h.draft = { hourlyRate: "", dailyRate: "150.00" };
+    h.draft = { hourlyRate: "", dailyRate: "150.00", extraTimeRate: "25.00" };
     render(<CreateKitchenStep />);
 
     expect(primary()).toBeEnabled();
     expect(screen.queryByText("kitchenPartListingIncomplete")).not.toBeInTheDocument();
+  });
+
+  it("holds a daily-only kitchen until it sets an extra time rate (owner, Oct 17)", () => {
+    h.draft = { hourlyRate: "", dailyRate: "150.00", extraTimeRate: "" };
+    render(<CreateKitchenStep />);
+
+    expect(primary()).toBeDisabled();
   });
 
   it("accepts BOTH rates, which is a kitchen that can be booked either way", () => {
