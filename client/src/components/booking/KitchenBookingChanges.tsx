@@ -12,18 +12,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { addHour } from '@shared/operating-hours';
-import type { ChangeSchedule } from '@shared/kitchen-booking-change';
+import { changeScheduleDays, isDatedChangeSchedule, type AnyChangeSchedule, type ChangeSchedule, type DatedChangeSchedule } from '@shared/kitchen-booking-change';
+import { DatedChangeEditor } from './DatedChangeEditor';
 import { NowAttentionRow } from './BookingNowCard';
 
 /** Chef changes a confirmed booking (owner, Oct 16): request → kitchen approves → difference charged or refunded. Server: WP-RS. */
 type Money = { oldTotalCents: number; newTotalCents: number; payCents: number; refundCents: number; feeKeptCents: number; currency: string };
-type Change = { id: string; state: string; revision: number; original: ChangeSchedule; destination: ChangeSchedule; money: Money;
+type Change = { id: string; state: string; revision: number; original: AnyChangeSchedule; destination: AnyChangeSchedule; money: Money;
   decisionBy: string; freeCancelAfter?: string; canDecide: boolean; canWithdraw: boolean; cardDeclined?: boolean;
   /** Kitchen view only: its payout change in cents (+ more, − less), before the card processing fee. */ kitchenPayoutChangeCents?: number };
-type Changes = { original: ChangeSchedule; canRequest: { allowed: boolean; reason?: string; code?: string; values?: Record<string, unknown>; until?: string }; open?: Change; timezone: string | null;
+type Changes = { original: AnyChangeSchedule; dated?: boolean; canRequest: { allowed: boolean; reason?: string; code?: string; values?: Record<string, unknown>; until?: string }; open?: Change; timezone: string | null;
   /** The kitchen's booking length limits (hours), same as new bookings. */ limits?: { minHours: number; maxHours: number };
   /** The current refund deadline, to say whether a change moves it. */ freeCancelUntil?: string };
-type Preview = { destination: ChangeSchedule; money: Money; decisionBy: string; freeCancelAfter?: string; quoteHash: string };
+type Preview = { destination: AnyChangeSchedule; money: Money; decisionBy: string; freeCancelAfter?: string; quoteHash: string };
 type Slot = { time: string; available: number; isFullyBooked: boolean };
 
 const SETTLING = ['capture_pending', 'refund_pending', 'release_pending'];
@@ -52,7 +53,9 @@ function useFormat(timezone?: string | null) {
   const locale = i18n.resolvedLanguage || 'en-CA';
   const money = (cents: number, currency = 'CAD') => new Intl.NumberFormat(locale, { style: 'currency', currency }).format(cents / 100);
   const day = (date: string) => new Intl.DateTimeFormat(locale, { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' }).format(new Date(`${date}T12:00:00Z`));
-  const schedule = (value: ChangeSchedule) => `${day(value.date)} · ${formatTime(value.slots[0]?.startTime || '', locale)}–${formatTime(value.slots.at(-1)?.endTime || '', locale)}`;
+  // A dated booking lists every day (old and new days alike).
+  const schedule = (value: AnyChangeSchedule) => changeScheduleDays(value)
+    .map(item => `${day(item.date)} · ${formatTime(item.slots[0]?.startTime || '', locale)}–${formatTime(item.slots.at(-1)?.endTime || '', locale)}`).join('; ');
   // Deadlines always name the kitchen's zone ("Oct 17, 2026, 12:10 p.m. Newfoundland Time").
   const when = (iso: string) => timezone ? `${formatVisitTime(iso, timezone, locale)} ${friendlyTimezoneName(timezone, locale)}` : new Date(iso).toLocaleString(locale);
   return { money, schedule, when, locale };
@@ -127,11 +130,14 @@ export function ChangeBookingDialog({ bookingId, kitchenId, kitchenName, timezon
   const [date, setDate] = useState(''), [start, setStart] = useState(''), [hours, setHours] = useState(1);
   const [slots, setSlots] = useState<Slot[] | null>(null), [preview, setPreview] = useState<Preview | null>(null);
   const [requestKey, setRequestKey] = useState('');
+  // CP7: a dated booking changes as a whole day set, picked with the same day picker as booking.
+  const [days, setDays] = useState<{ destination: DatedChangeSchedule | null; unchanged: boolean }>({ destination: null, unchanged: true });
   useEffect(() => {
     if (!open) return;
-    setData(null); setError(''); setPreview(null); setSlots(null); setRequestKey(crypto.randomUUID());
+    setData(null); setError(''); setPreview(null); setSlots(null); setRequestKey(crypto.randomUUID()); setDays({ destination: null, unchanged: true });
     api<Changes>(`/api/bookings/${bookingId}/changes`).then(result => {
-      setData(result); setDate(result.original.date); setStart(result.original.slots[0]?.startTime || ''); setHours(result.original.slots.length || 1);
+      setData(result);
+      if (!isDatedChangeSchedule(result.original)) { setDate(result.original.date); setStart(result.original.slots[0]?.startTime || ''); setHours(result.original.slots.length || 1); }
     }).catch(cause => setError(errorText(t, cause)));
   }, [open, bookingId]);
   useEffect(() => {
@@ -148,14 +154,16 @@ export function ChangeBookingDialog({ bookingId, kitchenId, kitchenName, timezon
   const chosen = useMemo(() => { const out: ChangeSchedule['slots'] = []; let at = start;
     for (let i = 0; i < hours && at; i++) { const end = addHour(at); out.push({ startTime: at, endTime: end }); at = end; } return out; }, [start, hours]);
   const ready = !!data?.canRequest.allowed && !!date && chosen.length > 0 && hours <= maxHours && hours >= minHours;
-  const unchanged = !!data && date === data.original.date && chosen.length === data.original.slots.length && chosen[0]?.startTime === data.original.slots[0]?.startTime;
+  const original = data && !isDatedChangeSchedule(data.original) ? data.original : null;
+  const unchanged = data?.dated ? days.unchanged : !!original && date === original.date && chosen.length === original.slots.length && chosen[0]?.startTime === original.slots[0]?.startTime;
+  const destination = data?.dated ? days.destination : ready ? { date, windowStart: chosen[0].startTime, slots: chosen } : null;
   useEffect(() => {
-    if (!open || !ready || unchanged) { setPreview(null); return; }
+    if (!open || !data?.canRequest.allowed || !destination || unchanged) { setPreview(null); return; }
     let live = true; setError('');
-    api<Preview>(`/api/bookings/${bookingId}/changes/preview`, { destination: { date, windowStart: chosen[0].startTime, slots: chosen } })
+    api<Preview>(`/api/bookings/${bookingId}/changes/preview`, { destination })
       .then(result => { if (live) setPreview(result); }).catch(cause => { if (live) { setPreview(null); setError(errorText(t, cause)); } });
     return () => { live = false; };
-  }, [open, ready, unchanged, date, chosen, bookingId]);
+  }, [open, data?.canRequest.allowed, unchanged, JSON.stringify(destination), bookingId]);
   const send = async () => {
     if (!preview) return;
     setBusy(true); setError('');
@@ -178,6 +186,8 @@ export function ChangeBookingDialog({ bookingId, kitchenId, kitchenName, timezon
           <Button variant="outline" onClick={() => onOpenChange(false)}>{t('chgClose')}</Button>
         </div>
         : <div className="space-y-4">
+          {data.dated && isDatedChangeSchedule(data.original) ? <DatedChangeEditor bookingId={bookingId} kitchenId={kitchenId} original={data.original} disabled={busy}
+            onChange={(next, same) => setDays({ destination: next, unchanged: same })} /> : <>
           <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
             <div className="space-y-1">
               <label className="text-sm font-medium" htmlFor="change-booking-date">{t('chgDate')}</label>
@@ -198,8 +208,9 @@ export function ChangeBookingDialog({ bookingId, kitchenId, kitchenName, timezon
                   variant={slot.time === start ? 'default' : 'outline'} disabled={busy || !free.has(slot.time)} aria-pressed={slot.time === start}
                   onClick={() => setStart(slot.time)}>{formatTime(slot.time, f.locale)}</Button>)}</div>}
           </fieldset>
-          {unchanged && <p className="text-sm text-muted-foreground">{t('chgPickDifferent')}</p>}
           {start && slots !== null && maxHours > 0 && hours > maxHours && <p role="status" className="text-sm text-amber-800">{t('chgTooLong', { count: maxHours, time: formatTime(start, f.locale) })}</p>}
+          </>}
+          {unchanged && <p className="text-sm text-muted-foreground">{t(data.dated ? 'chgPickDifferentDays' : 'chgPickDifferent')}</p>}
           {preview && m && <section className="space-y-2 rounded-xl border bg-muted/30 p-4 text-sm" aria-live="polite" data-testid="change-preview">
             <p>{t('chgNewTime', { when: f.schedule(preview.destination) })}</p>
             <p className="text-lg font-semibold">{headline}</p>

@@ -75,6 +75,9 @@ export function acceptedDatedTotals(m: DatedBookingManifest, acceptedSubtotalCen
 /** Source lock precedes booking/visit locks. Unknown fee rows remain NULL until verified provider evidence arrives. */
 export async function writeDatedCaptureAllocations(tx: Tx, sourceId: number, evidence: DatedCaptureEvidence) {
   const [source] = await tx.select().from(paymentTransactions).where(eq(paymentTransactions.id, sourceId)).for('update');
+  // A late capture event after a booking change (CP7): its fee was verified before the move and the frozen manifest no longer describes the days.
+  const moved = await tx.select({ evidence: kitchenBookingDayAllocations.evidence }).from(kitchenBookingDayAllocations).where(eq(kitchenBookingDayAllocations.sourceId, sourceId));
+  if (moved.some(row => (row.evidence as any)?.supersededBy)) return;
   const { saved, quote, components: expected, captured } = await datedSourceComponents(tx, source);
   const m = { ...quote.manifest, ...captured };
   if (source.paymentIntentId !== evidence.intentId || evidence.currency !== 'cad' || evidence.capturedCents !== m.totalCents

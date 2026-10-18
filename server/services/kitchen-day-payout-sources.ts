@@ -1,6 +1,6 @@
 import { asc, eq } from 'drizzle-orm';
 import { db } from '../db';
-import { paymentTransactions, kitchenBookings, kitchenBookingVisits, kitchenBookingExtensions,
+import { paymentTransactions, kitchenBookings, kitchenBookingVisits, kitchenBookingExtensions, kitchenBookingChanges,
   kitchenBookingDayAllocations as allocations } from '@shared/schema';
 import { allocateDatedCapture, type DayComponent } from './dated-booking-quote';
 import { ensureDayPayoutRows } from './kitchen-day-payouts';
@@ -33,6 +33,11 @@ export async function syncDayPayoutSource(sourceId: number) {
     const [locked] = await tx.select().from(paymentTransactions).where(eq(paymentTransactions.id, sourceId)).for('update');
     const m = (locked.metadata || {}) as Record<string, any>;
     if (!m.sessionExtensionId && !m.kitchenChangeId) throw Error('Unknown supplemental source');
+    // A change charge is split over the new days only once its change applies (its manifest is written then).
+    if (m.kitchenChangeId && !m.dayComponents?.length && !Number.isSafeInteger(m.visitId)) {
+      const [change] = await tx.select({ state: kitchenBookingChanges.state }).from(kitchenBookingChanges).where(eq(kitchenBookingChanges.id, String(m.kitchenChangeId)));
+      if (change && change.state !== 'applied') return;
+    }
     const visits = await tx.select().from(kitchenBookingVisits).where(eq(kitchenBookingVisits.bookingId, locked.bookingId));
     let components: DayComponent[] = m.dayComponents;
     if (m.sessionExtensionId) {
@@ -54,6 +59,8 @@ export async function syncDayPayoutSource(sourceId: number) {
       || Number(locked.baseAmount) + Number(locked.serviceFee) !== evidence.capturedCents) throw Error('Supplemental capture differs');
     const allocated = allocateDatedCapture(components, { totalCents: Number(locked.amount), taxCents: Number(locked.taxAmount), serviceFeeCents: Number(locked.serviceFee) } as any, evidence.feeCents);
     const existing = await tx.select().from(allocations).where(eq(allocations.sourceId, sourceId)).orderBy(asc(allocations.id));
+    // A booking change already moved these verified parts to new days (CP7); never reallocate them from the old manifest.
+    if (existing.some(row => (row.evidence as any)?.supersededBy)) { await ensureDayPayoutRows(tx, sourceId); return; }
     for (const part of allocated) {
       const previous = existing.find(p => p.visitId === part.visitId && p.componentKey === part.componentKey && p.allocationRevision === 1);
       const proof = { chargeId: evidence.chargeId, balanceTransactionId: evidence.balanceTransactionId, feeDetails: evidence.feeDetails, feeStatus: evidence.feeCents === null ? 'pending' : 'verified' };

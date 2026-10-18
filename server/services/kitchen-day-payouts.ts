@@ -98,7 +98,9 @@ export function refundsAllocated(source: Pick<Source, 'refundAmount' | 'metadata
   const receipts: Array<{ id: string; customerReceived: number; managerDebited: number; platformServiceFeeReturned: number }> = m.refunds || [];
   const dayRefunds = new Set([...(m.cancellationRefundOperations || []), m.cancellationRefundOperation]
     .filter(op => op?.dated && op.status === 'succeeded' && op.refundId).map(op => op.refundId)
-    .concat((m.outsideRefunds || []).map((row: { refundId: string }) => row.refundId)));
+    .concat((m.outsideRefunds || []).map((row: { refundId: string }) => row.refundId))
+    // CP7: an applied change's refund is a settled part of the day ledger.
+    .concat(m.allocatedChangeRefunds || []));
   return receipts.reduce((sum, row) => sum + Number(row.customerReceived), 0) === Number(source.refundAmount || 0)
     && receipts.every(row => dayRefunds.has(row.id) || Number(row.managerDebited) === 0 && Number(row.platformServiceFeeReturned) === 0);
 }
@@ -263,7 +265,8 @@ export async function flushDayPayoutNotices(bookingId: number) {
     const allocationRows = await tx.select().from(allocations).where(sql`${allocations.sourceId} IN
       (SELECT id FROM payment_transactions WHERE booking_id = ${bookingId} AND booking_type IN ('kitchen','bundle') AND payout_partition = 'per_day')`);
     const sentIds = new Set(rows.map(r => `${r.payout.sourceId}:${r.payout.visitId}:${r.payout.allocationRevision}`));
-    const remainingNetCents = allocationRows.filter(a => !sentIds.has(`${a.sourceId}:${a.visitId}:${a.allocationRevision}`))
+    // Parts a booking change moved to new days are counted once, on their new days.
+    const remainingNetCents = allocationRows.filter(a => !sentIds.has(`${a.sourceId}:${a.visitId}:${a.allocationRevision}`) && !(a.evidence as any)?.supersededBy)
       .reduce((sum, a) => sum + (a.stripeFeeCents === null ? 0 : Math.max(0, a.subtotalCents + a.taxCents - a.stripeFeeCents - Number((a.evidence as any).managerDebitedCents || 0))), 0);
     const pending = rows.map(r => r.payout).filter(p => !evidenceOf(p).noticeQueued);
     for (const tick of Array.from(new Set(pending.map(p => evidenceOf(p).noticeTick)))) {

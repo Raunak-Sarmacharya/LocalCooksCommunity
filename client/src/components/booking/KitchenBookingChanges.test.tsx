@@ -114,3 +114,41 @@ describe('Change date or time dialog', () => {
     expect(await screen.findByText(/the kitchen is free for 1 hour/)).toBeInTheDocument();
   });
 });
+
+describe('CP7: a dated booking changes as a whole day set', () => {
+  const full = (date: string, equipmentIds: number[] = []) => ({ date, pricingMode: 'daily', windowStart: '09:00',
+    slots: Array.from({ length: 8 }, (_, i) => ({ startTime: `${String(9 + i).padStart(2, '0')}:00`, endTime: `${String(10 + i).padStart(2, '0')}:00` })), equipmentIds });
+  const days = { version: 'days-v1', days: [full('2030-11-04', [7]), full('2030-11-06', [7])] };
+  const moved = { version: 'days-v1', days: [full('2030-11-05'), full('2030-11-07')] };
+  it('kitchen: lists the old and the new days of the request', async () => {
+    routes = { '/changes': { original: days, dated: true, canRequest: { allowed: false }, open: open({ original: days, destination: moved, canDecide: true, canWithdraw: false }), timezone: 'America/St_Johns' } };
+    render(<KitchenBookingChanges bookingId={10} manager counterpart="Sam Chef" onChanged={async () => {}} />);
+    const row = await screen.findByTestId('booking-change-open');
+    expect(row).toHaveTextContent(/Tue, Nov 5 · 9:00.*5:00.*; Thu, Nov 7 · 9:00/);
+    expect(row).toHaveTextContent(/Mon, Nov 4 · 9:00.*; Wed, Nov 6 · 9:00/);
+  });
+  it('chef: the day picker starts from the current days; an edit is priced as a days-v1 request and sent as previewed', async () => {
+    const slots = Array.from({ length: 8 }, (_, i) => ({ time: `${String(9 + i).padStart(2, '0')}:00`, available: 1, capacity: 1, isFullyBooked: false }));
+    const destination = { version: 'days-v1', days: [full('2030-11-04', [7]), full('2030-11-06', [])] };
+    routes = { '/changes/preview': { destination, money: money({ newTotalCents: 2925, payCents: 0, refundCents: 120, feeKeptCents: 5 }), decisionBy: '2030-11-01T12:00:00Z',
+      freeCancelAfter: '2030-11-03T09:00:00Z', quoteHash: 'b'.repeat(64) }, '/date-status': {}, '/slots': slots,
+      '/equipment-listings': { rental: [{ id: 7, equipmentType: 'Mixer' }] }, '/changes': { original: days, dated: true, canRequest: { allowed: true }, timezone: 'America/St_Johns' } };
+    const onOpenChange = vi.fn();
+    render(<ChangeBookingDialog bookingId={10} kitchenId={54} kitchenName="PHASE0 Main Kitchen" timezone="America/St_Johns" open onOpenChange={onOpenChange} onChanged={async () => {}} />);
+    await screen.findByTestId('dated-change-editor');
+    // The booking's own days never block the picker.
+    await waitFor(() => expect(calls.some(call => call.url.includes('/api/chef/kitchens/54/date-status?year=2030&month=10&changing=10'))).toBe(true));
+    expect(screen.getByText('Choose different days, hours or equipment.')).toBeInTheDocument();
+    const wednesday = await screen.findByTestId('change-day-2030-11-06');
+    const mixer = await waitFor(() => { const box = wednesday.querySelector('input[type=checkbox]') as HTMLInputElement; expect(box).toBeTruthy(); return box; });
+    expect(mixer.checked).toBe(true);
+    fireEvent.click(mixer);
+    const preview = await screen.findByTestId('change-preview');
+    expect(preview).toHaveTextContent('$1.20');
+    expect(calls.find(call => call.url.endsWith('/changes/preview'))?.body.destination).toMatchObject({ version: 'days-v1',
+      days: [{ date: '2030-11-04', pricingMode: 'daily', equipmentIds: [7] }, { date: '2030-11-06', pricingMode: 'daily', equipmentIds: [] }] });
+    fireEvent.click(screen.getByRole('button', { name: 'Send change request' }));
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+    expect(calls.find(call => call.url.endsWith('/api/bookings/10/changes') && call.body)?.body).toMatchObject({ destination, quoteHash: 'b'.repeat(64) });
+  });
+});

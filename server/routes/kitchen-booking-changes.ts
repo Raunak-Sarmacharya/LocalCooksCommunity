@@ -9,8 +9,13 @@ import { checkoutKitchenChange, decideKitchenChange, KitchenChangeError, preview
 const router = Router();
 router.use(requireFirebaseAuthWithUser);
 const time = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
-const destination = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), windowStart: time, pricingMode: z.enum(['hourly', 'daily']).optional(),
-  slots: z.array(z.object({ startTime: time, endTime: time }).strict()).min(1).max(24) }).strict();
+const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/), slots = z.array(z.object({ startTime: time, endTime: time }).strict()).max(24);
+const single = z.object({ date, windowStart: time, pricingMode: z.enum(['hourly', 'daily']).optional(), slots: slots.min(1) }).strict();
+/** CP7: a dated booking's whole day set (the server fills each day's window and a full day's hours). */
+const days = z.object({ version: z.literal('days-v1'), days: z.array(z.object({ date, pricingMode: z.enum(['hourly', 'daily']), slots,
+  windowStart: time.optional(), equipmentIds: z.array(z.number().int().positive()).max(50) }).strict()).min(1).max(14) }).strict()
+  .transform(value => ({ version: value.version, days: value.days.map(day => ({ ...day, windowStart: day.windowStart ?? day.slots[0]?.startTime ?? '00:00' })) }));
+const destination = z.union([single, days]);
 const preview = z.object({ destination }).strict();
 const request = z.object({ destination, quoteHash: z.string().regex(/^[0-9a-f]{64}$/), requestKey: z.string().uuid() }).strict();
 const decision = z.object({ action: z.enum(['approve', 'decline', 'withdraw']), revision: z.number().int().positive(), message: z.string().trim().max(500).optional() }).strict();
