@@ -1,6 +1,7 @@
 /** Real dated checkout, money and lifecycle chain; only provider/email/Firebase I/O is in memory. */
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { and, eq } from 'drizzle-orm';
 import * as s from '@shared/schema';
 import { bookingDocuments } from '@shared/booking-documents-schema';
@@ -8,10 +9,16 @@ import { DATED_DISCLOSURE_VERSION } from '@shared/cancellation-policy';
 import { savedCloseout } from '@shared/clock-closeout';
 import { createTestDatabase } from './kitchen-booking-changes.pglite';
 
-const h = vi.hoisted(() => ({ db: null as any, client: null as any, provider: null as any,
+const h = vi.hoisted(() => ({ db: null as any, client: null as any, provider: null as any, connection: null as any,
   sessions: [] as any[], intents: new Map<string, any>(), refunds: [] as any[], transfers: [] as any[],
+  notificationCounts: new Map<number, number>(),
   sendEmail: vi.fn(async () => true), capture: vi.fn(), cancel: vi.fn(), transfer: vi.fn() }));
-vi.mock('../db', () => ({ db: new Proxy({}, { get: (_t, key) => typeof h.db[key] === 'function' ? h.db[key].bind(h.db) : h.db[key] }), pool: {} }));
+vi.mock('../db', () => ({ db: new Proxy({}, { get: (_t, key) => {
+  const reader = h.connection?.getStore() ?? h.db;
+  // PGlite has one connection: re-entrant global reads must use the active SQL transaction.
+  if (key === 'transaction') return (work: (tx: any) => Promise<unknown>) => reader.transaction((tx: any) => h.connection.run(tx, () => work(tx)));
+  return typeof reader[key] === 'function' ? reader[key].bind(reader) : reader[key];
+} }), pool: {} }));
 vi.mock('stripe', () => ({ default: class {
   static createFetchHttpClient() { return {}; }
   constructor() { return h.provider; }
@@ -31,18 +38,21 @@ let cancelDays: typeof import('./dated-booking-cancellation').cancelDatedDays;
 let release: typeof import('./kitchen-day-payouts').releaseBookingDayPayouts;
 let documents: typeof import('./booking-documents').ensureBookingDocuments;
 let bounds: typeof import('./manager-customers').bookingBounds;
+let deliver: typeof import('./booking-lifecycle-delivery').deliverBookingLifecycleEvents;
 
 beforeAll(async () => {
   vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_in_memory_only');
   vi.stubEnv('INNGEST_EVENT_KEY', '');
   vi.stubEnv('LOCAL_COOKS_GST_HST_NUMBER', '');
+  vi.stubEnv('VISIT_CODE_HMAC_SECRET', 'parity-test-only-signing-material-00000000');
+  vi.stubEnv('VISIT_CODE_HMAC_KEY_VERSION', '1');
   vi.stubGlobal('fetch', vi.fn(() => { throw Error('Network is forbidden in lifecycle parity tests'); }));
   const legacy = readFileSync('migrations/0043_kitchen_booking_visits.sql', 'utf8');
   const cp1 = readFileSync('migrations/0099_multiday_and_kitchen_controls.sql', 'utf8');
   const test = await createTestDatabase([
     s.users, s.locations, s.kitchens, s.kitchenAvailability, s.kitchenDateOverrides, s.locationRequirements,
     s.chefKitchenApplications, s.chefDocumentRenewals, s.chefLocationAccess, s.applications,
-    s.equipmentListings, s.storageListings, s.kitchenBookings, s.kitchenBookingVisits, s.equipmentBookings, s.storageBookings,
+    s.equipmentListings, s.storageListings, s.kitchenBookings, s.kitchenBookingVisits, s.equipmentBookings, s.storageBookings, s.storageOverstayRecords,
     s.paymentTransactions, s.paymentHistory, s.kitchenCheckoutHolds, s.kitchenCheckoutIncidents, s.kitchenInvitations,
     s.kitchenCancellationPolicies, s.platformSettings, s.bookingLifecycleEvents, s.emailLogs,
     s.checkinCheckoutChecklists, s.kitchenCheckinCheckoutOverrides, s.kitchenVisitArrivalChallenges,
@@ -50,6 +60,7 @@ beforeAll(async () => {
     s.bookingFlags, s.supportActions, s.commitmentProblems, s.damageClaims, s.kitchenViewings, bookingDocuments,
   ], [
     legacy.slice(legacy.indexOf('CREATE OR REPLACE FUNCTION'), legacy.indexOf('DROP TRIGGER')),
+    'CREATE UNIQUE INDEX parity_setting ON platform_settings(key)',
     // Run the actual migration, including the dated-only trigger condition and constrained day ledgers.
     cp1,
     readFileSync('migrations/0098_policy_snapshot_sessions_movable.sql', 'utf8'),
@@ -71,6 +82,7 @@ beforeAll(async () => {
     }),
   ]);
   h.db = test.db; h.client = test.client;
+  h.connection = new AsyncLocalStorage();
   h.provider = {
     checkout: { sessions: {
       create: async (params: any, options: any) => {
@@ -91,7 +103,12 @@ beforeAll(async () => {
     charges: { retrieve: async (id: string) => structuredClone([...h.intents.values()].find(intent => intent.latest_charge?.id === id)?.latest_charge) },
     balanceTransactions: { retrieve: async (id: string) => structuredClone([...h.intents.values()].find(intent => intent.latest_charge?.balance_transaction?.id === id)?.latest_charge.balance_transaction) },
     refunds: {
-      list: async (params: any) => ({ data: h.refunds.filter(row => !params.payment_intent || row.payment_intent === params.payment_intent), has_more: false }),
+      list: (params: any) => {
+        const data = h.refunds.filter(row => (!params.payment_intent || row.payment_intent === params.payment_intent) && (!params.charge || row.charge === params.charge));
+        return Object.assign(Promise.resolve({ data: structuredClone(data), has_more: false }), {
+          async *[Symbol.asyncIterator]() { yield* structuredClone(data); },
+        });
+      },
       create: async (params: any, options: any) => {
         const old = h.refunds.find(row => row.key === options?.idempotencyKey);
         if (old) return old;
@@ -112,6 +129,7 @@ beforeAll(async () => {
   ({ releaseBookingDayPayouts: release } = await import('./kitchen-day-payouts'));
   ({ ensureBookingDocuments: documents } = await import('./booking-documents'));
   ({ bookingBounds: bounds } = await import('./manager-customers'));
+  ({ deliverBookingLifecycleEvents: deliver } = await import('./booking-lifecycle-delivery'));
 }, 60_000);
 
 afterAll(async () => { await h.client?.close(); vi.useRealTimers(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
@@ -119,7 +137,7 @@ beforeEach(async () => {
   vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(NOW);
   const tables = await h.client.query("SELECT tablename FROM pg_tables WHERE schemaname = 'public'");
   await h.client.exec(`TRUNCATE ${tables.rows.map((row: any) => `"${row.tablename}"`).join(',')} RESTART IDENTITY CASCADE`);
-  h.sessions = []; h.intents.clear(); h.refunds = []; h.transfers = []; vi.clearAllMocks();
+  h.sessions = []; h.intents.clear(); h.refunds = []; h.transfers = []; h.notificationCounts.clear(); vi.clearAllMocks();
   h.capture.mockImplementation(async (id: string, params: any) => {
     const intent = h.intents.get(id), amount = params.amount_to_capture ?? intent.amount;
     Object.assign(intent, { status: 'succeeded', amount_received: amount, amount_capturable: 0,
@@ -143,7 +161,7 @@ beforeEach(async () => {
     kitchenPreference: 'commercial', foodSafetyLicense: 'yes', foodEstablishmentCert: 'yes', status: 'approved', current_tier: 3,
     foodSafetyLicenseUrl: 'https://test.invalid/safety', foodSafetyLicenseStatus: 'approved', foodSafetyLicenseExpiry: '2100-01-01',
     foodEstablishmentCertUrl: 'https://test.invalid/cert', foodEstablishmentCertStatus: 'approved', foodEstablishmentCertExpiry: '2100-01-01' });
-  await h.db.insert(s.chefLocationAccess).values({ chefId: 3, locationId: 9 });
+  await h.db.insert(s.chefLocationAccess).values({ chefId: 3, locationId: 9, grantedBy: 2 });
   await h.db.insert(s.kitchenCancellationPolicies).values({ kitchenId: 4, version: 1, status: 'published', noticeHours: 24, lateChargePercent: 50,
     tiers: [{ minHoursBeforeStart: 24, refundPercent: 100 }, { minHoursBeforeStart: 0, refundPercent: 50 }], publishedBy: 2 });
   await h.db.insert(s.platformSettings).values([{ key: 'platform_commission_rate', value: '0.07' }, { key: 'booking_multiday_enabled', value: 'true' }]);
@@ -158,7 +176,12 @@ async function event(id: number, kind: string) {
   const row = rows.at(-1);
   expect(row.emails.length, `${kind} email outbox`).toBeGreaterThan(0);
   const queued = await h.client.query('SELECT metadata FROM chef_notifications UNION ALL SELECT metadata FROM manager_notifications');
-  expect(queued.rows.some((notice: any) => notice.metadata.bookingId === id), `${kind} notification`).toBe(true);
+  const count = queued.rows.filter((notice: any) => notice.metadata.bookingId === id).length;
+  expect(count, `${kind} adds a notification`).toBeGreaterThan(h.notificationCounts.get(id) ?? 0);
+  h.notificationCounts.set(id, count);
+  const sent = h.sendEmail.mock.calls.length;
+  await expect(deliver(10, 20_000, id, row.id)).resolves.toMatchObject({ completed: 1 });
+  expect(h.sendEmail.mock.calls.length, `${kind} email rendered and sent to fake transport`).toBeGreaterThan(sent);
   return row;
 }
 async function requested(equipment = false) {
@@ -168,7 +191,7 @@ async function requested(equipment = false) {
   const id = (await fulfill(session, h.intents.get(session.payment_intent), h.provider))!;
   expect(id).toBeTypeOf('number');
   expect(await getBooking(id)).toMatchObject({ status: 'pending', paymentStatus: 'authorized', scheduleRevision: 1 });
-  expect(savedCloseout((await getBooking(id)).visitDuties)).toBeNull();
+  expect(savedCloseout((await getBooking(id)).visitDuties)).toBeUndefined();
   expect((await visits(id)).map((row: any) => row.visitDate)).toEqual(DATES);
   await event(id, 'requested');
   const reminders = await h.db.select().from(s.emailLogs);
@@ -186,9 +209,15 @@ async function confirmed() {
   const allocations = await h.db.select().from(s.kitchenBookingDayAllocations);
   const payouts = await h.db.select().from(s.kitchenBookingDayPayouts);
   expect(allocations).toHaveLength(3); expect(payouts).toHaveLength(3);
+  expect(allocations.map((row: any) => [row.subtotalCents, row.taxCents, row.serviceFeeCents, row.stripeFeeCents])).toEqual(
+    Array.from({ length: 3 }, () => [18000, 2700, 1260, 647]));
   expect(allocations.reduce((sum: number, row: any) => sum + row.subtotalCents + row.taxCents + row.serviceFeeCents, 0)).toBe(65880);
   expect(allocations.reduce((sum: number, row: any) => sum + row.stripeFeeCents, 0)).toBe(1941);
-  expect((await documents(id)).documents.some(doc => doc.kind === 'payment_receipt')).toBe(true);
+  const [source] = await h.db.select().from(s.paymentTransactions).where(eq(s.paymentTransactions.bookingId, id));
+  expect(source).toMatchObject({ status: 'succeeded', amount: '65880', baseAmount: '62100', taxAmount: '8100',
+    serviceFee: '3780', stripeProcessingFee: '1941', managerRevenue: '60159', payoutPartition: 'per_day', payoutTiming: 'after_closeout' });
+  expect(allocations.reduce((sum: number, row: any) => sum + row.subtotalCents + row.taxCents - row.stripeFeeCents, 0)).toBe(Number(source.managerRevenue));
+  expect((await documents(id)).documents.some(doc => doc.kind === 'payment')).toBe(true);
   return id;
 }
 
@@ -238,9 +267,11 @@ describe('dated lifecycle parity with real services', () => {
   it('lets the chef drop one day before the deadline, then cancel the remaining booking', async () => {
     const id = await confirmed(), [first] = await visits(id);
     await cancelDays(id, { role: 'chef', id: 3 }, { target: { visitIds: [first.id] }, operationKey: 'chef-drop-first' });
+    expect(h.refunds).toHaveLength(1);
     await event(id, 'day_cancelled');
     expect((await visits(id)).filter((row: any) => row.scheduleState === 'cancelled')).toHaveLength(1);
     await cancelDays(id, { role: 'chef', id: 3 }, { target: {}, operationKey: 'chef-cancel-rest' });
+    expect(h.refunds).toHaveLength(2);
     await event(id, 'cancelled');
     expect(await getBooking(id)).toMatchObject({ status: 'cancelled' });
     expect((await visits(id)).every((row: any) => row.scheduleState === 'cancelled')).toBe(true);
@@ -248,12 +279,15 @@ describe('dated lifecycle parity with real services', () => {
   it('lets the kitchen cancel one day with a queued lifecycle notice', async () => {
     const id = await confirmed(), [first] = await visits(id);
     await cancelDays(id, { role: 'manager', id: 2 }, { target: { visitIds: [first.id] }, operationKey: 'kitchen-drop-first' });
+    expect(h.refunds).toHaveLength(1);
     await event(id, 'day_cancelled');
     expect(await getBooking(id)).toMatchObject({ status: 'confirmed' });
     expect((await visits(id)).filter((row: any) => row.scheduleState === 'cancelled')).toHaveLength(1);
   });
   it('releases only one day after its inspection using an in-memory transfer', async () => {
     const id = await confirmed(), [first] = await visits(id);
+    await h.db.update(s.kitchenBookingVisits).set({ checkinStatus: 'checked_out', checkoutApprovedBy: 2,
+      checkoutApprovedAt: new Date('2099-11-02T17:30:00Z') }).where(eq(s.kitchenBookingVisits.id, first.id));
     const afterInspection = new Date('2099-11-03T18:00:00Z');
     vi.setSystemTime(afterInspection);
     const [payout] = await h.db.select().from(s.kitchenBookingDayPayouts).where(eq(s.kitchenBookingDayPayouts.visitId, first.id));
