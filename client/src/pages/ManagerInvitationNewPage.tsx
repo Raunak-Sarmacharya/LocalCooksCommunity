@@ -278,11 +278,11 @@ export default function ManagerInvitationNewPage() {
           </Select></label>
         {edit.pricingMode === 'hourly' && <>
           <label className={field}>{t('invStart')}
-            <TimeSelect value={start} onChange={value => setDayEdits(current => ({ ...current, [date]: { ...editFor(date), start: value } }))}
+            <TimeSelect value={start} onChange={value => { if (value) setDayEdits(current => ({ ...current, [date]: { ...editFor(date), start: value } })); }}
               min={slots[0]?.time} aria-label={t('invStartFor', { day: dayLabel(date) })} className="mt-1" /></label>
           <label className={field}>{t('invLength')}
-            <Select value={String(Math.min(edit.hours, free))} onValueChange={value => setDayEdits(current => ({ ...current,
-              [date]: { ...editFor(date), hours: Number(value) } }))}>
+            <Select value={String(Math.min(edit.hours, free))} onValueChange={value => { if (!value) return; setDayEdits(current => ({ ...current,
+              [date]: { ...editFor(date), hours: Number(value) } })); }}>
               <SelectTrigger className={box}><SelectValue /></SelectTrigger>
               <SelectContent>{Array.from({ length: free }, (_, i) => i + 1).map(n =>
                 <SelectItem key={n} value={String(n)}>{t('chgHoursOption', { count: n })}</SelectItem>)}</SelectContent>
@@ -363,7 +363,7 @@ export default function ManagerInvitationNewPage() {
                       </Select></label>
                     {shared.pricingMode === 'hourly' && <>
                       <label className={field}>{t('invStart')}
-                        <TimeSelect value={shared.start} onChange={value => setShared(current => ({ ...current, start: value }))} aria-label={t('invStart')} className="mt-1" /></label>
+                        <TimeSelect value={shared.start} onChange={value => { if (value) setShared(current => ({ ...current, start: value })); }} aria-label={t('invStart')} className="mt-1" /></label>
                       <label className={field}>{t('invLength')}
                         <Select value={String(shared.hours)} onValueChange={value => setShared(current => ({ ...current, hours: Number(value) }))}>
                           <SelectTrigger className={box}><SelectValue /></SelectTrigger>
@@ -380,7 +380,7 @@ export default function ManagerInvitationNewPage() {
                     placeholder={t('invChooseDateFirst')} aria-label={t('invDate')} className="mt-1 min-h-11" /></div>
                 <label className={field}>{t('invStart')}
                   <Select value={legacyStart || EMPTY} disabled={!slotsFor(legacyDate).length}
-                    onValueChange={value => setDayEdits(current => ({ ...current, [legacyDate]: { ...editFor(legacyDate), start: value } }))}>
+                    onValueChange={value => { if (value) setDayEdits(current => ({ ...current, [legacyDate]: { ...editFor(legacyDate), start: value } })); }}>
                     <SelectTrigger className={box}><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {!slotsFor(legacyDate).length && <SelectItem value={legacyStart || EMPTY}>{t(legacyDate && rules.isSuccess ? 'invClosedDay' : 'invChooseDateFirst')}</SelectItem>}
@@ -389,8 +389,8 @@ export default function ManagerInvitationNewPage() {
                     </SelectContent>
                   </Select></label>
                 <label className={field}>{t('invLength')}
-                  <Select value={String(editFor(legacyDate).hours)} onValueChange={value => setDayEdits(current => ({ ...current,
-                    [legacyDate]: { ...editFor(legacyDate), hours: Number(value) } }))}>
+                  <Select value={String(editFor(legacyDate).hours)} onValueChange={value => { if (!value) return; setDayEdits(current => ({ ...current,
+                    [legacyDate]: { ...editFor(legacyDate), hours: Number(value) } })); }}>
                     <SelectTrigger className={box}><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {Array.from({ length: Math.max(1, Math.min(12, freeFrom(legacyDate, legacyStart) || 12)) }, (_, i) => i + 1).map(n =>

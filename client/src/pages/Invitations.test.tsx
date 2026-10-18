@@ -16,7 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ManagerInvitationNewPage from './ManagerInvitationNewPage';
 import ChefInvitationPage from './ChefInvitationPage';
 import { ChefInvitationsBanner } from '@/components/booking/ChefInvitationsBanner';
-import { CANCELLATION_DISCLOSURE_VERSION } from '@shared/cancellation-policy';
+import { CANCELLATION_DISCLOSURE_VERSION, DATED_DISCLOSURE_VERSION } from '@shared/cancellation-policy';
 
 // An overnight kitchen: 9:00 a.m. to 1:00 a.m. (12:00 a.m. is the last hour of the same operating day).
 const overnight = [...Array.from({ length: 15 }, (_, i) => `${String(i + 9).padStart(2, '0')}:00`), '00:00']
@@ -104,6 +104,44 @@ describe('kitchen: invite to book', () => {
     expect(await screen.findByText('Sam Chef already has a request for this time.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Send invitation' })).toBeDisabled();
   });
+  it('offers several days, each with its own hours and equipment, at a discount off the listed total', async () => {
+    const multiRules = { ...rules, allowMultiDayBookings: true, multidayCreationEnabled: true, maxBookingDays: 3 };
+    const listed = { listSubtotalCents: 12000, offeredSubtotalCents: 10000, discount: { type: 'amount', value: 2000 },
+      taxCents: 1500, serviceFeeCents: 650, totalCents: 12150, managerEstimatedPayoutCents: 11000 };
+    routes = [[/eligible-chefs/, { chefs: [{ id: 380, name: 'Sam Chef' }] }], [/\/api\/manager\/kitchens\/47$/, [{ id: 54, name: 'Harbour Kitchen' }]],
+      [/kitchen-rules/, multiRules],
+      [/date-status/, { '2026-10-27': { hourly: true }, '2026-10-29': { hourly: true } }],
+      [/equipment-listings/, { included: [{ id: 9, equipmentType: 'Prep table', brand: null, sessionRate: null }],
+        rental: [{ id: 7, equipmentType: 'Convection oven', brand: 'Rational', sessionRate: 2500 }] }],
+      [/\/slots\?date=/, overnight],
+      [/invitations\/preview/, { pricing: listed, expiresAt: '2026-10-18T13:00:00Z', available: true, warnings: [] }],
+      [/\/api\/manager\/invitations\?/, { invitations: [] }],
+      [/\/api\/manager\/invitations$/, invitation({ dayCount: 2, dated: true, date: '2026-10-27' })]];
+    mount(<ManagerInvitationNewPage />);
+    await waitFor(() => expect(screen.getByLabelText('Chef')).toHaveTextContent('Sam Chef'));
+    fireEvent.click(await screen.findByRole('gridcell', { name: /Tuesday, October 27, 2026/ }));
+    fireEvent.click(await screen.findByRole('gridcell', { name: /Thursday, October 29, 2026/ }));
+    const first = await screen.findByTestId('invitation-day-2026-10-27');
+    const second = screen.getByTestId('invitation-day-2026-10-29');
+    expect(first).toHaveTextContent('Rational Convection oven · $25.00 per day');
+    expect(second).toHaveTextContent('Rational Convection oven · $25.00 per day');
+    fireEvent.click(within(first).getByRole('checkbox', { name: /Rational Convection oven/ }));
+    const preview = screen.getByTestId('invitation-preview');
+    await waitFor(() => expect(preview).toHaveTextContent('Sam Chef pays$121.50'));
+    expect(preview).toHaveTextContent('$120.00$100.00');
+    const drafted = calls.filter(call => call.url.includes('/preview')).at(-1)!.body;
+    expect(drafted.days).toEqual([
+      { date: '2026-10-27', pricingMode: 'hourly', equipmentIds: [9, 7],
+        slots: [{ startTime: '10:00', endTime: '11:00' }, { startTime: '11:00', endTime: '12:00' }] },
+      { date: '2026-10-29', pricingMode: 'hourly', equipmentIds: [9],
+        slots: [{ startTime: '10:00', endTime: '11:00' }, { startTime: '11:00', endTime: '12:00' }] },
+    ]);
+    expect(drafted).not.toHaveProperty('date');
+    fireEvent.click(screen.getByRole('button', { name: 'Send invitation' }));
+    const sent = await screen.findByTestId('invitation-sent');
+    expect(sent).toHaveTextContent('2 days · Tue, Oct 27');
+    expect(calls.filter(call => call.url.endsWith('/api/manager/invitations') && call.method === 'POST')).toHaveLength(1);
+  });
 });
 
 describe('chef: an invitation', () => {
@@ -136,6 +174,43 @@ describe('chef: an invitation', () => {
     fireEvent.click(pay);
     await waitFor(() => expect(calls.find(call => call.url.endsWith('/checkout'))?.body).toEqual({ equipmentIds: [7], cancellationPolicyAccepted: true,
       cancellationPolicyVersion: 1, cancellationDisclosureVersion: CANCELLATION_DISCLOSURE_VERSION }));
+  });
+  it('lists every invited day with its hours and per-day equipment, then pays the whole set', async () => {
+    const dated = invitation({ dated: true, dayCount: 2, date: '2026-10-27', startTime: '10:00', endTime: '12:00',
+      pricing: { listSubtotalCents: 12000, offeredSubtotalCents: 10000, discount: { type: 'amount', value: 2000 },
+        taxCents: 1500, serviceFeeCents: 650, totalCents: 12150 },
+      days: [
+        { date: '2026-10-27', pricingMode: 'hourly', startTime: '10:00', endTime: '12:00',
+          equipment: [{ listingId: 9, name: 'Prep table', cents: 0 }] },
+        { date: '2026-10-29', pricingMode: 'daily', startTime: '00:00', endTime: '00:00', equipment: [] },
+      ] });
+    routes = [[/\/quote/, { subtotalCents: 10000, listSubtotalCents: 12000, taxCents: 1500, serviceFeeCents: 650, totalCents: 12150 }],
+      [/equipment-listings/, { rental: [{ id: 7, equipmentType: 'Convection oven', brand: 'Rational', sessionRate: 2500 }] }],
+      [/cancellation-policy/, policyResponse], [/\/checkout/, { url: 'https://checkout.stripe.test/s' }],
+      [/\/api\/chef\/invitations\/inv-1$/, dated]];
+    const assign = vi.fn(); vi.stubGlobal('location', { ...window.location, assign });
+    mount(<ChefInvitationPage />);
+    const page = await screen.findByTestId('chef-invitation');
+    expect(page).toHaveTextContent('2 days · Tuesday, October 27');
+    const days = screen.getByTestId('invitation-days');
+    expect(days).toHaveTextContent('Tuesday, October 27 · 10:00 a.m.–12:00 p.m.');
+    expect(days).toHaveTextContent('Thursday, October 29 · Full day');
+    expect(days).toHaveTextContent('Prep table (included)');
+    expect(page).toHaveTextContent(/One refund deadline for every day: October 26/);
+    expect(page).toHaveTextContent('Your card is charged in full when payment completes.');
+    await waitFor(() => expect(calls.filter(call => call.url.endsWith('/quote')).at(-1)?.body)
+      .toEqual({ equipment: [{ date: '2026-10-27', equipmentIds: [9] }, { date: '2026-10-29', equipmentIds: [] }] }));
+    const secondDay = within(days).getByText('Thursday, October 29 · Full day').closest('li')!;
+    fireEvent.click(within(secondDay).getByRole('checkbox', { name: /Rational Convection oven/ }));
+    await waitFor(() => expect(calls.filter(call => call.url.endsWith('/quote')).at(-1)?.body)
+      .toEqual({ equipment: [{ date: '2026-10-27', equipmentIds: [9] }, { date: '2026-10-29', equipmentIds: [7] }] }));
+    const pay = screen.getByRole('button', { name: 'Review and pay $121.50' });
+    await waitFor(() => expect(pay).toBeEnabled());
+    fireEvent.click(pay);
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('https://checkout.stripe.test/s'));
+    expect(calls.find(call => call.url.endsWith('/checkout'))?.body).toEqual({
+      equipment: [{ date: '2026-10-27', equipmentIds: [9] }, { date: '2026-10-29', equipmentIds: [7] }],
+      cancellationPolicyAccepted: true, cancellationPolicyVersion: 1, cancellationDisclosureVersion: DATED_DISCLOSURE_VERSION });
   });
   it('refetches and displays a changed policy after 409, and sends that version on the next payment attempt', async () => {
     let current = policyResponse, attempts = 0;
