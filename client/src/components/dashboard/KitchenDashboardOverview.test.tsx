@@ -346,6 +346,32 @@ describe("revamped overview (R3)", () => {
     expect(attention).not.toContain("visitId=903");
   });
 
+  it("does not flag a multi-day booking whose ended day was checked out (stale booking-level check-in, as on dev)", () => {
+    live();
+    // Dev booking 209: the booking row still says not_checked_in with day 1's times; day 1 was checked out, day 2 is ahead.
+    state.bookings = [{ id: 209, kitchenId: 10, locationId: 1, chefName: "Morgan", kitchenName: "Kitchen East", bookingDate: plus(-1), createdAt: "2025-01-01",
+      startTime: "17:00", endTime: "18:00", status: "confirmed", checkinStatus: "not_checked_in", attendanceReviewComplete: false, scheduleRevision: 1,
+      visitStates: [{ id: 158, checkinStatus: "checked_out", visitDate: plus(-1), startTime: "17:00", endTime: "18:30" },
+        { id: 159, checkinStatus: "not_checked_in", visitDate: plus(5), startTime: "17:00", endTime: "18:00" }] }];
+    const attention = attentionOf(render());
+    expect(attention).not.toContain("overviewBookingOutcomes");
+    expect(attention).not.toContain("visitId=159");
+    expect(attention).toContain("overviewAllCaughtUp");
+  });
+
+  it("lists a day's checkout to review even when the booking row's own times have not ended (as on dev)", () => {
+    live();
+    // Dev booking 212: day 1's checkout is waiting; the booking row says not_checked_in, so the booking-level check missed it.
+    state.bookings = [{ id: 212, kitchenId: 10, locationId: 1, chefName: "Morgan", kitchenName: "Kitchen East", bookingDate: plus(5), createdAt: "2025-01-01",
+      startTime: "20:00", endTime: "21:00", status: "confirmed", checkinStatus: "not_checked_in", scheduleRevision: 1,
+      visitStates: [{ id: 171, checkinStatus: "checkout_requested", visitDate: plus(-1), startTime: "20:00", endTime: "21:00" },
+        { id: 172, checkinStatus: "not_checked_in", visitDate: plus(5), startTime: "20:00", endTime: "21:00" }] }];
+    const attention = attentionOf(render());
+    expect(attention).toContain("overviewKitchenCheckoutReviews");
+    expect(attention).toContain('href="/manager/booking/212/inspection?visitId=171"');
+    expect(attention).not.toContain("visitId=172");
+  });
+
   describe("Today card", () => {
     const day = "2026-10-18";
     const booking = (id: number, chefName: string, startTime: string, endTime: string, status: string) =>

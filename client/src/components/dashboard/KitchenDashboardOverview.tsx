@@ -289,16 +289,20 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
     const bookingZone = locations.find((location) => location.id === (booking.locationId ?? booking.location?.id))?.timezone;
     const label = bookingNextAction(booking, bookingZone);
     /*
-     * A multi-day booking's follow-up is about the day that ended (its checkout waiting, or ended with nothing
-     * recorded), not the booking's next day: each such day is its own item, named and linked to that day's inspection.
+     * A dated booking's follow-up is decided day by day: the booking row's own check-in status and times are day 1's
+     * (and go stale), which flagged "ended" bookings whose day 1 was checked out and pointed at their next day. Each
+     * day that ended and is still open (checkout waiting, or nothing recorded) is its own item, named and linked to that
+     * day's inspection; a checked-out day is not.
      */
-    const endedDays = label && FOLLOW_UP_ACTIONS.includes(label) ? managerListDays(booking).flatMap(day => {
-      const action = day.dayCount ? bookingNextAction(day.row, bookingZone) : null;
+    const days = managerListDays(booking);
+    const perDay = !!days[0]?.dayCount && (!label || FOLLOW_UP_ACTIONS.includes(label));
+    const endedDays = perDay ? days.flatMap(day => {
+      const action = bookingNextAction(day.row, bookingZone);
       return action && FOLLOW_UP_ACTIONS.includes(action) ? [{ day, action }] : [];
     }) : [];
     for (const { day, action } of endedDays) addTask(action, { id: `${booking.id}:${day.visitId}`, title: recordTitle(booking),
       detail: [dayLabel(day), listWhenLine(day.row, i18n.language, words)].filter(Boolean).join(" · "), view: "bookings", href: inspectionHref(booking.id, day.visitId) });
-    if (label && !endedDays.length) {
+    if (label && !perDay) {
       const dated = datedDay(booking);
       const visitId = dated.row.visitStates?.length === 1 ? dated.row.visitStates[0].id : undefined;
       // A follow-up (checkout to review, ended booking) opens that day's inspection; everything else opens the booking.
