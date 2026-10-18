@@ -188,7 +188,7 @@ function InspectionVisits({ booking, refresh, stale }: { booking: ManagerInspect
           <SelectTrigger id="inspection-visit" className="ml-2 max-w-full"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value={EMPTY}>{t('inspectCopy37')}</SelectItem>
-            {booking.visits.map(visit => <SelectItem key={visit.id} value={String(visit.id)} disabled={!!visit.visitDate && visit.scheduleState !== 'active'}>{visit.visitDate ? visit.visitDate + ' · ' + t('mdDayOf', { number: booking.visits.findIndex(day => day.id === visit.id) + 1, total: booking.visits.length }) : t('formVisitRange', 'Visit {number}: {start}–{end}', { number: visit.blockIndex + 1, start: formatTime(visit.startTime, locale), end: formatTime(visit.endTime, locale) })}</SelectItem>)}
+            {booking.visits.map(visit => <SelectItem key={visit.id} value={String(visit.id)} disabled={!!visit.visitDate && visit.scheduleState !== 'active'}>{visit.visitDate ? t('mdDayOf', { number: booking.visits.findIndex(day => day.id === visit.id) + 1, total: booking.visits.length }) + ' · ' + new Intl.DateTimeFormat(locale, { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' }).format(new Date(`${visit.visitDate.slice(0, 10)}T12:00:00Z`)) : t('formVisitRange', 'Visit {number}: {start}–{end}', { number: visit.blockIndex + 1, start: formatTime(visit.startTime, locale), end: formatTime(visit.endTime, locale) })}</SelectItem>)}
           </SelectContent>
         </Select><span className="mt-1 block text-muted-foreground">{t('inspectCopy38')}</span>
       </div>}
