@@ -626,6 +626,7 @@
   "dcV2SendDispute": "Надіслати оскарження",
   "dcV2NoClaims": "Немає заяв для перегляду.",
   "dcV2Booking": "Бронювання",
+  "dcV2StorageRental": "Оренда зберігання",
   "dcV2Filed": "Подано {date}",
   "dcV2OpenClaims": "Відкриті ({count})",
   "dcV2ClosedClaims": "Закриті ({count})",

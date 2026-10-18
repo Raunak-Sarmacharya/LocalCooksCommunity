@@ -626,6 +626,7 @@
   "dcV2SendDispute": "Envoyer la contestation",
   "dcV2NoClaims": "Aucune réclamation à afficher.",
   "dcV2Booking": "Réservation",
+  "dcV2StorageRental": "Location d’entreposage",
   "dcV2Filed": "Déposée le {date}",
   "dcV2OpenClaims": "Ouvertes ({count})",
   "dcV2ClosedClaims": "Fermées ({count})",

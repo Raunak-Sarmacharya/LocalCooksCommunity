@@ -3,7 +3,7 @@ import { CLAIM_BOOKING_HOLD_MS, type ClaimLine, type ClaimVisitEvidence, type Cl
 
 export type DamageClaimCardData = { id: number; referenceCode: string | null; bookingId: number | null; visitId: number | null; storageRentalId?: number | null;
   /** Which booking and day the claim is about (kitchen bookings). */
-  bookingReference?: string | null; day?: { number: number; total: number; date: string } | null; createdAt?: string;
+  bookingReference?: string | null; day?: { number: number; total: number; date: string } | null; createdAt?: string; chefName?: string;
   chefId: number; managerId: number; status: string; claimVersion: number; description: string; amountCents: number; claimedAmountCents: number;
   lines: ClaimLine[]; visitEvidence: ClaimVisitEvidence | null; chefResponse: string | null; deadline: string; upheldAt: string | null;
   publicMessage: string | null; kitchenPaid: boolean; fundedBy: string; chefOwes: boolean; chefVisible: boolean;

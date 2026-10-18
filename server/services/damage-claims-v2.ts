@@ -192,7 +192,10 @@ export async function publicClaim(claim: Claim, tx: ClaimTx = db as unknown as C
 }
 export async function readManagerClaims(managerId: number) {
   const claims = await db.select().from(damageClaims).where(eq(damageClaims.managerId, managerId)).orderBy(desc(damageClaims.id)).limit(100);
-  return { claims: await Promise.all(claims.map(claim => publicClaim(claim))) };
+  // The kitchen's list names the chef on every claim (older visit evidence has no chef name).
+  // shortcut: one name lookup per claim (list capped at 100); batch it if the list grows.
+  const { getUserDisplayName } = await import('../utils/user-display');
+  return { claims: await Promise.all(claims.map(async claim => ({ ...await publicClaim(claim), chefName: await getUserDisplayName(claim.chefId, 'chef') }))) };
 }
 export async function readBookingClaims(bookingId: number, actor: { id: number; role: string | null }, kind: 'booking' | 'storage' = 'booking') {
   let kitchenParticipant = actor.role === 'admin';

@@ -629,6 +629,7 @@
   "dcV2SendDispute": "Send dispute",
   "dcV2NoClaims": "No claims to show.",
   "dcV2Booking": "Booking",
+  "dcV2StorageRental": "Storage rental",
   "dcV2Filed": "Filed {date}",
   "dcV2OpenClaims": "Open ({count})",
   "dcV2ClosedClaims": "Closed ({count})",
