@@ -7,6 +7,15 @@ export type KitchenChangeKind = 'move' | 'extend';
 export type KitchenChangeState = 'requested' | 'awaiting_consent' | 'awaiting_payment' | 'payment_pending' | 'authorized' | 'capture_pending' | 'refund_pending' | 'release_pending' | 'recovery_required' | 'applied' | 'declined' | 'withdrawn' | 'expired';
 export const OPEN_KITCHEN_CHANGE_STATES: KitchenChangeState[] = ['requested', 'awaiting_consent', 'awaiting_payment', 'payment_pending', 'authorized', 'capture_pending', 'refund_pending', 'release_pending', 'recovery_required'];
 export type ChangeSchedule = { date: string; slots: OperatingSlot[]; windowStart: string; pricingMode?: 'hourly' | 'daily' };
+/** CP7: a dated (multi-day) booking changes as a whole day set. Legacy rows keep the one-date shape above. */
+export type ChangeDay = { date: string; pricingMode: 'hourly' | 'daily'; slots: OperatingSlot[]; windowStart: string; equipmentIds: number[] };
+export type DatedChangeSchedule = { version: 'days-v1'; days: ChangeDay[] };
+export type AnyChangeSchedule = ChangeSchedule | DatedChangeSchedule;
+export const isDatedChangeSchedule = (value: unknown): value is DatedChangeSchedule =>
+  (value as DatedChangeSchedule | null)?.version === 'days-v1' && Array.isArray((value as DatedChangeSchedule).days);
+/** Every day of either shape, for labels: a legacy schedule is one day. */
+export const changeScheduleDays = (value: AnyChangeSchedule): Array<Pick<ChangeDay, 'date' | 'slots'> & { pricingMode?: 'hourly' | 'daily' }> =>
+  isDatedChangeSchedule(value) ? value.days : [value];
 export type ConfirmedStorageChoice = { kind: 'storage'; id: number; action: 'retain'; updatedAt: string; startDate: string; endDate: string };
 export type ChangeQuote = { originalKitchenCents: number; currentKitchenCents: number; retainedKitchenCents: number;
   addedKitchenCents: number; taxCents: number | null; feeCents: number | null; payableCents: number | null; currency: string;

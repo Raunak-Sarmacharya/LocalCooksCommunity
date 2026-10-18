@@ -12,7 +12,7 @@ import { queueBookingLifecycleEvent } from './booking-lifecycle-delivery';
 import { kitchenClockWithZone } from './kitchen-payout-notice';
 import { renderTransactionalEmail, emailClock } from '../email';
 import { getAppBaseUrl } from '../config';
-import type { ChangeSchedule } from '@shared/kitchen-booking-change';
+import { changeScheduleDays, type AnyChangeSchedule } from '@shared/kitchen-booking-change';
 import type { ChangeMoneyFull } from '@shared/kitchen-booking-reschedule';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -49,10 +49,15 @@ const money = (cents: number, currency: string, locale: string) =>
 const signed = (cents: number, currency: string, locale: string) =>
   `${cents > 0 ? '+' : cents < 0 ? '−' : ''}${money(Math.abs(cents), currency, locale)}`;
 
-/** "Sat, Nov 14, 9:00 AM–12:00 PM": the operating date is a calendar date (UTC noon), the times are kitchen-local clock times. */
-export function scheduleLabel(schedule: ChangeSchedule, locale: string) {
-  const day = new Intl.DateTimeFormat(locale, { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' }).format(new Date(`${schedule.date}T12:00:00Z`));
-  return `${day}, ${emailClock(schedule.slots[0].startTime, locale)}–${emailClock(schedule.slots.at(-1)!.endTime, locale)}`;
+/**
+ * "Sat, Nov 14, 9:00 AM–12:00 PM": the operating date is a calendar date (UTC noon), the times are kitchen-local clock times.
+ * A dated booking lists every day ("Mon, Nov 2, 9:00 AM–5:00 PM; Wed, Nov 4, ...").
+ */
+export function scheduleLabel(schedule: AnyChangeSchedule, locale: string) {
+  return changeScheduleDays(schedule).map(item => {
+    const day = new Intl.DateTimeFormat(locale, { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' }).format(new Date(`${item.date}T12:00:00Z`));
+    return `${day}, ${emailClock(item.slots[0].startTime, locale)}–${emailClock(item.slots.at(-1)!.endTime, locale)}`;
+  }).join('; ');
 }
 const dayAndClock = (at: Date, timezone: string, locale: string) =>
   `${new Intl.DateTimeFormat(locale, { timeZone: timezone, month: 'short', day: 'numeric' }).format(at)}, ${kitchenClockWithZone(at, timezone, locale)}`;
@@ -77,7 +82,7 @@ export async function queueChangeNotices(tx: Tx, change: Change, event: ChangeNo
   const [manager] = row.managerId ? await tx.select({ locale: users.preferredLocale }).from(users).where(eq(users.id, row.managerId)) : [];
   const { getUserDisplayName } = await import('../utils/user-display');
   const chefName = row.booking.chefId ? await getUserDisplayName(row.booking.chefId, 'chef').catch(() => '') : '';
-  const original = change.original as ChangeSchedule, destination = change.destination as ChangeSchedule, quote = change.quote as ChangeMoneyFull;
+  const original = change.original as AnyChangeSchedule, destination = change.destination as AnyChangeSchedule, quote = change.quote as ChangeMoneyFull;
   const currency = quote.currency || row.booking.currency;
   const decisionBy = change.decisionBy, freeCancelAfter = (change.policy as { freeCancelAfter?: string } | null)?.freeCancelAfter;
   const factsFor = (locale: string): ChangeNoticeFacts => ({
@@ -150,9 +155,9 @@ async function attachCalendar(tx: Tx, change: Change, audience: Audience, copy: 
 
 /** Local Cooks' own factual line when a booking moves (ADMIN_BOOKING_KINDS `booking_changed`); admins only. */
 export async function queueAdminBookingChanged(tx: Tx, change: Change, actorId?: number) {
-  const original = change.original as ChangeSchedule, destination = change.destination as ChangeSchedule, quote = change.quote as ChangeMoneyFull;
+  const original = change.original as AnyChangeSchedule, destination = change.destination as AnyChangeSchedule, quote = change.quote as ChangeMoneyFull;
   const dollars = (cents: number) => new Intl.NumberFormat('en-CA', { style: 'currency', currency: (quote.currency || 'CAD').toUpperCase() }).format(cents / 100);
-  const label = (schedule: ChangeSchedule) => scheduleLabel(schedule, 'en-CA');
+  const label = (schedule: AnyChangeSchedule) => scheduleLabel(schedule, 'en-CA');
   const moneyLine = quote.payCents > 0 ? `The chef paid ${dollars(quote.payCents)} more.` : quote.refundCents > 0
     ? `The chef was refunded ${dollars(quote.refundCents)}${quote.feeKeptCents > 0 ? ` (card processing fee kept: ${dollars(quote.feeKeptCents)})` : ''}.` : 'The price did not change.';
   await queueBookingLifecycleEvent(tx, change.bookingId, 'booking_changed', 'Booking changed',

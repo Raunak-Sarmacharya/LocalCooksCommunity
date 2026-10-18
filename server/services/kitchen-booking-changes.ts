@@ -21,7 +21,7 @@ import type Stripe from 'stripe';
 import { db } from '../db';
 import { kitchenBookings, kitchenBookingChanges, kitchenBookingVisits, kitchens, locations, paymentTransactions, paymentHistory,
   equipmentBookings, equipmentListings, storageBookings, kitchenCheckoutHolds, kitchenViewings } from '@shared/schema';
-import { bookingChangeSchedule, OPEN_KITCHEN_CHANGE_STATES, type ChangeSchedule, type KitchenChangeState } from '@shared/kitchen-booking-change';
+import { bookingChangeSchedule, isDatedChangeSchedule, OPEN_KITCHEN_CHANGE_STATES, type AnyChangeSchedule, type ChangeSchedule, type DatedChangeSchedule, type KitchenChangeState } from '@shared/kitchen-booking-change';
 import { assertConsecutiveBookingSlots } from '@shared/consecutive-booking-slots';
 import { occupiedIntervals } from '@shared/operating-hours';
 import { bookingFreeCancelHours, RESPONSE_WINDOW_HOURS } from '@shared/booking-response-deadline';
@@ -43,6 +43,8 @@ import { scheduleDeadlineTimer } from './deadline-timer';
 import { queueBookingLifecycleEvent } from './booking-lifecycle-delivery';
 import { kitchenAmountCents, queueAdminBookingChanged, queueChangeNotices, type ChangeNoticeEvent, type ChangeNoticeOptions } from './kitchen-booking-change-notice';
 import { logger } from '../logger';
+import { applyDatedChange, assertDatedStillValid, datedChangeFingerprint, datedEligibility, datedEndAt, datedOriginal, datedStartAt, holdDatedDays,
+  isDatedRow, priceDatedChange, sameDatedRequest, validateDatedDestination, type DatedChangeMoney } from './dated-booking-changes';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type Change = typeof kitchenBookingChanges.$inferSelect;
@@ -79,10 +81,12 @@ export type ChangeOperation = { action: 'authorize' | 'capture' | 'release' | 'r
 export type RefundSource = { intentId: string; transactionId: number; capturedCents: number; processingFeeCents: number; grossCents?: number; refundCents?: number; kitchenDebitCents?: number; platformReturnCents?: number };
 export type ChangeMeta = { version: 3; operation?: ChangeOperation | null; sent: boolean; cardDeclined?: boolean; originalStartAt: string; originalEndAt: string;
   newStartAt: string; newEndAt: string; freeCancelAfter: string; refundSource?: RefundSource | null; refundSources?: RefundSource[]; hadCardHold?: boolean;
-  resolution?: { action: 'close_keep_refund'; fundedBy: 'local_cooks'; amountCents: number; resolvedBy: number; resolvedAt: string } };
+  resolution?: { action: 'close_keep_refund'; fundedBy: 'local_cooks'; amountCents: number; resolvedBy: number; resolvedAt: string };
+  /** CP7: a whole day-set change of a dated booking (its hold is one row per destination day). */ dated?: boolean };
 const meta = (change: Pick<Change, 'policy'>) => change.policy as ChangeMeta;
 const quoteOf = (change: Pick<Change, 'quote'>) => change.quote as ChangeMoneyFull;
 const scheduleOf = (value: unknown) => value as ChangeSchedule;
+const datedOf = (change: Pick<Change, 'policy'>) => !!meta(change)?.dated;
 
 const operation = (id: string, action: ChangeOperation['action'], now: Date, extra: Partial<ChangeOperation> = {}): ChangeOperation =>
   ({ action, state: 'pending', key: `kitchen-change:${id}:${action}:${now.getTime()}${randomInt(1_000_000_000)}`, decidedAt: now.toISOString(),
@@ -160,6 +164,8 @@ async function validateEquipment(tx: Tx, row: Context, destination: ChangeSchedu
       .innerJoin(kitchenCheckoutHolds, eq(kitchenCheckoutHolds.id, kitchenBookingChanges.holdId))
       .where(and(eq(equipmentBookings.equipmentListingId, item.equipmentListingId), sql`${equipmentBookings.kitchenBookingId} <> ${row.booking.id}`,
         sql`${equipmentBookings.status} <> 'cancelled'`, sql`${kitchenCheckoutHolds.expiresAt} > CURRENT_TIMESTAMP`,
+        // A dated change holds each destination day itself; its first-to-last span is not one continuous reservation.
+        sql`(${kitchenBookingChanges.policy}->>'dated') IS NULL`,
         sql`(${kitchenBookingChanges.policy}->>'newStartAt')::timestamptz < ${end}`,
         sql`(${kitchenBookingChanges.policy}->>'newEndAt')::timestamptz > ${start}`)).limit(1);
     if (conflicts.length || changes.length) throw new KitchenChangeError(`${name} is not available at the new time. Choose another time.`, 409, 'equipmentUnavailable', { item: name });
@@ -173,7 +179,9 @@ async function openChangeFor(connection: typeof db | Tx, bookingId: number) {
   return open as Change | undefined;
 }
 
-async function eligibility(tx: Tx, row: Context, now: Date, openChange: boolean) {
+async function eligibility(tx: Tx, row: Context, now: Date, openChange: boolean): Promise<{ allowed: boolean; reason?: string; code?: string; values?: Record<string, unknown>;
+  until?: string; decisionBy?: Date; original: AnyChangeSchedule; startAt: string; endAt: string; freeCancelHours: number | null }> {
+  if (isDatedRow(row)) return datedEligibility(tx, row, now, openChange);
   const booking = row.booking, original = bookingChangeSchedule(booking);
   const visits = await tx.select({ id: kitchenBookingVisits.id }).from(kitchenBookingVisits).where(eq(kitchenBookingVisits.bookingId, booking.id));
   let multiVisit = visits.length > 0;
@@ -323,10 +331,11 @@ async function equipmentPriceTerms(tx: Tx, row: Context, parent: Payment, active
 }
 
 type FeeFacts = Map<number, { intentId: string | null; captured: string; fee: number }>;
-async function quoteFeeFacts(bookingId: number, actor: ChangeActor, destination: ChangeSchedule): Promise<FeeFacts> {
+async function quoteFeeFacts(bookingId: number, actor: ChangeActor, destination: AnyChangeSchedule): Promise<FeeFacts> {
   const row = await context(readTx(), bookingId, actor);
+  if (isDatedRow(row)) return new Map(); // A dated booking's actual card fees are on its verified day ledger.
   const { sources, parent, terms } = await currentTerms(readTx(), row);
-  if (!destination.slots?.length) return new Map();
+  if (isDatedChangeSchedule(destination) || !destination.slots?.length) return new Map();
   const next = await newTerms(row, destination), addon = await equipmentPriceTerms(readTx(), row, parent);
   if (next.kitchenCents + next.taxCents + next.feeCents + addon.kitchenCents + addon.taxCents + addon.feeCents >= terms.kitchenCents + terms.taxCents + terms.feeCents)
     return new Map();
@@ -383,9 +392,11 @@ async function priceChange(tx: Tx, row: Context, destination: ChangeSchedule, fe
 
 const hashOf = (fingerprint: string) => createHash('sha256').update(fingerprint).digest('hex');
 
-async function buildQuote(tx: Tx, row: Context, rawDestination: ChangeSchedule, now: Date, options: { holdId?: string | null; openChange?: boolean; fees: FeeFacts } = { fees: new Map() }) {
+async function buildQuote(tx: Tx, row: Context, rawDestination: AnyChangeSchedule, now: Date, options: { holdId?: string | null; openChange?: boolean; fees: FeeFacts } = { fees: new Map() }) {
   const el = await eligibility(tx, row, now, options.openChange ?? false);
   if (!el.allowed) throw new KitchenChangeError(el.reason!, 409, el.code, el.values);
+  if (isDatedRow(row)) return buildDatedQuote(tx, row, rawDestination, now, el, options.holdId);
+  if (isDatedChangeSchedule(rawDestination)) throw new KitchenChangeError('Choose the new date and hours.', 409, 'chooseDateHours');
   const { destination, overlaps } = await validateDestination(tx, row, rawDestination, now, options.holdId);
   let newStartAt: string, newEndAt: string;
   try { newStartAt = startInstant(destination, destination.slots[0].startTime, row.timezone); newEndAt = startInstant(destination, destination.slots.at(-1)!.endTime, row.timezone); }
@@ -396,6 +407,20 @@ async function buildQuote(tx: Tx, row: Context, rawDestination: ChangeSchedule, 
   const freeCancelAfter = freeCancelDeadline(newStartAt, el.freeCancelHours).toISOString();
   const quoteHash = hashOf(changeQuoteFingerprint({ bookingId: row.booking.id, destination, money }));
   return { el, destination, overlaps, money, refundSource, refundSources, quoteHash, decisionBy: el.decisionBy!, freeCancelAfter, newStartAt, newEndAt };
+}
+
+/** CP7: the whole day set, priced and checked like a new dated booking; the original days stay booked until approval. */
+async function buildDatedQuote(tx: Tx, row: Context, raw: AnyChangeSchedule, now: Date, el: Awaited<ReturnType<typeof eligibility>>, holdId?: string | null) {
+  const { destination, validated } = await validateDatedDestination(tx, row, raw, now, holdId, 'request');
+  let newStartAt: string, newEndAt: string;
+  try { newStartAt = datedStartAt(destination, row.timezone); newEndAt = datedEndAt(destination, row.timezone); }
+  catch { throw new KitchenChangeError('That time is affected by a clock change and can’t be booked here. Pick another.', 409, 'clockChange'); }
+  if (Date.parse(newStartAt) <= el.decisionBy!.getTime()) throw new KitchenChangeError('That time is too soon for the kitchen to answer in time. Pick a later start.', 409, 'tooSoon');
+  const { money, refundSources } = await priceDatedChange(tx, row, validated);
+  const freeCancelAfter = freeCancelDeadline(newStartAt, el.freeCancelHours).toISOString();
+  const quoteHash = hashOf(datedChangeFingerprint(row.booking.id, destination, money));
+  return { el, destination: destination as AnyChangeSchedule, overlaps: [] as Array<{ id: number; scheduledAt: string; durationMinutes: number; status: string }>,
+    money: money as ChangeMoneyFull, refundSource: refundSources[0] || null, refundSources, quoteHash, decisionBy: el.decisionBy!, freeCancelAfter, newStartAt, newEndAt };
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -425,19 +450,19 @@ export async function readKitchenChanges(bookingId: number, actor: ChangeActor, 
   const viewer = { actor, managerId: row.managerId, chefId: row.booking.chefId, now };
   let canRequest: { allowed: boolean; reason?: string; code?: string; values?: Record<string, unknown>; until?: string } =
     { allowed: false, reason: 'Only the chef who booked can change this booking.', code: 'onlyChefCanChange' };
-  let original = bookingChangeSchedule(row.booking), freeCancelUntil: string | undefined;
+  let original: AnyChangeSchedule = isDatedRow(row) ? await datedOriginal(tx, row.booking) : bookingChangeSchedule(row.booking), freeCancelUntil: string | undefined;
   try {
     const el = await eligibility(tx, row, now, !!open);
     freeCancelUntil = el.until;
     if (actor.role === 'chef') canRequest = { allowed: el.allowed, ...(el.reason ? { reason: el.reason } : {}), ...(el.code ? { code: el.code } : {}), ...(el.values ? { values: el.values } : {}), ...(el.until ? { until: el.until } : {}) };
     else if (el.until) canRequest = { allowed: false, reason: canRequest.reason, code: canRequest.code, until: el.until };
   } catch (error) { if (!(error instanceof KitchenChangeError)) throw error; if (actor.role === 'chef') canRequest = { allowed: false, reason: error.message, ...(error.code ? { code: error.code } : {}), ...(error.values ? { values: error.values } : {}) }; }
-  return { original, canRequest, limits: changeLengthLimits(row), ...(open ? { open: changeDto(open, viewer) } : {}),
+  return { original, canRequest, limits: changeLengthLimits(row), ...(isDatedRow(row) ? { dated: true } : {}), ...(open ? { open: changeDto(open, viewer) } : {}),
     history: all.filter(change => change !== open).map(change => changeDto(change, viewer)),
     ...(freeCancelUntil ? { freeCancelUntil } : {}), timezone: row.timezone };
 }
 
-export async function previewKitchenChange(bookingId: number, actor: ChangeActor, input: { destination: ChangeSchedule }, now = new Date()) {
+export async function previewKitchenChange(bookingId: number, actor: ChangeActor, input: { destination: AnyChangeSchedule }, now = new Date()) {
   if (actor.role !== 'chef') throw new KitchenChangeError('Only the chef who booked can change this booking.', 403, 'onlyChefCanChange');
   const fees = await quoteFeeFacts(bookingId, actor, input.destination);
   return db.transaction(async tx => {
@@ -468,14 +493,17 @@ const patchMeta = async (tx: Tx, change: Change, patch: Partial<ChangeMeta>) => 
 
 async function holdTime(tx: Tx, row: Context, change: Pick<Change, 'id' | 'destination'>, expiresAt: Date) {
   const destination = scheduleOf(change.destination), holdId = holdIdFor(change.id);
-  await tx.insert(kitchenCheckoutHolds).values({ id: holdId, kitchenId: row.kitchen.id, chefId: row.booking.chefId!, operatingDate: destination.date,
+  if (isDatedChangeSchedule(change.destination)) await holdDatedDays(tx, row, holdId, change.destination, expiresAt);
+  else await tx.insert(kitchenCheckoutHolds).values({ id: holdId, kitchenId: row.kitchen.id, chefId: row.booking.chefId!, operatingDate: destination.date,
     windowStartTime: destination.windowStart, selectedSlots: destination.slots, expiresAt, bufferMinutesSnapshot: row.booking.bufferMinutesSnapshot })
     .onConflictDoUpdate({ target: kitchenCheckoutHolds.id, set: { expiresAt } });
   await tx.update(kitchenBookingChanges).set({ holdId }).where(eq(kitchenBookingChanges.id, change.id));
   return holdId;
 }
 async function dropHold(tx: Tx, change: Pick<Change, 'id' | 'holdId'>) {
-  await tx.delete(kitchenCheckoutHolds).where(eq(kitchenCheckoutHolds.id, change.holdId || holdIdFor(change.id)));
+  const holdId = change.holdId || holdIdFor(change.id);
+  // A dated change holds every destination day in one group (head id = group id).
+  await tx.delete(kitchenCheckoutHolds).where(or(eq(kitchenCheckoutHolds.id, holdId), eq(kitchenCheckoutHolds.groupId, holdId)));
 }
 
 type ClosedTarget = 'declined' | 'withdrawn' | 'expired';
@@ -525,7 +553,7 @@ async function expireOverdueFor(stripe: ChangeStripe | null, bookingId: number, 
 }
 
 export async function requestKitchenChange(stripe: ChangeStripe | null, bookingId: number, actor: ChangeActor,
-  input: { destination: ChangeSchedule; quoteHash: string; requestKey: string }, now = new Date()) {
+  input: { destination: AnyChangeSchedule; quoteHash: string; requestKey: string }, now = new Date()) {
   if (actor.role !== 'chef') throw new KitchenChangeError('Only the chef who booked can change this booking.', 403, 'onlyChefCanChange');
   await expireOverdueFor(stripe, bookingId, now);
   const [prior] = await db.select({ id: kitchenBookingChanges.id }).from(kitchenBookingChanges).where(and(eq(kitchenBookingChanges.bookingId, bookingId), eq(kitchenBookingChanges.requestKey, input.requestKey))).limit(1);
@@ -534,9 +562,11 @@ export async function requestKitchenChange(stripe: ChangeStripe | null, bookingI
     const row = await lockedContext(tx, bookingId, actor);
     const [existing] = await tx.select().from(kitchenBookingChanges).where(and(eq(kitchenBookingChanges.bookingId, bookingId), eq(kitchenBookingChanges.requestKey, input.requestKey))).limit(1);
     if (existing) {
-      const wanted = { date: input.destination.date, windowStart: input.destination.windowStart, slots: input.destination.slots };
-      const have = scheduleOf(existing.destination);
-      if (!sameChangeValue(wanted, { date: have.date, windowStart: have.windowStart, slots: have.slots })) throw new KitchenChangeError('That request key belongs to a different change.', 409, 'requestKeyMismatch');
+      const same = isDatedChangeSchedule(input.destination) || isDatedChangeSchedule(existing.destination)
+        ? isDatedChangeSchedule(input.destination) && isDatedChangeSchedule(existing.destination) && sameDatedRequest(input.destination, existing.destination)
+        : sameChangeValue({ date: input.destination.date, windowStart: input.destination.windowStart, slots: input.destination.slots },
+          { date: scheduleOf(existing.destination).date, windowStart: scheduleOf(existing.destination).windowStart, slots: scheduleOf(existing.destination).slots });
+      if (!same) throw new KitchenChangeError('That request key belongs to a different change.', 409, 'requestKeyMismatch');
       return { change: existing as Change, row, created: false };
     }
     const open = await openChangeFor(tx, bookingId);
@@ -551,12 +581,13 @@ export async function requestKitchenChange(stripe: ChangeStripe | null, bookingI
     const payNow = quote.money.payCents > 0;
     const m: ChangeMeta = { version: 3, sent: !payNow, originalStartAt: quote.el.startAt, originalEndAt: quote.el.endAt, newStartAt: quote.newStartAt, newEndAt: quote.newEndAt,
       freeCancelAfter: quote.freeCancelAfter, refundSource: quote.refundSource, refundSources: quote.refundSources, ...(payNow && !hasCard ? { cardDeclined: true } : {}),
+      ...(isDatedRow(row) ? { dated: true } : {}),
       operation: payNow && hasCard ? operation(id, 'authorize', now, { customerId: row.booking.stripeCustomerId, paymentMethodId: row.booking.stripePaymentMethodId, kitchenName: row.kitchen.name }) : null };
     const state: KitchenChangeState = !payNow ? 'requested' : hasCard ? 'payment_pending' : 'awaiting_payment';
     const [created] = await tx.insert(kitchenBookingChanges).values({ id, bookingId, requestKey: input.requestKey, kind: 'move', state, revision: 1,
       original: quote.el.original, destination: quote.destination, quote: quote.money, linkedItems: [], policy: m, bookingVersion: row.booking.updatedAt,
       decisionBy: quote.decisionBy, paymentBy: payNow ? new Date(now.getTime() + CARD_ATTEMPT_MS) : null, managerId: row.managerId!,
-      history: [{ revision: 1, state, message: 'The chef asked to move this booking.', actorId: actor.id, at: now.toISOString() }] }).returning();
+      history: [{ revision: 1, state, message: isDatedRow(row) ? 'The chef asked to change this booking’s days.' : 'The chef asked to move this booking.', actorId: actor.id, at: now.toISOString() }] }).returning();
     await holdTime(tx, row, created, payNow ? new Date(now.getTime() + CARD_ATTEMPT_MS) : quote.decisionBy);
     if (!payNow) await queueChangeNotices(tx, created as Change, 'requested', { actorId: actor.id });
     return { change: { ...created, holdId: holdIdFor(id) } as Change, row, created: true };
@@ -657,6 +688,7 @@ async function commitApproval(tx: Tx, row: Context, change: Change, now: Date, a
 
 /** Everything that must still be true at the moment of approval (and again when money has moved). */
 async function assertStillValid(tx: Tx, row: Context, change: Change, now: Date) {
+  if (datedOf(change)) return assertDatedStillValid(tx, row, change, change.holdId || holdIdFor(change.id), now);
   const booking = row.booking, m = meta(change);
   if (booking.status !== 'confirmed') throw new KitchenChangeError('This booking is no longer confirmed, so it can’t be moved.', 409, 'bookingNotConfirmed');
   if ((booking.checkinStatus ?? 'not_checked_in') !== 'not_checked_in' || booking.checkedInAt || booking.checkoutRequestedAt || booking.checkedOutAt || now.getTime() >= Date.parse(m.originalStartAt))
@@ -682,6 +714,7 @@ async function assertStillValid(tx: Tx, row: Context, change: Change, now: Date)
 async function applyChange(tx: Tx, row: Context, change: Change, now: Date, actorId?: number) {
   const booking = row.booking, destination = scheduleOf(change.destination), m = meta(change), quote = quoteOf(change);
   await assertStillValid(tx, row, change, now);
+  if (datedOf(change)) return applyDatedAndNotify(tx, row, change, now, actorId);
   const first = destination.slots[0].startTime, last = destination.slots.at(-1)!.endTime;
   const moved = { ...booking, bookingDate: new Date(`${destination.date}T12:00:00Z`), startTime: first, endTime: last, selectedSlots: destination.slots,
     operatingWindowStartTime: destination.windowStart };
@@ -718,6 +751,22 @@ async function applyChange(tx: Tx, row: Context, change: Change, now: Date, acto
   await dropHold(tx, change);
   const [{ count }] = await tx.select({ count: sql<number>`count(*)::int` }).from(kitchenBookingChanges).where(and(eq(kitchenBookingChanges.bookingId, booking.id), eq(kitchenBookingChanges.state, 'applied')));
   await queueChangeNotices(tx, applied, 'approved', { actorId, calendar: { start: new Date(m.newStartAt), end: new Date(m.newEndAt), sequence: Number(count) + 1 } });
+  await queueAdminBookingChanged(tx, applied, actorId);
+  return applied;
+}
+
+/** CP7: a dated booking's new day set (see dated-booking-changes), then the same timers, close and notices as a one-day move. */
+async function applyDatedAndNotify(tx: Tx, row: Context, change: Change, now: Date, actorId?: number) {
+  const m = meta(change);
+  await applyDatedChange(tx, row, change, now);
+  await persistBookingCloseout(row.booking.id, tx, now);
+  await scheduleAdvanceReminders(tx, 'booking', row.booking.id, undefined, now);
+  await scheduleAdvanceReminders(tx, 'booking_review', row.booking.id, undefined, now);
+  const applied = await transition(tx, change, 'applied', 'The kitchen approved the change. The booking now follows the new days.', actorId, { holdId: null,
+    policy: { ...m, operation: m.operation ? { ...m.operation, state: 'done' } : null } });
+  await dropHold(tx, change);
+  // Each day has its own calendar event (the booking page's download), so no single-event update rides on the notice.
+  await queueChangeNotices(tx, applied, 'approved', { actorId });
   await queueAdminBookingChanged(tx, applied, actorId);
   return applied;
 }
@@ -952,7 +1001,8 @@ export async function resolveKitchenChange(stripe: ChangeStripe, bookingId: numb
     if (input.action === 'finish') {
       // Old recovery rows may have lost their hold. Reacquire only after checking current inventory.
       if (Object.keys(retries).length) await patchMeta(tx, change, { operation: { ...meta(change).operation!, refundKeys: { ...meta(change).operation?.refundKeys, ...retries }, refundReplaces: { ...meta(change).operation?.refundReplaces, ...replaces } } });
-      await validateDestination(tx, row, scheduleOf(change.destination), now, change.holdId);
+      if (datedOf(change)) await validateDatedDestination(tx, row, change.destination, now, change.holdId || holdIdFor(change.id), 'approve');
+      else await validateDestination(tx, row, scheduleOf(change.destination), now, change.holdId);
       await holdTime(tx, row, change, retainedHoldUntil);
       await assertStillValid(tx, row, { ...change, holdId: holdIdFor(change.id) }, now);
     } else if (input.action === 'compensate') {
@@ -971,6 +1021,14 @@ export async function resolveKitchenChange(stripe: ChangeStripe, bookingId: numb
         if (!receipt || receipt.kitchenChangeId !== change.id || receipt.customerReceived !== plan.refundCents
           || receipt.managerDebited !== plan.kitchenDebitCents || receipt.platformServiceFeeReturned !== plan.platformReturnCents)
           throw new KitchenChangeError('The successful refund receipt needs Local Cooks to reconcile it before closing this change.', 409, 'refundReceiptReconcile');
+      }
+      // Per-day sources: the kept refund is Local Cooks-funded, never a day's debit, so the day payouts may resume (CP5 `refundsAllocated`).
+      if (datedOf(change)) for (const plan of m.refundSources || []) {
+        const [source] = await tx.select().from(paymentTransactions).where(eq(paymentTransactions.id, plan.transactionId)).limit(1).for('update');
+        const saved = (source.metadata || {}) as Record<string, any>;
+        await tx.update(paymentTransactions).set({ metadata: { ...saved, outsideRefunds: [...(saved.outsideRefunds || []), { refundId: verifiedRefunds.get(plan.transactionId),
+          visitId: null, kitchenDebitCents: 0, actorId: actor.id, at: now.toISOString(), note: `Booking change ${change.id} closed; refund kept by Local Cooks` }] } })
+          .where(eq(paymentTransactions.id, source.id));
       }
       const amount = new Intl.NumberFormat('en-CA', { style: 'currency', currency: quote.currency }).format(quote.refundCents / 100);
       const resolution = { action: 'close_keep_refund' as const, fundedBy: 'local_cooks' as const, amountCents: quote.refundCents,
@@ -1009,7 +1067,8 @@ async function reconcileCompensation(stripe: ChangeStripe, change: Change, row: 
     const manager = intent.amount_received - processingCost - fee;
     const result = existing ? { refundId: existing.id, refundAmount: existing.amount, refundStatus: existing.status || '' }
       : await provider.reverseTransferAndRefund(intent.id, intent.amount_received, 'requested_by_customer', {
-      providerOnly: true, idempotencyKey: refundKey, reversalOperationKey: op.key, reverseTransferAmount: Math.max(0, manager), metadata: {
+      // A dated booking's change charge is never allocated before it applies, so no day transfer exists to reverse.
+      providerOnly: true, idempotencyKey: refundKey, reversalOperationKey: op.key, ...(isDatedRow(row) ? { installmentReversals: [] } : { reverseTransferAmount: Math.max(0, manager) }), metadata: {
         type: 'kitchen_booking_change', kitchen_change_id: change.id, booking_id: String(change.bookingId),
         ...(replaced ? { refund_replaces_id: replaced.id } : {}),
         customer_receives: String(intent.amount_received), manager_debited: String(Math.max(0, manager)), platform_service_fee_returned: String(fee),
@@ -1201,10 +1260,12 @@ async function reconcileRefund(stripe: ChangeStripe, change: Change, row: Contex
       if (!source || source.paymentIntentId !== plan.intentId) throw new KitchenChangeError('The refund source changed.', 409, 'refundSourceChanged');
       const existing = (await provider.getPaymentIntentRefunds(plan.intentId)).filter(refund => refund.metadata?.refund_operation_id === key || !refund.metadata?.refund_operation_id && refund.metadata?.kitchen_change_id === change.id);
       if (existing.length > 1) throw new KitchenChangeError('Several refunds exist for this change.', 409, 'severalRefunds');
-      if (!existing.length && !op.refundKeys?.[String(plan.transactionId)] && plan.kitchenDebitCents! > 0) await provider.verifyCancellationRefundFunding(plan.intentId, source.transferId, plan.kitchenDebitCents!);
+      const perDay = source.payoutPartition === 'per_day';
+      if (!perDay && !existing.length && !op.refundKeys?.[String(plan.transactionId)] && plan.kitchenDebitCents! > 0) await provider.verifyCancellationRefundFunding(plan.intentId, source.transferId, plan.kitchenDebitCents!);
       const result = existing[0] ? { refundId: existing[0].id, refundAmount: existing[0].amount, refundStatus: existing[0].status || '' }
         : await provider.reverseTransferAndRefund(plan.intentId, plan.refundCents!, 'requested_by_customer', { providerOnly: true, idempotencyKey: key, reversalOperationKey: originalKey,
-          reverseTransferAmount: plan.kitchenDebitCents, metadata: { type: 'kitchen_booking_change', kitchen_change_id: change.id,
+          // A per-day source debits unsent day entitlements on its ledger at apply; no day transfer exists to reverse.
+          ...(perDay ? { installmentReversals: [] } : { reverseTransferAmount: plan.kitchenDebitCents }), metadata: { type: 'kitchen_booking_change', kitchen_change_id: change.id,
             booking_id: String(change.bookingId), transaction_id: String(plan.transactionId),
             ...(op.refundReplaces?.[String(plan.transactionId)] ? { refund_replaces_id: op.refundReplaces[String(plan.transactionId)] } : {}), customer_receives: String(plan.refundCents),
             manager_debited: String(plan.kitchenDebitCents), platform_service_fee_returned: String(plan.platformReturnCents), platform_processing_cost_cents: '0' } });

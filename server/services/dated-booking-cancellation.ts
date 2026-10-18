@@ -128,12 +128,16 @@ function verifiedSource(ctx: Context, facts: Facts, statuses: string[]) {
     || (booking.paymentDecision as { state?: string } | null)?.state === 'pending') throw fail('This booking can’t be changed in its current state.');
   if (ctx.supplemental.length) throw fail('This booking has a separate change payment. Contact Local Cooks to cancel days.');
   const { days } = schedule(ctx, new Date(0));
-  const rows = ctx.allocations.filter(row => days.some(day => day.visit.id === row.visitId));
-  if (!rows.length || rows.length !== ctx.allocations.length || new Set(rows.map(row => row.allocationRevision)).size !== 1)
+  // CP7: parts an approved change moved to new days are history; the live ledger is the current days plus settled parts of
+  // earlier schedules (dropped days, a change's refunded part), which still count toward the source's captured cents.
+  const live = ctx.allocations.filter(row => !evidence(row).supersededBy);
+  const rows = live.filter(row => days.some(day => day.visit.id === row.visitId));
+  const earlier = (row: Allocation) => ctx.visits.some(visit => visit.id === row.visitId && visit.scheduleRevision !== ctx.booking.scheduleRevision);
+  if (!rows.length || live.some(row => !rows.includes(row) && !earlier(row)) || new Set(rows.map(row => row.allocationRevision)).size !== 1)
     throw fail('This booking’s day allocations need Local Cooks review before a refund can be quoted.');
-  if (rows.some(row => row.stripeFeeCents === null)) return null;
-  const captured = Number(source.amount), fee = rows.reduce((sum, row) => sum + row.stripeFeeCents!, 0);
-  if (rows.reduce((sum, row) => sum + paidOf(row), 0) !== captured || fee !== facts.processingCost
+  if (live.some(row => row.stripeFeeCents === null)) return null;
+  const captured = Number(source.amount), fee = live.reduce((sum, row) => sum + row.stripeFeeCents!, 0);
+  if (live.reduce((sum, row) => sum + paidOf(row), 0) !== captured || fee !== facts.processingCost
     || facts.captured !== captured || facts.currency !== source.currency.toLowerCase() || facts.refunded !== Number(source.refundAmount || 0))
     throw fail('The booking payment changed or needs review. Refresh and try again.');
   const verified = cancellationSourceQuote({ ...facts, serviceFee: Number(source.serviceFee), localReceipts: metadata(source).refunds });
@@ -189,7 +193,8 @@ function price(ctx: Context, facts: Facts, target: DayTarget, requested: DayMode
   const { booking } = ctx;
   const checked = verifiedSource(ctx, facts, ['confirmed']);
   if (!checked) return { quoteReady: false as const, reasonCode: 'processing_fee_pending' as const, message: FEE_PENDING };
-  const { rows, captured, fee } = checked;
+  // The engine sees the current days only: their own paid cents and card-fee shares (equal to the source before any change).
+  const { rows } = checked, captured = rows.reduce((sum, row) => sum + paidOf(row), 0), fee = rows.reduce((sum, row) => sum + row.stripeFeeCents!, 0);
   const { snapshot, deadlineAt, days } = schedule(ctx, at);
   const dayOf = (visitId: number) => days.find(day => day.visit.id === visitId);
   const visitIds = Array.from(new Set(target.visitIds || [])), equipmentIds = Array.from(new Set(target.equipmentIds || []));
