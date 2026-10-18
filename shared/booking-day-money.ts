@@ -16,5 +16,5 @@ export function bookingDayMoney(rows: Allocation[], completed?: Set<string>): Bo
       : day.kitchenRemainingCents + Math.max(0, row.subtotalCents + row.taxCents - row.stripeFeeCents - refunds.reduce((sum, refund) => sum + refund.kitchenCents + (refund.creditCents?.kitchen || 0), 0));
     days.set(row.visitId, day);
   }
-  return [...days.values()];
+  return Array.from(days.values());
 }
