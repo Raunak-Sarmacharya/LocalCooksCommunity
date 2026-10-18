@@ -1313,7 +1313,7 @@
   "mdSpanLimit": "Choose days within 14 days of the first",
   "mdReasonPast": "This day has passed",
   "mdReasonAdvance": "Beyond how far ahead you can book",
-  "mdReasonBooked": "Booked by someone else",
+  "mdReasonBooked": "Already booked",
   "mdReasonClosed": "Kitchen closed",
   "mdReasonNotice": "Too soon",
   "mdReasonWeekly": "Over your weekly hours limit",

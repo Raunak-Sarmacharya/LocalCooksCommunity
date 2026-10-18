@@ -1313,7 +1313,7 @@
   "mdSpanLimit": "Choisissez des jours dans les 14 jours suivant le premier",
   "mdReasonPast": "Cette journée est passée",
   "mdReasonAdvance": "Au-delà de la période de réservation à l’avance",
-  "mdReasonBooked": "Déjà réservé par quelqu’un d’autre",
+  "mdReasonBooked": "Déjà réservé",
   "mdReasonClosed": "Cuisine fermée",
   "mdReasonNotice": "Délai trop court",
   "mdReasonWeekly": "Votre limite d’heures par semaine est dépassée",

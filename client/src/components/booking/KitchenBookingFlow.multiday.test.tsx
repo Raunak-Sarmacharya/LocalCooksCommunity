@@ -72,7 +72,7 @@ describe('the existing flow with more days', () => {
   });
   it('makes unavailable reasons focusable and readable to keyboard and screen reader users', async () => {
     await open();
-    for (const [number, reason] of [[4, 'Booked by someone else'], [5, 'Kitchen closed'], [6, 'Too soon'], [8, 'Over your weekly hours limit'], [10, 'Beyond how far ahead you can book']] as const) {
+    for (const [number, reason] of [[4, 'Already booked'], [5, 'Kitchen closed'], [6, 'Too soon'], [8, 'Over your weekly hours limit'], [10, 'Beyond how far ahead you can book']] as const) {
       const button = day(number); expect(button).toHaveAccessibleName(new RegExp(reason)); expect(button).toHaveAttribute('aria-disabled', 'true');
       act(() => button.focus()); expect(button).toHaveFocus(); expect(screen.getByRole('status')).toHaveTextContent(reason);
       fireEvent.click(button); expect(button).not.toHaveAttribute('aria-selected', 'true');
