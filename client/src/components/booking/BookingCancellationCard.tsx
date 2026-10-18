@@ -36,7 +36,7 @@ export function BookingCancellationCard({ bookingId, status, canCancel, onCancel
       const bookedInside = createdAt && new Date(createdAt).getTime() > deadlineAt;
       const key = bookedInside ? (noRefund ? 'cpBookedInsideNoRefund' : 'cpBookedInsideHalf') : Date.now() >= deadlineAt ? (noRefund ? 'cpDeadlinePastNoRefund' : 'cpDeadlinePast')
         : data?.quoteReady ? (noRefund ? 'cpDeadlineKnownNoRefund' : 'cpDeadlineKnown') : (noRefund ? 'cpDeadlineNoRefund' : 'cpDeadline');
-      return collapseDoublePeriods(tb(multiDay ? 'mdCancellation' : key, { deadline, charge: multiDay ? `${snapshot.lateChargePercent}%` : charge, fee, hours: snapshot.noticeHours }));
+      return collapseDoublePeriods(tb(multiDay && !bookedInside && Date.now() < deadlineAt ? 'mdCancellation' : key, { deadline, charge: multiDay && !bookedInside && Date.now() < deadlineAt ? `${snapshot.lateChargePercent}%` : charge, fee, hours: snapshot.noticeHours }));
     })()}</p>
     : <p className="text-sm leading-relaxed">{deadlineText && !deadlinePassed ? t('bdhCancelUntil', { time: deadlineText }) : t('bdhCancelPassed')}</p>;
   return <section aria-labelledby="booking-cancellation-title" data-testid="cancellation-card">

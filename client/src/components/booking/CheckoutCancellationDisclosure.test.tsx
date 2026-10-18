@@ -71,3 +71,12 @@ it('consent line under Checkout: selecting the button is the acceptance; links o
   expect(show).toHaveBeenCalledTimes(1);
   expect(screen.getByRole('link', { name: 'Local Cooks terms' })).toHaveAttribute('href', '/terms');
 });
+
+it('multi-day: one deadline sentence; a first day inside the notice gets the short-notice warning, never a past "Cancel by" date (live, Oct 18)', () => {
+  const { unmount } = render(<CheckoutCancellationDisclosure policy={policy} startAt={inHours(5 * 24)} multiDay />);
+  expect(screen.getByTestId('cancel-headline')).toHaveTextContent(/^Cancel by .* late charge applies to every day\.$/);
+  unmount();
+  render(<CheckoutCancellationDisclosure policy={policy} startAt={inHours(2)} multiDay />);
+  expect(screen.getByTestId('cancel-short-notice')).toHaveTextContent(/This booking starts within 48 hours/);
+  expect(screen.queryByText(/Cancel by/)).toBeNull();
+});

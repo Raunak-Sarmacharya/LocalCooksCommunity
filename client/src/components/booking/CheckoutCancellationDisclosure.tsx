@@ -26,7 +26,7 @@ export function CheckoutCancellationDisclosure({ policy, startAt, detailsOpen, o
   return <section className="space-y-2 rounded-xl border p-3 sm:p-4" aria-label={t('cpTitle')}>
     <h3 className="text-sm font-semibold">{t('cpCheckoutTitle')}</h3>
     {!policy ? <p role="alert" className="text-sm">{t('cpError')}</p> : <>
-      {multiDay && startAt ? <p className="text-sm leading-relaxed" data-testid="cancel-headline">{t('mdCancellation', {
+      {multiDay && startAt && !shortNotice ? <p className="text-sm leading-relaxed" data-testid="cancel-headline">{t('mdCancellation', {
         deadline: cancellationDeadlineLabel(startAt, policy.policy.noticeHours, policy.timezone, i18n.language), charge: `${policy.policy.lateChargePercent}%`,
       })}</p> : shortNotice
         ? <p className={warning} data-testid="cancel-short-notice">{t('cpShort', { hours: policy.policy.noticeHours, charge })}</p>
