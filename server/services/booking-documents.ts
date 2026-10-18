@@ -106,7 +106,7 @@ function refundsOf(row: PaymentRow, booking: BookingFacts, changes: MoneyRows['c
     const id = String(receipt.id || receipt.refundId || '');
     const amount = cents(receipt.customerReceived);
     const operation = [meta(row).cancellationRefundOperation, ...(meta(row).cancellationRefundOperations || [])].find(op => op?.dated && op.refundId === id);
-    const dayItems = operation?.lines?.map((line: any) => ({ label: `${operation.days?.find((day: any) => day.visitId === line.visitId)?.date || ''} · ${line.kind === 'equipment' ? equipmentNames?.[line.itemId] || 'Equipment' : 'Kitchen day'}`, amountCents: cents(line.customerCents) }));
+    const dayItems = operation?.lines?.map((line: any) => ({ label: `${(date => date ? formatDay(date) : '')(operation.days?.find((day: any) => day.visitId === line.visitId)?.date)} · ${line.kind === 'equipment' ? equipmentNames?.[line.itemId] || 'Equipment' : 'Kitchen day'}`, amountCents: cents(line.customerCents) }));
     const destination = changes?.find(change => change.id === receipt.kitchenChangeId)?.destination as { date?: string; slots?: Slot[]; pricingMode?: string } | undefined;
     const bookingSchedule = destination?.date && destination.slots?.length ? { ...booking, bookingDate: destination.date,
       pricingMode: destination.pricingMode === 'daily' ? 'daily' as const : booking.pricingMode, originalSlots: destination.slots } : undefined;
@@ -135,7 +135,9 @@ export function deriveBookingMoney(rows: MoneyRows): BookingMoney {
     locationName: rows.locationName, locationAddress: rows.locationAddress, timezone: rows.timezone, chefName: rows.chefName, chefEmail: rows.chefEmail,
     bookingDate, pricingMode, originalSlots: slots, ...(datedDays?.length ? { days: datedDays } : {}) };
   const historical = { ...booking, bookingDate: changed?.date || bookingDate, originalSlots: changed?.slots?.length ? changed.slots : slots };
-  const session = pricingMode === 'daily' ? { label: 'Kitchen day', detail: formatDay(historical.bookingDate) }
+  // Multi-day: name the whole booking (its days are itemised below), never one day's type.
+  const session = (datedDays?.length ?? 0) > 1 ? { label: `Kitchen booking · ${datedDays!.length} days`, detail: `${formatDay(datedDays![0].date)} – ${formatDay(datedDays![datedDays!.length - 1].date)}` }
+    : pricingMode === 'daily' ? { label: 'Kitchen day', detail: formatDay(historical.bookingDate) }
     : { label: 'Kitchen session', detail: `${formatDay(historical.bookingDate)} · ${historical.originalSlots.map(slot => formatTimeRange(slot.startTime, slot.endTime)).join(', ')} (${formatMinutes(slotMinutes(historical.originalSlots))})` };
 
   const payments = rows.payments.filter(row => PAID.includes(row.status) && row.paymentIntentId).map((row): PaymentFact => {
@@ -564,7 +566,13 @@ export async function issueBookingDocumentsSafely(bookingId: number | null | und
 /** Role-scoped list for the booking page. */
 export function documentsFor(documents: StoredDocument[], audience: DocumentAudience) {
   return documents.filter(doc => doc.audience === audience).map(doc => ({ id: doc.id, number: doc.number, kind: doc.kind, title: doc.snapshot.title,
-    issuedAt: doc.issuedAt, amountCents: doc.amountCents, summary: doc.snapshot.sections[0]?.lines[0]?.label ?? doc.snapshot.title }));
+    issuedAt: doc.issuedAt, amountCents: doc.amountCents, summary: summaryOf(doc.snapshot) }));
+}
+/** The list line for a document: a multi-day receipt is "Kitchen booking · 3 days", not its first day's "Kitchen day". */
+function summaryOf(snapshot: StoredDocument['snapshot']) {
+  const lines = snapshot.sections[0]?.lines ?? [];
+  const days = lines.filter(line => line.label === 'Kitchen day' || line.label === 'Kitchen session').length;
+  return days > 1 ? `Kitchen booking · ${days} days` : lines[0]?.label ?? snapshot.title;
 }
 
 // ── Standalone storage rentals (booking_type 'storage') ─────────────────────────────────────────────────────────
