@@ -1690,7 +1690,8 @@ export default function BookingDetailsPage() {
               instructionsReleased={booking.location?.instructionsReleased}
               // The sentence already says when arrival details arrive; the overview doesn't repeat it.
               instructionsReleaseAt={detailsReleaseAt && now.sentence.includes(detailsReleaseAt) ? null : booking.location?.instructionsReleaseAt}
-              arrivalMode={booking.arrivalMode} timezone={booking.location?.timezone} visitStartAt={visitBounds?.startAt ?? null} />
+              // Multi-day: the 'each day has its own check-in' line above already covers how arrival works.
+              arrivalMode={keptDays.length > 1 ? null : booking.arrivalMode} timezone={booking.location?.timezone} visitStartAt={visitBounds?.startAt ?? null} />
           </ClampedBlock>
         )}
         {booking.status === 'confirmed' && (isManagerView && datedBooking || now.body === 'code' && !hasArrival) && (

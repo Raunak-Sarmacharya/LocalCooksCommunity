@@ -780,4 +780,5 @@ it('the header counts the days still booked once a day is cancelled (cancelled d
   expect(screen.getByTestId('booking-day-list')).toHaveTextContent('Jan 19, 2030');
   // Every day is its own visit: the chef is told up front that each day has its own check-in code.
   expect(document.body).toHaveTextContent('Each day has its own check-in');
+  expect(document.body).not.toHaveTextContent('ask kitchen staff for your 6-digit check-in code');
 });
