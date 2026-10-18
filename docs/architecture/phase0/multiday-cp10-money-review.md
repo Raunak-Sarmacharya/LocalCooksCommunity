@@ -88,4 +88,45 @@ Fulfillment writes the same `kitchen-days-v1` source, `allocateDatedCapture` par
 
 ## Lead disposition
 
-_(empty — awaiting fix round)_
+Implementation fix round (2026-10-18), following the lead's decisions:
+
+- **M1 fixed — firm quote:** quote and dated checkout share `resolveInvitationEquipment`. A listing present on that
+  snapshot day keeps its frozen cents, including zero for included equipment, even after a live price or inclusion-rule
+  change. Only a listing newly added on that day uses the live rate. Ownership/active/archive checks still apply.
+  The mixer proof now charges **101**, subtotal **8106**, tax **1216**, fee **567**, total **9889** in both quote and
+  session, instead of **70766**. A separate proof covers the same listing added on another day at its live price.
+- **S1 fixed — invited effective rates:** manifest day `rateCents`, parent `hourly_rate`, and visit
+  `priceSnapshot.rateCents` use the frozen offered kitchen cents: hourly days divide by billed hours and round to
+  integer cents, matching single-day invitations; daily days use the offered day cents. The worked example stores
+  **890/hour** and **6225/day**, while all allocation/payout cents remain unchanged. A $1 booking offer may allocate
+  zero cents to a day; the dated verifier permits a zero effective rate only for an invitation.
+  Extra time retains the existing `snapshotExtraTimeRateCents(kitchen)` live **1x** rule. The dated DTO and quote
+  expose that rate, and the chef sees `bpsExtraTimeRate` before payment (tested for a live **5000/hour** rate and
+  daily-only **2500/hour**).
+- **S2 fixed — service guard:** `checkoutDatedInvitation` refuses a chef mismatch, a status other than `sent`, or an
+  expired row with `DatedInvitationRefused` before reservation. Expiry is checked again immediately before reserving;
+  the version/status guard at bind and abandoned-session cleanup remain in place. Proofs cover all three refusals.
+- **N1 fixed:** dated invitations enter the all-days validator before the legacy first-day availability/mark-unavailable
+  block. Route regressions cover an unavailable first day and later day: both return the dated error naming the day,
+  reserve nothing and leave the stored status `sent`. The legacy single-day path keeps its availability block.
+- **N3 clarified:** manager and dated chef pages explicitly say discounts apply to kitchen time only, not equipment.
+  Copy is present in en-CA, fr-CA and uk; locale JSON was edited with a UTF-8 Python script.
+- **N5 accepted — no code change:** an invitation is a firm offer, like an Airbnb special offer. Its frozen offered
+  kitchen price remains payable even if the kitchen later lowers its list price. Frozen equipment prices follow the
+  same firm-offer rule under M1.
+- **N2 and N4 unchanged:** tax/platform fee rates remain live at checkout, and accepted invitations continue through
+  the normal dated booking allocation/refund/payout paths. The earlier CP7 findings and CP11 real-Postgres parity
+  work remain outside this fix round.
+
+Verification:
+
+- Requested CP10 money-review, CP10 implementation and invitation-day suites: **37/37**, three files.
+- Related invitation/pricing/policy/checkout/recovery/route, recurring-worker, dated-webhook and CP4 quote tests:
+  **139/139**, nine files (`--no-file-parallelism`). Total server: **176/176**.
+- Requested `Invitations.test.tsx` and `client/src/i18n`: **5112/5112**, three files.
+- `node scripts/i18n-lint.mjs`: **passed**.
+- Single foreground `npx tsc --noEmit -p tsconfig.json`: **passed, exit 0**, no diagnostics; run once.
+- The initial test startup lacked worktree dependencies; an existing local dependency install was linked, with npm
+  offline for subsequent commands. A cold route import exceeded a 5-second test timeout; moving that import into
+  suite setup resolved it. **Constraint exception:** the first `npx` attempt made one npm registry metadata GET
+  (HTTP 200, cache revalidated) before offline mode was set. No Stripe/live DB/deploy/push or full-suite run was performed.
