@@ -29,27 +29,36 @@ Cooks, and the rule that chefs are never charged automatically. Kitchens may not
 Each kitchen chooses a cancellation policy: a notice period of 24, 48 or 72 hours before the start, and a late charge of 50% or 100%
 of the booking total. The same policy applies to the kitchen's storage rentals, counted from the rental's start date. The policy in
 force when a chef books is saved with that booking and isn't changed by later edits. Kitchens answer booking requests within 24 hours
-(and at least 1 hour before the chef's free cancellation ends, where possible). If a kitchen cancels a confirmed booking, the chef is
-refunded in full, including the card processing fee. Details: Kitchen Booking & Cancellation Policy.
+(and at least 1 hour before the chef's free cancellation ends, where possible). A multi-day booking has one refund deadline: the
+notice period before the first booked day. Before it the chef can drop any day or cancel the whole booking; after it, dropped days
+follow the kitchen's late charge. If a kitchen cancels one day of a multi-day booking, that day is refunded in full including the card
+processing fee, and the chef may drop the remaining days without the late charge until the next day starts. If a kitchen cancels a
+confirmed booking, the chef is refunded in full, including the card processing fee. Details: Kitchen Booking & Cancellation Policy.
 
 ### §4.9 Payment & payout — replace
 
 For each booking, storage term or extra-time charge, the kitchen receives what the chef paid minus the Local Cooks service fee and
 the actual card processing fee, through Stripe Connect. Kitchen bookings are paid out when the kitchen finishes its inspection or
-automatically 24 hours after the visit; storage at the end of each paid term or when the kitchen clears the move-out. Payouts wait
-while a problem report, claim or Local Cooks review is open. Refunds the kitchen causes or chooses are deducted from its payout.
-Details: Payments, Fees & Payouts.
+automatically 24 hours after the visit; for a multi-day booking, each day is paid after that day, and a problem reported on a day
+holds that day's payout. Storage is paid at the end of each paid term or when the kitchen clears the move-out. Payouts wait while a
+problem report, claim or Local Cooks review is open. Refunds the kitchen causes or chooses are deducted from its payout. Details:
+Payments, Fees & Payouts.
 
 ### §5.1 Booking & reservation — replace
 
 Booking sends a request and places a hold on the chef's card. The booking is confirmed when the kitchen accepts it in Local Cooks;
-the chef is charged then. We notify you in the app and by email. A chef can withdraw a request free of charge until it's accepted.
-Details: Kitchen Booking & Cancellation Policy.
+the chef is charged then. A multi-day booking is one request for any days the chef picks (up to the kitchen's limit, all within 14
+days of the first day): the kitchen accepts every day or declines the request; the card is held for the whole booking and charged in
+full when it accepts everything. If the kitchen can accept the request but can't provide an item, nothing is charged until
+the chef approves the new total; if the chef declines or doesn't answer in time, the request closes and the hold is released. We
+notify you in the app and by email. A chef can withdraw a request free of charge until it's accepted. Details: Kitchen Booking &
+Cancellation Policy.
 
 ### §5.3 Kitchen use & rules — replace the arrival sentence
 
 Check-in opens at the time the kitchen sets (15 minutes before the start unless the kitchen changes it). Arriving late doesn't extend
-the booking.
+the booking. For a multi-day booking, arrival details are shared 48 hours before the first day, and each day has its own check-in and
+check-in code.
 
 ### §5.4 Overstays, storage & late checkout — replace
 
@@ -67,10 +76,11 @@ service fee; it is always shown before payment.
 
 ### §9.2 Payment processing & payout — replace
 
-Payments are processed by Stripe. Requests use card holds that are charged only on approval. Stripe keeps the chef's card on file for
-payments the chef confirms (storage extensions, approved extra time, holdover or claim payments); Local Cooks never charges a saved
-card without the chef's confirmation. Refunds after a chef's own cancellation or change are made minus the actual card processing
-fee; refunds after a kitchen cancellation include it. Details: Payments, Fees & Payouts.
+Payments are processed by Stripe. Requests use card holds that are charged only on approval. If a kitchen can accept a request
+without an item, the chef approves the new total first; only that amount is charged and the rest of the hold is released. Stripe
+keeps the chef's card on file for payments the chef confirms (storage extensions, approved extra time, holdover or claim payments);
+Local Cooks never charges a saved card without the chef's confirmation. Refunds after a chef's own cancellation or change are made
+minus the actual card processing fee; refunds after a kitchen cancellation include it. Details: Payments, Fees & Payouts.
 
 ### §9.3 HST/Sales tax — replace
 

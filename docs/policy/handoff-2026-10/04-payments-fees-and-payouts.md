@@ -12,7 +12,12 @@ the kitchen's rate, and the Local Cooks service fee. Local Cooks may charge a se
 never added afterwards.
 
 **Holds, not charges.** For requests (bookings, storage rentals, booking changes that cost more, paid extra time), we place a hold on
-your card. You're charged only when the kitchen approves. Declined, expired and withdrawn requests release the hold.
+your card. You're charged only when the kitchen approves. Declined, expired and withdrawn requests release the hold. For a multi-day
+booking, the hold covers the whole booking and is charged in full when the kitchen accepts everything.
+
+**Approving a new total.** If the kitchen can accept your request but can't provide an item, nothing is charged while you decide. If
+you accept the new total, we charge only that amount and release the rest of the hold. If you decline, or don't answer, the request
+closes and the whole hold is released. Receipts and your booking show only the items you accepted.
 
 **Your card on file.** Stripe keeps the card you pay with so you can use it again **for things you confirm yourself**:
 - extending a storage rental (one tap);
@@ -40,19 +45,24 @@ with the booking's records. Disputing payments for services you received may lea
 service fee and the actual card processing fee**. HST collected from the chef is included in your payout; you are responsible for
 remitting it. Your rental page always shows "You'll be paid $X on {date}".
 
+On a multi-day booking, each day has its own share of the total, and each day is paid separately. If you accepted the request
+without an item and the chef approved the new total, you're paid on the new total only.
+
 **When you're paid.**
 
 | What | When the payout is sent |
 |---|---|
-| Kitchen booking (and extra time added to it) | As soon as you finish the inspection, or automatically 24 hours after the visit ends |
+| Kitchen booking (single day) and extra time added to it | As soon as you finish the inspection, or automatically 24 hours after the visit ends |
+| Multi-day booking (each day) | After that day: as soon as you finish that day's inspection, or automatically 24 hours after that day ends. Each day's share is transferred separately. |
 | Storage | At the end of each paid term (each extension pays out at its own end) — or as soon as you clear the chef's move-out. If the move-out clears automatically, the payout waits until the 72-hour claim window has passed. |
 | Storage holdover the chef paid | At once |
 | Approved damage or cleaning claim | The full approved amount; Local Cooks covers the card processing fee. A claim never holds the booking's own payout. |
 
 Payouts go to your Stripe account; Stripe then pays your bank on your Stripe payout schedule (usually within a few business days).
 
-**When a payout is held.** A payout waits while a problem report, damage claim or Local Cooks review is open on that booking or rental,
-and is released as soon as it's resolved.
+**When a payout is held.** A payout waits while a problem report, damage claim or Local Cooks review is open on that booking or
+rental, and is released as soon as it's resolved. On a multi-day booking, a problem the chef reports on one day holds that day's
+payout only; the other days are paid as they finish.
 
 **Refunds you fund.** If you cancel a booking, ask a storage renter to move out early, or give a refund yourself, that refund comes out
 of your payout. If you were already paid, the amount is recorded as owed to Local Cooks and we'll contact you to arrange it.
