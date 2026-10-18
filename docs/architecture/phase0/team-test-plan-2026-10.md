@@ -54,11 +54,11 @@ Worked example: full day $180, one equipment item $40, HST 15%, service fee 7%.
 4. **Chef declines.** *Who:* chef. *Do:* tap Decline. *Expected:* the whole hold ($268.40) is released, nothing is charged, the booking is closed and both sides are told.
 5. **No answer.** *Who:* nobody. *Do:* let the deadline pass. *Expected:* the whole hold is released, nothing is charged, the booking is closed and both sides are told. No card fee is lost, because nothing was captured.
 6. **Last-minute booking (under 3 hours).** *Who:* kitchen. *Do:* take a request that starts in under 3 hours (e.g. request at 11 a.m. for a 1 p.m. start) and open the answer screen. *Expected:* "Accept without {item}" is not offered. The kitchen can accept everything or decline, with: "This booking starts soon, so there isn't time to ask the chef about a change. Accept the full request, or decline it and message the chef." Declining opens the message-to-chef box.
-7. **Multi-day.** *Who:* kitchen. *Do:* repeat on a multi-day booking (when it is switched on). *Expected:* same flow, but days are all-or-nothing: accepting without an item keeps every day, and the chef approves the whole new total. (Not testable yet — see the next section.)
+7. **Multi-day.** *Who:* kitchen. *Do:* repeat on a multi-day booking. *Expected:* same flow, but days are all-or-nothing: accepting without an item keeps every day, and the chef approves the whole new total.
 
-## Multi-day bookings (when switched on)
+## Multi-day bookings
 
-**Not testable yet: multi-day is switched off until the chef and kitchen screens are built.** Keep these steps for when it is switched on. The single-day sections above still apply — a multi-day booking is the same booking with more than one day.
+**Switched on for dev (Oct 18).** The single-day sections above still apply — a multi-day booking is the same booking with more than one day. Days do not have to be next to each other (e.g. Mon/Wed/Fri).
 
 Worked example: full days on Monday, Wednesday and Friday at $180/day, HST 15%, service fee 7%, 24 h / 50% policy.
 - Kitchen time: 3 × $180 = **$540.00**
@@ -75,13 +75,21 @@ Worked example: full days on Monday, Wednesday and Friday at $180/day, HST 15%, 
 6. **Day 2 on Today.** *Who:* chef and kitchen. *Do:* on the second day of a 5-day booking, open Today. *Expected:* it says "Day 2 of 5" and shows that day's hours only; no other day is checked in or out by mistake.
 7. **Each day is its own visit.** *Who:* chef and kitchen. *Do:* check in with the 6-digit code each day, check out, and let the kitchen inspect. *Expected:* one code per day; a missed tap on one day never affects the others; arrival details arrive 48 hours before the first day; from day 2 the required tasks are low-friction ("Same as previous visit").
 8. **Payout after each day.** *Who:* kitchen. *Do:* finish the inspection for one day (or wait 24 hours after it). *Expected:* that day's share is paid separately: about **$200.53** ($207.00 kitchen time + HST, minus that day's share of the card processing fee, about $6.47). Over three days the kitchen is paid about **$601.59**, one "You've been paid" notice per payout.
-9. **Drop a day before the deadline.** *Who:* chef. *Do:* drop Wednesday before the Sunday 9 a.m. deadline. *Expected:* the booking keeps Monday and Friday (a gap is allowed); **$219.60 minus the card processing fee shown on that part** is refunded (about $213.13 if that day's fee share is $6.47). The two remaining days total **$439.20**.
+9. **Drop a day before the deadline.** *Who:* chef. *Do:* open the booking → Cancel booking → "Cancel some days" → tick Wednesday, before the Sunday 9 a.m. deadline. The dialog shows each day's refund before you confirm. *Expected:* the booking keeps Monday and Friday (a gap is allowed); **$219.60 minus the card processing fee shown on that part** is refunded (about $213.13 if that day's fee share is $6.47). The two remaining days total **$439.20**.
 10. **Drop a day after the deadline (50% kitchen).** *Who:* chef. *Do:* drop Wednesday after the deadline. *Expected:* the refund is half of that day's paid share minus its card-fee share: 50% × ($219.60 − $6.47) = about **$106.57**. A 100% kitchen refunds nothing. Same arithmetic as a single-day booking.
-11. **Kitchen cancels one day.** *Who:* kitchen. *Do:* cancel Wednesday (e.g. maintenance). *Expected:* Wednesday is refunded in full, **$219.60 including its card fee**; Local Cooks absorbs the card fee and the kitchen is debited its share. The chef may then drop the remaining days **without the late charge**, until the next booked day starts: each is refunded $219.60 minus its card-fee share (about $213.13). Those refunds come out of the kitchen's payout for those days.
+11. **Kitchen cancels one day.** *Who:* kitchen. *Do:* cancel Wednesday (e.g. maintenance). *Expected:* Wednesday is refunded in full, **$219.60 including its card fee**; Local Cooks absorbs the card fee and the kitchen is debited its share. The chef sees "The kitchen cancelled a day. You can drop remaining days without the late charge until {time}" in Cancel booking → "Cancel some days", and may drop the remaining days **without the late charge** until the next booked day starts: each is refunded $219.60 minus its card-fee share (about $213.13). Those refunds come out of the kitchen's payout for those days.
 12. **Change the whole booking.** *Who:* chef, then kitchen. *Do:* before the deadline, ask to add Thursday as a full day and change Friday's hours. *Expected:* one change request for the whole booking, with the price difference shown first (+$219.60 for Thursday); the kitchen approves or declines; if declined, the original booking stands. Changes are not offered after the deadline.
-13. **Invitations for several days.** *Who:* kitchen, then chef. *Do:* invite a chef to Mon/Wed/Fri at a price the kitchen sets. *Expected:* the chef sees the days and price, adds equipment, pays, and the booking is confirmed at once. The price is a discount off the listed price with the $1 floor; no offers above the listed price.
+13. **Invitations for several days.** *Who:* kitchen, then chef. *Do:* invite a chef to Mon/Wed/Fri at a price the kitchen sets. *Expected:* the chef sees the days and price, adds equipment, pays, and the booking is confirmed at once. The price is a discount off the listed price (kitchen time only, not equipment) with the $1 floor; no offers above the listed price. The invited price is firm: if the kitchen changes its prices after sending, the chef still pays the invited price.
+14. **Remove an add-on from one day.** *Who:* chef. *Do:* on a confirmed multi-day booking, Cancel booking → "Selected add-ons" → pick the oven on Friday. *Expected:* the refund is shown first; only Friday's oven comes off; other days keep theirs.
+15. **Extra time on a day.** *Who:* chef, kitchen. *Do:* while checked in on day 2, ask for 1 more hour; also stay 40 minutes past the end. *Expected:* charged at the kitchen's extra time rate (shown before booking, e.g. "Extra time: $25.00/hour"), billed in 30-minute blocks, paid out with that day.
+16. **Booking that starts soon.** *Who:* chef. *Do:* book a multi-day booking whose first day is today. *Expected:* checkout warns "This booking starts within 24 hours…" instead of a past "Cancel by" date.
+17. **Cancel after a paid change (support only).** *Who:* chef. *Do:* change a multi-day booking to something that costs more, pay, then try to drop a day. *Expected:* "This booking has a separate change payment. Contact Local Cooks to cancel days." (owner decision Oct 18: rare, handled by support).
 
-Until further notice, extra time and removing an add-on are refused on a multi-day booking; they will work exactly as single-day once they are priced per day.
+## Extra time rate (kitchen pricing)
+
+1. **Hourly kitchen.** *Who:* kitchen manager. *Do:* open Kitchen → Details and Pricing. *Expected:* an "Extra time rate" row reads "Same as your hourly rate · $X/hour" (not editable).
+2. **Daily-only kitchen.** *Who:* kitchen manager. *Do:* set only a daily rate (no hourly) in onboarding or Details and Pricing. *Expected:* "Extra time rate (per hour)" is required before saving/listing. The chef sees "$180/day • $25/hr extra time" on the kitchen page and "Extra time: $25.00/hour…" before paying.
+3. **Full-day overstay.** *Who:* chef, kitchen. *Do:* book a full day, stay 1 hour past the end. *Expected:* the charge is the extra time rate per hour (e.g. $25), never the daily rate per hour.
 
 ## Storage (rented on its own, by the day)
 
@@ -103,8 +111,6 @@ Until further notice, extra time and removing an add-on are refused on a multi-d
 - Every money event notifies all admins in-app; email only for admins with the email toggle on.
 
 ## Known dev limitations (not bugs)
-
-- **Bookings are single-day.** A booking can be hourly or a full day at the kitchen's daily rate, but not several days in one booking — multi-day is designed but switched off until the chef and kitchen screens are built (see "Multi-day bookings (when switched on)" above). Book each day separately.
 
 - Test accounts use `@localcooks.test` emails, which bounce, so admins see "Booking notice needs delivery recovery". Use real inboxes for your team accounts if you want to read emails.
 - The recurring worker runs every 30 minutes on dev, so time-based steps (reminders, grace, removal review, auto-clear) can lag up to 30 minutes.
