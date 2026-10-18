@@ -224,6 +224,10 @@ export function getTransactionColumns({
             cell: ({ row }) => (
                 <div className="text-right font-medium">
                     {formatCurrency(row.getValue("totalPrice"))}
+                    {!!row.original.dayBreakdown?.length && <details className="mt-1 text-xs font-normal">
+                        <summary className="min-h-11 cursor-pointer">{mt('mdBookingTotal')}: {formatCurrency(row.original.bookingTotalCents || 0)}</summary>
+                        {row.original.dayBreakdown.map((day, index) => <p key={index} className="py-1">{day.date} · {mt('mdAllocation', { amount: formatCurrency(day.allocatedCents) })} · {mt('mdTransfer', { amount: day.transferCents == null ? mt('pending') : formatCurrency(day.transferCents) })}{day.reversedCents ? ` · ${mt('mdReversed', { amount: formatCurrency(day.reversedCents) })}` : ''}</p>)}
+                    </details>}
                 </div>
             ),
         },

@@ -366,5 +366,7 @@
   "bcRefundKeptAdminBody": "La modification demandée par {chef} chez {kitchen}, du {old} au {new}, n’a pas abouti. La réservation reste au {old}. Le remboursement de {amount} est maintenu et financé par Local Cooks. Cette reprise ne change pas le versement de la cuisine.",
   "bcRefundIfApprovedLine": "S’ils approuvent, vous recevrez {amount}.",
   "bcRequestedManagerSameTitle": "Demande de modification · {reference}",
-  "bcRequestedManagerSameBody": "{chef} demande de déplacer {reference} de {old} à {new}. Même prix : votre versement ne change pas. Répondez d’ici le {deadline}. Sa date limite de remboursement passerait au {freeCancel}."
+  "bcRequestedManagerSameBody": "{chef} demande de déplacer {reference} de {old} à {new}. Même prix : votre versement ne change pas. Répondez d’ici le {deadline}. Sa date limite de remboursement passerait au {freeCancel}.",
+  "bookingDaysCount": "{count, plural, one {# jour} other {# jours}}",
+  "bookingWholeTotal": "Total de la réservation entière"
 }

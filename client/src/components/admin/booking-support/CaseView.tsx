@@ -135,6 +135,19 @@ export function MoneyCard({ c }: { c: SupportCase }) {
   return (
     <Card><CardHeader className="pb-2"><CardTitle className="text-base">{t("bsMoney")}</CardTitle></CardHeader>
       <CardContent className="space-y-2">
+        {!!c.dayMoney?.length && <section className="space-y-3 border-b pb-3" aria-label={t('bsDatedDays')}>
+          <h3 className="text-sm font-semibold">{t('bsDatedDays')}</h3>
+          {c.visits.filter(visit => visit.visitDate && visit.scheduleRevision === c.scheduleRevision && visit.scheduleState !== 'superseded').map((visit, index, days) => {
+            const day = c.dayMoney?.find(row => row.visitId === visit.id);
+            return <div key={visit.id} className="rounded-lg border p-3 text-sm">
+              <p className="font-medium">{t('bsDayOf', { number: index + 1, total: days.length })} · {visit.visitDate} · {visit.startTime}–{visit.endTime}</p>
+              <p>{t('bsDayState', { state: t(`mdState_${visit.scheduleState}`, { defaultValue: visit.scheduleState }) })}</p>
+              {day && <><p>{t('bsDayAllocation', { amount: fmtMoney(day.allocatedCents, m.currency) })}</p><p>{t('bsDayRefunded', { amount: fmtMoney(day.refundedCents, m.currency) })}</p></>}
+              {!!day?.pendingRefundCents && <p role="status">{t('bsDayRefundProcessing', { amount: fmtMoney(day.pendingRefundCents, m.currency) })}</p>}
+              {m.dayPayouts?.filter(payout => payout.visitId === visit.id).map(payout => <p key={payout.installmentId}>{fmtMoney(payout.amountCents, m.currency)} · {humanize(payout.status)}{payout.transferId ? ` · ${payout.transferId}` : ''}</p>)}
+            </div>;
+          })}
+        </section>}
         {!!c.kitchenRefundDebts?.length && <div data-testid="kitchen-refund-debts" className="rounded-lg border p-3 text-sm">
           <p className="font-medium">{t("bsKitchenDebtTitle")}</p>
           {c.kitchenRefundDebts.map(debt => <p key={debt.operationId}>{debt.itemName} · {fmtMoney(debt.amountCents, m.currency)} · {t(debt.status === "open" ? "bsKitchenDebtOpen" : "bsKitchenDebtAwaiting")} · {formatAdminDateTime(debt.recordedAt, c.schedule)}</p>)}

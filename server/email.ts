@@ -847,6 +847,8 @@ const generateCalendarUrl = (
 };
 
 type BookingCalendarInput = {
+  days?: EmailBookingDay[];
+  scheduleRevision?: number;
   bookingId?: number;
   bookingDate: string | Date;
   startTime: string;
@@ -859,6 +861,18 @@ function bookingCalendarParts(
   booking: BookingCalendarInput, recipient: string, title: string, location: string,
   description: string, timezone: string,
 ): { ics: string; linksHtml: string; linksText: string; timeLabel: string; links: { label: string; url: string }[] } {
+  if (booking.days?.length) {
+    const files = booking.days.map(day => {
+      const start = createBookingDateTime(calendarDateForBookingTime(day.date, day.startTime, day.operatingWindowStartTime), day.startTime, timezone);
+      const end = createBookingDateTime(calendarDateForBookingTime(day.date, day.endTime, day.operatingWindowStartTime, day.startTime), day.endTime, timezone);
+      return generateIcsFile(title, start, end, location, description, getSupportEmail(), [recipient], `booking-${booking.bookingId}-visit-${day.id}@localcooks.ca`,
+        { sequence: (booking.scheduleRevision || 1) + (day.cancelled ? 1 : 0), cancelled: day.cancelled });
+    });
+    const links = booking.days.filter(day => !day.cancelled).map(day => ({ label: `${day.date} · ${emailClock(day.startTime)}–${emailClock(day.endTime)}`,
+      url: generateCalendarUrl('calendar@gmail.com', title, day.date, day.startTime, day.endTime, location, description, timezone, day.operatingWindowStartTime || undefined) }));
+    return { ics: [files[0].slice(0, files[0].indexOf('BEGIN:VEVENT')).replace('METHOD:CANCEL', 'METHOD:PUBLISH'), ...files.map(file => file.slice(file.indexOf('BEGIN:VEVENT'), file.indexOf('END:VEVENT') + 'END:VEVENT'.length)), 'END:VCALENDAR'].join('\r\n'),
+      links, linksHtml: links.map(link => `<a href="${escapeHtml(link.url)}">${escapeHtml(link.label)}</a>`).join(''), linksText: links.map(link => `${link.label}: ${link.url}`).join('\n'), timeLabel: '' };
+  }
   const operatingDate = booking.bookingDate instanceof Date
     ? booking.bookingDate.toISOString().slice(0, 10) : booking.bookingDate.slice(0, 10);
   const windowStart = booking.operatingWindowStartTime || booking.startTime;
@@ -3521,7 +3535,16 @@ The Local Cooks Team
   return { to: userData.email, subject, text, html: prepareEmailHtml(html) };
 };
 
+export type EmailBookingDay = { id: number; date: string; startTime: string; endTime: string; operatingWindowStartTime?: string | null; pricingMode?: string | null; cancelled?: boolean };
+export function bookingDaysSummary(days: EmailBookingDay[], locale = 'en-CA') {
+  return days.map(day => new Intl.DateTimeFormat(locale, { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' }).format(new Date(`${day.date}T12:00:00Z`))).join(', ')
+    + ` · ${tEmail(locale, 'bookingDaysCount', { count: days.length })}`;
+}
+export function datedBookingCalendarAttachment(booking: BookingCalendarInput, recipient: string, kitchen: string, location: string, timezone: string) {
+  return { filename: 'kitchen-booking.ics', content: bookingCalendarParts(booking, recipient, kitchen, location, '', timezone).ics, contentType: 'text/calendar; charset=utf-8; method=PUBLISH' };
+}
 type BookingEmailContext = {
+  days?: EmailBookingDay[]; totalCents?: number;
   locale?: string | null; timezone?: string; bookingId?: number; referenceCode?: string | null;
   locationAddress?: string; locationName?: string; kitchenName?: string; storageBookingId?: number;
   bookingDate?: string | Date; startTime?: string; endTime?: string;
@@ -3586,8 +3609,9 @@ export function bookingEmailFacts(data: BookingEmailContext, timeLabel?: string)
     ...(data.kitchenName ? [fact('bookingKitchen', data.kitchenName)] : []),
     ...(data.locationName && data.locationName !== data.kitchenName ? [fact('bookingLocation', data.locationName)] : []),
     ...(data.locationAddress ? [fact('bookingAddress', data.locationAddress)] : []),
-    ...(data.bookingDate ? [fact('bookingDate', emailDate(data.bookingDate, locale))] : []),
-    ...(timeLabel || data.startTime && data.endTime ? [fact('bookingTime', `${timeLabel || `${emailClock(data.startTime!, locale)}–${emailClock(data.endTime!, locale)}`} · ${emailZoneName(data.timezone, locale)}`)] : []),
+    ...(data.days?.length ? [fact('bookingDate', bookingDaysSummary(data.days, locale)), ...data.days.map(day => ({ label: emailDate(day.date, locale), value: `${emailClock(day.startTime, locale)}–${emailClock(day.endTime, locale)} · ${emailZoneName(data.timezone, locale)}` }))]
+      : data.bookingDate ? [fact('bookingDate', emailDate(data.bookingDate, locale))] : []),
+    ...(!data.days?.length && (timeLabel || data.startTime && data.endTime) ? [fact('bookingTime', `${timeLabel || `${emailClock(data.startTime!, locale)}–${emailClock(data.endTime!, locale)}`} · ${emailZoneName(data.timezone, locale)}`)] : []),
     ...(data.referenceCode ? [fact('bookingReference', data.referenceCode)] : []),
   ];
 }
@@ -3647,7 +3671,7 @@ export function arrivalModeLine(mode: ArrivalMode = 'legacy', locale?: string | 
   return tEmail(locale, `${short ? 'arrivalAction' : 'arrivalMode'}${mode[0].toUpperCase()}${mode.slice(1)}`);
 }
 
-export const generateBookingConfirmationEmail = (bookingData: { chefEmail: string; chefName: string; kitchenName: string; bookingDate: string | Date; startTime: string; endTime: string; specialNotes?: string; timezone?: string; locationName?: string; locationAddress?: string; addons?: string; declinedAddons?: string; checkInWindowMinutesBefore?: number; noShowGraceMinutes?: number; operatingWindowStartTime?: string | null; durationHours?: number; selectedSlots?: unknown; bookingId?: number; actionUrl?: string; isStaff?: boolean; checkinEnabled?: boolean; checkoutEnabled?: boolean; arrivalInstructions?: string; departureInstructions?: string; contactEmail?: string; paymentSummary?: string; locale?: string | null; arrivalMode?: ArrivalMode; instructionsReleased?: boolean; instructionsReleaseAt?: string; preparationHours?: number; visitGuidance?: string; referenceCode?: string | null; totalCents?: number; payoutCents?: number; processingFeeCents?: number; payoutAfterCloseout?: boolean; reservationChefName?: string; cancellationPolicyHours?: number; cancellationDeadline?: string; receiptUrl?: string; isAdmin?: boolean }): EmailContent => {
+export const generateBookingConfirmationEmail = (bookingData: { chefEmail: string; chefName: string; kitchenName: string; bookingDate: string | Date; startTime: string; endTime: string; specialNotes?: string; timezone?: string; locationName?: string; locationAddress?: string; addons?: string; declinedAddons?: string; checkInWindowMinutesBefore?: number; noShowGraceMinutes?: number; operatingWindowStartTime?: string | null; durationHours?: number; selectedSlots?: unknown; bookingId?: number; actionUrl?: string; isStaff?: boolean; checkinEnabled?: boolean; checkoutEnabled?: boolean; arrivalInstructions?: string; departureInstructions?: string; contactEmail?: string; paymentSummary?: string; locale?: string | null; arrivalMode?: ArrivalMode; instructionsReleased?: boolean; instructionsReleaseAt?: string; preparationHours?: number; visitGuidance?: string; referenceCode?: string | null; totalCents?: number; payoutCents?: number; processingFeeCents?: number; payoutAfterCloseout?: boolean; reservationChefName?: string; cancellationPolicyHours?: number; cancellationDeadline?: string; receiptUrl?: string; isAdmin?: boolean; days?: EmailBookingDay[]; scheduleRevision?: number }): EmailContent => {
   const locale = bookingData.locale || 'en-CA';
   const timezone = bookingData.timezone || DEFAULT_TIMEZONE;
   const staff = bookingData.isStaff;

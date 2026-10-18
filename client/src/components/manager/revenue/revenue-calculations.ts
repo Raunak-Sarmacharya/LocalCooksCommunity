@@ -116,12 +116,13 @@ export function transactionsToManagerRevenueCSV(
     transactions: Transaction[],
     includeHeaders: boolean = true
 ): string {
-    const headers = ["Date", "Chef", "Kitchen", "Location", "Subtotal", "Tax", "Tax Rate", "Stripe Fee", "Refunded", "Net Revenue", "Status"];
+    const dated = transactions.some(transaction => transaction.dayBreakdown?.length);
+    const headers = ["Date", "Chef", "Kitchen", "Location", "Subtotal", "Tax", "Tax Rate", "Stripe Fee", "Refunded", "Net Revenue", "Status", ...(dated ? ["Booking", "Booking total", "Day", "This day allocation", "Transfer", "This transfer", "Transfer reversed", "Sent at"] : [])];
 
-    const rows = transactions.map(transaction => {
+    const rows = transactions.flatMap(transaction => {
         const breakdown = getTransactionRevenueBreakdown(transaction);
 
-        return [
+        const cells = [
             formatBookingDate(transaction.bookingDate),
             transaction.chefName || "Guest",
             transaction.kitchenName,
@@ -134,6 +135,11 @@ export function transactionsToManagerRevenueCSV(
             formatCurrency(breakdown.netRevenue),
             transaction.paymentStatus,
         ];
+        if (!dated) return [cells];
+        if (!transaction.dayBreakdown?.length) return [[...cells, transaction.referenceCode || transaction.bookingId, formatCurrency(transaction.chargeAmount || transaction.totalPrice), '', '', '', '', '', '']];
+        return transaction.dayBreakdown.map((day, index) => [...(index === 0 ? cells : Array(cells.length).fill('')), transaction.referenceCode || transaction.bookingId,
+            index === 0 ? formatCurrency(transaction.bookingTotalCents || 0) : '', day.date, formatCurrency(day.allocatedCents), day.transferId || '',
+            day.transferCents == null ? '' : formatCurrency(day.transferCents), formatCurrency(day.reversedCents), day.sentAt || '']);
     });
 
     const csvRows = includeHeaders ? [headers, ...rows] : rows;

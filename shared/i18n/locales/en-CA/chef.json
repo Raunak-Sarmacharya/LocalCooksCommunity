@@ -3709,5 +3709,6 @@
   "paPayoutDependsOnChef": "Payout depends on the chef’s answer",
   "paItemKitchenDeciding": "Kitchen can’t provide · chef deciding",
   "paItemChefIfAccept": "Not included if you accept",
-  "paItemNotIncluded": "Not included"
+  "paItemNotIncluded": "Not included",
+  "mdDayOf": "Day {number} of {total}"
 }

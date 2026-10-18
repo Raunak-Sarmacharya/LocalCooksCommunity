@@ -99,3 +99,11 @@ describe("revenue-calculations", () => {
 
   });
 });
+
+it('CP9: CSV names the source total once and each day transfer separately', () => {
+ const csv = transactionsToManagerRevenueCSV([{ bookingId: 42, referenceCode: 'KB-DAYS', bookingTotalCents: 2440,
+   dayBreakdown: [{ date: '2030-01-15', allocatedCents: 1220, transferId: 'tr_day1', transferCents: 1100, reversedCents: 100, sentAt: '2030-01-16' },
+     { date: '2030-01-18', allocatedCents: 1220, transferId: null, transferCents: null, reversedCents: 0, sentAt: null }] } as Transaction]);
+ assert.equal(csv.split('\n').length, 3); assert.equal((csv.match(/24.40/g) || []).length, 1);
+ assert.ok(csv.includes('This day allocation')); assert.ok(csv.includes('This transfer')); assert.ok(csv.includes('tr_day1'));
+});

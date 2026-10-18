@@ -100,16 +100,20 @@ function refundReason(row: PaymentRow, receipt: Record<string, any>) {
   if (purposeOf(row, null) === 'claim') return 'Claim refund';
   return 'Refund';
 }
-function refundsOf(row: PaymentRow, booking: BookingFacts, changes: MoneyRows['changes']): RefundFact[] {
+function refundsOf(row: PaymentRow, booking: BookingFacts, changes: MoneyRows['changes'], equipmentNames?: Record<number, string>): RefundFact[] {
   const receipts = Array.isArray(meta(row).refunds) ? meta(row).refunds as Array<Record<string, any>> : [];
   const facts = receipts.flatMap(receipt => {
     const id = String(receipt.id || receipt.refundId || '');
     const amount = cents(receipt.customerReceived);
+    const operation = [meta(row).cancellationRefundOperation, ...(meta(row).cancellationRefundOperations || [])].find(op => op?.dated && op.refundId === id);
+    const dayItems = operation?.lines?.map((line: any) => ({ label: `${operation.days?.find((day: any) => day.visitId === line.visitId)?.date || ''} · ${line.kind === 'equipment' ? equipmentNames?.[line.itemId] || 'Equipment' : 'Kitchen day'}`, amountCents: cents(line.customerCents) }));
     const destination = changes?.find(change => change.id === receipt.kitchenChangeId)?.destination as { date?: string; slots?: Slot[]; pricingMode?: string } | undefined;
     const bookingSchedule = destination?.date && destination.slots?.length ? { ...booking, bookingDate: destination.date,
       pricingMode: destination.pricingMode === 'daily' ? 'daily' as const : booking.pricingMode, originalSlots: destination.slots } : undefined;
     return id && amount > 0 ? [{ refundId: id, amountCents: amount, managerDebitedCents: cents(receipt.managerDebited ?? receipt.customerReceived),
-      reason: refundReason(row, { ...receipt, id }), refundedAt: iso(row.refundedAt), ...(bookingSchedule ? { bookingSchedule } : {}) }] : [];
+      reason: refundReason(row, { ...receipt, id }), refundedAt: iso(row.refundedAt),
+      ...(dayItems?.length && dayItems.reduce((sum: number, item: { amountCents: number }) => sum + item.amountCents, 0) === amount ? { items: dayItems } : {}),
+      ...(bookingSchedule ? { bookingSchedule } : {}) }] : [];
   });
   // Legacy rows: an aggregate refund without per-refund receipts still gets one refund receipt.
   const missing = cents(row.refundAmount) - facts.reduce((total, fact) => total + fact.amountCents, 0);
@@ -122,13 +126,14 @@ function refundsOf(row: PaymentRow, booking: BookingFacts, changes: MoneyRows['c
 export function deriveBookingMoney(rows: MoneyRows): BookingMoney {
   const parentIntent = rows.booking.paymentIntentId;
   const parent = rows.payments.find(row => row.paymentIntentId && row.paymentIntentId === parentIntent);
+  const datedDays = parent ? meta(parent).datedQuote?.manifest?.days as Array<{ date: string; pricingMode: string; slots: Slot[] }> | undefined : undefined;
   const changed = parent ? meta(parent).originalBookingSchedule as { date?: string; slots?: Slot[]; pricingMode?: string } | undefined : undefined;
   const bookingDate = dateOnly(rows.booking.bookingDate);
   const slots = originalSlots(rows);
   const pricingMode = rows.booking.pricingMode === 'daily' ? 'daily' : 'hourly';
   const booking: BookingFacts = { bookingId: rows.booking.id, reference: rows.booking.referenceCode || `#${rows.booking.id}`, kitchenName: rows.kitchenName,
     locationName: rows.locationName, locationAddress: rows.locationAddress, timezone: rows.timezone, chefName: rows.chefName, chefEmail: rows.chefEmail,
-    bookingDate, pricingMode, originalSlots: slots };
+    bookingDate, pricingMode, originalSlots: slots, ...(datedDays?.length ? { days: datedDays } : {}) };
   const historical = { ...booking, bookingDate: changed?.date || bookingDate, originalSlots: changed?.slots?.length ? changed.slots : slots };
   const session = pricingMode === 'daily' ? { label: 'Kitchen day', detail: formatDay(historical.bookingDate) }
     : { label: 'Kitchen session', detail: `${formatDay(historical.bookingDate)} · ${historical.originalSlots.map(slot => formatTimeRange(slot.startTime, slot.endTime)).join(', ')} (${formatMinutes(slotMinutes(historical.originalSlots))})` };
@@ -150,7 +155,8 @@ export function deriveBookingMoney(rows: MoneyRows): BookingMoney {
     } else if (purpose === 'booking' && Array.isArray(m.capturedComponentAllocations) && m.capturedComponentAllocations.length) {
       items = (m.capturedComponentAllocations as Array<Record<string, any>>).map(part => part.kind === 'storage'
         ? { label: 'Storage', detail: rows.addonNames.storage[Number(part.bookingId)], subtotalCents: cents(part.subtotalCents) }
-        : part.kind === 'equipment' ? { label: 'Equipment', detail: rows.addonNames.equipment[Number(part.bookingId)], subtotalCents: cents(part.subtotalCents) }
+        : part.kind === 'equipment' ? { label: 'Equipment', detail: [datedDays?.[part.sessionIndex]?.date, rows.addonNames.equipment[Number(part.bookingId)]].filter(Boolean).join(' · '), subtotalCents: cents(part.subtotalCents) }
+        : datedDays?.[part.sessionIndex] ? { label: 'Kitchen day', detail: `${formatDay(datedDays[part.sessionIndex].date)} · ${datedDays[part.sessionIndex].pricingMode === 'daily' ? 'Full day' : datedDays[part.sessionIndex].slots.map(slot => formatTimeRange(slot.startTime, slot.endTime)).join(', ')}`, subtotalCents: cents(part.subtotalCents) }
         : { ...session, subtotalCents: cents(part.subtotalCents) });
       const allocatedTax = (m.capturedComponentAllocations as Array<Record<string, any>>).reduce((total, part) => total + cents(part.taxCents), 0);
       if (!tax) tax = allocatedTax;
@@ -173,15 +179,22 @@ export function deriveBookingMoney(rows: MoneyRows): BookingMoney {
       : evidence ? evidence.originalAmountCents
       : m.payoutSent?.amountCents != null ? cents(m.payoutSent.amountCents)
       : transferId ? cents(row.managerRevenue) : null;
-    const installments: PaymentFact[] | undefined = row.dayPayouts?.map(day => ({ paymentIntentId: row.paymentIntentId!, chargeId: row.chargeId, purpose,
-      paidAt: iso(row.paidAt), bookingSchedule: { ...(paymentBooking || booking), bookingDate: day.date },
+    const installments: PaymentFact[] | undefined = row.dayPayouts?.map(day => ({ installmentVisitId: day.visitId, paymentIntentId: row.paymentIntentId!, chargeId: row.chargeId, purpose,
+      paidAt: iso(row.paidAt), bookingSchedule: { ...(paymentBooking || booking), days: undefined, bookingDate: day.date,
+        originalSlots: datedDays?.find(d => d.date === day.date)?.slots || (paymentBooking || booking).originalSlots,
+        pricingMode: datedDays?.find(d => d.date === day.date)?.pricingMode === 'daily' ? 'daily' : 'hourly' },
       items: [{ label: `Kitchen visit - ${day.date}`, subtotalCents: day.subtotalCents }], taxCents: day.taxCents, taxRatePercent: null,
-      serviceFeeCents: 0, amountCents: day.subtotalCents + day.taxCents, refunds: [],
+      serviceFeeCents: 0, amountCents: day.subtotalCents + day.taxCents,
+      refunds: refundsOf(row, booking, rows.changes, rows.addonNames.equipment).flatMap(refund => {
+        const operation = [m.cancellationRefundOperation, ...(m.cancellationRefundOperations || [])].find(op => op?.dated && op.refundId === refund.refundId);
+        const reversed = operation ? Number(day.evidence.reversals?.[operation.id] || 0) : 0;
+        return reversed ? [{ ...refund, managerDebitedCents: reversed, reversedCents: reversed }] : [];
+      }),
       kitchen: { noShare: day.noEntitlement, processingAbsorbed: false, processingFeeCents: day.stripeFeeCents || 0, transferId: day.transferId,
         transferredCents: day.transferId ? day.amountCents : null, transferredAt: day.evidence.sentAt || null, reversedCents: day.evidence.reversedCents || 0 } }));
     return { ...(installments ? { installments } : {}), bookingSchedule: paymentBooking, paymentIntentId: row.paymentIntentId!, chargeId: row.chargeId, purpose, paidAt: iso(row.paidAt), items, ...(kitchenItems ? { kitchenItems } : {}),
       taxCents: tax, taxRatePercent: m.taxRatePercent != null ? Number(m.taxRatePercent) : subtotal && tax ? Math.round(tax * 1000 / subtotal) / 10 : null,
-      serviceFeeCents: Math.max(0, serviceFee), amountCents: amount, refunds: refundsOf(row, booking, rows.changes).map(refund => ({ ...refund,
+      serviceFeeCents: Math.max(0, serviceFee), amountCents: amount, refunds: refundsOf(row, booking, rows.changes, rows.addonNames.equipment).map(refund => ({ ...refund,
         ...(evidence?.refunds && Object.keys(evidence.refunds).length ? { reversedCents: evidence.refunds[refund.refundId]?.amountCents || 0 } : {}) })), ...(problem ? { problem } : {}),
       kitchen: { noShare: purpose === 'claim' && (claim?.fundedBy === 'local_cooks' || m.platformRecovery === true),
         processingAbsorbed: purpose === 'claim',
@@ -291,9 +304,9 @@ export function planBookingDocuments(money: BookingMoney, settled: boolean): Pla
       const reversed = Math.min(toReverse, refund.reversedCents ?? refund.managerDebitedCents);
       if (reversed <= 0) continue;
       toReverse -= reversed;
-      plan.push({ sourceKey: sourceKeys.refund('manager', refund.refundId), kind: 'refund', audience: 'manager', chargeId: null,
+      plan.push({ sourceKey: sourceKeys.refund('manager', refund.refundId) + (payment.installmentVisitId ? `:${payment.kitchen.transferId}` : ''), kind: 'refund', audience: 'manager', chargeId: null,
         stripe: { paymentIntentId: payment.paymentIntentId, refundId: refund.refundId, transferId: payment.kitchen.transferId }, referencesSourceKey: remittanceKey,
-        build: ctx => buildPayoutReversal(booking, refund, reversed, { number: ctx.referenced!.number }, ctx) });
+        build: ctx => buildPayoutReversal(payment.bookingSchedule || booking, refund, reversed, { number: ctx.referenced!.number }, ctx) });
     }
   }
   for (const compensation of money.compensations) plan.push({ sourceKey: sourceKeys.remittance(compensation.transferId), kind: 'remittance', audience: 'manager',

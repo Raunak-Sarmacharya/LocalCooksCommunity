@@ -1,5 +1,7 @@
 import { EquipmentIcon as Package, StorageIcon as Boxes } from "@/components/ui/inventory-icons";
 import { bookingStartDateKey } from '@/lib/calendar-date';
+import { RequestedBookingDays, type RequestedDay } from './RequestedBookingDays';
+import { currentBookingDays } from '@/components/booking/BookingDayList';
 import { useState, useMemo, useRef, useEffect, type ReactNode } from "react";
 import { getAuthHeaders } from "@/lib/api";
 import { mt } from "@/i18n/manager";
@@ -44,6 +46,8 @@ export interface EquipmentItemForAction {
 }
 
 export interface BookingForAction {
+  scheduleRevision?: number;
+  visits?: RequestedDay[];
   id: number;
   kitchenName?: string;
   chefName?: string;
@@ -555,13 +559,13 @@ function BookingActionDialogContent({
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-xs text-muted-foreground">
               <span className="flex items-center gap-1">
                 <Calendar className="h-3 w-3" />
-                {formatDate(bookingStartDateKey(booking) ?? booking.bookingDate)}
+                {booking.scheduleRevision ? currentBookingDays(booking.visits || [], booking.scheduleRevision).map(day => formatDate(day.visitDate!)).join(', ') : formatDate(bookingStartDateKey(booking) ?? booking.bookingDate)}
               </span>
-              <span className="flex items-center gap-1">
+              {!booking.scheduleRevision && <span className="flex items-center gap-1">
                 <Clock className="h-3 w-3" />
                 {kitchenBookingBlocks(booking).map(block =>
                   `${formatTime(block.startTime)} – ${formatTime(block.endTime)}`).join(', ')}
-              </span>
+              </span>}
             </div>
           </div>
           {booking.transactionAmount != null && booking.transactionAmount > 0 && (
@@ -572,6 +576,7 @@ function BookingActionDialogContent({
           )}
         </div>
 
+        <RequestedBookingDays visits={booking.visits} revision={booking.scheduleRevision} equipment={booking.equipmentItems} />
         <div className="grid items-start gap-5 lg:grid-cols-[1.15fr_1fr]">
         <div className="space-y-4">
         <section className="space-y-3" aria-label={mt("reviewRequestedItems")}>
@@ -580,8 +585,8 @@ function BookingActionDialogContent({
             <p className="text-sm leading-6 text-muted-foreground">{mt("reviewItemGuidance")}</p>
           </div>
           <BookingItemDecision
-            name={booking.pricingMode === 'daily' ? `${mt("kitchenSession")} · ${mt("kitchenSessionFullDay")}` : mt("kitchenSession")}
-            details={kitchenBookingBlocks(booking).map(block =>
+            name={booking.scheduleRevision ? mt('mdAllDays') : booking.pricingMode === 'daily' ? `${mt("kitchenSession")} · ${mt("kitchenSessionFullDay")}` : mt("kitchenSession")}
+            details={booking.scheduleRevision ? undefined : kitchenBookingBlocks(booking).map(block =>
               `${formatTime(block.startTime)} – ${formatTime(block.endTime)}`).join(', ')}
             price={booking.totalPrice}
             icon={<Calendar className="h-4 w-4" />}

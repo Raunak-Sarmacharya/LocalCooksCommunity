@@ -18,8 +18,8 @@ import { policySessionStart } from './cancellation-policy-settings';
 import { finalizeDatedRefund, isDatedBooking, type DayTarget } from './dated-booking-cancellation';
 
 /** Staff use the same instant frozen-policy command as the chef. */
-export async function requestChefCancellation(bookingId: number, chefId: number, actorId: number, publicMessage?: string, operationKey = `support-chef-cancel-${bookingId}`, visitIds?: number[]) {
-  return cancelChefBooking(bookingId, chefId, operationKey, publicMessage, actorId, undefined, visitIds);
+export async function requestChefCancellation(bookingId: number, chefId: number, actorId: number, publicMessage?: string, operationKey = `support-chef-cancel-${bookingId}`, visitIds?: number[], expectedRefundCents?: number) {
+  return cancelChefBooking(bookingId, chefId, operationKey, publicMessage, actorId, expectedRefundCents, visitIds);
 }
 
 /** Local Cooks goodwill changes neither the manager transfer nor their entitlement. */
@@ -78,14 +78,14 @@ const fromProvider = (message: string) => message.replace(/^Failed to (reverse t
  * Used or separately charged add-ons need their own allocation review before this command.
  */
 export async function cancelKitchenCausedBooking(bookingId: number, managerId: number, actorId: number, operationKey: string, reason = 'Kitchen unavailable',
-  options: { fundedByLocalCooks?: boolean; visitIds?: number[] } = {}) {
+  options: { fundedByLocalCooks?: boolean; visitIds?: number[]; expectedRefundCents?: number } = {}) {
   // A confirmed multi-day booking is cancelled per day. A request charged after it was declined/withdrawn was never confirmed:
   // its whole charge is refunded by the command below, exactly as for a one-day request.
   const days = await dated(bookingId, true);
   if (days) {
     // Unpaid days are debited from the kitchen's pending payout; an already paid day that can't be reversed becomes recorded debt.
     if (options.fundedByLocalCooks) throw new Error('A multi-day refund is retried from its saved refund operation; Local Cooks funding is applied automatically if a paid day can’t be reversed.');
-    return days.cancelDatedDays(bookingId, { role: 'manager', id: managerId }, { target: { visitIds: options.visitIds }, operationKey, reason,
+    return days.cancelDatedDays(bookingId, { role: 'manager', id: managerId }, { target: { visitIds: options.visitIds }, operationKey, reason, expectedRefundCents: options.expectedRefundCents,
       ...(actorId !== managerId ? { supportActorId: actorId } : {}) });
   }
   const committed = await commitKitchenCancellation(bookingId, managerId, actorId, operationKey, reason);

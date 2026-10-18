@@ -32,6 +32,8 @@ import { readVisitDuties, type DutySection, type VisitDuties } from '@shared/vis
 const EMPTY = '__empty__';
 
 type Evidence = {
+  visitDate?: string | null; operatingWindowStartTime?: string | null;
+  scheduleState?: string | null; scheduleRevision?: number | null;
   closeout?: import("@shared/clock-closeout").VisitCloseout;
   id: number; updatedAt: string; startTime: string; endTime: string; checkinStatus?: string | null;
   checkedInAt?: string | null; checkedInMethod?: string | null; checkoutRequestedAt?: string | null;
@@ -60,6 +62,8 @@ async function readDetails(bookingId: number): Promise<ManagerInspectionDetails>
   if (result.id !== bookingId || !Array.isArray(result.visits) || !result.kitchen || !result.location)
     throw Error(t('inspectCopy01'));
   if (result.inspection && !readVisitDuties(result.inspection.duties)) throw Error(t('inspectCopy02'));
+  if (result.scheduleRevision) result.visits = result.visits.filter((visit: Evidence) => visit.scheduleRevision === result.scheduleRevision && visit.scheduleState !== 'superseded')
+    .sort((a: Evidence, b: Evidence) => (a.visitDate || '').localeCompare(b.visitDate || ''));
   return result;
 }
 
@@ -139,8 +143,9 @@ function InspectionVisits({ booking, refresh, stale }: { booking: ManagerInspect
   const [, navigate] = useLocation();
   const visitId = new URLSearchParams(search).get('visitId') || '';
   const [notes, setNotes] = useState<Record<string, string>>({});
-  const selected = booking.visits.length ? booking.visits.find(visit => String(visit.id) === visitId)
+  const candidate = booking.visits.length ? booking.visits.find(visit => String(visit.id) === visitId)
     || (!visitId && booking.visits.length === 1 ? booking.visits[0] : undefined) : !visitId ? booking : undefined;
+  const selected = candidate?.visitDate && candidate.scheduleState !== 'active' ? undefined : candidate;
   const timezone = booking.location.timezone;
   const noteKey = booking.visits.length ? `visit:${selected?.id || visitId}` : 'booking';
   let contextError = '';
@@ -151,7 +156,7 @@ function InspectionVisits({ booking, refresh, stale }: { booking: ManagerInspect
 
     // Never the year. Time only on the visit day; otherwise "Oct 15, 7:04 p.m.".
     const dayKey = (at: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(at);
-    const visitDay = booking.bookingDate.slice(0, 10);
+    const visitDay = selected?.visitDate?.slice(0, 10) || booking.bookingDate.slice(0, 10);
     formatEvent = value => {
       if (!value) return t('inspectCopy31');
       const at = new Date(value);
@@ -160,9 +165,10 @@ function InspectionVisits({ booking, refresh, stale }: { booking: ManagerInspect
       return dayKey(at) === visitDay ? clock : `${new Intl.DateTimeFormat(locale, { timeZone: timezone, month: 'short', day: 'numeric' }).format(at)}, ${clock}`;
     };
     if (selected) {
-      const day = booking.bookingDate.slice(0, 10);
-      const startDay = calendarDateForOperatingTime(day, selected.startTime, booking.operatingWindowStartTime || booking.startTime);
-      const endDay = calendarDateForBookingTime(day, selected.endTime, booking.operatingWindowStartTime, booking.startTime);
+      const day = selected.visitDate?.slice(0, 10) || booking.bookingDate.slice(0, 10);
+      const anchor = selected.operatingWindowStartTime || booking.operatingWindowStartTime || booking.startTime;
+      const startDay = calendarDateForOperatingTime(day, selected.startTime, anchor);
+      const endDay = calendarDateForBookingTime(day, selected.endTime, anchor, selected.startTime);
       schedule = `${formatVisitWhen(createBookingDateTime(startDay, selected.startTime, timezone), createBookingDateTime(endDay, selected.endTime, timezone), timezone, locale)} · ${friendlyTimezoneName(timezone, locale)}`;
     }
   } catch (cause) { contextError = cause instanceof Error ? cause.message : t('inspectCopy33'); }
@@ -182,18 +188,21 @@ function InspectionVisits({ booking, refresh, stale }: { booking: ManagerInspect
           <SelectTrigger id="inspection-visit" className="ml-2 max-w-full"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value={EMPTY}>{t('inspectCopy37')}</SelectItem>
-            {booking.visits.map(visit => <SelectItem key={visit.id} value={String(visit.id)}>{t('formVisitRange', 'Visit {number}: {start}–{end}', { number: visit.blockIndex + 1, start: formatTime(visit.startTime, locale), end: formatTime(visit.endTime, locale) })}</SelectItem>)}
+            {booking.visits.map(visit => <SelectItem key={visit.id} value={String(visit.id)} disabled={!!visit.visitDate && visit.scheduleState !== 'active'}>{visit.visitDate ? visit.visitDate + ' · ' + t('mdDayOf', { number: booking.visits.findIndex(day => day.id === visit.id) + 1, total: booking.visits.length }) : t('formVisitRange', 'Visit {number}: {start}–{end}', { number: visit.blockIndex + 1, start: formatTime(visit.startTime, locale), end: formatTime(visit.endTime, locale) })}</SelectItem>)}
           </SelectContent>
         </Select><span className="mt-1 block text-muted-foreground">{t('inspectCopy38')}</span>
       </div>}
-    {selected && <p className="text-[15px] font-medium leading-[22px] tabular-nums">{booking.visits.length ? t('inspectVisitOf', { number: booking.visits.findIndex(visit => visit.id === selected.id) + 1, total: booking.visits.length }) + ' · ' : ''}{schedule}</p>}
+    {selected && <p className="text-[15px] font-medium leading-[22px] tabular-nums">{booking.visits.length ? t(selected.visitDate ? 'mdDayOf' : 'inspectVisitOf', { number: booking.visits.findIndex(visit => visit.id === selected.id) + 1, total: booking.visits.length }) + ' · ' : ''}{schedule}</p>}
     </section>
     {contextError && <p role="alert">{contextError}</p>}
     {inSessionEnds(booking).length > 0 && <div className="flex flex-wrap gap-2">
       {inSessionEnds(booking).map(session => <ManagerInSessionBadge key={session.visitId ?? 'booking'} endsAt={session.endsAt} timezone={timezone}
         label={session.visitId && booking.visits.length > 1 ? t('inspectVisit', { number: (booking.visits.find(visit => visit.id === session.visitId)?.blockIndex ?? 0) + 1 }) : undefined} />)}
     </div>}
-    {!selected ? <p role="alert">{visitId ? t('inspectCopy39') : t('inspectCopy40')}</p> : <InspectionTask key={booking.visits.length ? selected.id : 'booking'} booking={booking} evidence={selected}
+    {!selected ? <p role="alert">{visitId ? t('inspectCopy39') : t('inspectCopy40')}</p> : <InspectionTask key={booking.visits.length ? selected.id : 'booking'} booking={{ ...booking, payout: selected.visitDate ? (() => {
+      const day = booking.payout?.installments?.find(item => item.visitId === selected.id);
+      return day ? { ...day, timing: 'after_closeout', sentAt: day.sentAt || null, expectedAt: day.expectedAt || null, holdReason: day.holdReason || null } : undefined;
+    })() : booking.payout }} evidence={selected}
       visitId={booking.visits.length ? selected.id : undefined} formatEvent={formatEvent} refresh={refresh} blocked={stale || !!contextError}
       note={notes[noteKey] || ''} onNoteChange={value => setNotes(current => ({ ...current, [noteKey]: value }))} />}
     <Link href="/manager/dashboard?view=support" className="inline-block text-sm underline">{t('inspectCopy41')}</Link>

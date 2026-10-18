@@ -22,7 +22,7 @@ import { VISIT_CODE_MAX_ATTEMPTS, type ManagerVisitCodeResponse, type ManagerVis
 export const SELF_REASON_MIN = 10
 export const SELF_REASON_MAX = 500
 
-export interface VisitCodePanelVisit { id: number; blockIndex: number; startTime: string; endTime: string }
+export interface VisitCodePanelVisit { id: number; blockIndex: number; startTime: string; endTime: string; visitDate?: string | null; operatingWindowStartTime?: string | null }
 
 interface VisitCodePanelProps {
   bookingId: number
@@ -85,9 +85,10 @@ export function VisitCodePanel({ bookingId, customerName, kitchenName, timezone,
     const visit = target.visitId ? visits.find(row => row.id === target.visitId) : undefined
     const start = visit?.startTime ?? startTime, end = visit?.endTime ?? endTime
     try {
-      const day = bookingDate.split("T")[0]
-      const begins = createBookingDateTime(calendarDateForBookingTime(day, start, operatingWindowStartTime), start, timezone)
-      const ends = createBookingDateTime(calendarDateForBookingTime(day, end, operatingWindowStartTime, start), end, timezone)
+      const day = visit?.visitDate?.slice(0, 10) || bookingDate.split("T")[0]
+      const anchor = visit?.operatingWindowStartTime || operatingWindowStartTime
+      const begins = createBookingDateTime(calendarDateForBookingTime(day, start, anchor), start, timezone)
+      const ends = createBookingDateTime(calendarDateForBookingTime(day, end, anchor, start), end, timezone)
       const now = Date.now()
       return now >= begins.getTime() - POLL_LEAD_MINUTES * 60_000 && now <= ends.getTime()
     } catch { return true }
@@ -143,9 +144,10 @@ export function VisitCodePanel({ bookingId, customerName, kitchenName, timezone,
     const visit = target.visitId ? visits.find(row => row.id === target.visitId) : undefined
     const start = visit?.startTime ?? startTime, end = visit?.endTime ?? endTime
     try {
-      const day = bookingDate.split("T")[0]
-      const begins = createBookingDateTime(calendarDateForBookingTime(day, start, operatingWindowStartTime), start, zone)
-      const ends = createBookingDateTime(calendarDateForBookingTime(day, end, operatingWindowStartTime, start), end, zone)
+      const day = visit?.visitDate?.slice(0, 10) || bookingDate.split("T")[0]
+      const anchor = visit?.operatingWindowStartTime || operatingWindowStartTime
+      const begins = createBookingDateTime(calendarDateForBookingTime(day, start, anchor), start, zone)
+      const ends = createBookingDateTime(calendarDateForBookingTime(day, end, anchor, start), end, zone)
       const date = new Intl.DateTimeFormat(locale, { timeZone: zone, dateStyle: "medium" }).format(begins)
       const time = new Intl.DateTimeFormat(locale, { timeZone: zone, timeStyle: "short", hour12: true })
       return `${date}, ${time.format(begins)} – ${time.format(ends)} ${friendlyTimezoneName(zone, locale)}`
@@ -162,7 +164,7 @@ export function VisitCodePanel({ bookingId, customerName, kitchenName, timezone,
   const chefName = customerName || t("visitCodeChefFallback", { defaultValue: "the chef" })
   const visitName = (target: ManagerVisitCodeState) => {
     const visit = target.visitId ? visits.find(row => row.id === target.visitId) : undefined
-    return visit ? t("visitCodeVisitN", { defaultValue: "Visit {number}", number: visit.blockIndex + 1 }) : ""
+    return visit?.visitDate ? t('mdDayOf', { number: visits.findIndex(row => row.id === visit.id) + 1, total: visits.length }) : visit ? t("visitCodeVisitN", { defaultValue: "Visit {number}", number: visit.blockIndex + 1 }) : ""
   }
 
   const open = (kind: Action["kind"], target: ManagerVisitCodeState) => {

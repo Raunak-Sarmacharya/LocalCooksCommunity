@@ -28,6 +28,8 @@ export type BookingType = 'kitchen' | 'storage' | 'equipment' | 'bundle' | 'dama
 
 // Transaction type for transaction history
 export interface Transaction {
+    bookingTotalCents?: number;
+    dayBreakdown?: Array<{ date: string; allocatedCents: number; transferId: string | null; transferCents: number | null; reversedCents: number; sentAt: string | null }>;
     id: number;
     transactionId: number | null;
     bookingId: number;

@@ -198,6 +198,8 @@ export default function ManagerBookingsPanel({ embedded = false, onGoToKitchens 
 
     return {
       id: details.id,
+      scheduleRevision: details.scheduleRevision,
+      visits: details.visits,
       kitchenName: details.kitchen?.name,
       chefName: details.chef?.fullName || details.chef?.username,
       locationName: details.location?.name,

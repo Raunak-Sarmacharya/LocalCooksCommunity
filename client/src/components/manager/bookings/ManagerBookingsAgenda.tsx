@@ -15,7 +15,7 @@ import { StatusPill } from "@/components/booking/BookingNowCard";
 import type { BookingHeaderPhase } from "@/lib/booking-header-state";
 import { bookingCancelCause } from "@/lib/booking-cancel-cause";
 import {
-  bookingListPill, listTimezone, listWhenLine, managerBookingGroups, managerRowAction, showArrivalLine, waitingForChef,
+  bookingListPill, listTimezone, listWhenLine, managerBookingGroups, managerRowAction, showArrivalLine, waitingForChef, managerDatedListDay,
   type ListedBooking, type ManagerListGroup, type ManagerRowAction,
 } from "@/lib/booking-list-status";
 import { friendlyTimezoneName } from "@shared/timezone-utils";
@@ -59,7 +59,7 @@ export function ManagerBookingsAgenda({ bookings, onReviewRequest }: {
   const [tab, setTab] = useState<Tab>("upcoming");
   const [query, setQuery] = useState("");
   const words = { today: mt("mblToday"), tomorrow: ct("ovTomorrow") };
-  const groups = useMemo(() => managerBookingGroups(bookings), [bookings]);
+  const groups = useMemo(() => managerBookingGroups(bookings.map(row => managerDatedListDay(row))), [bookings]);
   const upcomingCount = groups.needs_action.length + groups.today.length + groups.upcoming.length;
   const activeTab: Tab = tab === "cancelled" && !groups.cancelled.length ? "upcoming" : tab;
   const sections: Array<{ key: ManagerListGroup; title?: string }> = activeTab === "upcoming"
@@ -126,6 +126,10 @@ export function ManagerBookingsAgenda({ bookings, onReviewRequest }: {
                         {/* The whole row opens the booking; the action and the payment breakdown sit above the link. */}
                         <Link href={`/manager/booking/${row.id}`} className="outline-none after:absolute after:inset-0 after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-ring">
                           {listWhenLine(row, locale, words)}
+                          {row.scheduleRevision ? <span className="mt-1 block text-xs font-normal text-muted-foreground">{(() => {
+                            const days = bookings.find(booking => booking.id === row.id)?.visitStates || [];
+                            return mt('mdDayOf', { number: days.findIndex(day => day.id === row.visitStates?.[0]?.id) + 1, total: days.length });
+                          })()}</span> : null}
                         </Link>
                       </p>
                       <div className="mt-0.5 min-w-0 md:mt-0">

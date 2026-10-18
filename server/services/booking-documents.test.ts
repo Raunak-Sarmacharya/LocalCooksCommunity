@@ -233,3 +233,25 @@ describe('refunds, claims and settlement', () => {
     expect(bookingSettled(settlementState(booking175(), deriveBookingMoney(booking175()), { visitsClosed: true, moneyFrozen: false })).settled).toBe(true);
   });
 });
+
+
+it('CP9: receipt and credit note list every dated allocation without duplicating the charge', () => {
+  const rows = booking175(); rows.extensions = []; rows.payments = [rows.payments[0]];
+  const payment = rows.payments[0]; payment.amount = 2440; payment.baseAmount = 2300; payment.taxAmount = 300; payment.serviceFee = 140; payment.refundAmount = 1220;
+  payment.metadata = { datedQuote: { manifest: { days: [
+    { date: '2030-01-15', pricingMode: 'hourly', slots: [{ startTime: '09:00', endTime: '10:00' }] },
+    { date: '2030-01-18', pricingMode: 'daily', slots: [{ startTime: '08:00', endTime: '18:00' }] }] } },
+    capturedComponentAllocations: [{ kind: 'kitchen', sessionIndex: 0, subtotalCents: 1000, taxCents: 150 }, { kind: 'kitchen', sessionIndex: 1, subtotalCents: 1000, taxCents: 150 }],
+    refunds: [{ id: 're_day', customerReceived: 1220, managerDebited: 1100 }], cancellationRefundOperation: { dated: true, refundId: 're_day', days: [{ visitId: 9, date: '2030-01-18' }], lines: [{ visitId: 9, kind: 'kitchen', customerCents: 1220 }] } };
+  const money = deriveBookingMoney(rows);
+  expect(money.payments).toHaveLength(1); expect(money.payments[0].amountCents).toBe(2440);
+  expect(money.payments[0].items.map(item => item.detail).join(' ')).toMatch(/Jan 15.*Jan 18.*Full day/);
+  expect(money.payments[0].refunds[0].items).toEqual([{ label: '2030-01-18 · Kitchen day', amountCents: 1220 }]);
+  const plan = planBookingDocuments(money, false);
+  const ctx = { number: 'LC-R-1', issuedAt: '2030-01-19T12:00:00Z', supplier: { name: 'Local Cooks', legalNote: '', address: '', website: '', email: '', taxNumber: null }, card: null, issued: [] };
+  const receipt = plan[0].build(ctx); expect(receipt.meta.filter(row => row.label === 'Booking day')).toHaveLength(2);
+  const referenced: StoredDocument = { id: 1, number: 'LC-R-0', bookingId: rows.booking.id, kind: 'payment', audience: 'chef', sourceKey: plan[0].sourceKey,
+    amountCents: 2440, issuedAt: ctx.issuedAt, snapshot: receipt, referencesDocumentId: null };
+  const credit = plan.find(row => row.audience === 'chef' && row.kind === 'refund')!.build({ ...ctx, referenced });
+  expect(credit.sections[0].lines[0]).toMatchObject({ label: '2030-01-18 · Kitchen day', amountCents: -1220 });
+});

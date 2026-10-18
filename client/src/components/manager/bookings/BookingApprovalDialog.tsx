@@ -1,6 +1,7 @@
 import { EquipmentIcon as Package, StorageIcon as Boxes } from "@/components/ui/inventory-icons";
 import { bookingStartDateKey, formatCalendarDate } from "@/lib/calendar-date";
 import { useState } from "react";
+import { RequestedBookingDays, type RequestedDay } from './RequestedBookingDays';
 import { mt } from "@/i18n/manager";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -25,12 +26,15 @@ export interface StorageItemForApproval {
 }
 
 export interface EquipmentItemForApproval {
+  visitDate?: string | null;
   id: number;
   name: string;
   totalPrice: number;
 }
 
 export interface BookingForApproval {
+  scheduleRevision?: number;
+  visits?: RequestedDay[];
   id: number;
   kitchenName?: string;
   chefName?: string;
@@ -259,6 +263,7 @@ function BookingApprovalDialogContent({
             )}
           </div>
 
+          <RequestedBookingDays visits={booking.visits} revision={booking.scheduleRevision} equipment={booking.equipmentItems} />
           {/* Kitchen booking action — always follows the mode */}
           <div className="flex items-center justify-between p-3 rounded-lg border bg-background">
             <div className="flex items-center gap-2">

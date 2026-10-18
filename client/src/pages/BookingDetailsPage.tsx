@@ -68,6 +68,7 @@ import { RunningLateCard } from "@/components/booking/RunningLateCard";
 import { SessionExtensionsCard, type ExtensionTool } from "@/components/booking/SessionExtensionsCard";
 import type { RunningLateState } from "@shared/running-late";
 import { VisitCodePanel, POLL_LEAD_MINUTES } from "@/components/manager/bookings/VisitCodePanel";
+import { ManagerBookingDays } from '@/components/manager/bookings/ManagerBookingDays';
 import { bookingResponseDeadline, formatResponseDeadline } from '@/lib/booking-response-deadline';
 import { createBookingDateTime, friendlyTimezoneName } from '@shared/timezone-utils';
 import { lateCheckoutOpen } from '@shared/clock-closeout';
@@ -99,6 +100,7 @@ function useMedia(query: string) {
 
 interface BookingDetails {
   scheduleRevision?: number;
+  dayMoney?: import('@shared/booking-day-money').BookingDayMoney[];
   cancellationPolicySnapshot?: import('@shared/cancellation-policy').CancellationPolicySnapshot | null;
   payout?: import('@shared/kitchen-payout').KitchenPayout;
   closeout?: import("@shared/clock-closeout").BookingCloseout;
@@ -238,7 +240,7 @@ interface BookingDetails {
     kitchenShareCents?: number; refundedCents: number; paidAt: string | null; status: string }>;
   /** The chef's latest "running late" heads-up to the kitchen. */
   runningLate?: RunningLateState | null;
-  visits?: Array<{ id: number; updatedAt: string; blockIndex: number; startTime: string; endTime: string; checkinStatus: string; checkedInAt: string | null; checkoutRequestedAt: string | null; checkedOutAt: string | null; checkoutApprovedAt: string | null; noShowDetectedAt: string | null; checkoutManagerMessage?: string | null; visitDate?: string | null; scheduleRevision?: number | null; scheduleState?: string | null; pricingMode?: string | null }>;
+  visits?: Array<{ id: number; updatedAt: string; blockIndex: number; startTime: string; endTime: string; checkinStatus: string; checkedInAt: string | null; checkoutRequestedAt: string | null; checkedOutAt: string | null; checkoutApprovedAt: string | null; noShowDetectedAt: string | null; checkoutManagerMessage?: string | null; visitDate?: string | null; scheduleRevision?: number | null; scheduleState?: string | null; pricingMode?: string | null; operatingWindowStartTime?: string | null; priceSnapshot?: { kitchenCents?: number; equipment?: Array<{ cents: number }> } | null; closeout?: { scheduledStartAt?: string; scheduledEndAt?: string } }>;
 }
 
 async function getAuthHeaders(): Promise<HeadersInit> {
@@ -774,6 +776,8 @@ export default function BookingDetailsPage() {
   };
 
   const bookingForAction: BookingForAction | null = booking ? {
+    scheduleRevision: booking.scheduleRevision,
+    visits: booking.visits,
     id: booking.id,
     kitchenName: booking.kitchen?.name,
     chefName: booking.chef?.fullName || booking.chef?.username,
@@ -1244,14 +1248,14 @@ export default function BookingDetailsPage() {
     if (isManagerView) return { label: payoutTitle, struck: false,
       // The booking's own net plus each extra charge's net. (The payout snapshot already includes the extras: never add them to it.)
       cents: (booking.paymentTransaction.kitchenShareCents ?? (extraCharges.length ? buildKitchenPayoutStatementBreakdown(pricingBreakdownInput).kitchenNetPayoutCents
-        : booking.payout?.timing === 'after_closeout' ? booking.payout.amountCents : buildKitchenPayoutStatementBreakdown(pricingBreakdownInput).kitchenNetPayoutCents)) + extraTotalCents };
+        : !booking.scheduleRevision && booking.payout?.timing === 'after_closeout' ? booking.payout.amountCents : buildKitchenPayoutStatementBreakdown(pricingBreakdownInput).kitchenNetPayoutCents)) + extraTotalCents };
     // Before capture it is only a hold on the card; "Total paid" appears once the money was actually taken.
     if (!paymentCaptured) return { label: t('bnCardHold'), cents: booking.paymentTransaction.amount || buildChefBookingReceiptBreakdown(pricingBreakdownInput).totalPaidCents, struck: false };
     return { label: t('bdhTotalPaid'), cents: booking.paymentTransaction.amount + extraTotalCents, struck: false };
   })();
   // ── State, times and facts for the Now card (design-booking-consolidation.md §2) ─────────────────────────────
   const hasMultipleVisits = (booking?.visits?.length ?? 0) > 1;
-  const datedBooking = !isManagerView && !!booking?.scheduleRevision;
+  const datedBooking = !!booking?.scheduleRevision;
   const bookingDays = datedBooking ? currentBookingDays(booking?.visits ?? [], booking!.scheduleRevision!) : [];
   const tz = booking?.location?.timezone || undefined;
   const lang = i18n.language;
@@ -1685,13 +1689,13 @@ export default function BookingDetailsPage() {
               arrivalMode={booking.arrivalMode} timezone={booking.location?.timezone} visitStartAt={visitBounds?.startAt ?? null} />
           </ClampedBlock>
         )}
-        {now.body === 'code' && booking.status === 'confirmed' && !hasArrival && (
+        {booking.status === 'confirmed' && (isManagerView && datedBooking || now.body === 'code' && !hasArrival) && (
           // The code panel brings its own frame; no second box around it.
           <div data-testid="now-body">
             <VisitCodePanel key={`visit-code-${booking.id}`} bookingId={booking.id} bookingStatus={booking.status} embedded collapsed={!withinCodeLead}
               visitEnded={false} customerName={chefName} kitchenName={booking.kitchen?.name}
               timezone={booking.location?.timezone} bookingDate={booking.bookingDate} operatingWindowStartTime={booking.operatingWindowStartTime}
-              startTime={booking.startTime} endTime={booking.endTime} visits={booking.visits} onChanged={reloadBookingDetails} />
+              startTime={booking.startTime} endTime={booking.endTime} visits={datedBooking ? bookingDays : booking.visits} onChanged={reloadBookingDetails} />
           </div>
         )}
         {!isManagerView && (runningLateOpen || runningLateSent) && (
@@ -1987,7 +1991,9 @@ export default function BookingDetailsPage() {
       {/* Wide screens: the Now card, then a main column and a sidebar of at most three cards. Narrow: one column in §2.1 order. */}
       <div className="space-y-5">
         {nowCard}
-        {datedBooking && booking && <BookingDayList bookingId={booking.id} visits={bookingDays} timezone={booking.location?.timezone || 'America/St_Johns'} status={booking.status} />}
+        {datedBooking && booking && (isManagerView ? <ManagerBookingDays bookingId={booking.id} revision={booking.scheduleRevision!} visits={bookingDays} money={booking.dayMoney} payout={booking.payout}
+          timezone={booking.location?.timezone || 'America/St_Johns'} status={booking.status} onChanged={reloadBookingDetails} />
+          : <BookingDayList bookingId={booking.id} visits={bookingDays} timezone={booking.location?.timezone || 'America/St_Johns'} status={booking.status} />)}
         {wide ? (
           <div className="grid grid-cols-3 gap-5">
             <div className="col-span-2 min-w-0 space-y-5">{visitRecord}{feedback}{personCard}{addOns}{note}{history}</div>

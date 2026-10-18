@@ -3709,5 +3709,6 @@
   "paPayoutDependsOnChef": "Виплата залежить від відповіді кухаря",
   "paItemKitchenDeciding": "Кухня не може надати · кухар вирішує",
   "paItemChefIfAccept": "Не входить, якщо ви погодитесь",
-  "paItemNotIncluded": "Не входить"
+  "paItemNotIncluded": "Не входить",
+  "mdDayOf": "День {number} із {total}"
 }

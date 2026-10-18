@@ -101,3 +101,11 @@ describe('manager bookings agenda', () => {
     expect(screen.getAllByTestId('manager-booking-row')).toHaveLength(1);
   });
 });
+
+it('CP9: a request that began last week shows today’s later day and its inspection target', () => {
+ mount([row({ id: 22, chefName: 'Dated Chef', scheduleRevision: 1, bookingDate: '2026-10-07', checkinStatus: 'checked_out', visitStates: [
+  { id: 11, visitDate: '2026-10-07', startTime: '13:00', endTime: '15:00', checkinStatus: 'checked_out' },
+  { id: 12, visitDate: '2026-10-14', startTime: '15:00', endTime: '17:00', checkinStatus: 'not_checked_in' }] })]);
+ expect(within(screen.getByTestId('manager-group-today')).getByText('Dated Chef')).toBeInTheDocument();
+ expect(screen.getByText('Day 2 of 2')).toBeInTheDocument();
+});

@@ -1314,6 +1314,24 @@ export async function getTransactionHistory(
       };
     });
 
+    const datedSourceIds = kitchenResult.rows.filter((row: any) => row.payout_partition === 'per_day').map((row: any) => Number(row.transaction_id));
+    if (datedSourceIds.length) {
+      const daily = (await db.execute(sql`SELECT d.source_id, d.id AS installment_id, v.visit_date::text AS date, d.transfer_id,
+        d.transfer_amount_cents AS transfer_cents, d.evidence->>'sentAt' AS sent_at,
+        COALESCE((d.evidence->>'reversedCents')::integer, 0) AS reversed_cents,
+        SUM(a.subtotal_cents + a.tax_cents + a.service_fee_cents)::integer AS allocated_cents
+        FROM kitchen_booking_day_payouts d JOIN kitchen_booking_visits v ON v.id = d.visit_id
+        JOIN kitchen_booking_day_allocations a ON a.source_id = d.source_id AND a.visit_id = d.visit_id AND a.allocation_revision = d.allocation_revision
+        WHERE d.source_id IN (${sql.join(datedSourceIds.map((id: number) => sql`${id}`), sql`, `)})
+        GROUP BY d.id, v.visit_date ORDER BY v.visit_date, d.id`)).rows;
+      for (const transaction of kitchenTransactions) {
+        const own = daily.filter((day: any) => Number(day.source_id) === transaction.transactionId);
+        if (own.length) Object.assign(transaction, { bookingTotalCents: transaction.chargeAmount, dayBreakdown: own.map((day: any) => ({
+          date: day.date, allocatedCents: Number(day.allocated_cents), transferId: day.transfer_id,
+          transferCents: day.transfer_id ? Number(day.transfer_cents) : null, reversedCents: Number(day.reversed_cents), sentAt: day.sent_at,
+        })) });
+      }
+    }
     let allTransactions = [...kitchenTransactions, ...storageTransactions];
 
     if (paymentStatus && paymentStatus !== 'all') {

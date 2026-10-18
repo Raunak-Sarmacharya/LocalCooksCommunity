@@ -9,7 +9,7 @@ import { and, asc, eq, isNull, lte, or, sql } from 'drizzle-orm';
 import { bookingLifecycleEvents, users, kitchens, locations, kitchenBookings, kitchenBookingVisits, emailLogs, storageBookings, equipmentBookings, storageListings, equipmentListings, paymentTransactions, damageClaims } from '@shared/schema';
 import { db } from '../db';
 import { notificationService } from './notification.service';
-import { sendEmail, generateBookingConfirmationEmail, generateBookingRequestEmail, generateBookingNotificationEmail, bookingResponseDeadline, arrivalModeLine, renderTransactionalEmail, bookingEmailFacts, bookingDeliveryEmail, emailLocalDateTimeSentence, emailZoneName, emailClock } from '../email';
+import { sendEmail, generateBookingConfirmationEmail, generateBookingRequestEmail, generateBookingNotificationEmail, bookingResponseDeadline, arrivalModeLine, renderTransactionalEmail, bookingEmailFacts, bookingDeliveryEmail, datedBookingCalendarAttachment, bookingDaysSummary, emailLocalDateTimeSentence, emailZoneName, emailClock } from '../email';
 import { resolveKitchenTracking } from '@shared/kitchen-tracking';
 import { adminBookingTransactionsPath } from '@shared/admin-booking-link';
 import { getAppBaseUrl } from '../config';
@@ -157,10 +157,16 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
   }
   if (['checkin_recorded', 'checkout_requested', 'visit_assisted', 'checkout_claim_filed'].includes(kind))
     await (await import('./clock-closeout')).persistBookingCloseout(bookingId, tx);
-  const [context] = await tx.select({ locationId: locations.id, kitchenId: kitchens.id, chefId: kitchenBookings.chefId, managerId: locations.managerId, kitchenName: kitchens.name, locationAddress: locations.address, timezone: locations.timezone, bookingDate: kitchenBookings.bookingDate, startTime: kitchenBookings.startTime, endTime: kitchenBookings.endTime, referenceCode: kitchenBookings.referenceCode })
+  const [context] = await tx.select({ locationId: locations.id, kitchenId: kitchens.id, chefId: kitchenBookings.chefId, managerId: locations.managerId, kitchenName: kitchens.name, locationAddress: locations.address, timezone: locations.timezone, bookingDate: kitchenBookings.bookingDate, startTime: kitchenBookings.startTime, endTime: kitchenBookings.endTime, referenceCode: kitchenBookings.referenceCode, scheduleRevision: kitchenBookings.scheduleRevision })
     .from(kitchenBookings).innerJoin(kitchens, eq(kitchens.id, kitchenBookings.kitchenId))
     .innerJoin(locations, eq(locations.id, kitchens.locationId)).where(eq(kitchenBookings.id, bookingId)).limit(1);
   if (!context) throw new Error('Booking delivery context not found');
+  const datedVisits = context.scheduleRevision > 0 ? await tx.select().from(kitchenBookingVisits).where(and(eq(kitchenBookingVisits.bookingId, bookingId), eq(kitchenBookingVisits.scheduleRevision, context.scheduleRevision))) : [];
+  const days = datedVisits.filter(visit => visit.visitDate && visit.scheduleState !== 'superseded').sort((a, b) => a.visitDate!.localeCompare(b.visitDate!)).map(visit => ({ id: visit.id, date: visit.visitDate!, startTime: visit.startTime, endTime: visit.endTime,
+    operatingWindowStartTime: visit.operatingWindowStartTime, pricingMode: visit.pricingMode, cancelled: visit.scheduleState === 'cancelled' }));
+  const datedPayment = days.length ? (await tx.select({ amount: paymentTransactions.amount }).from(paymentTransactions).where(and(eq(paymentTransactions.bookingId, bookingId), eq(paymentTransactions.payoutPartition, 'per_day'))).limit(1))[0] : undefined;
+  const itinerary = days.length ? { days, scheduleRevision: context.scheduleRevision } : {};
+
   const recipients = await tx.select({ id: users.id, email: users.username, role: users.role, adminEmailNotifications: users.adminEmailNotifications, profile: users.managerProfileData, locale: users.preferredLocale }).from(users)
     .where(or(eq(users.role, 'admin'), context.chefId ? eq(users.id, context.chefId) : undefined,
       context.managerId ? eq(users.id, context.managerId) : undefined));
@@ -199,7 +205,7 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
     ].map(row => row.name).filter(Boolean);
     const date = (value: Date) => value.toISOString().slice(0, 10);
     const manager = recipients.find(person => person.id === context.managerId);
-    confirmation = { bookingDate: row.booking.bookingDate, startTime: row.booking.startTime, endTime: row.booking.endTime,
+    confirmation = { ...itinerary, bookingDate: row.booking.bookingDate, startTime: row.booking.startTime, endTime: row.booking.endTime,
       selectedSlots: row.booking.selectedSlots, operatingWindowStartTime: row.booking.operatingWindowStartTime,
       timezone: row.location.timezone || DEFAULT_TIMEZONE, chefEmail: '', chefName: '', bookingId,
       durationHours: row.booking.durationHours == null ? undefined : Number(row.booking.durationHours),
@@ -229,7 +235,7 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
       .where(eq(kitchenBookings.id, bookingId)).limit(1);
     const [payment] = row?.booking.paymentIntentId ? await tx.select({ amount: paymentTransactions.amount, status: paymentTransactions.status })
       .from(paymentTransactions).where(eq(paymentTransactions.paymentIntentId, row.booking.paymentIntentId)).limit(1) : [];
-    if (row) request = { bookingDate: row.booking.bookingDate, startTime: row.booking.startTime, endTime: row.booking.endTime,
+    if (row) request = { ...itinerary, bookingDate: row.booking.bookingDate, startTime: row.booking.startTime, endTime: row.booking.endTime,
       selectedSlots: row.booking.selectedSlots, operatingWindowStartTime: row.booking.operatingWindowStartTime,
       timezone: row.location.timezone || DEFAULT_TIMEZONE, kitchenName: row.kitchen.name, locationName: row.location.name,
       locationAddress: row.location.address || undefined, referenceCode: row.booking.referenceCode, bookingId,
@@ -312,6 +318,10 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
     const kitchenPath = kitchenCaused ? `/kitchen-preview/${context.locationId}?kitchenId=${context.kitchenId}` : undefined;
     // A multi-day notice about one day (a dropped day, a removed item) names that day, not the booking's first date.
     const noticeDay = metadata.noticeDay as { date?: string; startTime?: string; endTime?: string } | undefined;
+    const eventDay = typeof metadata.visitId === 'number' ? days.find(day => day.id === metadata.visitId) : undefined;
+    const affectedVisitIds = (metadata.dayCancellation as { visitIds?: number[] } | undefined)?.visitIds;
+    const affectedDays = affectedVisitIds?.length ? days.filter(day => affectedVisitIds.includes(day.id)) : noticeDay?.date ? days.filter(day => day.date === noticeDay.date) : eventDay ? [eventDay] : days;
+    const datedSummary = affectedDays.length ? bookingDaysSummary(affectedDays, person.locale || 'en-CA') + (datedPayment ? ` · ${tEmail(person.locale, 'bookingWholeTotal')}: CAD $${(Number(datedPayment.amount) / 100).toFixed(2)}` : '') : '';
     const whenDate = noticeDay?.date ? new Date(`${noticeDay.date}T12:00:00Z`) : context.bookingDate, whenTime = noticeDay?.startTime || context.startTime;
     const visitWhen = () => `${new Intl.DateTimeFormat(person.locale || 'en-CA', { timeZone: 'UTC', dateStyle: 'medium' }).format(whenDate)}, ${emailClock(whenTime, person.locale || 'en-CA')}`;
     // A new request: the kitchen's notice says who asked, for when, and by when to answer (the email carries the full details).
@@ -340,15 +350,15 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
       holdReason: typeof metadata.holdReason === 'string' ? metadata.holdReason : null }) : undefined;
     if (!arrivalNotice && (adminCopy || metadata.notificationRecipientPolicy !== 'manager' || person.id === context.managerId)) await notificationService.create({ userId: person.id, target: chef ? 'chef' : 'manager',
       type: kind === 'confirmed' ? 'booking_confirmed' : kind === 'cancelled' ? 'booking_cancelled' : 'system_announcement',
-      title: adminCopy?.title ?? confirmedCopy?.title ?? closedCopy?.title ?? payoutCopy?.title ?? feedbackCopy?.title ?? roleText?.title ?? title, message: adminCopy?.message ?? confirmedCopy?.message ?? closedCopy?.message ?? payoutCopy?.message ?? feedbackCopy?.message ?? (chef && arrivalDetails ? `${message}${confirmation?.declinedAddons ? `\n${tEmail(person.locale, 'bookingNotIncludedChef', { items: confirmation.declinedAddons })}` : ''}\n${arrivalDetails.visitGuidance}` : roleText?.message ?? message), actionUrl: metadata.requestExpired && chef ? String(metadata.kitchenPath) : kitchenPath ?? path, actionLabel: metadata.requestExpired && chef ? 'Find another time' : roleActionLabel ? roleActionLabel : payoutCopy?.actionLabel ?? feedbackCopy?.actionLabel ?? 'View booking', metadata: kind === 'feedback_requested' ? { bookingId } : { bookingId, ...metadata } }, tx);
+      title: adminCopy?.title ?? confirmedCopy?.title ?? closedCopy?.title ?? payoutCopy?.title ?? feedbackCopy?.title ?? roleText?.title ?? title, message: [adminCopy?.message ?? confirmedCopy?.message ?? closedCopy?.message ?? payoutCopy?.message ?? feedbackCopy?.message ?? (chef && arrivalDetails ? `${message}${confirmation?.declinedAddons ? `\n${tEmail(person.locale, 'bookingNotIncludedChef', { items: confirmation.declinedAddons })}` : ''}\n${arrivalDetails.visitGuidance}` : roleText?.message ?? message), datedSummary].filter(Boolean).join('\n'), actionUrl: metadata.requestExpired && chef ? String(metadata.kitchenPath) : kitchenPath ?? path, actionLabel: metadata.requestExpired && chef ? 'Find another time' : roleActionLabel ? roleActionLabel : payoutCopy?.actionLabel ?? feedbackCopy?.actionLabel ?? 'View booking', metadata: kind === 'feedback_requested' ? { bookingId } : { bookingId, ...metadata } }, tx);
     if (chef && arrivalDetails) await (await import('./advance-reminders')).acknowledgeConfirmationReminders(tx, bookingId, person.id, 'notification', confirmationTime);
     if (metadata.emailRecipientPolicy !== 'none' && (arrivalNotice || person.email && operationalEmailAllowed(person)) && (adminCopy || metadata.emailRecipientPolicy !== 'manager' || person.id === context.managerId)) {
       const url = `${getAppBaseUrl(chef ? 'chef' : localCooks ? 'admin' : 'kitchen')}${path}`;
-      emails.push({ key: String(person.id), to: person.email, url, adminRecipient: localCooks, locale: person.locale, recipientName: nameOf(person.id) || 'there', facts: bookingEmailFacts({ ...context, ...(noticeDay?.date ? { bookingDate: whenDate, startTime: whenTime, endTime: noticeDay.endTime || context.endTime } : {}), timezone: context.timezone || DEFAULT_TIMEZONE, locationAddress: context.locationAddress || undefined, bookingId, locale: person.locale }), ...(arrivalNotice ? { afterFailedAttempts } : {}),
+      emails.push({ key: String(person.id), to: person.email, url, adminRecipient: localCooks, locale: person.locale, recipientName: nameOf(person.id) || 'there', facts: bookingEmailFacts({ ...context, ...(days.length ? { days: affectedDays } : {}), ...(noticeDay?.date ? { bookingDate: whenDate, startTime: whenTime, endTime: noticeDay.endTime || context.endTime } : {}), timezone: context.timezone || DEFAULT_TIMEZONE, locationAddress: context.locationAddress || undefined, bookingId, locale: person.locale }), ...(arrivalNotice ? { afterFailedAttempts } : {}),
         ...(closedCopy || metadata.cancellationNotice || metadata.addonRemoval || metadata.requestOutcome || metadata.replacementNotice || metadata.partialAcceptance ? { content: renderTransactionalEmail({ to: person.email, locale: person.locale,
           recipientName: nameOf(person.id), subject: closedCopy?.title ?? roleText?.title ?? title,
           heading: closedCopy?.title ?? roleText?.title ?? title, message: closedCopy?.message ?? roleText?.message ?? message,
-          facts: [], actionLabel: roleActionLabel || 'View booking', actionUrl: url }) } : {}),
+          facts: days.length ? [...bookingEmailFacts({ ...context, days: affectedDays, locale: person.locale, timezone: context.timezone || DEFAULT_TIMEZONE }), ...(datedPayment ? [{ label: tEmail(person.locale, 'bookingWholeTotal'), value: `CAD $${(Number(datedPayment.amount) / 100).toFixed(2)}` }] : [])] : [], actionLabel: roleActionLabel || 'View booking', actionUrl: url }) } : {}),
         ...(payoutCopy ? { content: renderTransactionalEmail({ to: person.email, locale: person.locale, recipientName: nameOf(person.id),
           subject: payoutCopy.title, heading: payoutCopy.title, message: payoutCopy.emailMessage ?? payoutCopy.message,
           facts: payoutCopy.facts ?? [], actions: payoutCopy.actions, actionLabel: payoutCopy.actionLabel,
@@ -361,9 +371,9 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
           subject: roleText?.title ?? title, heading: roleText?.title ?? title, message: roleText?.message ?? message, facts: [],
           actionLabel: chef ? 'Find another time' : 'View booking', actionUrl: chef ? `${getAppBaseUrl('chef')}${metadata.kitchenPath}` : url }) } : {}),
         ...(feedbackCopy ? { content: renderTransactionalEmail({ to: person.email, locale: person.locale, recipientName: nameOf(person.id),
-          subject: feedbackCopy.title, heading: feedbackCopy.title, message: feedbackCopy.message, facts: [], actionLabel: feedbackCopy.actionLabel, actionUrl: url }) } : {}),
+          subject: feedbackCopy.title, heading: feedbackCopy.title, message: feedbackCopy.message, facts: days.length ? [...bookingEmailFacts({ ...context, days: affectedDays, locale: person.locale, timezone: context.timezone || DEFAULT_TIMEZONE }), ...(datedPayment ? [{ label: tEmail(person.locale, 'bookingWholeTotal'), value: `CAD $${(Number(datedPayment.amount) / 100).toFixed(2)}` }] : [])] : [], actionLabel: feedbackCopy.actionLabel, actionUrl: url }) } : {}),
         ...(kind === 'support_payout_failed' && !chef && !localCooks ? { content: renderTransactionalEmail({ to: person.email,
-          subject: title, recipientName: nameOf(person.id) || 'there', message, facts: [], actionLabel: 'Update payout details',
+          subject: title, recipientName: nameOf(person.id) || 'there', message, facts: days.length ? [...bookingEmailFacts({ ...context, days: affectedDays, locale: person.locale, timezone: context.timezone || DEFAULT_TIMEZONE }), ...(datedPayment ? [{ label: tEmail(person.locale, 'bookingWholeTotal'), value: `CAD $${(Number(datedPayment.amount) / 100).toFixed(2)}` }] : [])] : [], actionLabel: 'Update payout details',
           actionUrl: `${getAppBaseUrl('kitchen')}/manager/stripe-connect/refresh?role=manager` }) } : {}),
         ...(confirmation && chef ? { confirmation: { ...confirmation, arrivalInstructions: undefined, departureInstructions: undefined } } : {}),
         ...(request && !localCooks ? { content: chef
@@ -371,12 +381,15 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
           : generateBookingNotificationEmail({ ...request, managerEmail: person.email, managerName: nameOf(person.id) || undefined, bookingId, locale: person.locale }, metadata.replacementNotice ? roleText : undefined) } : {}),
         // Local Cooks summary email for tracked events ("confirmed" keeps its own admin template below).
         ...(adminCopy && kind !== 'confirmed' ? { content: renderTransactionalEmail({ to: person.email, locale: person.locale, recipientName: 'Local Cooks',
-          subject: adminCopy.title, heading: adminCopy.title, message: adminCopy.message, facts: [], actionLabel: 'Open booking', actionUrl: url }) } : {}),
+          subject: adminCopy.title, heading: adminCopy.title, message: adminCopy.message, facts: days.length ? [...bookingEmailFacts({ ...context, days: affectedDays, locale: person.locale, timezone: context.timezone || DEFAULT_TIMEZONE }), ...(datedPayment ? [{ label: tEmail(person.locale, 'bookingWholeTotal'), value: `CAD $${(Number(datedPayment.amount) / 100).toFixed(2)}` }] : [])] : [], actionLabel: 'Open booking', actionUrl: url }) } : {}),
         ...(confirmation ? { content: generateBookingConfirmationEmail({ ...confirmation,
           ...(chef ? arrivalDetails : { arrivalMode: arrivalDetails?.arrivalMode }),
           locale: person.locale, chefEmail: person.email, chefName: localCooks ? 'Local Cooks' : nameOf(person.id),
           actionUrl: url, isStaff: !chef, isAdmin: localCooks, receiptUrl: chef ? `${getAppBaseUrl('chef')}/api/bookings/${bookingId}/invoice` : localCooks ? undefined : `${getAppBaseUrl('kitchen')}/manager/dashboard?view=revenue` }) } : {}) });
     }
+  }
+  if (days.length && (['requested', 'confirmed', 'cancelled', 'day_cancelled'].includes(kind) || kind.startsWith('kitchen_change_'))) for (const email of emails) {
+    if (email.content) email.content.attachments = [datedBookingCalendarAttachment({ ...itinerary, bookingId, bookingDate: context.bookingDate, startTime: context.startTime, endTime: context.endTime }, email.to, context.kitchenName, context.locationAddress || context.kitchenName, context.timezone || DEFAULT_TIMEZONE)];
   }
   for (const email of emails) if (email.confirmation) Object.assign(email.confirmation, { chefEmail: email.to, chefName: nameOf(Number(email.key)), actionUrl: email.url, receiptUrl: `${getAppBaseUrl('chef')}/api/bookings/${bookingId}/invoice`, locale: recipients.find(person => String(person.id) === email.key)?.locale });
   await tx.insert(bookingLifecycleEvents).values({ bookingId, kind, actorId, title, message, metadata, emails });
@@ -625,14 +638,15 @@ export async function deliverBookingLifecycleEvents(limit = 10, budgetMs = 20_00
 
 /** "New request from Sam · Sun, Oct 25, 1:00 p.m." — kitchen-local times; the deadline names its zone. */
 export function kitchenRequestNotice(locale: string | null | undefined, request: { bookingDate: Date | string; startTime: string; endTime: string; timezone?: string; chefName: string;
-  responseDeadline?: Date | string | null; totalCents?: number; paymentState?: string }) {
+  responseDeadline?: Date | string | null; totalCents?: number; paymentState?: string; days?: import('../email').EmailBookingDay[] }) {
   const lng = locale || 'en-CA';
   const day = new Intl.DateTimeFormat(lng, { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' }).format(new Date(request.bookingDate));
-  const when = `${day}, ${emailClock(request.startTime, lng)}–${emailClock(request.endTime, lng)}`;
+  const dated = request.days?.length ? bookingDaysSummary(request.days, lng) : '';
+  const when = dated || `${day}, ${emailClock(request.startTime, lng)}–${emailClock(request.endTime, lng)}`;
   const deadline = request.responseDeadline && Number.isFinite(new Date(request.responseDeadline).getTime())
     ? new Intl.DateTimeFormat(lng, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'longGeneric', timeZone: request.timezone || DEFAULT_TIMEZONE }).format(new Date(request.responseDeadline)) : '';
   const t = (key: string, values: Record<string, unknown>) => tLocale(locale, key, { ns: 'booking', ...values });
   const held = request.paymentState === 'held';
-  return { title: t('nrKitchenTitle', { chef: request.chefName, when: `${day}, ${emailClock(request.startTime, lng)}` }),
+  return { title: t('nrKitchenTitle', { chef: request.chefName, when: dated || `${day}, ${emailClock(request.startTime, lng)}` }),
     message: t(held ? (deadline ? 'nrKitchenBodyHeld' : 'nrKitchenBodyHeldNoDeadline') : (deadline ? 'nrKitchenBodyPaid' : 'nrKitchenBodyPaidNoDeadline'), { chef: request.chefName, when, deadline }).replace(/\.\.(?=\s|$)/g, '.') };
 }

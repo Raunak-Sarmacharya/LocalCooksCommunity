@@ -26,7 +26,8 @@ export interface BookingListRow {
   /** The server's closeout projection, as on the booking page. */
   closeout?: { phase?: string | null; legacy?: boolean; visits?: Array<{ attendance?: string | null; inspection?: { canRespond?: boolean } | null }> | null } | null;
   /** Per-visit check-in states (multi-visit bookings). */
-  visitStates?: Array<{ id?: number; checkinStatus: string; checkoutRequestedAt?: string | null }> | null;
+  visitStates?: Array<{ id?: number; checkinStatus: string; checkoutRequestedAt?: string | null; visitDate?: string | null; startTime?: string; endTime?: string; operatingWindowStartTime?: string | null }> | null;
+  scheduleRevision?: number;
   /** The kitchen's check-in window (minutes before start); the page's default is 15. */
   checkinWindowMinutesBefore?: number | null;
   checkoutRequestedAt?: string | null;
@@ -38,6 +39,17 @@ export interface BookingListRow {
 export const waitingForChef = (row: BookingListRow) => !!waitingPartialAcceptance(row);
 
 export const listTimezone = (row: Pick<BookingListRow, 'timezone' | 'locationTimezone'>) => row.timezone || row.locationTimezone || DEFAULT_TIMEZONE;
+
+export function managerDatedListDay<T extends BookingListRow>(row: T, now = Date.now()): T {
+  if (!row.scheduleRevision) return row;
+  const days = (row.visitStates || []).filter(day => day.visitDate && day.startTime && day.endTime).sort((a, b) => a.visitDate!.localeCompare(b.visitDate!));
+  const chosen = days.find(day => day.checkinStatus === 'checkout_requested') || days.find(day => {
+    const bounds = bookingListBounds({ ...row, bookingDate: day.visitDate!, startTime: day.startTime!, endTime: day.endTime!, operatingWindowStartTime: day.operatingWindowStartTime });
+    return day.checkinStatus !== 'checked_out' && bounds && bounds.endAt.getTime() > now;
+  }) || days.at(-1);
+  return chosen ? { ...row, bookingDate: chosen.visitDate!, startTime: chosen.startTime!, endTime: chosen.endTime!, operatingWindowStartTime: chosen.operatingWindowStartTime,
+    selectedSlots: undefined, checkinStatus: chosen.checkinStatus, visitStates: [chosen] } : row;
+}
 
 /** Start, end and check-in opening as real instants in the kitchen zone (the booking page's `visitBounds`). */
 export function bookingListBounds(row: BookingListRow): { startAt: Date; endAt: Date; opensAt: Date } | null {

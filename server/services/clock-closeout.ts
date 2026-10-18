@@ -89,8 +89,9 @@ export async function projectBookingCloseouts<T extends { id: number }>(items: T
     const own = visits.filter(visit => visit.bookingId === item.id).sort((a, b) => a.blockIndex - b.blockIndex);
     const derived = await projectBookingCloseout(row.booking, row.timezone, own, timing, db, reports);
     // Read-only list facts so a list row derives the same phase as the booking page (visit states, check-in window).
-    return { ...item, status: derived.status, closeout: derived.closeout, timezone: derived.timezone,
-      visitStates: own.filter(visit => isCurrentVisit(row.booking, visit)).map(visit => ({ id: visit.id, blockIndex: visit.blockIndex, checkinStatus: visit.checkinStatus, checkoutRequestedAt: visit.checkoutRequestedAt })),
+    return { ...item, ...(row.booking.scheduleRevision ? { scheduleRevision: row.booking.scheduleRevision } : {}), status: derived.status, closeout: derived.closeout, timezone: derived.timezone,
+      visitStates: own.filter(visit => isCurrentVisit(row.booking, visit)).map(visit => ({ id: visit.id, blockIndex: visit.blockIndex, checkinStatus: visit.checkinStatus, checkoutRequestedAt: visit.checkoutRequestedAt,
+        visitDate: visit.visitDate, startTime: visit.startTime, endTime: visit.endTime, operatingWindowStartTime: visit.operatingWindowStartTime })),
       checkinWindowMinutesBefore: row.checkinWindow ?? timing.checkinWindowMinutesBefore };
   }));
 }

@@ -32,6 +32,8 @@ interface TodayBooking {
   id: number
   visitId?: number
   visitBlockIndex?: number
+  dayNumber?: number
+  dayCount?: number
   referenceCode?: string | null
   chefId: number
   kitchenId: number
@@ -288,7 +290,7 @@ export function TodaysKitchenBookings() {
                 </div>
                 {booking.timezone && <p className="text-xs text-muted-foreground">{friendlyTimezoneName(booking.timezone, i18n.language)}</p>}
                 <p className="break-words text-sm">{booking.chefName || booking.chefEmail || `Chef #${booking.chefId}`}</p>
-                {booking.visitId && <p className="text-xs text-muted-foreground">{ct('inspectVisit', { number: (booking.visitBlockIndex ?? 0) + 1 })}</p>}
+                {booking.visitId && <p className="text-xs text-muted-foreground">{booking.dayCount ? mt('mdDayOf', { number: booking.dayNumber, total: booking.dayCount }) : ct('inspectVisit', { number: (booking.visitBlockIndex ?? 0) + 1 })}</p>}
                 {booking.referenceCode && <p className="break-all font-mono text-xs text-muted-foreground">{booking.referenceCode}</p>}
                 <div className="flex flex-wrap gap-2 border-t pt-3">
                   <Button variant="outline" size="sm" onClick={() => openAction(booking, "view")}>{mt("viewDetails")}</Button>
@@ -325,7 +327,7 @@ export function TodaysKitchenBookings() {
                         </div>
                         {booking.timezone && <p className="text-xs text-muted-foreground">{friendlyTimezoneName(booking.timezone, i18n.language)}</p>}
                         {booking.visitId && (
-                          <div className="text-xs text-muted-foreground">{ct('inspectVisit', { number: (booking.visitBlockIndex ?? 0) + 1 })}</div>
+                          <div className="text-xs text-muted-foreground">{booking.dayCount ? mt('mdDayOf', { number: booking.dayNumber, total: booking.dayCount }) : ct('inspectVisit', { number: (booking.visitBlockIndex ?? 0) + 1 })}</div>
                         )}
                         <div className="whitespace-nowrap">
                           {booking.status === 'pending' ? (

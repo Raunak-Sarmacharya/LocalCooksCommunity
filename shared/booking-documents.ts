@@ -98,6 +98,7 @@ export const formatCard = (card: { brand: string; last4: string }) => `${CARD_BR
 // ── Facts ─────────────────────────────────────────────────────────────────────────────────────────────────────
 export type Slot = { startTime: string; endTime: string };
 export interface BookingFacts {
+  days?: Array<{ date: string; pricingMode: string; slots: Slot[] }>;
   bookingId: number;
   reference: string;
   kitchenName: string;
@@ -114,6 +115,7 @@ export interface BookingFacts {
 }
 export type PaymentPurpose = 'booking' | 'extension' | 'claim' | 'change' | 'other';
 export interface RefundFact {
+  items?: Array<{ label: string; amountCents: number }>;
   refundId: string;
   amountCents: number;
   /** Taken back from the kitchen's share. */
@@ -127,6 +129,7 @@ export interface RefundFact {
 export interface PaymentFact {
   /** Daily transfer facts; the parent remains the one real chef payment. */
   installments?: PaymentFact[];
+  installmentVisitId?: number;
   bookingSchedule?: BookingFacts;
   paymentIntentId: string;
   chargeId: string | null;
@@ -187,8 +190,8 @@ function header(booking: BookingFacts, audience: DocumentAudience) {
   const slots = booking.originalSlots;
   const meta = [
     { label: 'Booking', value: booking.reference },
-    { label: 'Visit date', value: formatDay(booking.bookingDate) },
-    ...(slots.length && booking.pricingMode !== 'daily'
+    ...(booking.days?.length ? booking.days.map(day => ({ label: 'Booking day', value: `${formatDay(day.date)} · ${day.pricingMode === 'daily' ? 'Full day' : day.slots.map(slot => formatTimeRange(slot.startTime, slot.endTime)).join(', ')}` })) : [{ label: 'Visit date', value: formatDay(booking.bookingDate) }]),
+    ...(!booking.days?.length && slots.length && booking.pricingMode !== 'daily'
       ? [{ label: 'Booked time', value: `${slots.map(slot => formatTimeRange(slot.startTime, slot.endTime)).join(', ')} ${friendlyTimezoneName(booking.timezone)}` }] : []),
   ];
   return { parties, meta };
@@ -212,7 +215,7 @@ export function buildRefundReceipt(booking: BookingFacts, payment: PaymentFact, 
   ctx: IssueContext & { card?: { brand: string; last4: string } | null }): DocumentSnapshot {
   const on = refund.refundedAt ? ` on ${formatInstantDate(refund.refundedAt, booking.timezone)}` : '';
   return { ...base('refund', 'chef', 'Refund receipt', booking, ctx.number, ctx.issuedAt, ctx.supplier), references: { number: original.number },
-    sections: [{ lines: [{ label: refund.reason, detail: `Refund of receipt ${original.number}`, amountCents: -refund.amountCents, tone: 'refund' }] }],
+    sections: [{ lines: refund.items?.length ? refund.items.map(item => ({ label: item.label, detail: `Refund of receipt ${original.number}`, amountCents: -item.amountCents, tone: 'refund' as const })) : [{ label: refund.reason, detail: `Refund of receipt ${original.number}`, amountCents: -refund.amountCents, tone: 'refund' }] }],
     total: { label: 'Total refunded', amountCents: -refund.amountCents },
     notes: [`Refunded to ${ctx.card ? formatCard(ctx.card) : 'the original card'}${on}. Banks can take 5–10 business days to show it.`] };
 }

@@ -366,5 +366,7 @@
   "bcRefundKeptAdminBody": "Зміну від {chef} у {kitchen} з {old} на {new} не вдалося завершити. Бронювання залишається на {old}. Повернення {amount} залишається чинним і фінансується Local Cooks. Це відновлення не змінює виплату кухні.",
   "bcRefundIfApprovedLine": "Якщо вони погодять, вам повернуть {amount}.",
   "bcRequestedManagerSameTitle": "Запит на зміну · {reference}",
-  "bcRequestedManagerSameBody": "{chef} просить перенести {reference} з {old} на {new}. Ціна та сама, тож ваша виплата не зміниться. Дайте відповідь до {deadline}. Крайній термін повернення коштів зміститься на {freeCancel}."
+  "bcRequestedManagerSameBody": "{chef} просить перенести {reference} з {old} на {new}. Ціна та сама, тож ваша виплата не зміниться. Дайте відповідь до {deadline}. Крайній термін повернення коштів зміститься на {freeCancel}.",
+  "bookingDaysCount": "{count, plural, one {# день} few {# дні} many {# днів} other {# дня}}",
+  "bookingWholeTotal": "Загальна сума всього бронювання"
 }
