@@ -393,7 +393,7 @@ describe('CP5 daily installments', () => {
     c.money.dayPayouts = [{ installmentId: 1, sourceId: 8, operatingDate: '2026-10-15', status: 'sent', amountCents: 2200, feePending: false, transferId: 'tr_day_one', retryReason: null },
       { installmentId: 2, sourceId: 8, operatingDate: '2026-10-17', status: 'on_hold', amountCents: 0, feePending: true, transferId: null, retryReason: 'waiting_fee' }];
     render(<MoneyCard c={c} />);
-    expect(screen.getByText(/2026-10-15/)).toBeVisible(); expect(screen.getByText('tr_day_one')).toBeVisible();
+    expect(screen.getByText(/Thu, Oct 15/)).toBeVisible(); expect(screen.getByText('tr_day_one')).toBeVisible();
     expect(screen.getByText(/Waiting for actual processing fee/)).toBeVisible();
   });
 });
