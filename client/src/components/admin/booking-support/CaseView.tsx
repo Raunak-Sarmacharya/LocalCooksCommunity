@@ -116,6 +116,7 @@ export function ActionPanel({ actions, supportActions, onChoose }: { actions: Av
 
 // ---------------------------------------------------------------- facts
 
+const adminDay = (date: string) => new Intl.DateTimeFormat('en-CA', { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' }).format(new Date(`${String(date).slice(0, 10)}T12:00:00Z`));
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return <div className="flex justify-between gap-3 text-sm"><dt className="text-muted-foreground">{label}</dt><dd className="text-right font-medium">{children}</dd></div>;
 }
@@ -140,7 +141,7 @@ export function MoneyCard({ c }: { c: SupportCase }) {
           {c.visits.filter(visit => visit.visitDate && visit.scheduleRevision === c.scheduleRevision && visit.scheduleState !== 'superseded').map((visit, index, days) => {
             const day = c.dayMoney?.find(row => row.visitId === visit.id);
             return <div key={visit.id} className="rounded-lg border p-3 text-sm">
-              <p className="font-medium">{t('bsDayOf', { number: index + 1, total: days.length })} · {visit.visitDate} · {visit.startTime}–{visit.endTime}</p>
+              <p className="font-medium">{t('bsDayOf', { number: index + 1, total: days.length })} · {adminDay(visit.visitDate!)} · {visit.startTime}–{visit.endTime}</p>
               <p>{t('bsDayState', { state: t(`mdState_${visit.scheduleState}`, { defaultValue: visit.scheduleState }) })}</p>
               {day && <><p>{t('bsDayAllocation', { amount: fmtMoney(day.allocatedCents, m.currency) })}</p><p>{t('bsDayRefunded', { amount: fmtMoney(day.refundedCents, m.currency) })}</p></>}
               {!!day?.pendingRefundCents && <p role="status">{t('bsDayRefundProcessing', { amount: fmtMoney(day.pendingRefundCents, m.currency) })}</p>}
@@ -165,8 +166,9 @@ export function MoneyCard({ c }: { c: SupportCase }) {
         </div>}
         {!!m.dayPayouts?.length && <div className="border-t pt-2">
           <p className="text-sm font-medium">Daily payout installments</p>
-          <ul>{m.dayPayouts.map(day => <li key={day.installmentId} className="py-1 text-sm">
-            {day.operatingDate} - {day.feePending ? 'Waiting for actual processing fee' : fmtMoney(day.amountCents, m.currency)} - {humanize(day.status)}
+          {/* Each payment has a row per day; its $0 rows (another payment funds that day) are noise for support. */}
+          <ul>{m.dayPayouts.filter(day => day.transferId || day.feePending || day.amountCents > 0).map(day => <li key={day.installmentId} className="py-1 text-sm">
+            {adminDay(day.operatingDate)} - {day.feePending ? 'Waiting for actual processing fee' : fmtMoney(day.amountCents, m.currency)} - {humanize(day.status)}
             {day.transferId && <span className="ml-2 text-muted-foreground">{day.transferId}</span>}
             {day.retryReason && <p className="text-muted-foreground">{humanize(day.retryReason)}</p>}
           </li>)}</ul>
