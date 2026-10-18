@@ -234,11 +234,15 @@ describe('CP10 money review — checkout / fulfill ledger', () => {
     const bookingId = (await fulfillQuotedKitchenBooking(h.sessions[0], h.intent, h.provider))!;
     const [booking] = await rows(s.kitchenBookings);
     expect(booking).toMatchObject({ id: bookingId, invitationId: invite.id, paymentStatus: 'paid', status: 'confirmed' });
-    // Hourly kitchens snapshot the live hourly rate into extra_time_rate_cents (0104 path).
+    // S1: charged kitchen stays invited, but hourlyRate / extra-time snapshot follow the live list rate.
+    expect(booking.hourlyRate).toBe('5000');
     expect(booking.extraTimeRateCents).toBe(5_000);
 
     const [source] = await rows(s.paymentTransactions);
-    const parts = (source.metadata as any).capturedComponentAllocations as Array<{ subtotalCents: number; taxCents: number; serviceFeeCents: number }>;
+    const parts = (source.metadata as any).capturedComponentAllocations as Array<{
+      componentKey: string; subtotalCents: number; taxCents: number; serviceFeeCents: number;
+    }>;
+    expect(parts.filter(row => row.componentKey === 'kitchen').reduce((sum, row) => sum + row.subtotalCents, 0)).toBe(8_005);
     expect(parts.reduce((sum, row) => sum + row.subtotalCents, 0)).toBe(8_106);
     expect(parts.reduce((sum, row) => sum + row.taxCents, 0)).toBe(1_216);
     expect(parts.reduce((sum, row) => sum + row.serviceFeeCents, 0)).toBe(567);
@@ -266,7 +270,9 @@ describe('CP10 money review — checkout / fulfill ledger', () => {
 
     await checkout(invite, [{ date: first, equipmentIds: [10] }, { date: second, equipmentIds: [] }]);
     const liveSubtotal = 8_005 + 50_000;
-    expect(h.intent.amount).toBe(liveSubtotal + Math.round(liveSubtotal * 15 / 100) + Math.round(liveSubtotal * 0.07));
+    expect(Math.round(liveSubtotal * 15 / 100)).toBe(8_701);
+    expect(Math.round(liveSubtotal * 0.07)).toBe(4_060);
+    expect(h.intent.amount).toBe(70_766);
     // Invitation DTO / snapshot still advertise the create-time mixer price.
     expect((invite.daysSnapshot as InvitationDaySnapshot[])[0].equipment[0].cents).toBe(101);
   });

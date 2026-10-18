@@ -9,13 +9,13 @@
 **Method:** code reading of the merge diff and live files at HEAD; wrote proof tests only in
 `server/services/dated-invitation-cp10-money-review.test.ts` and ran
 `npx vitest run --config vitest.config.server.ts server/services/dated-invitation-cp10-money-review.test.ts`
-(8/8 passed). No product-code changes, full tsc, full suite, Stripe, live DB, deploy, or network beyond local install.
+(8/8 passed; re-run after M1 arithmetic / S1 assertion / N5 notes). No product-code changes, full tsc, full suite, Stripe, live DB, deploy, or network beyond local install.
 
 ## Verdict
 
 - Happy-path invitation money is sound: discount-only kitchen offer with a **$1 booking kitchen floor**, equipment excluded from the discount, frozen per-day kitchen split, one grouped hold, version-guarded bind, CAD manual-capture session, fee/tax/policy matching dated chef checkout, day-component allocations that conserve the charge, replay-safe fulfill + auto-accept, and `extra_time_rate_cents` snapshotted on invitation bookings (0104).
 - **1 Must fix** before treating the invitation as a firm multi-day price: frozen `days_snapshot` equipment cents are display-only; quote/checkout reprice from live listings, so the chef can be charged far above the invited equipment line without a version bump.
-- **2 Should fix**, **4 Notes**. No Blocker on the kitchen-discount / capture / allocation core.
+- **2 Should fix**, **5 Notes**. No Blocker on the kitchen-discount / capture / allocation core.
 
 ## Ranked findings
 
@@ -27,7 +27,7 @@ compare create freeze at `kitchen-invitation-days.ts:63-67` and DTO at `kitchen-
 
 - `days_snapshot` stores each invited day’s equipment as `{ listingId, name, cents }` at create time. Kitchen offered cents are correctly re-applied from that snapshot. Equipment cents are not: checkout rebuilds prices from the current `equipment_listings.session_rate`.
 - The invitation UI/DTO therefore advertises create-time equipment prices that are not the payable contract. Tax and the 7% service fee ride the live equipment subtotal, so a listing hike moves the whole authorization.
-- **Scenario (cents):** invite Mon 2h + Wed full day, mixer on Mon at **101**, kitchen list **9005**, amount discount **1000** → offered kitchen **8005**, create-time subtotal **8106**. After send, kitchen sets mixer `sessionRate` to **50000**. Chef pays with the invitation’s default equipment (no change). Quote/checkout subtotal becomes **58005**; charge **58005 + round(58005×0.15) + round(58005×0.07) = 66706**. Snapshot/DTO still show mixer **101**. Kitchen offered shares stay **8005** (correct); only equipment escapes the freeze.
+- **Scenario (cents):** invite Mon 2h + Wed full day, mixer on Mon at **101**, kitchen list **9005**, amount discount **1000** → offered kitchen **8005**, create-time subtotal **8106**. After send, kitchen sets mixer `sessionRate` to **50000**. Chef pays with the invitation’s default equipment (no change). Quote/checkout subtotal becomes **58005**; tax **8701**, fee **4060**, charge **70766**. Snapshot/DTO still show mixer **101**. Kitchen offered shares stay **8005** (correct); only equipment escapes the freeze.
 - Proof: `dated-invitation-cp10-money-review.test.ts` — “M1: frozen days_snapshot equipment cents…”.
 - **Fix (smallest fail-closed):** when resolving invitation checkout equipment, for each listing id present on that day’s snapshot, charge the frozen `cents` (or 409 `price_changed` if live ≠ frozen and the product wants a re-quote). Use live list only for ids the chef newly adds. Mirror the same rule in `datedInvitationCheckoutPricing` so the quote matches the session.
 
@@ -39,7 +39,7 @@ compare single-day invitation checkout metadata at `routes/kitchen-invitations.t
 - Charged kitchen cents come from the frozen offer; the booking’s `hourlyRate` and each day’s `rateCents` / visit `priceSnapshot.rateCents` store whatever the kitchen’s list rate is at checkout. After a rate hike, ledger `kitchenCents` stay invited while `hourlyRate` shows the new list.
 - Day refunds/payouts use allocation rows (safe). Extra time uses `extraTimeRateCents` (also snapshotted — verified OK below). Risk is any future or support path that reconstructs money from `hourlyRate × hours` instead of day allocations, plus inconsistency with single-day invitations.
 - **Scenario:** invite at hourly **1001**; kitchen raises hourly to **5000** before pay. Capture kitchen lines still **8005** total offered; `kitchen_bookings.hourly_rate` becomes **5000**; `extra_time_rate_cents` becomes **5000** (hourly-kitchen rule).
-- Proof: same fulfill test (“frozen offered kitchen survives a live rate hike…”).
+- Proof: same fulfill test (“frozen offered kitchen survives a live rate hike…”) asserts `hourlyRate === '5000'` and `extraTimeRateCents === 5000` while day kitchen parts still sum to **8005**.
 - **Fix:** set manifest/`booking.hourlyRate` from the invitation’s effective kitchen rate (e.g. first day’s offered/list share semantics matching legacy), or store list rate explicitly under a non-money field and keep `hourlyRate` as the invited effective rate for parity with single-day.
 
 ### S2 (Should fix): `checkoutDatedInvitation` does not enforce `expiresAt` (or chef match) — route-only gate
@@ -69,6 +69,10 @@ Create stores `taxCents` / `serviceFeeCents` / `totalCents` on the invitation ro
 ### N4 (Note): after accept, CP5–CP7 see a normal dated booking
 
 Fulfillment writes the same `kitchen-days-v1` source, `allocateDatedCapture` parts, `payoutPartition: 'per_day'`, and `cancellation_policy_snapshot` with `deadlineBasis: 'booking_first_day'`. Invitation-originated bookings inherit prior dated money findings (e.g. CP7 keep-refund) rather than a separate invitation ledger. No CP10-specific refund/change fork found.
+
+### N5 (Note): after a list-rate *drop*, frozen offered kitchen can exceed live list
+
+`verifyInvitationBlock` compares offered shares to create-time `listKitchenCents` in the invitation block, not to live `listInvitationDays` rates. A kitchen that cuts hourly/daily after send still collects the frozen offered kitchen total (firm invite). Not above create-time list; can be above *current* list. Intentional firm-offer semantics; opposite of M1’s live equipment reprice.
 
 ## Verified OK
 
