@@ -151,4 +151,14 @@ describe('CP7 money review regressions', () => {
       .rejects.toMatchObject({ code: 'datedChangeSupport' });
     expect(h.refunds).toHaveLength(1);
   });
+  it.each([32940, 0])('S5: residual cap refuses an unbacked 54900-cent reduction (gross previously refunded %i)', async (grossRefunded) => {
+    const [source] = await h.db.select().from(s.paymentTransactions);
+    // Even incorrectly reconciled historical data cannot quote beyond captured minus max(gross, provider refund).
+    await h.db.update(s.paymentTransactions).set({ metadata: { ...source.metadata, changeGrossRefundedCents: grossRefunded,
+      allocatedChangeRefunds: ['re_keep'] } }).where(eq(s.paymentTransactions.id, 1));
+    await expect(engine.previewKitchenChange(1, chef, { destination: days(hourly(TUE, 9, 13)) }, NOW))
+      .rejects.toMatchObject({ code: 'refundReview' });
+    expect(h.refunds).toHaveLength(1);
+  });
+
 });

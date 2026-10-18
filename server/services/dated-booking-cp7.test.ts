@@ -443,7 +443,7 @@ describe('CP7 dated changes: closing and recovery', () => {
     const kept: any = await engine.resolveKitchenChange(stripe, 1, open.id, admin, { action: 'close_keep_refund', revision: open.revision }, NOW);
     expect(kept.change.state).toBe('withdrawn');
     expect(refundsAllocated((await get(s.paymentTransactions))[0])).toBe(false);
-    expect(await get(s.bookingFlags)).toEqual([expect.objectContaining({ bookingId: 1, kind: 'support', visitId: null, resolvedAt: null })]);
+    expect(await get(s.bookingFlags)).toEqual([expect.objectContaining({ bookingId: 1, kind: 'manual_hold', visitId: null, resolvedAt: null })]);
     await originalIntact();
     const installments = await get(s.kitchenBookingDayPayouts);
     for (const item of installments) {

@@ -1030,7 +1030,7 @@ export async function resolveKitchenChange(stripe: ChangeStripe, bookingId: numb
           visitId: null, kitchenDebitCents: 0, kitchenChangeId: change.id, actorId: actor.id, at: now.toISOString(), note: `Booking change ${change.id} closed; refund kept by Local Cooks` }] } })
           .where(eq(paymentTransactions.id, source.id));
       }
-      if (isDatedRow(row)) await tx.insert(bookingFlags).values({ bookingId, kind: 'support', providerRef: `change-kept-refund:${change.id}`,
+      if (isDatedRow(row)) await tx.insert(bookingFlags).values({ bookingId, kind: 'manual_hold', providerRef: `change-kept-refund:${change.id}`,
         openedAt: now, note: `Change ${change.id}: kept refund requires Local Cooks reconciliation; all day payouts held.` });
       const amount = new Intl.NumberFormat('en-CA', { style: 'currency', currency: quote.currency }).format(quote.refundCents / 100);
       const resolution = { action: 'close_keep_refund' as const, fundedBy: 'local_cooks' as const, amountCents: quote.refundCents,
