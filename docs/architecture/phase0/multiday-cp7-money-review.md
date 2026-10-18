@@ -125,4 +125,18 @@ Builder note; `assertDatedStillValid` at `dated-booking-changes.ts:273-274` refu
 
 ## Lead disposition
 
-_(empty — awaiting lead)_
+Fix round, Oct 18 (supersedes the original verdict where noted):
+
+- **M1/M2/S4:** dated keep-refund atomically records the Local Cooks-funded outside refund and a booking-wide `manual_hold` flag. CP5 honours it as `support_flag`; `refundsAllocated` remains false. CP7 ledger and CP6 source verification reject unreconciled zero-kitchen-debit change outside refunds, including historical records identified by receipts/operation metadata. Reconciliation requires explicit `reconciledAt` evidence or assignment to `allocatedChangeRefunds`; closing the flag alone does not allocate the refund. Single-day recovery is unchanged.
+- **S1:** retained fee is capped at the active residual fee share. PGlite regression: 32940 gross with only 970 fee cents returns 31970, rather than recomputing 971 and refusing.
+- **S2:** CP6 refuses chef/kitchen drops while any `OPEN_KITCHEN_CHANGE_STATES` row exists, with the requested role-specific copy; locked pricing repeats the check. These are raw server errors, so no booking i18n keys are needed.
+- **S3:** positive-charge weights are component increases matched by date and kitchen/equipment listing (equipment booking IDs change at apply); new dates/items count fully. Original sources move over new subtotals minus the extra charge's assigned subtotals. Mixed example: extra 7000 subtotal = 854 mixer + 6146 Saturday + zero elsewhere; every source conserves subtotal/tax/service/card-fee totals.
+- **S5:** gross is capped at requested difference, live paid cents and captured minus max(previous gross change refunds, provider refund amount). Insufficient residual refuses. Tests bypass the unreconciled marker to exercise this independent guard too.
+- **N1:** deferred under the lead's explicit fallback; supplemental-source refusal retained. CP6 `load`, `verifiedSource`, `execute`, `commit` and `readDatedOperation` select/reserve/read one original source. Safe multi-source cancellation needs source-specific facts, allocations, installments and reservations within one inventory decision, aggregate quote/expected-cents/replay reads, and recovery isolated to the source whose provider refund fails. Removing only the guard would omit the change charge's refund. No second-source partial-failure recovery is claimed.
+- **N2:** before revoking codes, read current days' latest kitchen mode decision; enroll new codes using that mode and actor/time/reason via the existing enrollment helper. Mixed-mode PGlite tests cover latest self and latest staffed, new nonces and revoked old codes.
+- **N3:** retained: settled change-refund parts remain on old visits as immutable ledger history; current-day CP6 pricing excludes them while conservation includes them.
+- **N4/N5/N6:** retained existing fail-closed money-operation and payout guards; no protection removed.
+- **N7:** builder regression now expects unallocated refund, open booking-wide flag and `support_flag` on every installment after closeout.
+- **Admin recovery:** Finish primary for dated refund recovery; keep-refund explains Local Cooks reconciliation and all payouts held (en-CA/fr-CA/uk).
+
+Validation results are recorded in the builder report's Fix round section.
