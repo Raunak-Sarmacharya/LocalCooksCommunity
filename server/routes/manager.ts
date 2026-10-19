@@ -6,6 +6,7 @@ import { revokeManagerLocationAccess, futureAccessBookings, deliverAccessNotice 
 import { projectBookingCloseout, projectBookingCloseouts } from '../services/clock-closeout';
 import { readKitchenPayout, attachKitchenPayouts, upcomingKitchenPayouts } from '../services/kitchen-payout-service';
 import { kitchenPayout, originalKitchenEntitlement } from '@shared/kitchen-payout';
+import { estimateCardFeeCents } from '@shared/card-fee-estimate';
 import { kitchenChecklistFields } from '@shared/kitchen-checklist';
 import { sendAdminNotificationEmail } from '../services/admin-email-preferences';
 import { Router, Request, Response } from "express";
@@ -4509,8 +4510,8 @@ router.get(
             });
             // Stripe sets the fee only at capture; the held card's country picks the rate (international cards cost more).
             const { heldCardCountry } = await import("../services/stripe-service");
-            const { estimateCardFeeCents } = await import("@shared/card-fee-estimate");
-            const cardCountry = paymentTransaction.paymentIntentId ? await heldCardCountry(paymentTransaction.paymentIntentId).catch(() => null) : null;
+            // The payment row here doesn't carry the intent id; the booking's own intent is the held charge.
+            const cardCountry = booking.paymentIntentId ? await heldCardCountry(booking.paymentIntentId).catch(() => null) : null;
             const cardFee = estimateCardFeeCents(Number(paymentTransaction.amount), cardCountry);
             paymentTransaction.cardCountry = cardCountry;
             paymentTransaction.estimatedStripeProcessingFee = cardFee;

@@ -1351,6 +1351,7 @@
   "mdDayToday": "Aujourd’hui",
   "mdDayDone": "Terminée",
   "mdDayCancelled": "Annulée",
+  "mdDayNotOffered": "La cuisine ne peut pas vous accueillir ce jour-là",
   "mdOpenVisit": "Ouvrir votre visite",
   "mdFullDayUnavailable": "Journée complète non disponible : {reason}. Vous pouvez choisir des heures disponibles.",
   "bpsExtraTimeRate": "Temps supplémentaire : {amount}/heure si vous demandez plus de temps ou restez après la fin.",

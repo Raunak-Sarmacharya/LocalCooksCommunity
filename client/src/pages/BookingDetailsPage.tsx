@@ -2005,7 +2005,8 @@ export default function BookingDetailsPage() {
       title={t('bdPaymentSection')}
       headline={paymentHeadline ? { label: paymentHeadline.label, amount: formatCurrency(paymentHeadline.cents) } : null}
       refundRequest={isManagerView ? <RefundRequestStatus request={booking.paymentTransaction?.metadata?.fullRefundRequest} /> : undefined}
-      payoutLine={statusSource === 'payout' && booking.payout ? <KitchenPayoutStatus variant="line" payout={booking.payout} timezone={booking.location?.timezone} currency={booking.currency || 'CAD'} chefName={chefName}
+      // While the chef answers a new total, the payout (and when it's sent) isn't known yet.
+      payoutLine={statusSource === 'payout' && booking.payout && !proposal ? <KitchenPayoutStatus variant="line" payout={booking.payout} timezone={booking.location?.timezone} currency={booking.currency || 'CAD'} chefName={chefName}
         stage={['cancelled', 'no_show', 'no_checkin', 'issue', 'completed', 'pending', 'cancellation_requested'].includes(phase) ? 'closed' : ['checkout_review', 'visit_ended'].includes(phase) ? (inspectionCanRespond ? 'inspect' : 'closed') : 'before_checkout'} /> : undefined}
       status={paymentMessage}
       moreInfoLabel={t('bdPaymentMoreInfo', { defaultValue: 'More about payment status' })}
@@ -2088,7 +2089,8 @@ export default function BookingDetailsPage() {
         {/* A pending request's days are listed once, in the review above; day cards (check-in, payouts) start once it's accepted. */}
         {datedBooking && booking && !(isManagerView && booking.status === 'pending') && (isManagerView ? <ManagerBookingDays bookingId={booking.id} revision={booking.scheduleRevision!} visits={bookingDays} money={booking.dayMoney} payout={booking.payout}
           timezone={booking.location?.timezone || 'America/St_Johns'} status={booking.status} onChanged={reloadBookingDetails} />
-          : <BookingDayList bookingId={booking.id} visits={bookingDays} timezone={booking.location?.timezone || 'America/St_Johns'} status={booking.status} money={booking.dayMoney} />)}
+          : <BookingDayList bookingId={booking.id} visits={bookingDays} timezone={booking.location?.timezone || 'America/St_Johns'} status={booking.status} money={booking.dayMoney}
+            notOffered={proposal?.declinedVisitIds} />)}
         {wide ? (
           <div className="grid grid-cols-3 gap-5">
             <div className="col-span-2 min-w-0 space-y-5">{visitRecord}{feedback}{personCard}{addOns}{note}{history}</div>

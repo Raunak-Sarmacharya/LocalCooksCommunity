@@ -5,14 +5,19 @@ import type { BookingDayMoney } from '@shared/booking-day-money';
 
 export type BookingDayVisit = { id: number; visitDate?: string | null; startTime: string; endTime: string;
   scheduleRevision?: number | null; scheduleState?: string | null; pricingMode?: string | null; checkinStatus?: string | null;
-  operatingWindowStartTime?: string | null; closeout?: { scheduledStartAt?: string; scheduledEndAt?: string } };
+  operatingWindowStartTime?: string | null; closeout?: { scheduledStartAt?: string; scheduledEndAt?: string };
+  cancellationPlan?: { mode?: string } | null };
 
 export function currentBookingDays<V extends BookingDayVisit>(visits: V[], revision: number) {
-  return visits.filter(visit => visit.visitDate && visit.scheduleRevision === revision && visit.scheduleState !== 'superseded')
+  // A day the kitchen declined when it accepted was never booked: it is not one of the booking's days.
+  return visits.filter(visit => visit.visitDate && visit.scheduleRevision === revision && visit.scheduleState !== 'superseded'
+    && visit.cancellationPlan?.mode !== 'declined_at_acceptance')
     .sort((a, b) => a.visitDate!.localeCompare(b.visitDate!));
 }
 
-export function BookingDayList({ bookingId, visits, timezone, status, money }: { bookingId: number; visits: BookingDayVisit[]; timezone: string; status: string; money?: Omit<BookingDayMoney, 'kitchenRemainingCents'>[] }) {
+export function BookingDayList({ bookingId, visits, timezone, status, money, notOffered = [] }: { bookingId: number; visits: BookingDayVisit[]; timezone: string; status: string;
+  money?: Omit<BookingDayMoney, 'kitchenRemainingCents'>[];
+  /** Days the kitchen's waiting offer leaves out (owner, Oct 19). */ notOffered?: number[] }) {
   const { t, i18n } = useTranslation('booking');
   const cash = (cents: number) => new Intl.NumberFormat(i18n.language, { style: 'currency', currency: 'CAD' }).format(cents / 100);
   const parts = new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
@@ -26,7 +31,7 @@ export function BookingDayList({ bookingId, visits, timezone, status, money }: {
       const inProgress = !!visit.closeout?.scheduledStartAt && !!visit.closeout?.scheduledEndAt
         && Date.now() >= Date.parse(visit.closeout.scheduledStartAt) && Date.now() < Date.parse(visit.closeout.scheduledEndAt);
       const isToday = date === today || inProgress;
-      const state = cancelled ? 'mdDayCancelled' : visit.checkinStatus === 'checked_out' || date < today && !inProgress ? 'mdDayDone' : isToday ? 'mdDayToday' : 'mdDayUpcoming';
+      const state = notOffered.includes(visit.id) ? 'mdDayNotOffered' : cancelled ? 'mdDayCancelled' : visit.checkinStatus === 'checked_out' || date < today && !inProgress ? 'mdDayDone' : isToday ? 'mdDayToday' : 'mdDayUpcoming';
       return <li key={visit.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
         <div><p className="text-sm font-semibold">{new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium', timeZone: 'UTC' }).format(new Date(`${date}T12:00:00Z`))}</p>
           <p className="text-sm text-muted-foreground">{visit.pricingMode === 'daily' ? t('sheetDailyRate') : `${formatTime(visit.startTime, i18n.language)} – ${formatTime(visit.endTime, i18n.language)}`}</p>

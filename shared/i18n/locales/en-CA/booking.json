@@ -1351,6 +1351,7 @@
   "mdDayToday": "Today",
   "mdDayDone": "Done",
   "mdDayCancelled": "Cancelled",
+  "mdDayNotOffered": "The kitchen can’t host this day",
   "mdOpenVisit": "Open your visit",
   "mdFullDayUnavailable": "Full day unavailable: {reason}. You can still choose available hours.",
   "bpsExtraTimeRate": "Extra time: {amount}/hour if you ask for more time or stay past the end.",

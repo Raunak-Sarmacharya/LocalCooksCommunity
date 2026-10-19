@@ -4,6 +4,12 @@ vi.mock('react-i18next', async () => ({ useTranslation: (await import('@/test/bo
 import { BookingDayList, currentBookingDays, type BookingDayVisit } from './BookingDayList';
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 describe('chef booking days', () => {
+  it('leaves out a day the kitchen declined when it accepted (never booked), keeps a dropped day', () => {
+    const day = (id: number, date: string, extra: Partial<BookingDayVisit> = {}): BookingDayVisit => ({ id, visitDate: date, startTime: '09:00', endTime: '12:00', scheduleRevision: 1, scheduleState: 'active', ...extra });
+    const visits = [day(1, '2026-11-23'), day(2, '2026-11-25', { scheduleState: 'cancelled', cancellationPlan: { mode: 'declined_at_acceptance' } }),
+      day(3, '2026-11-27', { scheduleState: 'cancelled', cancellationPlan: { mode: 'chef' } })];
+    expect(currentBookingDays(visits, 1).map(visit => visit.id)).toEqual([1, 3]);
+  });
   it('shows done, today, upcoming and cancelled days with a selected visit link only for today', () => {
     vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2030-01-16T13:00:00Z'));
     const visits: BookingDayVisit[] = [15, 16, 18, 19].map((day, i) => ({ id: i + 1, visitDate: `2030-01-${day}`, startTime: '10:00', endTime: '12:00', scheduleRevision: 2,
