@@ -704,7 +704,7 @@ export function KitchenCheckinTracker({
                   }
                 >
                   {isCheckingIn ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    <Loader2 className="h-4 w-4 mr-2 motion-safe:animate-spin" />
                   ) : (
                     <LogIn className="h-4 w-4 mr-2" />
                   )}
@@ -785,7 +785,7 @@ export function KitchenCheckinTracker({
                   }
                 >
                   {isCheckingOut ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    <Loader2 className="h-4 w-4 mr-2 motion-safe:animate-spin" />
                   ) : (
                     <LogOut className="h-4 w-4 mr-2" />
                   )}
