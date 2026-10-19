@@ -138,6 +138,11 @@ describe('kitchen: invite to book', () => {
         slots: [{ startTime: '10:00', endTime: '11:00' }, { startTime: '11:00', endTime: '12:00' }] },
     ]);
     expect(drafted).not.toHaveProperty('date');
+    // 12 p.m. is booked on both days, so the shared length stops at 2 hours from 10 a.m.
+    fireEvent.click(screen.getAllByLabelText('Length')[0]);
+    expect(await screen.findByRole('option', { name: '2 hours' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: '3 hours' })).not.toBeInTheDocument();
+    fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
     fireEvent.click(screen.getByRole('button', { name: 'Send invitation' }));
     const sent = await screen.findByTestId('invitation-sent');
     expect(sent).toHaveTextContent('2 days · Tue, Oct 27');

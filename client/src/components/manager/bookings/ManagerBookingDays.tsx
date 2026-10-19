@@ -89,7 +89,8 @@ export function ManagerBookingDays({ bookingId, revision, visits, money = [], pa
           && installment.sentAt ? <p key={installment.installmentId} className="text-sm">{t('mdPaidOut', { amount: cash(installment.amountCents), date: new Intl.DateTimeFormat(i18n.language, { timeZone: timezone, dateStyle: 'medium' }).format(new Date(installment.sentAt)) })}</p>
           : <KitchenPayoutStatus key={installment.installmentId} payout={{ ...installment, timing: 'after_closeout', holdReason: installment.holdReason || null, expectedAt: installment.expectedAt || null, sentAt: installment.sentAt || null }} timezone={timezone} />)}
         {['confirmed', 'completed', 'cancelled'].includes(status) && <div className="flex flex-wrap gap-2">
-          {active && <Button asChild variant="outline" className="min-h-11"><a href={`/manager/booking/${bookingId}/inspection?visitId=${day.id}`}>{t('mdInspection')}</a></Button>}
+          {/* Nothing to inspect before the day starts. */}
+          {active && !future && <Button asChild variant="outline" className="min-h-11"><a href={`/manager/booking/${bookingId}/inspection?visitId=${day.id}`}>{t('mdInspection')}</a></Button>}
           {active && future && (!day.checkinStatus || day.checkinStatus === 'not_checked_in') && <Button variant="outline" className="min-h-11" disabled={refundProcessing} onClick={() => void open(day, 'cancel')}>{t('mdCancelDay')}</Button>}
           {!!facts?.kitchenRemainingCents && <Button variant="outline" className="min-h-11" disabled={refundProcessing} onClick={() => void open(day, 'refund')}>{t('mdRefundDay')}</Button>}
         </div>}

@@ -216,7 +216,8 @@ export default function ManagerInvitationNewPage() {
     if (edit.pricingMode === 'daily') return slotsFor(date).map(slot => ({ startTime: slot.time, endTime: addHours(slot.time, 1) }));
     const start = slotsFor(date).some(slot => slot.time === edit.start) ? edit.start : (slotsFor(date)[0]?.time ?? '');
     if (!start) return [];
-    return Array.from({ length: edit.hours }, (_, index) => {
+    // Same clamp the day's Length shows: never past the day's open, unbooked hours.
+    return Array.from({ length: Math.min(edit.hours, Math.max(1, freeFrom(date, start))) }, (_, index) => {
       const startTime = addHours(start, index);
       return { startTime, endTime: addHours(startTime, 1) };
     });
@@ -405,7 +406,8 @@ export default function ManagerInvitationNewPage() {
                       <label className={field}>{t('invLength')}
                         <Select value={String(shared.hours)} onValueChange={value => setShared(current => ({ ...current, hours: Number(value) }))}>
                           <SelectTrigger className={box}><SelectValue /></SelectTrigger>
-                          <SelectContent>{Array.from({ length: 12 }, (_, i) => i + 1).map(n =>
+                          <SelectContent>{Array.from({ length: Math.max(1, ...selectedDates.map(date => freeFrom(date,
+                            slotsFor(date).some(slot => slot.time === shared.start) ? shared.start : slotsFor(date)[0]?.time ?? ''))) }, (_, i) => i + 1).map(n =>
                             <SelectItem key={n} value={String(n)}>{t('chgHoursOption', { count: n })}</SelectItem>)}</SelectContent>
                         </Select></label>
                     </>}

@@ -68,3 +68,9 @@ it('names each day’s payout as one total across charges and hides zero amounts
   expect(screen.queryByText('You receive $0.00 after this day’s inspection')).toBeNull();
   expect(screen.getByText('This day: $122.00')).toBeInTheDocument();
 });
+it('offers the inspection only for a day that has started', () => {
+  render(<ManagerBookingDays {...props} visits={[props.visits[0], { ...props.visits[0], id: 3, visitDate: '2020-01-15' }]} />);
+  const links = screen.getAllByRole('link', { name: 'Inspection' });
+  expect(links).toHaveLength(1);
+  expect(links[0]).toHaveAttribute('href', '/manager/booking/42/inspection?visitId=3');
+});
