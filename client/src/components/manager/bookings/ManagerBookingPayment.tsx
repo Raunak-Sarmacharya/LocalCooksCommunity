@@ -81,6 +81,8 @@ export type Booking = BookingListRow & {
     checkedOutAt?: string | null;
     checkoutApprovedAt?: string | null;
     noShowDetectedAt?: string | null;
+    orderChargedCents?: number; // multi-day: every charge on the order (booking + paid changes)
+    orderRefundedCents?: number;
 }
 
 /** One amount and one muted line; the breakdown is one hover/focus away. */
@@ -184,6 +186,21 @@ export function ManagerPaymentSummary({ booking }: { booking: Booking }) {
               </Tooltip>
           </TooltipProvider>
       );
+  }
+
+  // ── MULTI-DAY ORDER: the row is the whole order, paid in one or more charges ──
+  if (booking.scheduleRevision && booking.orderChargedCents != null) {
+      const orderRefunded = booking.orderRefundedCents ?? 0;
+      return <TooltipProvider><Tooltip><TooltipTrigger asChild><div className="text-right cursor-help">
+          <div className="font-medium text-sm">{formatPrice(booking.orderChargedCents)}</div>
+          <div className="text-xs text-muted-foreground">{mt("youReceiveAmount", { amount: formatPrice(bookingReceiveCents(booking)) })}</div>
+      </div></TooltipTrigger><TooltipContent className="max-w-xs">
+          <div className="space-y-1 text-sm">
+              <p>{mt("totalCharged2")} {formatPrice(booking.orderChargedCents)}</p>
+              {orderRefunded > 0 && <p>{mt("refundedToChef")} {formatPrice(orderRefunded)}</p>}
+              <p>{mt("r2YouReceive", { amount: formatPrice(bookingReceiveCents(booking)) })}</p>
+          </div>
+      </TooltipContent></Tooltip></TooltipProvider>;
   }
 
   // ── NO PAYMENT DATA: Fallback ────────────────────────────────────────

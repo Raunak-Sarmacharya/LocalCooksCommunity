@@ -1339,6 +1339,7 @@
   "mdCancellation": "Annulez avant le {deadline} pour un remboursement, moins les frais de traitement de la carte. Ensuite, les frais d’annulation tardive de {charge} s’appliquent à chaque journée.",
   "mdCardHold": "Une retenue est placée sur votre carte pour toute la réservation. Vous payez seulement si la cuisine accepte tous les jours.",
   "mdYourDays": "Vos journées",
+  "mdDayRefunded": "Remboursement de {amount}",
   "mdDayUpcoming": "À venir",
   "mdDayToday": "Aujourd’hui",
   "mdDayDone": "Terminée",

@@ -15,6 +15,12 @@ describe('chef booking days', () => {
     expect(screen.getByRole('link', { name: 'Open your visit' })).toHaveAttribute('href', '/booking/5/visit?visitId=2');
     expect(within(rows[0]).queryByRole('link')).toBeNull(); expect(within(rows[3]).queryByRole('link')).toBeNull();
   });
+  it('shows what each day cost and any refund on it', () => {
+    render(<BookingDayList bookingId={5} visits={[{ id: 1, visitDate: '2030-01-15', startTime: '10:00', endTime: '12:00' }, { id: 2, visitDate: '2030-01-16', startTime: '10:00', endTime: '12:00' }]}
+      timezone="America/St_Johns" status="confirmed" money={[{ visitId: 1, allocatedCents: 25010, refundedCents: 0 }, { visitId: 2, allocatedCents: 15250, refundedCents: 5000 }]} />);
+    const rows = screen.getAllByRole('listitem');
+    expect(rows[0]).toHaveTextContent('$250.10'); expect(rows[1]).toHaveTextContent('$152.50'); expect(rows[1]).toHaveTextContent('Refunded $50.00');
+  });
   it('uses the kitchen day at the midnight boundary and never opens a cancelled booking', () => {
     vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2030-01-17T02:00:00Z'));
     render(<BookingDayList bookingId={5} visits={[{ id: 2, visitDate: '2030-01-16', startTime: '22:00', endTime: '23:00' }]} timezone="America/St_Johns" status="cancelled" />);

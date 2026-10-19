@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { formatTime } from '@/lib/formatters';
 import { Card } from '@/components/ui/card';
+import type { BookingDayMoney } from '@shared/booking-day-money';
 
 export type BookingDayVisit = { id: number; visitDate?: string | null; startTime: string; endTime: string;
   scheduleRevision?: number | null; scheduleState?: string | null; pricingMode?: string | null; checkinStatus?: string | null;
@@ -11,8 +12,9 @@ export function currentBookingDays<V extends BookingDayVisit>(visits: V[], revis
     .sort((a, b) => a.visitDate!.localeCompare(b.visitDate!));
 }
 
-export function BookingDayList({ bookingId, visits, timezone, status }: { bookingId: number; visits: BookingDayVisit[]; timezone: string; status: string }) {
+export function BookingDayList({ bookingId, visits, timezone, status, money }: { bookingId: number; visits: BookingDayVisit[]; timezone: string; status: string; money?: Omit<BookingDayMoney, 'kitchenRemainingCents'>[] }) {
   const { t, i18n } = useTranslation('booking');
+  const cash = (cents: number) => new Intl.NumberFormat(i18n.language, { style: 'currency', currency: 'CAD' }).format(cents / 100);
   const parts = new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
   const part = (name: string) => parts.find(value => value.type === name)?.value;
   const today = `${part('year')}-${part('month')}-${part('day')}`;
@@ -29,6 +31,8 @@ export function BookingDayList({ bookingId, visits, timezone, status }: { bookin
         <div><p className="text-sm font-semibold">{new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium', timeZone: 'UTC' }).format(new Date(`${date}T12:00:00Z`))}</p>
           <p className="text-sm text-muted-foreground">{visit.pricingMode === 'daily' ? t('sheetDailyRate') : `${formatTime(visit.startTime, i18n.language)} – ${formatTime(visit.endTime, i18n.language)}`}</p>
           <span className="text-sm">{t(state)}</span></div>
+        {(day => day && <div className="ml-auto text-right text-sm" data-testid="day-price"><p className="font-medium tabular-nums">{cash(day.allocatedCents)}</p>
+          {day.refundedCents > 0 && <p className="text-muted-foreground">{t('mdDayRefunded', { amount: cash(day.refundedCents) })}</p>}</div>)(money?.find(day => day.visitId === visit.id))}
         {!cancelled && isToday && status === 'confirmed' && visit.checkinStatus !== 'checked_out' &&
           <a className="inline-flex min-h-11 items-center text-sm font-medium underline underline-offset-4" href={`/booking/${bookingId}/visit?visitId=${visit.id}`}>{t('mdOpenVisit')}</a>}
       </li>;

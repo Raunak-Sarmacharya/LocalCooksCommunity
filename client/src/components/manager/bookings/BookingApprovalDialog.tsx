@@ -447,7 +447,7 @@ function BookingApprovalDialogContent({
                           )}
                         />
                       </div>
-                      <p className="text-sm font-medium">{item.name}</p>
+                      <p className="text-sm font-medium">{item.name}{item.visitDate && <span className="font-normal text-muted-foreground"> · {formatCalendarDate(item.visitDate.slice(0, 10), i18n.language, { month: 'short', day: 'numeric' })}</span>}</p>
                     </div>
                     {item.totalPrice > 0 && (
                       <span className="text-xs font-mono text-muted-foreground">

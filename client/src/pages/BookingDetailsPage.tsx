@@ -1796,7 +1796,9 @@ export default function BookingDetailsPage() {
     detail: storage.startDate ? `${formatShortDate(storage.pricingModel === 'hourly' ? storage.startDate : storage.startDate.slice(0, 10))} – ${formatShortDate(storage.pricingModel === 'hourly' ? storage.endDate : storage.endDate.slice(0, 10))}` : null,
     price: formatCurrency(storage.totalPrice), struck: isItemVoided(storage) || isItemRefunded(storage) || storage.status === 'cancelled', chip: itemChip(storage, true) }));
   const equipmentRows = allEquipmentBookings.map(equipment => ({ id: equipment.id, name: equipment.equipmentListing?.equipmentType || `Equipment #${equipment.equipmentListingId}`,
-    detail: equipment.equipmentListing?.brand || null, price: formatCurrency(equipment.totalPrice),
+    // Multi-day: the same equipment can be on several days, so each row names its day.
+    detail: [datedBooking ? (day => day?.visitDate ? formatShortDate(day.visitDate) : null)(bookingDays.find(visit => visit.id === (equipment as { kitchenBookingVisitId?: number | null }).kitchenBookingVisitId)) : null,
+      equipment.equipmentListing?.brand].filter(Boolean).join(' · ') || null, price: formatCurrency(equipment.totalPrice),
     struck: isItemVoided(equipment) || isItemRefunded(equipment) || equipment.status === 'cancelled', chip: itemChip(equipment, false) }));
   const addOns = booking && (storageRows.length > 0 || equipmentRows.length > 0) && (
     <section aria-labelledby="booking-addons-title">
@@ -2016,7 +2018,7 @@ export default function BookingDetailsPage() {
         {nowCard}
         {datedBooking && booking && (isManagerView ? <ManagerBookingDays bookingId={booking.id} revision={booking.scheduleRevision!} visits={bookingDays} money={booking.dayMoney} payout={booking.payout}
           timezone={booking.location?.timezone || 'America/St_Johns'} status={booking.status} onChanged={reloadBookingDetails} />
-          : <BookingDayList bookingId={booking.id} visits={bookingDays} timezone={booking.location?.timezone || 'America/St_Johns'} status={booking.status} />)}
+          : <BookingDayList bookingId={booking.id} visits={bookingDays} timezone={booking.location?.timezone || 'America/St_Johns'} status={booking.status} money={booking.dayMoney} />)}
         {wide ? (
           <div className="grid grid-cols-3 gap-5">
             <div className="col-span-2 min-w-0 space-y-5">{visitRecord}{feedback}{personCard}{addOns}{note}{history}</div>

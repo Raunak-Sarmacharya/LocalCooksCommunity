@@ -1339,6 +1339,7 @@
   "mdCancellation": "Cancel by {deadline} for a refund minus the card processing fee. After that, the {charge} late charge applies to every day.",
   "mdCardHold": "Your card is held for the whole booking. You’re charged only if the kitchen accepts all days.",
   "mdYourDays": "Your days",
+  "mdDayRefunded": "Refunded {amount}",
   "mdDayUpcoming": "Upcoming",
   "mdDayToday": "Today",
   "mdDayDone": "Done",

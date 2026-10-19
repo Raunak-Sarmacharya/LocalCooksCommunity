@@ -3640,10 +3640,20 @@ router.get(
     try {
       const user = req.neonUser!;
       const bookings = await bookingService.getBookingsByManager(user.id);
+      const listed = await attachKitchenPayouts(await projectBookingCloseouts(bookings));
+      // A multi-day booking can be paid in several charges (the booking, then paid changes): its row shows the whole order.
+      const dated = listed.filter(booking => (booking as { scheduleRevision?: number }).scheduleRevision).map(booking => booking.id);
+      const orders = dated.length ? (await db.execute(sql`SELECT booking_id, SUM(amount::numeric)::bigint AS charged, SUM(COALESCE(refund_amount, '0')::numeric)::bigint AS refunded
+        FROM payment_transactions WHERE booking_id IN (${sql.join(dated.map(id => sql`${id}`), sql`, `)}) AND booking_type IN ('kitchen', 'bundle')
+          AND status IN ('succeeded', 'partially_refunded', 'refunded') AND NOT (COALESCE(metadata, '{}'::jsonb) ? 'sessionExtensionId')
+          AND COALESCE(metadata->>'type', '') NOT IN ('session_extension', 'damage_claim', 'overstay_penalty')
+        GROUP BY booking_id`)).rows as Array<{ booking_id: number; charged: string; refunded: string }> : [];
 
-        res.json(await Promise.all((await attachKitchenPayouts(await projectBookingCloseouts(bookings))).map(async booking => ({
-          ...booking, responseDeadlineAt: await getBookingResponseDeadlineAt(booking, undefined, booking.timezone),
-        }))));
+        res.json(await Promise.all(listed.map(async booking => {
+          const order = orders.find(row => Number(row.booking_id) === booking.id);
+          return { ...booking, ...(order ? { orderChargedCents: Number(order.charged), orderRefundedCents: Number(order.refunded) } : {}),
+            responseDeadlineAt: await getBookingResponseDeadlineAt(booking, undefined, booking.timezone) };
+        })));
     } catch (error: any) {
       logger.error("Error fetching bookings:", error);
       res
