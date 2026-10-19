@@ -303,6 +303,8 @@
   "bdReadyToCheckOut": "Prêt pour la sortie",
   "bdRefund": "Remboursement",
   "bdKitchenRefundShare": "Votre part des remboursements",
+  "bdEstCardFees": "Frais de carte estimés",
+  "bdChefCardHold": "Retenu sur la carte du chef",
   "bdLineInfo": "À propos de : {item}",
   "bdChefPaidHeading": "Payé par le chef",
   "bdServiceFeeLine": "Frais de service Local Cooks",

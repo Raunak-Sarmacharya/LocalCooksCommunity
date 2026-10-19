@@ -74,7 +74,7 @@ it('consent line under Checkout: selecting the button is the acceptance; links o
 
 it('multi-day: one deadline sentence; a first day inside the notice gets the short-notice warning, never a past "Cancel by" date (live, Oct 18)', () => {
   const { unmount } = render(<CheckoutCancellationDisclosure policy={policy} startAt={inHours(5 * 24)} multiDay />);
-  expect(screen.getByTestId('cancel-headline')).toHaveTextContent(/^Cancel by .* late charge applies to every day\.$/);
+  expect(screen.getByTestId('cancel-headline')).toHaveTextContent(/^Cancel by .*, minus the card processing fee\. After that, you get half back for each day you cancel, minus its card fee\.$/);
   unmount();
   render(<CheckoutCancellationDisclosure policy={policy} startAt={inHours(2)} multiDay />);
   expect(screen.getByTestId('cancel-short-notice')).toHaveTextContent(/This booking starts within 48 hours/);

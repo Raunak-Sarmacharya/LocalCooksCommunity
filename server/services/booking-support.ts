@@ -328,9 +328,16 @@ export async function readBookingSupport(id: number) {
     if (ctx.booking.scheduleRevision && facts) {
       const known = new Set(ctx.payments.flatMap(source => {
         const m = (source.metadata || {}) as Record<string, any>;
-        return [...(m.cancellationRefundOperations || []), m.cancellationRefundOperation, ...(m.outsideRefunds || [])].filter(Boolean).map(row => row.refundId);
+        // In-app refunds: cancellations, assigned outside refunds and a cheaper change's refund (as the day payouts recognise them).
+        return [...[...(m.cancellationRefundOperations || []), m.cancellationRefundOperation, ...(m.outsideRefunds || [])].filter(Boolean).map(row => row.refundId),
+          ...Object.values(m.changeGrossRefundOperations || {}), ...(m.refunds || []).filter((row: any) => row?.kitchenChangeId).map((row: any) => row.id)];
       }));
-      outsideRefunds = facts.refunds.filter(refund => refund.status === 'succeeded' && !known.has(refund.id))
+      // A paid change is its own payment: a refund made on it outside the app needs assigning too.
+      const changes = ctx.payments.filter(source => source.payoutPartition === 'per_day' && source.paymentIntentId && source.paymentIntentId !== intent.id
+        && (source.metadata as { kitchenChangeId?: unknown } | null)?.kitchenChangeId && ['succeeded', 'partially_refunded', 'refunded'].includes(source.status));
+      const refunds = [...facts.refunds];
+      for (const source of changes) refunds.push(...(await getCancellationPaymentFacts(source.paymentIntentId!)).refunds);
+      outsideRefunds = refunds.filter(refund => refund.status === 'succeeded' && !known.has(refund.id))
         .map(refund => ({ refundId: refund.id, amountCents: refund.amount }));
     }
     paymentEvidence = { id: intent.id, status: intent.status, authorizedCents: intent.amount, capturedCents: intent.amount_received,
@@ -349,7 +356,8 @@ export async function readBookingSupport(id: number) {
     const all = dayCancellation?.all?.[action.type === 'request_cancellation_for_chef' ? 'forChef' : 'byKitchen'];
     if (ctx.booking.scheduleRevision && ['request_cancellation_for_chef', 'cancel_kitchen_caused'].includes(action.type)) {
       Object.assign(p, all ? { chefReceivesCents: all.chefReceivesCents, managerPaysCents: all.managerPaysCents, localCooksPaysCents: all.localCooksPaysCents,
-        processingFeeCents: paymentEvidence?.processingFeeCents ?? p.processingFeeCents, providerVerified: true }
+        // Every payment's card fee (a paid change is its own payment), as the day refunds keep each one.
+        processingFeeCents: p.processingFeeCents, providerVerified: true }
         : { chefReceivesCents: null, managerPaysCents: null, localCooksPaysCents: null, providerVerified: false });
       continue;
     }

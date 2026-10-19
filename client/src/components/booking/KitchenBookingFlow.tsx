@@ -172,12 +172,15 @@ function BookingPlaceContext({
   locationAddress,
   compact = false,
   onPolicyOpen,
+  policySummary,
 }: {
   kitchen: any;
   locationName: string;
   locationAddress?: string;
   compact?: boolean;
   onPolicyOpen: () => void;
+  /** The kitchen's own policy in one line (Airbnb shows the real terms beside the price, not a generic note). */
+  policySummary?: string;
 }) {
   const { t } = useTranslation(["booking", "kitchen"]);
   if (!kitchen) return null;
@@ -268,7 +271,7 @@ function BookingPlaceContext({
               {t("sheetCancellationPolicyTitle", "Cancellation policy")}
             </p>
             <p className="mt-0.5 text-sm leading-relaxed text-muted-foreground">
-              {t("preConfirmationRefundTitle", "Free to cancel until the kitchen confirms your request — your card is only on hold.")}
+              {policySummary || t("preConfirmationRefundTitle", "Free to cancel until the kitchen confirms your request — your card is only on hold.")}
             </p>
           </div>
           <Icon icon="mdi:chevron-right" className="h-4 w-4 shrink-0 text-gray-400" aria-hidden />
@@ -2432,6 +2435,7 @@ export default function KitchenBookingFlow({
                   locationName={locationName}
                   locationAddress={locationAddress}
                   onPolicyOpen={() => setCancellationPolicyOpen(true)}
+                  policySummary={acceptedPolicy ? policyT('cpSidebarSummary', { hours: acceptedPolicy.policy.noticeHours, late: String(acceptedPolicy.policy.lateChargePercent) }) : undefined}
                 />
               ) : (
                 <Skeleton className="h-40 w-full rounded-2xl" />
@@ -2451,6 +2455,7 @@ export default function KitchenBookingFlow({
                   locationAddress={locationAddress}
                   compact
                   onPolicyOpen={() => setCancellationPolicyOpen(true)}
+                  policySummary={acceptedPolicy ? policyT('cpSidebarSummary', { hours: acceptedPolicy.policy.noticeHours, late: String(acceptedPolicy.policy.lateChargePercent) }) : undefined}
                 />
               ) : (
                 <Skeleton className="h-14 w-full rounded-xl" />

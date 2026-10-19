@@ -76,6 +76,8 @@
   "bsVisitN": "Visite {n}",
   "bsVisitGeneral": "Réservation",
   "bsPaymentDetails": "Détails du paiement",
+  "bsPaymentDetailsFirst": "Premier paiement de la réservation",
+  "bsPaymentDetailsFirstHint": "Selon le fournisseur de paiement. Les modifications et le temps supplémentaire sont des paiements distincts; les totaux de tous les paiements sont sous Argent.",
   "bsEvidenceUnavailable": "Nous n’avons pas pu charger les détails du paiement. Actualisez dans un instant et ne considérez aucun montant comme confirmé avant leur chargement.",
   "bsNoPayment": "Aucun paiement au dossier.",
   "bsEvStatus": "État du paiement",

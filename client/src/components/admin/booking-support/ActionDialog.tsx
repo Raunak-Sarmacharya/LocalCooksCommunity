@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
 import { NativeSelect } from "./NativeSelect";
-import { fmtMoney, fmtMoneyWhole } from "./format";
+import { adminDay, fmtMoney, fmtMoneyWhole } from "./format";
 import { formatAdminDateTime } from "@/lib/admin-time";
 import { postAction, SupportApiError, type TokenGetter } from "./api";
 import {
@@ -183,7 +183,7 @@ function ActionDialogContent({ action, supportCase: c, getFirebaseToken, onClose
   const items = pendingItems(c);
   const messageOffered = spec.fields.includes("message");
   const selfArrival = type === "set_arrival_mode" && !form.allTargets && form.mode === "self";
-  const visitLabel = (v: SupportCase["visits"][number]) => v.visitDate ? `${v.visitDate} · ${v.startTime}–${v.endTime}` : t("bsVisitN", { n: v.blockIndex + 1 });
+  const visitLabel = (v: SupportCase["visits"][number]) => v.visitDate ? `${adminDay(v.visitDate)} · ${v.startTime}–${v.endTime}` : t("bsVisitN", { n: v.blockIndex + 1 });
 
   return (
     <AppDialogContent className="p-0 gap-0 overflow-hidden sm:max-w-xl">
@@ -193,7 +193,7 @@ function ActionDialogContent({ action, supportCase: c, getFirebaseToken, onClose
           {c.dayCancellation && ['cancel_kitchen_caused', 'request_cancellation_for_chef'].includes(type) && <Field label={t('bsDatedDays')} htmlFor="bs-cancellation-day">
             <NativeSelect id="bs-cancellation-day" value={form.cancellationDay} disabled={readOnly} onChange={e => set('cancellationDay', e.target.value)}>
               <option value="">{t('bsAllRemainingDays')}</option>
-              {c.dayCancellation.days.map(day => <option key={day.visitId} value={day.visitId}>{day.date}</option>)}
+              {c.dayCancellation.days.map(day => <option key={day.visitId} value={day.visitId}>{day.date ? adminDay(day.date) : day.visitId}</option>)}
             </NativeSelect>
             {c.dayCancellation.error && <p role="alert">{c.dayCancellation.error}</p>}
           </Field>}
@@ -217,7 +217,7 @@ function ActionDialogContent({ action, supportCase: c, getFirebaseToken, onClose
           {type === 'release_payout' && c.money.dayPayouts?.length ? <Field label="Day installment">
             <NativeSelect value={installmentId} onChange={e => setInstallmentId(e.target.value)}>
               <option value="">All eligible day installments</option>
-              {c.money.dayPayouts.filter(d => !d.transferId).map(d => <option key={d.installmentId} value={String(d.installmentId)}>{d.operatingDate} - {fmtMoney(d.amountCents, c.money.currency)} - {d.status}</option>)}
+              {c.money.dayPayouts.filter(d => !d.transferId).map(d => <option key={d.installmentId} value={String(d.installmentId)}>{d.operatingDate ? adminDay(d.operatingDate) : '—'} - {fmtMoney(d.amountCents, c.money.currency)} - {d.status}</option>)}
             </NativeSelect>
           </Field> : null}
           {type === 'release_payout' && <p className="rounded-lg border bg-muted/30 p-3 text-sm">{c.money.dayPayouts?.length ? 'Retry a day payout after its inspection closes. Open problem reports and reviews must be resolved first.' : t('bsReleasePayoutHelp')}</p>}

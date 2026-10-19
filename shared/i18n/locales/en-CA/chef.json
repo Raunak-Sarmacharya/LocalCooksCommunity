@@ -303,6 +303,8 @@
   "bdReadyToCheckOut": "Ready to Check Out",
   "bdRefund": "Refund",
   "bdKitchenRefundShare": "Your share of refunds",
+  "bdEstCardFees": "Est. card processing fee",
+  "bdChefCardHold": "Held on the chef's card",
   "bdLineInfo": "About {item}",
   "bdChefPaidHeading": "Chef paid",
   "bdServiceFeeLine": "Local Cooks service fee",

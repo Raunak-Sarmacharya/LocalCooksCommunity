@@ -76,6 +76,8 @@
   "bsVisitN": "Visit {n}",
   "bsVisitGeneral": "Booking",
   "bsPaymentDetails": "Payment details",
+  "bsPaymentDetailsFirst": "Booking's first payment",
+  "bsPaymentDetailsFirstHint": "From the payment provider. Changes and extra time are separate payments; totals for every payment are under Money.",
   "bsEvidenceUnavailable": "We couldn’t load payment details. Refresh in a moment, and don’t treat any payment figure as confirmed until they load.",
   "bsNoPayment": "No payment on record.",
   "bsEvStatus": "Payment status",

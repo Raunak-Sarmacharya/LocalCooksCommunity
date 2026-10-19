@@ -303,6 +303,8 @@
   "bdReadyToCheckOut": "Готово до виселення",
   "bdRefund": "Відшкодування",
   "bdKitchenRefundShare": "Ваша частка повернень",
+  "bdEstCardFees": "Орієнтовна комісія за картку",
+  "bdChefCardHold": "Заблоковано на картці кухаря",
   "bdLineInfo": "Докладніше: {item}",
   "bdChefPaidHeading": "Сплатив кухар",
   "bdServiceFeeLine": "Сервісний збір Local Cooks",

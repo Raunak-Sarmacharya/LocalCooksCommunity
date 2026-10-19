@@ -210,6 +210,7 @@ interface BookingDetails {
     stripeProcessingFee?: number;
     /** Pre-capture estimate from platform_settings (when stripeProcessingFee is 0) */
     estimatedStripeProcessingFee?: number;
+    cardCountry?: string | null;
     estimatedManagerPayout?: number;
     paidAt?: string;
     refundAmount?: number;
@@ -808,6 +809,7 @@ export default function BookingDetailsPage() {
     totalPrice: booking.totalPrice,
     pricingMode: booking.pricingMode,
     transactionAmount: booking.paymentTransaction?.amount,
+    cardCountry: booking.paymentTransaction?.cardCountry,
     serviceFee: totals.serviceFee || booking.paymentTransaction?.serviceFee || 0,
     stripeProcessingFee: booking.paymentTransaction?.stripeProcessingFee,
     managerRevenue: booking.paymentTransaction?.managerRevenue,
@@ -1276,14 +1278,16 @@ export default function BookingDetailsPage() {
   // Once money is captured: one statement over every payment (Airbnb's "Guest paid" then "Host payout"). Holds keep the receipt view.
   const statement = (() => {
     const txn = booking?.paymentTransaction;
-    if (!txn || !pricingBreakdownInput || !paymentCaptured || !paymentHeadline || (isManagerView && proposal)) return null;
+    // A chef's pending request reads the same way, ending in its card hold; the kitchen's review keeps the payout estimate.
+    const held = !paymentCaptured && booking?.status === 'pending' && ['pending', 'authorized'].includes(booking.paymentStatus || '');
+    if (!txn || !pricingBreakdownInput || !(paymentCaptured || held) || !paymentHeadline || (isManagerView && proposal)) return null;
     const sum = (key: 'amountCents' | 'serviceFeeCents' | 'taxCents' | 'refundedCents' | 'cardFeeCents' | 'refundShareCents') => extraCharges.reduce((total, line) => total + (line[key] ?? 0), 0);
     const serviceFee = pricingBreakdownInput.platformFeeAmountCents || 0, paid = txn.amount + sum('amountCents');
     const gross = txn.amount - serviceFee + sum('amountCents') - sum('serviceFeeCents');
     const cardFees = (pricingBreakdownInput.paymentProcessorFeeCents || 0) + sum('cardFeeCents');
     const refundShare = (pricingBreakdownInput.refundAmountCents || 0) + sum('refundShareCents');
     return { serviceFee: serviceFee + sum('serviceFeeCents'), tax: (txn.taxAmount || 0) + sum('taxCents'), paid, refunded: refundAmount + sum('refundedCents'),
-      gross, cardFees, refundShare, payout: paymentHeadline.cents, adjustment: paymentHeadline.cents - (gross - cardFees - refundShare) };
+      gross, cardFees, refundShare, payout: paymentHeadline.cents, adjustment: paymentHeadline.cents - (gross - cardFees - refundShare), held };
   })();
   const chargeLabel = (line: NonNullable<BookingDetails['additionalCharges']>[number]) => line.kind === 'damage_claim' ? t('bnChargeDamage')
     : line.kind === 'kitchen_change' ? t('bnChargeBookingChange')
@@ -1910,16 +1914,16 @@ export default function BookingDetailsPage() {
         <span className="tabular-nums">{formatCurrency(totals.subtotal)}</span>
       </div>)}
       {statement ? (<>
-        {moneyRow(t('bdServiceFeeLine'), statement.serviceFee, { muted: true, sub: isManagerView ? t('bdServiceFeeChefPaid') : undefined })}
         {statement.tax > 0 && moneyRow(t('bdHstPercent', { percent: pricingBreakdownInput!.kitchenHstRatePercent ?? 0 }), statement.tax, { muted: true })}
-        {moneyRow(t('bdhTotalPaid'), statement.paid, { total: true, testId: 'statement-total-paid' })}
+        {moneyRow(t('bdServiceFeeLine'), statement.serviceFee, { muted: true, sub: isManagerView ? t('bdServiceFeeChefPaid') : undefined })}
+        {moneyRow(statement.held ? t(isManagerView ? 'bdChefCardHold' : 'bnCardHold') : t('bdhTotalPaid'), statement.paid, { total: true, testId: 'statement-total-paid' })}
         {statement.refunded > 0 && moneyRow(isManagerView ? t('bdRefundedToChefLine') : t('bdRefundedLine'), -statement.refunded, { testId: 'statement-refunded',
           sub: goodwillRefund > 0 ? t('bdGoodwillIncluded', { amount: formatCurrency(goodwillRefund) }) : undefined })}
         {!isManagerView && statement.refunded > 0 && moneyRow(t('bdAfterRefunds'), statement.paid - statement.refunded, { total: true, testId: 'statement-after-refunds' })}
         {isManagerView && (<div className="space-y-1 pt-3" data-testid="statement-payout">
           <h4 className="text-xs font-semibold text-muted-foreground">{t('bdYourPayout')}</h4>
           {moneyRow(t('bdYourBookingAmount'), statement.gross, { sub: t('bdYourBookingAmountSub') })}
-          {statement.cardFees > 0 && moneyRow(t('bdCardFees'), -statement.cardFees)}
+          {statement.cardFees > 0 && moneyRow(pricingBreakdownInput!.paymentProcessorFeeIsEstimate ? t('bdEstCardFees') : t('bdCardFees'), -statement.cardFees)}
           {statement.refundShare > 0 && moneyRow(t('bdKitchenRefundShare'), -statement.refundShare)}
           {statement.adjustment !== 0 && moneyRow(t('bdPayoutAdjustment'), statement.adjustment)}
           {moneyRow(payoutTitle, statement.payout, { total: true })}
@@ -2080,7 +2084,8 @@ export default function BookingDetailsPage() {
       {/* Wide screens: the Now card, then a main column and a sidebar of at most three cards. Narrow: one column in §2.1 order. */}
       <div className="space-y-5">
         {nowCard}
-        {datedBooking && booking && (isManagerView ? <ManagerBookingDays bookingId={booking.id} revision={booking.scheduleRevision!} visits={bookingDays} money={booking.dayMoney} payout={booking.payout}
+        {/* A pending request's days are listed once, in the review above; day cards (check-in, payouts) start once it's accepted. */}
+        {datedBooking && booking && !(isManagerView && booking.status === 'pending') && (isManagerView ? <ManagerBookingDays bookingId={booking.id} revision={booking.scheduleRevision!} visits={bookingDays} money={booking.dayMoney} payout={booking.payout}
           timezone={booking.location?.timezone || 'America/St_Johns'} status={booking.status} onChanged={reloadBookingDetails} />
           : <BookingDayList bookingId={booking.id} visits={bookingDays} timezone={booking.location?.timezone || 'America/St_Johns'} status={booking.status} money={booking.dayMoney} />)}
         {wide ? (

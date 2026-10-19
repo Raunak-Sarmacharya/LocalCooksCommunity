@@ -4507,10 +4507,15 @@ router.get(
             const feeCalc = await calculateCheckoutFeesAsync(reconciledSubtotal, {
               taxAmountCents: capturedTaxAmount,
             });
-            paymentTransaction.estimatedStripeProcessingFee =
-              feeCalc.stripeProcessingFeeInCents;
+            // Stripe sets the fee only at capture; the held card's country picks the rate (international cards cost more).
+            const { heldCardCountry } = await import("../services/stripe-service");
+            const { estimateCardFeeCents } = await import("@shared/card-fee-estimate");
+            const cardCountry = paymentTransaction.paymentIntentId ? await heldCardCountry(paymentTransaction.paymentIntentId).catch(() => null) : null;
+            const cardFee = estimateCardFeeCents(Number(paymentTransaction.amount), cardCountry);
+            paymentTransaction.cardCountry = cardCountry;
+            paymentTransaction.estimatedStripeProcessingFee = cardFee;
             paymentTransaction.estimatedManagerPayout =
-              feeCalc.managerReceivesInCents;
+              feeCalc.managerReceivesInCents + feeCalc.stripeProcessingFeeInCents - cardFee;
             if (!paymentTransaction.serviceFee || paymentTransaction.serviceFee <= 0) {
               paymentTransaction.serviceFee = feeCalc.platformCommissionInCents;
             }

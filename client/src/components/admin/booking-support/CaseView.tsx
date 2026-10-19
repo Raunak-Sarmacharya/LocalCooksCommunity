@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatAdminDateTime, formatAdminRange } from "@/lib/admin-time";
-import { fmtMoney } from "./format";
+import { adminDay, fmtMoney } from "./format";
 import { loadBookingFeedback, type TokenGetter } from "./api";
 import { bookingFeedbackTags } from "@shared/booking-feedback";
 import type { AvailableSupportAction, ChronologyEntry, Party, SupportActionRecord, SupportCase } from "./types";
@@ -116,7 +116,6 @@ export function ActionPanel({ actions, supportActions, onChoose }: { actions: Av
 
 // ---------------------------------------------------------------- facts
 
-const adminDay = (date: string) => new Intl.DateTimeFormat('en-CA', { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' }).format(new Date(`${String(date).slice(0, 10)}T12:00:00Z`));
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return <div className="flex justify-between gap-3 text-sm"><dt className="text-muted-foreground">{label}</dt><dd className="text-right font-medium">{children}</dd></div>;
 }
@@ -145,7 +144,7 @@ export function MoneyCard({ c }: { c: SupportCase }) {
               <p>{t('bsDayState', { state: t(`mdState_${visit.scheduleState}`, { defaultValue: visit.scheduleState }) })}</p>
               {day && <><p>{t('bsDayAllocation', { amount: fmtMoney(day.allocatedCents, m.currency) })}</p><p>{t('bsDayRefunded', { amount: fmtMoney(day.refundedCents, m.currency) })}</p></>}
               {!!day?.pendingRefundCents && <p role="status">{t('bsDayRefundProcessing', { amount: fmtMoney(day.pendingRefundCents, m.currency) })}</p>}
-              {m.dayPayouts?.filter(payout => payout.visitId === visit.id).map(payout => <p key={payout.installmentId}>{fmtMoney(payout.amountCents, m.currency)} · {humanize(payout.status)}{payout.transferId ? ` · ${payout.transferId}` : ''}</p>)}
+              {m.dayPayouts?.filter(payout => payout.visitId === visit.id && (payout.transferId || payout.feePending || payout.amountCents > 0)).map(payout => <p key={payout.installmentId}>{fmtMoney(payout.amountCents, m.currency)} · {humanize(payout.status)}{payout.transferId ? ` · ${payout.transferId}` : ''}</p>)}
             </div>;
           })}
         </section>}
@@ -290,7 +289,7 @@ export function VisitCodesCard({ c }: { c: SupportCase }) {
               const state = v.revoked ? "revoked" : v.consumed ? "used" : v.locked ? "locked" : !v.codeRequired ? "notRequired" : visitEnded(c, v.visitId, visit?.blockIndex) ? "unused" : "waiting";
               return (
                 <li key={v.targetKey} className="flex flex-wrap items-center justify-between gap-2 text-sm">
-                  <span>{visit ? t("bsVisitN", { n: visit.blockIndex + 1 }) : t("bsVisitGeneral")} · {t(v.mode === "self" ? "bsModeSelfShort" : "bsModeStaffedShort")}</span>
+                  <span>{visit?.visitDate ? adminDay(visit.visitDate) : visit ? t("bsVisitN", { n: visit.blockIndex + 1 }) : t("bsVisitGeneral")} · {t(v.mode === "self" ? "bsModeSelfShort" : "bsModeStaffedShort")}</span>
                   <Badge variant={state === "waiting" ? "outline" : "secondary"}>{t(`bsCodeState_${state}`)}</Badge>
                 </li>
               );
@@ -306,9 +305,12 @@ export function VisitCodesCard({ c }: { c: SupportCase }) {
 export function PaymentEvidenceCard({ c }: { c: SupportCase }) {
   const t = useSupportT();
   const p = c.paymentEvidence;
+  // Provider evidence is for the booking's own payment; a paid change or extra time is its own payment (totals under Money).
+  const firstOnly = !!p && c.money.capturedCents > p.capturedCents;
   return (
-    <Card><CardHeader className="pb-2"><CardTitle className="text-base">{t("bsPaymentDetails")}</CardTitle></CardHeader>
+    <Card><CardHeader className="pb-2"><CardTitle className="text-base">{t(firstOnly ? "bsPaymentDetailsFirst" : "bsPaymentDetails")}</CardTitle></CardHeader>
       <CardContent>
+        {firstOnly && <p className="mb-2 text-xs text-muted-foreground">{t("bsPaymentDetailsFirstHint")}</p>}
         {c.evidenceUnavailable || !p ? (
           <p role="status" className="text-sm text-muted-foreground" data-testid="evidence-unavailable">{c.evidenceUnavailable ? t("bsEvidenceUnavailable") : t("bsNoPayment")}</p>
         ) : (

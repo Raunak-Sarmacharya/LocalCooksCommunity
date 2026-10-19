@@ -295,6 +295,15 @@ export async function getBookingPaymentIntent(paymentIntentId: string) {
   return stripe.paymentIntents.retrieve(paymentIntentId);
 }
 
+/** Before capture there is no fee yet; the held card's country is what sets Stripe's rate (international cards cost more). */
+export async function heldCardCountry(paymentIntentId: string) {
+  const stripe = decisionStripe();
+  if (!stripe) return null;
+  const intent = await stripe.paymentIntents.retrieve(paymentIntentId, { expand: ['latest_charge'] });
+  const charge = intent.latest_charge;
+  return charge && typeof charge === 'object' ? charge.payment_method_details?.card?.country ?? null : null;
+}
+
 /** Dated allocation evidence: no estimate and no invented zero when the balance transaction is still absent. */
 export async function getDatedCaptureEvidence(paymentIntentId: string) {
   const provider = decisionStripe();

@@ -211,6 +211,7 @@ export default function ManagerBookingsPanel({ embedded = false, onGoToKitchens 
       totalPrice: details.totalPrice,
       pricingMode: details.pricingMode,
       transactionAmount: details.paymentTransaction?.amount,
+      cardCountry: details.paymentTransaction?.cardCountry,
       serviceFee: details.paymentTransaction?.serviceFee,
       stripeProcessingFee: details.paymentTransaction?.stripeProcessingFee,
       managerRevenue: details.paymentTransaction?.managerRevenue,

@@ -96,7 +96,7 @@ describe('the existing flow with more days', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Continue to confirm' }));
     expect(await screen.findByText(/Your card is held for the whole booking/)).toBeInTheDocument();
     expect(screen.getAllByTestId('cancel-headline')).toHaveLength(1);
-    expect(screen.getByTestId('cancel-headline')).toHaveTextContent(/Cancel by.*Oct 6.*50%.*every day/);
+    expect(screen.getByTestId('cancel-headline')).toHaveTextContent(/Cancel by.*Oct 6.*you get half back for each day you cancel/);
     const summaries = screen.getAllByTestId('booking-price-summary');
     const confirm = summaries[summaries.length - 1];
     expect(within(confirm).getAllByTestId('booking-day-price')).toHaveLength(3);

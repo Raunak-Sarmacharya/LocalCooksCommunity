@@ -80,9 +80,11 @@ describe('manager booking request review', () => {
       equipmentActions: [{ equipmentBookingId: 31, action: 'cancelled' }] });
   });
 
-  it('full accept keeps “Total charged” (nothing is waiting on the chef)', () => {
+  it('full accept reads “The chef pays”, then the kitchen’s own amount (nothing is waiting on the chef)', () => {
     setup();
-    expect(screen.getByText('Total charged')).toBeInTheDocument();
+    expect(screen.getByText('The chef pays')).toBeInTheDocument();
+    expect(screen.getByText('Your booking amount (with HST)')).toBeInTheDocument();
+    expect(screen.queryByText('Local Cooks service fee')).not.toBeInTheDocument();
     expect(screen.queryByText('Charged if the chef accepts')).not.toBeInTheDocument();
   });
 
