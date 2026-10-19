@@ -19,6 +19,8 @@ const dialect = new PgDialect();
 const context = new AsyncLocalStorage<{ locks: number[]; release: (() => void)[] }>();
 const policy: ReminderPolicy = { ...selectedReminderPolicy, shortVisit: 'at_start', responseWarningHours: 6, cancellationWarningHours: 6, approval: 'test fixture only' };
 const now = new Date('2026-10-04T08:00:00Z');
+// A checkout recorded during the booked visit (Oct 5, 08:00-12:00 UTC); an inspection is never due before the visit starts.
+const inVisit = new Date('2026-10-05T09:00:00Z');
 const tableName = (table: any) => table[Symbol.for('drizzle:Name')];
 function filter(table: string, rows: any[], condition: any) {
   if (!condition) return rows;
@@ -479,19 +481,19 @@ describe('separated, overnight and DST itineraries', () => {
 
 describe('actual downstream deadline tasks and action owners', () => {
   it('moves the inspection warning without changing the deadline or resending accepted work', async () => {
-    state.booking.checkinStatus = 'checkout_requested'; state.booking.checkoutRequestedAt = now;
+    state.booking.checkinStatus = 'checkout_requested'; state.booking.checkoutRequestedAt = inVisit; vi.setSystemTime(inVisit);
     const scheduleReview = () => state.db.transaction((tx: any) => scheduleAdvanceReminders(tx, 'booking_review', 10));
     await scheduleReview();
     state.settings = { inspection_warning_percent: '25' };
     await scheduleReview();
     expect(state.logs).toHaveLength(2);
-    expect(JSON.parse(state.logs[0].textBody).reminder).toMatchObject({ due: '2026-10-04T21:00:00.000Z', end: '2026-10-06T12:00:00.000Z' });
-    await dispatchAdvanceReminders({ now: new Date('2026-10-04T21:00:00Z') });
+    expect(JSON.parse(state.logs[0].textBody).reminder).toMatchObject({ due: '2026-10-05T15:45:00.000Z', end: '2026-10-06T12:00:00.000Z' });
+    await dispatchAdvanceReminders({ now: new Date('2026-10-05T15:45:00Z') });
     state.settings = { inspection_warning_percent: '75' };
     await scheduleReview();
     expect(state.logs).toHaveLength(2);
     expect(state.logs.every(r => r.status === 'sent')).toBe(true);
-    await dispatchAdvanceReminders({ now: new Date('2026-10-05T23:00:00Z') });
+    await dispatchAdvanceReminders({ now: new Date('2026-10-06T05:15:00Z') });
     expect(state.send).toHaveBeenCalledTimes(1);
   });
   it('uses chef claim deadline, caps short windows and suppresses after response', async () => {
@@ -502,8 +504,8 @@ describe('actual downstream deadline tasks and action owners', () => {
     expect(deadlineWarningDue(now, new Date(now.getTime() + 3600000), 6).getTime() - now.getTime()).toBe(1800000);
   });
   it('uses assigned manager, each inspection and storage independent of ended kitchen', async () => {
-    state.booking.checkinStatus = 'checkout_requested'; state.booking.checkoutRequestedAt = now;
-    expect((await currentReminders(state.db, 'booking_review', 10, policy))[0]).toMatchObject({ recipientId: 2, role: 'manager', due: '2026-10-05T10:00:00.000Z' });
+    state.booking.checkinStatus = 'checkout_requested'; state.booking.checkoutRequestedAt = inVisit; vi.setSystemTime(inVisit);
+    expect((await currentReminders(state.db, 'booking_review', 10, policy))[0]).toMatchObject({ recipientId: 2, role: 'manager', due: '2026-10-05T22:30:00.000Z' });
     state.storage = { id: 30, chefId: 3, checkoutStatus: 'checkout_requested', checkoutRequestedAt: now }; state.booking.status = 'completed';
     const [storage] = await currentDeadlineReminders(state.db, 'storage_review', 30, policy);
     expect(storage.due).toBe('2026-10-04T09:00:00.000Z'); expect(storage.path).toContain('storage-checkouts');
@@ -528,7 +530,7 @@ describe('actual downstream deadline tasks and action owners', () => {
     const duties = { version: 1, source: 'confirmation', capturedAt: now.toISOString(), arrival: section, departure: section,
       checkinWindowMinutesBefore: 15, checkoutReviewWindowMinutes: 120 };
     state.booking.visitDuties = duties;
-    state.booking.checkinStatus = 'checkout_requested'; state.booking.checkoutRequestedAt = now;
+    state.booking.checkinStatus = 'checkout_requested'; state.booking.checkoutRequestedAt = inVisit; vi.setSystemTime(inVisit);
     duties.clockCloseout = makeCloseoutSnapshot(state.booking, 'UTC', { serviceEndGraceMinutes: 15, inspectionAutoCloseHours: 24, checkinWindowMinutesBefore: 15 });
     state.booking.visitDuties = duties;
     state.settings.kitchen_inspection_auto_close_hours = '1';
@@ -550,8 +552,8 @@ describe('actual downstream deadline tasks and action owners', () => {
     expect(reminders[0].message).toContain('Clean and submit checklist');
   });
   it.each(['legacy', 'per-visit'])('ignores the retired zero-minute %s auto-clear setting', async kind => {
-    state.booking.checkinStatus = 'checkout_requested'; state.booking.checkoutRequestedAt = now;
-    if (kind === 'per-visit') state.visits = [{ id: 11, blockIndex: 0, startTime: '08:00', endTime: '12:00', checkinStatus: 'checkout_requested', checkoutRequestedAt: now }];
+    state.booking.checkinStatus = 'checkout_requested'; state.booking.checkoutRequestedAt = inVisit; vi.setSystemTime(inVisit);
+    if (kind === 'per-visit') state.visits = [{ id: 11, blockIndex: 0, startTime: '08:00', endTime: '12:00', checkinStatus: 'checkout_requested', checkoutRequestedAt: inVisit }];
     state.settings.kitchen_checkout_review_window_minutes = '0';
     const [review] = await currentReminders(state.db, 'booking_review', 10, policy);
     expect(review.end).toBe('2026-10-06T12:00:00.000Z');
@@ -560,7 +562,7 @@ describe('actual downstream deadline tasks and action owners', () => {
     state.settings.kitchen_checkout_review_window_minutes = '60';
     await schedule('booking_review', 10);
     expect(state.logs).toHaveLength(2);
-    expect(JSON.parse(state.logs[0].textBody).reminder.due).toBe('2026-10-05T10:00:00.000Z');
+    expect(JSON.parse(state.logs[0].textBody).reminder.due).toBe('2026-10-05T22:30:00.000Z');
   });
   it('dispatches each separated visit independently and closes only the completed block', async () => {
     state.booking.selectedSlots = ['08:00', '11:00'];
