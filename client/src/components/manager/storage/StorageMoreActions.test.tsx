@@ -18,7 +18,8 @@ it.each(["handover", "items-still-here"])("uploads and submits evidence for %s t
   const rental = { id: 5, actions: [action], chef: null, listing: { name: "Shelf" }, unitLabel: "1", startOn: "2026-10-19", paidThrough: "2026-10-25", terms: [] } as unknown as StorageRental;
   const onDone = vi.fn();
   render(<StorageMoreActions rental={rental} onDone={onDone} />);
-  fireEvent.click(screen.getByRole("button"));
+  fireEvent.keyDown(screen.getByRole('button', { name: 'stMoreTitle' }), { key: 'Enter' });
+  fireEvent.click(await screen.findByRole('menuitem'));
   expect(screen.queryByRole("textbox", { name: "stPhotosLabel" })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "stConfirm" }));
   expect(screen.getByRole("alert")).toHaveTextContent("stPhotoEvidenceRequired");

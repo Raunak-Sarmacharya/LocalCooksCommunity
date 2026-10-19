@@ -39,24 +39,24 @@ const show = (overrides: Record<string, unknown>) => {
 const actionButtons = () => screen.getByTestId("rental-actions").querySelectorAll("button")
 
 describe("storage rental page", () => {
-  it("renders no action the server didn't list, even for an active rental", async () => {
+  it("offers messaging without adding any lifecycle action the server didn’t list", async () => {
     show({ actions: [] })
     expect(await screen.findByText("Paid through Tue, Oct 20.")).toBeInTheDocument()
-    expect(actionButtons()).toHaveLength(0)
+    expect([...actionButtons()].map(button => button.textContent)).toEqual(['Message kitchen'])
     expect(screen.queryByTestId("problems")).toBeNull()
   })
 
   it("renders exactly the listed actions and ignores unknown ones", async () => {
     show({ actions: ["extend", "move_out", "report_problem", "kitchen_reclaim"] })
     await screen.findByText("Dry shelf", { selector: "h1" })
-    expect([...actionButtons()].map(button => button.textContent)).toEqual(["Extend", "Move out"])
+    expect([...actionButtons()].map(button => button.textContent)).toEqual(["Message kitchen", "Extend", "Move out"])
     expect(screen.getByTestId("problems")).toHaveTextContent("storage")
   })
 
   it("offers only withdraw on a request, and shows the amount and the payment", async () => {
     show({ state: "requested", phase: null, actions: ["withdraw"], responseDeadline: "2099-10-17T15:00:00Z", terms: [{ ...base.terms[0], status: "authorized" }] })
     expect(await screen.findByTestId("rental-status")).toHaveTextContent(/Harbour Kitchen answers by .*\. Your card is on hold for \$118\.00\./)
-    expect([...actionButtons()].map(button => button.textContent)).toEqual(["Withdraw request"])
+    expect([...actionButtons()].map(button => button.textContent)).toEqual(["Message kitchen", "Withdraw request"])
     expect(screen.getByText("Card on hold", { exact: false })).toBeInTheDocument()
     expect(screen.getByText("$118.00")).toBeInTheDocument()
   })

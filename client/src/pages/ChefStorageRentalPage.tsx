@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { StoragePageShell } from "@/components/storage/StoragePageShell"
 import { StorageExtendSheet } from "@/components/storage/StorageExtendSheet"
+import { StorageMessageButton } from "@/components/storage/StorageMessageButton"
 import { StorageCheckinDialog } from "@/components/booking/StorageCheckinDialog"
 import { StorageCheckoutDialog } from "@/components/booking/StorageCheckoutDialog"
 import { CommitmentProblems } from "@/components/support/CommitmentProblems"
@@ -58,6 +59,7 @@ export default function ChefStorageRentalPage() {
         {notice && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{notice}</p>}
 
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap" data-testid="rental-actions">
+          {["requested", "reserved", "active", "move_out_requested", "removal_review", "ended"].includes(rental.state) && <StorageMessageButton rentalId={rental.id} />}
           {can(rental, "extend") && <Button className="min-h-12 sm:min-h-11" onClick={() => setExtendOpen(true)}>{t("stcExtend")}</Button>}
           {can(rental, "move_in") && <Button variant={can(rental, "extend") ? "outline" : "default"} className="min-h-12 sm:min-h-11" onClick={() => setDialog("move_in")}>{t("stcMoveIn")}</Button>}
           {can(rental, "move_out") && <Button variant="outline" className="min-h-12 sm:min-h-11" onClick={() => setDialog("move_out")}>{t("stcMoveOut")}</Button>}

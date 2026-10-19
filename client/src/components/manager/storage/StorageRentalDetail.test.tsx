@@ -3,7 +3,12 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, expect, it, vi } from "vitest";
 
 const claimState = vi.hoisted(() => ({ filing: null as null | Record<string, unknown>, claims: [] as unknown[] }));
-vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string, opts?: any) => opts?.when ? `${key}:${opts.when}` : key, i18n: { language: "en-CA" } }) }));
+vi.mock("react-i18next", async () => {
+  const { default: en } = await import('@shared/i18n/locales/en-CA/storage.json');
+  return { useTranslation: () => ({ t: (key: string, opts?: any) => key.startsWith('stSituation_') || key.startsWith('stNextStep_') || ['stReleaseAvailableOn', 'stMessageChef'].includes(key)
+    ? (en as Record<string, string>)[key].replace(/\{(\w+)\}/g, (_, name) => String(opts?.[name] ?? ''))
+    : opts?.when ? `${key}:${opts.when}` : key.startsWith('stPayout') && opts?.date ? `${key}:${opts.date}` : key, i18n: { language: "en-CA" } }) };
+});
 vi.mock("wouter", () => ({ Link: ({ href, children }: any) => <a href={href}>{children}</a>, useParams: () => ({ id: "5" }) }));
 vi.mock("@/lib/api", () => ({ getAuthHeaders: async () => ({ Authorization: "Bearer fixture" }) }));
 vi.mock("@/lib/damage-claims", async (importOriginal) => {
@@ -47,12 +52,14 @@ function renderDetail(overrides: Record<string, unknown> = {}) {
   return render(<QueryClientProvider client={client}><StorageRentalDetail rentalId={5} /></QueryClientProvider>);
 }
 
-it("shows evidence, the paid term's payout and visible allowed actions", async () => {
+it("shows compact empty evidence, date-only payout and state-relevant actions", async () => {
   renderDetail();
   expect(await screen.findByText("stEvidenceNone")).toBeInTheDocument();
-  expect(screen.getByText("stPayoutPaid")).toBeInTheDocument();
+  expect(screen.getByText(/stPayoutPaid:Oct 5/)).not.toHaveTextContent(/a\.m\.|00:00|12:00/);
+  expect(screen.queryByText('stEvidenceHeading')).toBeNull();
   expect(await screen.findByRole("button", { name: "stActionHoldoverCharge" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "stActionWaiveHoldover" })).toBeInTheDocument();
+  fireEvent.keyDown(screen.getByRole('button', { name: 'stMoreTitle' }), { key: 'Enter' });
+  expect(await screen.findByRole('menuitem', { name: 'stActionWaiveHoldover' })).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "stActionApprove" })).toBeNull();
 });
 
@@ -77,13 +84,14 @@ it("previews the server refund amount before confirmation and retains exact cent
   vi.stubGlobal('fetch', fetchMock);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(<QueryClientProvider client={client}><StorageRentalDetail rentalId={5} /></QueryClientProvider>);
-  fireEvent.click(await screen.findByRole('button', { name: 'stActionRefund' }));
+  fireEvent.keyDown(await screen.findByRole('button', { name: 'stMoreTitle' }), { key: 'Enter' });
+  fireEvent.click(await screen.findByRole('menuitem', { name: 'stActionRefund' }));
   expect(screen.queryByRole('button', { name: 'stConfirm' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'stPreview' }));
   expect(await screen.findByTestId('action-amount')).toHaveTextContent('$12.34');
   expect(screen.getByRole('spinbutton')).toHaveValue(12.34);
   fireEvent.click(screen.getByRole('button', { name: 'stConfirm' }));
-  expect(screen.getByRole('alert')).toHaveTextContent('stReasonRequired');
+  expect(screen.getByText('stReasonRequired')).toHaveAttribute('role', 'alert');
   fireEvent.change(screen.getByLabelText('stReasonLabel'), { target: { value: 'Courtesy refund' } });
   fireEvent.click(screen.getByRole('button', { name: 'stConfirm' }));
   await waitFor(() => expect(fetchMock.mock.calls.some(([url, init]) => String(url).endsWith('/refund') && JSON.parse(init?.body || '{}').amountCents === 1234)).toBe(true));
@@ -134,4 +142,34 @@ it("labels each term by its own charge status, including a pending extension", a
   expect(await screen.findByText("stTermCharged")).toBeInTheDocument();
   expect(screen.getByText("stTermOnHold")).toBeInTheDocument();
   expect(screen.getAllByText("stTermPayout")).toHaveLength(2);
+});
+
+it.each([false, true])('explains overdue move-in and respects release permission (%s)', async release => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-10-19T12:00:00Z'));
+  try {
+    renderDetail({ state: 'reserved', phase: null, startOn: '2026-10-17', actions: ['handover', 'offer-extension', ...(release ? ['release'] : [])] });
+    const banner = await screen.findByTestId('storage-situation');
+    expect(within(banner).getByText('Morgan Lee hasn’t moved in yet. The unit is held for them, and you’re still paid.')).toBeInTheDocument();
+    expect(within(banner).getByRole('button', { name: 'Message Morgan Lee' })).toBeInTheDocument();
+    expect(within(banner).getByRole('button', { name: 'stActionHandover' })).toBeInTheDocument();
+    expect(within(banner).getByText('Record move-in when they arrive. Add a photo of their items to confirm.')).toBeInTheDocument();
+    expect(within(banner).queryByRole('button', { name: 'stActionOfferExtension' })).toBeNull();
+    if (release) {
+      expect(within(banner).getByRole('button', { name: 'stActionReleaseUnit' })).toBeInTheDocument();
+      expect(within(banner).queryByText(/If they don’t move in/)).toBeNull();
+    } else {
+      expect(within(banner).queryByRole('button', { name: 'stActionReleaseUnit' })).toBeNull();
+      expect(within(banner).getByText('If they don’t move in by Oct 24, you can release the unit.')).toBeInTheDocument();
+    }
+    fireEvent.keyDown(within(banner).getByRole('button', { name: 'stMoreTitle' }), { key: 'Enter' });
+    expect(await screen.findByRole('menuitem', { name: 'stActionOfferExtension' })).toBeInTheDocument();
+  } finally { vi.useRealTimers(); }
+});
+
+it('shows storage instructions and chef notes as read-only text', async () => {
+  renderDetail({ instructions: { moveIn: 'Use the labelled shelf.', moveOut: 'Leave it clean.' }, chefNotes: { moveIn: 'Two labelled boxes.', moveOut: null } });
+  expect(await screen.findByText('Use the labelled shelf.')).toBeInTheDocument();
+  expect(screen.getByText('Leave it clean.')).toBeInTheDocument();
+  expect(screen.getByText('Two labelled boxes.')).toBeInTheDocument();
 });

@@ -5,7 +5,8 @@
  * the answer deadline and the two decisions. Approve and Decline are gated on the DTO's `actions[]`,
  * and a decline always carries a reason.
  */
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useTranslation } from "react-i18next";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -13,13 +14,15 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Clock, User } from "@/components/ui/manager-icons";
+import { Clock } from "@/components/ui/manager-icons";
 import { formatBookingDate, formatCurrency } from "@/lib/formatters";
 import { getAuthHeaders } from "@/lib/api";
-import { formatKitchenDateTime, rentalTotalCents, type StorageRental } from "@/lib/storage-board";
+import { formatKitchenDateTime, formatStorageDate, rentalTotalCents, type StorageRental } from "@/lib/storage-board";
 
 export function StorageRequestCard({ rental, onDone }: { rental: StorageRental; onDone: () => void }) {
   const { t, i18n } = useTranslation("storage");
+  const returnFocus = useRef<HTMLElement | null>(null);
+  const chef = rental.chef?.name || t('stTheChef');
   const [decision, setDecision] = useState<"approve" | "decline" | null>(null);
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -56,15 +59,15 @@ export function StorageRequestCard({ rental, onDone }: { rental: StorageRental; 
   }
 
   return (
-    <Card>
+    <Card className="shadow-none">
       <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0 space-y-1">
           <div className="flex items-center gap-1.5 font-medium">
-            <User className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-            <span className="truncate">{rental.chef?.name ?? t("stNoOccupant")}</span>
+            <Avatar className="h-7 w-7"><AvatarFallback className="text-xs">{chef.split(/\s+/).map(part => part[0]).slice(0, 2).join('')}</AvatarFallback></Avatar>
+            <span className="truncate">{chef}</span>
           </div>
           <p className="truncate text-sm text-muted-foreground">{rental.listing.name} · {t("stUnitLabel", { index: rental.unitLabel })}</p>
-          <p className="text-sm">{formatBookingDate(rental.startOn)} – {formatBookingDate(rental.paidThrough)} · {t("stTermDays", { days: rental.terms.reduce((sum, term) => sum + term.days, 0) })}</p>
+          <p className="text-sm">{formatStorageDate(rental.startOn, i18n.language)} – {formatStorageDate(rental.paidThrough, i18n.language)} · {t("stTermDays", { days: rental.terms.reduce((sum, term) => sum + term.days, 0) })}</p>
           <p className="flex flex-wrap items-center gap-x-2 text-sm text-muted-foreground">
             <span>{payoutLine}</span>
             {rental.responseDeadline && (
@@ -75,14 +78,14 @@ export function StorageRequestCard({ rental, onDone }: { rental: StorageRental; 
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
-          {canApprove && <Button size="sm" onClick={() => { close(); setDecision("approve"); }}>{t("stApprove")}</Button>}
-          {canDecline && <Button size="sm" variant="outline" onClick={() => { close(); setDecision("decline"); }}>{t("stDecline")}</Button>}
-          <Button asChild size="sm" variant="ghost"><Link href={`/manager/storage/${rental.id}`}>{t("stViewUnit")}</Link></Button>
+          {canApprove && <Button className="h-11 shadow-none hover:shadow-none" size="sm" onClick={event => { returnFocus.current = event.currentTarget; close(); setDecision("approve"); }}>{t("stApprove")}</Button>}
+          {canDecline && <Button className="h-11" size="sm" variant="outline" onClick={event => { returnFocus.current = event.currentTarget; close(); setDecision("decline"); }}>{t("stDecline")}</Button>}
+          <Button asChild className="h-11" size="sm" variant="ghost"><Link href={`/manager/storage/${rental.id}`}>{t("stViewUnit")}</Link></Button>
         </div>
       </CardContent>
 
       <Sheet open={decision !== null} onOpenChange={(next) => { if (!next) close(); }}>
-        <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
+        <SheetContent hideClose side="right" className="w-full overflow-y-auto sm:max-w-md" onCloseAutoFocus={event => { event.preventDefault(); returnFocus.current?.focus(); }}>
           {decision && (
             <div className="space-y-4">
               <SheetHeader>
@@ -107,7 +110,7 @@ export function StorageRequestCard({ rental, onDone }: { rental: StorageRental; 
                 </div>
               </dl>
               {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <div className="flex flex-col-reverse gap-2 [&>button]:min-h-11 sm:flex-row sm:justify-end">
                 <Button variant="ghost" onClick={close}>{t("stCancel")}</Button>
                 <Button onClick={() => void submit()} disabled={saving}>
                   {decision === "approve" ? t("stApproveSubmit") : t("stDeclineSubmit")}

@@ -7,7 +7,10 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { Link, useParams } from "wouter";
+import { Link } from "wouter";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { StorageMessageButton } from "@/components/storage/StorageMessageButton";
 import { Badge } from "@/components/ui/badge";
 import { StorageRequestCard } from "./StorageRequestCard";
 import { Button } from "@/components/ui/button";
@@ -15,7 +18,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SmartImage } from "@/components/ui/smart-image";
-import { ChevronLeft, Image as ImageIcon } from "@/components/ui/manager-icons";
+import { Check, Info, ChevronLeft, Image as ImageIcon } from "@/components/ui/manager-icons";
 import { StorageStatusChip } from "@/components/manager/storage/StorageStatusChip";
 import { StorageMoreActions } from "@/components/manager/storage/StorageMoreActions";
 import { DamageClaimSheet } from "@/components/booking/DamageClaimSheet";
@@ -24,8 +27,8 @@ import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import { formatBookingDate, formatCurrency } from "@/lib/formatters";
 import { getAuthHeaders } from "@/lib/api";
 import { claimRequest, claimWhen, type FilingContext } from "@/lib/damage-claims";
-import { chipForRental, formatKitchenDateTime, occupiesUnit, termPayout, type StorageRental } from "@/lib/storage-board";
-import type { RentalState } from "@shared/storage-rental";
+import { chipForRental, formatStorageDate, occupiesUnit, termPayout, type StorageRental } from "@/lib/storage-board";
+import { addDays, NO_MOVE_IN_RELEASE_DAYS, type RentalState } from "@shared/storage-rental";
 
 const STATE_KEY: Partial<Record<RentalState, string>> = {
   requested: "stStateRequested",
@@ -57,7 +60,7 @@ export function StorageRentalDetail({ rentalId }: { rentalId: number }) {
 
   const rental = query.data;
   const back = (
-    <Button asChild variant="ghost" size="sm" className="-ml-2">
+    <Button asChild variant="ghost" size="sm" className="-ml-2 h-11">
       <Link href="/manager/dashboard?view=storage-bookings"><ChevronLeft className="mr-1.5 h-4 w-4" aria-hidden="true" />{t("stBackToBoard")}</Link>
     </Button>
   );
@@ -103,53 +106,79 @@ export function StorageRentalDetail({ rentalId }: { rentalId: number }) {
   ];
   const currentStep = rental.state === "ended" ? 4 : rental.state === "move_out_requested" ? 3
     : ["active", "removal_review"].includes(rental.state) ? 2 : rental.state === "reserved" ? 1 : 0;
+  const date = (value: string) => formatStorageDate(value, i18n.language, rental.timezone);
+  const chef = rental.chef?.name || t('stTheChef');
+  const chip = chipForRental(rental);
+  const situation = rental.state === 'reserved' ? chip === 'moveInOverdue' ? 'overdue' : 'reserved'
+    : rental.state === 'active' ? rental.phase === 'holdover' ? 'holdover' : rental.phase === 'grace' ? 'grace' : 'active'
+    : rental.state;
+  const prominentActions: Record<string, string[]> = {
+    overdue: ['handover', 'release'], reserved: [], active: ['offer-extension'], grace: ['offer-extension'],
+    holdover: ['holdover-charge'], move_out_requested: ['clear-move-out', 'items-still-here', 'release'],
+    removal_review: ['removal/record'], ended: ['mark-ready', 'items-still-here'],
+  };
+  const canMessage = ['requested', 'reserved', 'active', 'move_out_requested', 'removal_review', 'ended'].includes(rental.state);
+  const warning = ['overdue', 'grace', 'holdover', 'move_out_requested', 'removal_review'].includes(situation);
   return (
     <div className="space-y-6">
       {back}
       <header className="space-y-2">
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-xl font-semibold">{t("stDetailTitle", { ref: rental.ref ?? `#${rental.id}` })}</h1>
+          <h1 className="text-xl font-semibold tracking-tight">{t('stUnitLabel', { index: rental.unitLabel })} · {rental.listing.name}</h1>
           {occupiesUnit(rental)
             ? <StorageStatusChip chip={chipForRental(rental)} />
             : <Badge variant="outline">{t((STATE_KEY[rental.state] ?? "stStateLabel") as never)}</Badge>}
         </div>
-        <p className="text-sm text-muted-foreground">
-          {rental.kitchen.name} · {rental.listing.name} · {t("stUnitLabel", { index: rental.unitLabel })}
-          {rental.chef?.name ? ` · ${rental.chef.name}` : ""}
-        </p>
-        <p className="text-sm">{formatBookingDate(rental.startOn)} – {formatBookingDate(rental.paidThrough)}</p>
+        <div className="flex items-center gap-2 text-sm"><Avatar className="h-8 w-8"><AvatarFallback className="text-xs">{chef.split(/\s+/).map(part => part[0]).slice(0, 2).join('')}</AvatarFallback></Avatar><span className="font-medium">{chef}</span><span className="text-muted-foreground">· {rental.kitchen.name}</span></div>
+        <p className="text-sm">{date(rental.startOn)} – {date(rental.paidThrough)}</p>
+        <p className="text-xs text-muted-foreground">{rental.ref ?? `#${rental.id}`}</p>
         <div className="flex flex-wrap items-center gap-3 pt-1">
-          {rental.state !== "requested" && <StorageMoreActions rental={rental} onDone={() => void query.refetch()} />}
           {filing.data?.allowed && (
             <div className="space-y-1" data-testid="storage-claim-report">
-              <Button variant="outline" onClick={() => setClaimOpen(true)}>{claimT("dcV2Report")}</Button>
+              <Button className="min-h-11" variant="outline" onClick={() => setClaimOpen(true)}>{claimT("dcV2Report")}</Button>
               <p className="text-sm text-muted-foreground">{claimT("dcV2FileBy", { when: claimWhen(filing.data.deadline, filing.data.timezone, i18n.language) })}</p>
             </div>
           )}
         </div>
       </header>
 
+      <Alert className={warning ? 'border-amber-200 bg-amber-50/50' : 'border-border bg-muted/20'} data-testid="storage-situation">
+        <Info className={warning ? 'h-4 w-4 text-amber-700' : 'h-4 w-4 text-muted-foreground'} />
+        <AlertDescription className="space-y-3">
+          <p className="text-sm font-medium">{t(`stSituation_${situation}` as never, { chef, date: date(rental.startOn), end: date(rental.paidThrough), moveOut: date(rental.moveOutBy || rental.paidThrough), grace: date(rental.graceEndsOn), days: rental.holdoverDays, amount: formatCurrency(rental.accruedCents, 'CAD', i18n.language) })}</p>
+          {prominentActions[situation] && <p className="text-sm text-muted-foreground">{t(`stNextStep_${situation}` as never)}</p>}
+          {situation === 'overdue' && !rental.actions.includes('release') && <p className="text-sm text-muted-foreground">{t('stReleaseAvailableOn', { date: date(addDays(rental.startOn, NO_MOVE_IN_RELEASE_DAYS)) })}</p>}
+          <div className="flex flex-wrap items-center gap-2">
+            {canMessage && <StorageMessageButton rentalId={rental.id} chef={chef} />}
+            {rental.state !== 'requested' && <StorageMoreActions rental={rental} prominentActions={prominentActions[situation] || []} onDone={() => void query.refetch()} />}
+          </div>
+        </AlertDescription>
+      </Alert>
+
       <section aria-label={t("stTimeline")} className="rounded-xl border bg-card p-4">
-        <ol className="grid gap-3 sm:grid-cols-5">
+        <ol className="grid gap-4 sm:grid-cols-5">
           {steps.map((step, index) => <li key={step.key} aria-current={index === currentStep ? "step" : undefined}
-            className={index === currentStep ? "rounded-lg bg-primary/10 p-2 text-primary" : "p-2 text-muted-foreground"}>
-            <p className="text-sm font-medium">{t(step.key as never)}</p>
-            {step.at && <p className="mt-1 text-xs">{step.at.length === 10 ? formatBookingDate(step.at) : formatKitchenDateTime(step.at, rental.timezone, i18n.language)}</p>}
+            className="relative flex gap-3 text-muted-foreground sm:flex-col">
+            <span className={`relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border bg-card ${index === currentStep ? 'border-primary text-primary ring-2 ring-primary/25 ring-offset-2' : index < currentStep ? 'border-muted bg-muted' : 'border-border text-muted-foreground/50'}`}>
+              {index < currentStep ? <Check className="h-4 w-4" /> : <span className="text-xs tabular-nums">{index + 1}</span>}
+            </span>
+            {index < steps.length - 1 && <span aria-hidden="true" className="absolute left-3.5 top-7 h-full w-px bg-border sm:left-7 sm:top-3.5 sm:h-px sm:w-full" />}
+            <div className="relative z-10">
+            <p className={`text-sm font-medium ${index === currentStep ? 'text-foreground' : ''}`}>{t(step.key as never)}</p>
+            {step.at && <p className="mt-1 text-xs">{date(step.at)}</p>}
+            </div>
           </li>)}
         </ol>
+        {!hasEvidence && <p className="mt-5 flex items-center gap-2 border-t pt-3 text-sm text-muted-foreground"><ImageIcon className="h-4 w-4" />{t('stEvidenceNone')}</p>}
       </section>
 
       {/* A request is answered here too (the dashboard links straight to this page), with the board's same card. */}
       {rental.state === "requested" && <StorageRequestCard rental={rental} onDone={() => void query.refetch()} />}
 
-      <Card>
+      {hasEvidence && <Card>
         <CardHeader><CardTitle className="text-base">{t("stEvidenceHeading")}</CardTitle></CardHeader>
         <CardContent className="space-y-4">
-          {!hasEvidence ? (
-            <p className="flex items-center gap-2 text-sm text-muted-foreground">
-              <ImageIcon className="h-4 w-4" aria-hidden="true" />{t("stEvidenceNone")}
-            </p>
-          ) : evidence.map((group) => group.urls.length > 0 && (
+          {evidence.map((group) => group.urls.length > 0 && (
             <div key={group.key} className="space-y-2">
               <h3 className="text-sm font-medium text-muted-foreground">{t(group.key as never)}</h3>
               <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
@@ -164,7 +193,17 @@ export function StorageRentalDetail({ rentalId }: { rentalId: number }) {
             </div>
           ))}
         </CardContent>
-      </Card>
+      </Card>}
+
+      {(rental.instructions?.moveIn || rental.instructions?.moveOut || rental.chefNotes?.moveIn || rental.chefNotes?.moveOut) && <Card>
+        <CardHeader><CardTitle className="text-base">{t('stInstructionsHeading')}</CardTitle></CardHeader>
+        <CardContent className="grid gap-4 text-sm sm:grid-cols-2">
+          {([
+            ['stMoveInInstructions', rental.instructions?.moveIn], ['stMoveOutInstructions', rental.instructions?.moveOut],
+            ['stChefMoveInNotes', rental.chefNotes?.moveIn], ['stChefMoveOutNotes', rental.chefNotes?.moveOut],
+          ] as const).map(([key, value]) => value && <div key={key}><h3 className="mb-1 font-medium">{t(key)}</h3><p className="whitespace-pre-wrap text-muted-foreground">{value}</p></div>)}
+        </CardContent>
+      </Card>}
 
       <Card>
         <CardHeader><CardTitle className="text-base">{t("stMoneyHeading")}</CardTitle></CardHeader>
@@ -172,9 +211,9 @@ export function StorageRentalDetail({ rentalId }: { rentalId: number }) {
           {rental.terms.map((term, index) => {
             const payout = termPayout(term);
             const payoutText = payout.status === "scheduled"
-              ? t("stPayoutScheduled", { amount: formatCurrency(payout.amountCents), date: formatKitchenDateTime(payout.at!, rental.timezone, i18n.language) })
+              ? t("stPayoutScheduled", { amount: formatCurrency(payout.amountCents), date: date(payout.at!) })
               : payout.status === "paid"
-                ? t("stPayoutPaid", { amount: formatCurrency(payout.amountCents), date: formatKitchenDateTime(payout.at!, rental.timezone, i18n.language) })
+                ? t("stPayoutPaid", { amount: formatCurrency(payout.amountCents), date: date(payout.at!) })
                 : payout.status === "hold" ? t("stPayoutOnHold") : rental.state === "requested" && rental.estimatedPayoutCents != null
                   ? t("stPayoutEstimate", { amount: formatCurrency(rental.estimatedPayoutCents) }) : t("stPayoutNone");
             return (

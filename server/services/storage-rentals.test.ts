@@ -277,7 +277,21 @@ it('uses location instructions for SQL-backed quote/checkout visibility and pres
 it('provides a display payout estimate from admin fees and the held card country, plus timeline dates', async () => {
   const id = await rental();
   const result = await readRental(id, approveActor, now);
+  expect(result.instructions).toEqual({ moveIn: 'Use shelf', moveOut: 'Clear shelf' });
+  expect(result.chefNotes).toEqual({ moveIn: null, moveOut: null });
   expect(result.estimatedPayoutCents).toBe(3550 - 100 - Math.round(3550 * (0.025 + 0.008) + 20));
   expect(result.timeline).toMatchObject({ requestedAt: now, approvedAt: null, movedInAt: null, movingOutAt: null, endedAt: null });
   expect(await one(paymentTransactions)).toMatchObject({ status: 'authorized' });
+});
+
+it('shows the kitchen the instructions captured for this rental and the chef’s notes', async () => {
+  const id = await rental();
+  const { makeVisitDuties } = await import('@shared/visit-duties');
+  const duties = makeVisitDuties({ storageCheckinInstructions: 'Original arrival', storageCheckoutInstructions: null }, true,
+    { checkinWindowMinutesBefore: 0, checkoutReviewWindowMinutes: 60 }, 'confirmation', now);
+  await h.db.update(storageBookings).set({ visitDuties: duties, checkinNotes: 'Two boxes', checkoutNotes: 'Shelf cleared' }).where(eq(storageBookings.id, id));
+  const dto = await readRental(id, approveActor, now);
+  expect(dto.instructions).toEqual({ moveIn: 'Original arrival', moveOut: null });
+  expect(dto.chefNotes).toEqual({ moveIn: 'Two boxes', moveOut: 'Shelf cleared' });
+  expect((await readRental(id, { id: 3, role: 'chef' }, now))).not.toHaveProperty('instructions');
 });
