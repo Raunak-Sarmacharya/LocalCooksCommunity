@@ -1207,3 +1207,14 @@ State Oct 18 (evening): multi-day + single-day booking cycle verified end to end
 - Open / later: N1 paid-change-then-cancel = support-only (manual Stripe); kitchen custom charges deferred (Peerspace-style candidate); not live-run (tests only): full-day overstay billed at the extra time rate, 24 h auto payout, request expiry, multi-day partial acceptance, no-show — the team plan covers them.
 - Locked leftover worktree folders (no junctions; safe to delete by hand): t3-492c21bd, t3-5b86759a, t3-595ffb45, t3-e445914c under C:\Users\rauna\.t3\worktrees\LocalCooksCommunity.
 - Before any production deploy (owner go-ahead only): apply migrations 0099/0102/0103/0104 to prod; review the storage base_price note; decide `booking_multiday_enabled` for prod.
+
+## 2026-10-19 — Live UI walkthrough (preview), multi-day as one order
+
+- Kitchen list amount for a multi-day order sums every charge (KB-XHD3ZG now $262.30 / you receive $236.64, was $140.30 / $126.76) (`bce34c73`).
+- Chef "Your days" shows each day's price and refund; add-ons name their day, sorted by day; chef equipment rows carry `kitchenBookingVisitId` (`bce34c73`, `be7f4a6d`).
+- Kitchen days: one "You receive $X after this day's inspection" per day across charges; zero refund/payout lines hidden (`cc6dbdb8`, `8502c599`).
+- Walkthrough fixes (`8502c599`): sent change request shows at once (panel remount); change editor caps hours at the kitchen limit (offered 14 h vs 4 h max); equipment replaced by an approved change no longer listed/counted (showed a stray "Cancelled" oven); extra-time line used the wrong namespace (raw `bpsExtraTimeRate`); Stripe lines read "Mon, Nov 16: Kitchen (2 hours)" and name each rental; "Service fee".
+- Breakdown (`f05c0eb7`): multi-day kitchen/equipment split comes from the booking charge's latest day allocations (single-day rate math showed $75 kitchen / $127.50 charged on a $152.50 charge).
+- Live run #215 (KB-6GCZVH): request 2 days (oven Nov 16 only) $152.50 hold -> kitchen approved ($137.81) -> chef +1 h on Nov 18 ($30.50 hold) -> kitchen approved -> $183.00 paid; chef days $91.50 + $91.50; kitchen days $82.68 + $82.45 = $165.13.
+- Found: after a paid change neither side can cancel (N1 block, "Contact Local Cooks") — owner decision pending.
+- Polish noted, not done: success page doesn't say the request amount is only a hold; chef day prices absent while pending (allocations are made at capture); fr/uk fallbacks for ~20 `bd*` keys on the booking page.
