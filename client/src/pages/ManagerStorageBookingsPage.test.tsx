@@ -120,7 +120,7 @@ it('links the whole past rental row to its detail and payout status', async () =
 
   expect(screen.getByText('stRentalEarnings: $37.00')).toBeInTheDocument();
 
-  fireEvent.click(screen.getByRole('tab', { name: /stPastRentals/ }));
+  fireEvent.mouseDown(screen.getByRole('tab', { name: /stPastRentals/ }), { button: 0 });
 
   expect(screen.queryByRole('heading', { name: 'stUnitsHeading' })).not.toBeInTheDocument();
 
