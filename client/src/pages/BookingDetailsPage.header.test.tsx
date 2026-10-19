@@ -281,7 +281,9 @@ describe("Local Cooks goodwill refund on the payment card", () => {
     const card = await screen.findByTestId("payment-card");
     expect(within(card).getByText("Refunded $26.00")).toBeInTheDocument();
     // One statement: the refund line says how much of it came from Local Cooks.
-    expect(within(card).getByTestId("statement-refunded")).toHaveTextContent("Includes $26.00 from Local Cooks");
+    // The why opens from the line's info icon.
+    fireEvent.click(within(within(card).getByTestId("statement-refunded")).getByRole("button", { name: "About Refunded" }));
+    expect(await screen.findByText("Includes $26.00 from Local Cooks")).toBeInTheDocument();
     expect(within(card).queryByText("Part of your payment was refunded.")).not.toBeInTheDocument();
   });
   it("tells the manager the payout is unchanged", async () => {

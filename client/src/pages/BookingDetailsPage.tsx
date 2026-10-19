@@ -48,7 +48,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { formatPhoneForDisplay, normalizePhoneNumber } from "@shared/phone-validation";
-import { ArrowLeft, MapPin, FileText, Download, Loader2, CheckCircle2, XCircle, AlertCircle, Phone, Mail, Receipt, LogIn, LogOut, Camera, FileWarning, Clock, MoreHorizontal, MessageSquare, CalendarPlus, CalendarX, ClipboardCheck, LifeBuoy } from "lucide-react";
+import { ArrowLeft, MapPin, FileText, Download, Loader2, CheckCircle2, XCircle, AlertCircle, Phone, Mail, Receipt, LogIn, LogOut, Camera, FileWarning, Clock, MoreHorizontal, MessageSquare, CalendarPlus, CalendarX, ClipboardCheck, LifeBuoy, Info } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { changeRequestHref } from "@/lib/change-request";
 import { arrivalRecorded, bookedMinutes, bookingHeaderPhase, canCancelOrChange, canMessage, contactVisible, initials, timeRange, type BookingHeaderPhase } from "@/lib/booking-header-state";
 import { bookingCancelCause } from '@/lib/booking-cancel-cause';
@@ -1290,7 +1291,12 @@ export default function BookingDetailsPage() {
     : line.minutes ? t('bnChargeExtension', { length: formatBookedDuration(line.minutes, lang) }) : t('bnChargeExtensionNoLength');
   const moneyRow = (label: ReactNode, cents: number, options: { sub?: string; muted?: boolean; total?: boolean; testId?: string } = {}) => (
     <div className={`flex justify-between gap-3 text-sm ${options.total ? 'mt-1 border-t pt-2 font-semibold' : ''}`} data-testid={options.testId}>
-      <span className={options.muted ? 'text-muted-foreground' : ''}>{label}{options.sub && <span className="block text-xs font-normal text-muted-foreground">{options.sub}</span>}</span>
+      <span className={`inline-flex items-center gap-1 ${options.muted ? 'text-muted-foreground' : ''}`}>{label}
+        {/* The why behind a line opens from it (as Airbnb's price lines do), so the statement stays label + amount. */}
+        {options.sub && <Popover><PopoverTrigger asChild>
+          <button type="button" className="!min-h-0 !min-w-0 inline-flex items-center rounded-sm text-muted-foreground hover:text-foreground" aria-label={t('bdLineInfo', { item: typeof label === 'string' ? label : '' })}>
+            <Info className="h-3.5 w-3.5" /></button>
+        </PopoverTrigger><PopoverContent className="max-w-xs p-3 text-sm font-normal" align="start" side="top">{options.sub}</PopoverContent></Popover>}</span>
       <span className={`tabular-nums ${cents < 0 ? 'text-muted-foreground' : ''}`}>{cents < 0 ? `−${formatCurrency(-cents)}` : formatCurrency(cents)}</span>
     </div>);
   // ── State, times and facts for the Now card (design-booking-consolidation.md §2) ─────────────────────────────
@@ -1903,11 +1909,6 @@ export default function BookingDetailsPage() {
         <span className="text-muted-foreground">{t("bdSubtotal")}</span>
         <span className="tabular-nums">{formatCurrency(totals.subtotal)}</span>
       </div>)}
-      {Number(booking.extraTimeRateCents) > 0 ? (
-        <p className="text-xs leading-relaxed text-muted-foreground" data-testid="booking-extra-time-rate">
-          {bt('bpsExtraTimeRate', { amount: formatCurrency(booking.extraTimeRateCents) })}
-        </p>
-      ) : null}
       {statement ? (<>
         {moneyRow(t('bdServiceFeeLine'), statement.serviceFee, { muted: true, sub: isManagerView ? t('bdServiceFeeChefPaid') : undefined })}
         {statement.tax > 0 && moneyRow(t('bdHstPercent', { percent: pricingBreakdownInput!.kitchenHstRatePercent ?? 0 }), statement.tax, { muted: true })}
@@ -1916,7 +1917,7 @@ export default function BookingDetailsPage() {
           sub: goodwillRefund > 0 ? t('bdGoodwillIncluded', { amount: formatCurrency(goodwillRefund) }) : undefined })}
         {!isManagerView && statement.refunded > 0 && moneyRow(t('bdAfterRefunds'), statement.paid - statement.refunded, { total: true, testId: 'statement-after-refunds' })}
         {isManagerView && (<div className="space-y-1 pt-3" data-testid="statement-payout">
-          <h4 className="text-xs font-semibold text-muted-foreground">{payoutTitle}</h4>
+          <h4 className="text-xs font-semibold text-muted-foreground">{t('bdYourPayout')}</h4>
           {moneyRow(t('bdYourBookingAmount'), statement.gross, { sub: t('bdYourBookingAmountSub') })}
           {statement.cardFees > 0 && moneyRow(t('bdCardFees'), -statement.cardFees)}
           {statement.refundShare > 0 && moneyRow(t('bdKitchenRefundShare'), -statement.refundShare)}
@@ -1976,6 +1977,11 @@ export default function BookingDetailsPage() {
         <span>{t("bdGoodwillLine", { amount: formatCurrency(goodwillRefund) })}</span>
       </div>
     )}
+    {Number(booking.extraTimeRateCents) > 0 && !bookingEnded ? (
+        <p className="pt-2 text-xs leading-relaxed text-muted-foreground" data-testid="booking-extra-time-rate">
+          {bt('bpsExtraTimeRate', { amount: formatCurrency(booking.extraTimeRateCents) })}
+        </p>
+      ) : null}
     {!statement && !isManagerView && refundAmount + extraRefundedCents - goodwillRefund > 0 && (
       <div className="flex items-center justify-between gap-2 text-sm">
         <span className="inline-flex items-center gap-1 text-warning">
