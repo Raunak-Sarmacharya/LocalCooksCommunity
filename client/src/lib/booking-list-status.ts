@@ -49,7 +49,8 @@ const datedDays = (row: BookingListRow) => row.scheduleRevision
   ? (row.visitStates || []).filter(day => day.visitDate && day.startTime && day.endTime).sort((a, b) => a.visitDate!.localeCompare(b.visitDate!)) : [];
 const asDay = <T extends BookingListRow>(row: T, day: VisitState, days: VisitState[]): T => ({ ...row, bookingDate: day.visitDate!, startTime: day.startTime!, endTime: day.endTime!,
   operatingWindowStartTime: day.operatingWindowStartTime, selectedSlots: undefined, checkinStatus: day.checkinStatus, visitStates: [day],
-  listDay: { number: days.indexOf(day) + 1, total: days.length, first: days[0].visitDate!, last: days.at(-1)!.visitDate! } });
+  // A booking left with one day reads like any single-day booking.
+  listDay: days.length > 1 ? { number: days.indexOf(day) + 1, total: days.length, first: days[0].visitDate!, last: days.at(-1)!.visitDate! } : undefined });
 
 /** "Mon, Nov 9 – Fri, Nov 13": the whole span of a multi-day booking (dates are operating days, not instants). */
 export function listDaySpan(day: ListDay, locale: string) {
