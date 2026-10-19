@@ -32,11 +32,11 @@ const CHIP_CLASS: Record<UnitChip, string> = {
   removalReview: "border-red-400 bg-red-100 text-red-900",
 };
 
-export function StorageStatusChip({ chip, className, detail }: { chip: UnitChip; className?: string; detail?: string }) {
+export function StorageStatusChip({ chip, className }: { chip: UnitChip; className?: string }) {
   const { t } = useTranslation("storage");
   return (
-    <Badge variant="outline" className={cn("font-medium", CHIP_CLASS[chip], className)}>
-      {t(CHIP_KEY[chip] as never)}{detail ? ` · ${detail}` : ''}
+    <Badge variant="outline" className={cn("shrink-0 whitespace-nowrap font-medium", CHIP_CLASS[chip], className)}>
+      {t(CHIP_KEY[chip] as never)}
     </Badge>
   );
 }

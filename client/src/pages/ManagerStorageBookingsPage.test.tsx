@@ -102,7 +102,7 @@ it("approves a request from the board and refetches", async () => {
 
 
 
-it('lists ended rentals with dates, net earnings, detail, chef and payout links', async () => {
+it('links the whole past rental row to its detail and payout status', async () => {
 
   mockFetch([{ ...request, id: 9, ref: 'SB-PAST', state: 'ended', releasedOn: '2026-10-19', actions: [],
 
@@ -112,15 +112,15 @@ it('lists ended rentals with dates, net earnings, detail, chef and payout links'
 
   expect(await screen.findByRole('link', { name: /SB-PAST/ })).toHaveAttribute('href', '/manager/storage/9');
 
-  expect(screen.getByRole('link', { name: 'Morgan Lee' })).toHaveAttribute('href', '/manager/customers/3');
+  expect(screen.getByText('Morgan Lee').closest('a')).toHaveAttribute('href', '/manager/storage/9');
 
-  expect(screen.getByRole('link', { name: 'stViewPayouts' })).toHaveAttribute('href', '/manager/dashboard?view=revenue');
+  expect(document.querySelector('a[href*="view=revenue"]')).toBeNull();
 
   expect(screen.getByText(/Oct 17.*Oct 19/)).toBeInTheDocument();
 
   expect(screen.getByText('stRentalEarnings: $37.00')).toBeInTheDocument();
 
-  fireEvent.click(screen.getByRole('button', { name: 'stPastRentals' }));
+  fireEvent.mouseDown(screen.getByRole('tab', { name: /stPastRentals/ }), { button: 0 });
 
   expect(screen.queryByRole('heading', { name: 'stUnitsHeading' })).not.toBeInTheDocument();
 
@@ -186,7 +186,7 @@ it("filters View units links to the selected listing, including its draft units"
 
   renderBoard();
 
-  expect(await screen.findByText(/^stListingUnits/)).toBeInTheDocument();
+  expect(await screen.findByRole('heading', { name: 'Draft freezer' })).toBeInTheDocument();
 
   expect(screen.queryByText("Morgan Lee")).toBeNull();
 

@@ -3,7 +3,7 @@ beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new 
 afterEach(() => vi.useRealTimers());
 import {
   actionAmountCents, actionBody, actionDef, allowedActions, boardSummary, chipForRental, filterUnitRows,
-  groupRowsByListing, occupiesUnit, pendingRequests, rentalTotalCents, termPayout, unitRows,
+  formatStorageDate, groupRowsByListing, occupiesUnit, pendingRequests, rentalTotalCents, termPayout, unitRows,
   type StorageListing, type StorageRental, type StorageRentalTerm,
 } from "./storage-board";
 
@@ -26,6 +26,13 @@ const rental = (over: Partial<StorageRental> = {}): StorageRental => ({
 });
 
 const listing = (over: Partial<StorageListing> = {}): StorageListing => ({ id: 1, name: "Shelf", kitchenId: 1, unitCount: 1, ...over });
+
+it('formats calendar days without a year this year and payout instants in the kitchen zone without time', () => {
+  expect(formatStorageDate('2026-10-17')).toBe('Oct 17');
+  expect(formatStorageDate('2025-10-17')).toBe('Oct 17, 2025');
+  expect(formatStorageDate('2026-10-24T02:30:00Z', 'en-CA', 'America/St_Johns')).toBe('Oct 24');
+  expect(formatStorageDate('2026-10-24T01:00:00Z', 'en-CA', 'America/St_Johns')).toBe('Oct 23');
+});
 
 describe("unitRows", () => {
   it("lists every unit including the free ones, and pairs an occupant with their unit", () => {

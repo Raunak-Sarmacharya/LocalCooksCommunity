@@ -13,6 +13,9 @@ import { previewStorageTool, runStorageTool, setStorageUnitService, storageToolI
 import { StorageRefundError } from '../services/storage-rental-money';
 import { BookingMoneyFrozen } from '../services/booking-money-guard';
 import { isAllowedR2Url } from '../utils/upload-url';
+import { and, desc, eq } from 'drizzle-orm';
+import { db } from '../db';
+import { chefKitchenApplications, kitchens, locations, storageBookings, storageListings } from '@shared/schema';
 
 const router = Router();
 const id = z.coerce.number().int().positive().safe();
@@ -46,6 +49,28 @@ export function endpoint(run: (req: Request) => Promise<unknown>) {
 }
 
 router.use('/chef/storage-rentals', requireFirebaseAuthWithUser, requireChef);
+// Both sides reuse the approved chef-location application conversation, including after move-out.
+router.post('/storage-rentals/:id/conversation', requireFirebaseAuthWithUser, endpoint(async req => {
+  const rentalId = id.parse(req.params.id);
+  const [row] = await db.select({ rental: storageBookings, locationId: kitchens.locationId, managerId: locations.managerId })
+    .from(storageBookings).innerJoin(storageListings, eq(storageListings.id, storageBookings.storageListingId))
+    .innerJoin(kitchens, eq(kitchens.id, storageListings.kitchenId)).innerJoin(locations, eq(locations.id, kitchens.locationId))
+    .where(eq(storageBookings.id, rentalId)).limit(1);
+  if (!row || !row.rental.rentalTerms || (req.neonUser!.id !== row.rental.chefId && req.neonUser!.id !== row.managerId))
+    throw new StorageRentalError('not_found', 404);
+  if (!row.rental.chefId || !['requested', 'reserved', 'active', 'move_out_requested', 'removal_review', 'ended'].includes(row.rental.rentalState))
+    throw new StorageRentalError('unavailable');
+  const [application] = await db.select().from(chefKitchenApplications).where(and(
+    eq(chefKitchenApplications.chefId, row.rental.chefId), eq(chefKitchenApplications.locationId, row.locationId),
+    eq(chefKitchenApplications.status, 'approved'))).orderBy(desc(chefKitchenApplications.id)).limit(1);
+  if (!application) throw new StorageRentalError('unavailable');
+  const { initializeConversation } = await import('../chat-service');
+  const conversationId = await initializeConversation(application);
+  if (!conversationId) throw new StorageRentalError('unavailable');
+  const manager = req.neonUser!.id === row.managerId;
+  return { conversationId, rentalId, applicationId: application.id,
+    path: `${manager ? '/manager' : ''}/dashboard?view=messages&conversation=${encodeURIComponent(conversationId)}` };
+}));
 router.post('/chef/storage-rentals/quote', endpoint(req => quoteRental(req.neonUser!.id, details.parse(req.body))));
 router.post('/chef/storage-rentals', endpoint(req => createRentalCheckout(req.neonUser!.id, checkout.parse(req.body), undefined, undefined, req.neonUser!.preferredLocale ?? 'en-CA')));
 router.get('/chef/storage-rentals', endpoint(req => listRentals({ id: req.neonUser!.id, role: 'chef' })));

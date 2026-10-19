@@ -55,6 +55,9 @@ export interface StorageRental {
   removalItemIndexes?: number[];
   responseDeadline: string | null;
   declineReason: string | null;
+  instructions?: { moveIn: string | null; moveOut: string | null };
+  chefNotes?: { moveIn: string | null; moveOut: string | null };
+  moveOutBy?: string | null;
   needsCleaning: boolean;
   releasedOn: string | null;
   actions: string[];
@@ -356,6 +359,16 @@ export function allowedActions(rental: StorageRental): StorageActionDef[] {
 /** An instant (deadline, payout) in the kitchen's zone — "Oct 17, 2026, 9:30 a.m." */
 export function formatKitchenDateTime(iso: string, timezone?: string | null, locale?: string): string {
   return new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short", timeZone: timezone || undefined }).format(new Date(iso));
+}
+
+/** Calendar days stay in their own zone; instants (such as payouts) use the kitchen’s zone. */
+export function formatStorageDate(value: string, locale = 'en-CA', timezone?: string | null): string {
+  const calendarDay = /^\d{4}-\d{2}-\d{2}$/.test(value);
+  const timeZone = calendarDay ? 'UTC' : timezone || 'America/St_Johns';
+  const date = new Date(calendarDay ? `${value}T12:00:00Z` : value);
+  const year = new Intl.DateTimeFormat('en', { year: 'numeric', timeZone }).format(date);
+  const currentYear = new Intl.DateTimeFormat('en', { year: 'numeric', timeZone }).format(new Date());
+  return new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric', ...(year !== currentYear ? { year: 'numeric' as const } : {}), timeZone }).format(date);
 }
 
 /**

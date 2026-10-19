@@ -1,8 +1,10 @@
 import { PhotoRequirementUploader, flattenPhotos } from "@/components/booking/PhotoRequirementUploader";
 /** Allowed rental actions stay visible; each opens its existing confirmation and validation. */
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
+import { MoreHorizontal } from "@/components/ui/manager-icons";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { DateField } from "@/components/ui/date-field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -42,9 +44,13 @@ function consequenceParams(rental: StorageRental, def: StorageActionDef, values:
   };
 }
 
-export function StorageMoreActions({ rental, onDone }: { rental: StorageRental; onDone: () => void }) {
+export function StorageMoreActions({ rental, onDone, prominentActions = [] }: { rental: StorageRental; onDone: () => void; prominentActions?: string[] }) {
   const { t } = useTranslation("storage");
   const actions = allowedActions(rental);
+  const primary = actions.filter(def => prominentActions.includes(def.action));
+  const secondary = actions.filter(def => !prominentActions.includes(def.action));
+  const returnFocus = useRef<HTMLElement | null>(null);
+  const menuRef = useRef<HTMLButtonElement>(null);
   const [photos, setPhotos] = useState<Record<string, string[]>>({});
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState<StorageActionDef | null>(null);
@@ -54,6 +60,12 @@ export function StorageMoreActions({ rental, onDone }: { rental: StorageRental; 
   const [saving, setSaving] = useState(false);
   const [preview, setPreview] = useState<{ amountCents: number; date?: string; byDate?: string } | null>(null);
   const [operationKey, setOperationKey] = useState('');
+
+  function selectAction(def: StorageActionDef, trigger: HTMLElement | null) {
+    returnFocus.current = trigger;
+    reset(); setActive(def); setValues({ ...def.defaults, ...(def.action === 'holdover-charge' ? { amountCents: rental.holdoverChargeCents ?? rental.accruedCents } : {}) });
+    setPreview(null); setOperationKey(crypto.randomUUID()); setOpen(true);
+  }
 
   const reset = () => { setActive(null); setValues({}); setReason(""); setError(null); setPhotos({}); };
   const needsPreview = active && ['move-out-by', 'refund', 'offer-extension'].includes(active.action);
@@ -112,12 +124,13 @@ export function StorageMoreActions({ rental, onDone }: { rental: StorageRental; 
 
   return (
     <>
-      {actions.map(def => <Button key={def.action} variant="outline" size="sm" onClick={() => {
-        reset(); setActive(def); setValues({ ...def.defaults, ...(def.action === 'holdover-charge' ? { amountCents: rental.holdoverChargeCents ?? rental.accruedCents } : {}) });
-        setPreview(null); setOperationKey(crypto.randomUUID()); setOpen(true);
-      }}>{t(def.labelKey as never)}</Button>)}
+      {primary.map((def, index) => <Button key={def.action} className="min-h-11" variant={index === 0 ? 'default' : 'outline'} onClick={event => selectAction(def, event.currentTarget)}>{t(def.labelKey as never)}</Button>)}
+      {secondary.length > 0 && <DropdownMenu>
+        <DropdownMenuTrigger asChild><Button ref={menuRef} className="h-11 w-11" variant="outline" size="icon" aria-label={t('stMoreTitle')}><MoreHorizontal className="h-5 w-5" /></Button></DropdownMenuTrigger>
+        <DropdownMenuContent align="end">{secondary.map(def => <DropdownMenuItem key={def.action} className="min-h-11" onSelect={() => selectAction(def, menuRef.current)}>{t(def.labelKey as never)}</DropdownMenuItem>)}</DropdownMenuContent>
+      </DropdownMenu>}
       <Sheet open={open} onOpenChange={(next) => { setOpen(next); if (!next) reset(); }}>
-        <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
+        <SheetContent hideClose side="right" className="w-full overflow-y-auto sm:max-w-md" onCloseAutoFocus={event => { event.preventDefault(); returnFocus.current?.focus(); }}>
           {active ? (
             <div className="space-y-4">
               <SheetHeader>
@@ -134,7 +147,7 @@ export function StorageMoreActions({ rental, onDone }: { rental: StorageRental; 
                       placeholder={t(fieldLabelKey(field) as never)}
                       onChange={(value) => { setPreview(null); setValues((prev) => ({ ...prev, byDate: value })); }} />
                   ) : (
-                    <Input id={`action-${field}`} type="number" inputMode="numeric" min={field === "amountCents" ? 0 : 1} step={field === "amountCents" ? 0.01 : 1}
+                    <Input className="min-h-11" id={`action-${field}`} type="number" inputMode="numeric" min={field === "amountCents" ? 0 : 1} step={field === "amountCents" ? 0.01 : 1}
                       value={values[field] == null ? "" : String(field === 'amountCents' ? Number(values[field]) / 100 : values[field])}
                       onChange={(event) => {
                         setPreview(null);
@@ -169,7 +182,7 @@ export function StorageMoreActions({ rental, onDone }: { rental: StorageRental; 
                 )}
               </dl>
               {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <div className="flex flex-col-reverse gap-2 [&>button]:min-h-11 sm:flex-row sm:justify-end">
                 <Button variant="ghost" onClick={() => { setOpen(false); reset(); }}>{t("stCancel")}</Button>
                 {needsPreview && !preview ? <Button onClick={() => void loadPreview()} disabled={saving}>{t('stPreview')}</Button>
                   : <Button onClick={() => void submit()} disabled={saving}>{t("stConfirm")}</Button>}

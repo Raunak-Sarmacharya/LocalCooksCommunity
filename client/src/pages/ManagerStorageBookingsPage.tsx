@@ -10,15 +10,18 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Link } from "wouter";
-import { formatBookingDate, formatCurrency } from "@/lib/formatters";
+import { formatCurrency } from "@/lib/formatters";
+import { StoragePhoto } from "@/components/storage/StoragePhoto";
+import { navigateNotificationHref } from "@/lib/navigate-notification-href";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Package } from "@/components/ui/manager-icons";
+import { Package, ChevronRight } from "@/components/ui/manager-icons";
 import { useManagerDashboard } from "@/hooks/use-manager-dashboard";
 import { getAuthHeaders } from "@/lib/api";
 import {
-  boardSummary, filterUnitRows, groupRowsByListing, pendingRequests, unitRows,
+  boardSummary, filterUnitRows, formatStorageDate, groupRowsByListing, pendingRequests, unitRows,
   type BoardFilter, type StorageListing, type StorageRental,
 } from "@/lib/storage-board";
 import { StorageRequestCard } from "@/components/manager/storage/StorageRequestCard";
@@ -78,25 +81,27 @@ export default function ManagerStorageBookingsPage() {
   const loading = rentalsQuery.isLoading || listingsQuery.isLoading;
   const error = rentalsQuery.error ?? listingsQuery.error;
 
-  const filters: Array<[BoardFilter, string]> = [
-    ["all", t("stFilterAll")],
-    ["needsAction", t("stFilterNeedsAction")],
-    ["free", t("stFilterFree")],
-    ["past", t("stPastRentals")],
+  const filters: Array<[BoardFilter, string, number]> = [
+    ["all", t("stFilterAll"), rows.length],
+    ["needsAction", t("stFilterNeedsAction"), rows.filter(row => row.needsAction).length + requests.length],
+    ["free", t("stFilterFree"), rows.filter(row => row.chip === 'free').length],
+    ["past", t("stPastRentals"), pastRentals.length],
   ];
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="flex flex-wrap gap-x-10 gap-y-5 border-b pb-5">
         {[
-          [t("stSummaryOccupied", { occupied: summary.occupied, units: summary.units }), "text-foreground"],
-          [t("stSummaryRequests", { count: summary.requests }), "text-foreground"],
-          [t("stSummaryGrace", { count: summary.grace }), "text-foreground"],
-          [t("stSummaryHoldover", { count: summary.holdover }), "text-foreground"],
-          ...(summary.outOfService ? [[t("stSummaryOutOfService", { count: summary.outOfService }), "text-foreground"]] : []),
-        ].map(([label, className]) => (
-          <div key={label} className="rounded-xl border bg-card p-4">
-            <p className={`text-lg font-semibold tabular-nums ${className}`}>{label}</p>
+          [t('stStatInUse'), t('stInUseValue', { occupied: summary.occupied, units: summary.units }), true],
+          [t('stRequestsHeading'), summary.requests],
+          ...(summary.grace > 0 ? [[t('stStatGrace'), summary.grace]] : []),
+          ...(summary.holdover > 0 ? [[t('stStatHoldover'), summary.holdover]] : []),
+          ...(summary.outOfService > 0 ? [[t('stChipOutOfService'), summary.outOfService]] : []),
+        ].map(([label, value, occupancy]) => (
+          <div key={String(label)} className="min-w-24">
+            <p className="mb-1 text-xs font-medium text-muted-foreground">{label}</p>
+            <p className="text-2xl font-semibold tracking-tight tabular-nums">{value}</p>
+            {occupancy && <div className="mt-2 h-1 w-32 overflow-hidden rounded-full bg-muted" aria-hidden="true"><div className="h-full rounded-full bg-primary" style={{ width: `${summary.units ? Math.min(100, summary.occupied / summary.units * 100) : 0}%` }} /></div>}
           </div>
         ))}
       </div>
@@ -114,20 +119,16 @@ export default function ManagerStorageBookingsPage() {
           {Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-28 w-full rounded-xl" />)}
         </div>
       ) : (
-        <>
-          <div role="group" aria-label={t("stUnitsHeading")} className="flex flex-wrap gap-2">
-            {filters.map(([value, label]) => (
-              <Button
-                key={value}
-                aria-pressed={filter === value}
-                variant={filter === value ? "default" : "outline"}
-                size="sm"
-                onClick={() => setFilter(value)}
-              >
-                {label}
-              </Button>
+        <Tabs value={filter} onValueChange={value => setFilter(value as BoardFilter)} className="space-y-6">
+          <TabsList aria-label={t("stUnitsHeading")} className="h-auto w-fit max-w-full flex-wrap justify-start rounded-lg bg-muted/60 p-1">
+            {filters.map(([value, label, count]) => (
+              <TabsTrigger key={value} value={value} className="h-11 gap-2 px-3 text-sm">
+                {label}<span className="text-xs tabular-nums text-muted-foreground">{count}</span>
+              </TabsTrigger>
             ))}
-          </div>
+          </TabsList>
+
+          <TabsContent value={filter} className="space-y-6">
 
           {filter !== "free" && filter !== "past" && (
             <section className="space-y-3" aria-labelledby="storage-requests-heading">
@@ -150,10 +151,15 @@ export default function ManagerStorageBookingsPage() {
               </Card>
             ) : groups.map((group) => (
               <div key={group.listingId} className="space-y-3">
-                <h3 className="text-sm font-medium text-muted-foreground">
-                  {t("stListingUnits", { name: group.listingName, count: group.rows.length })}
-                  {group.kitchenName ? ` · ${group.kitchenName}` : ""}
-                </h3>
+                <div className="flex items-center justify-between gap-3 pt-2">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <StoragePhoto iconSet="manager" storageType={group.rows[0].storageType} photos={group.rows[0].photos} className="h-12 w-12" />
+                    <div className="min-w-0"><h3 className="truncate font-semibold">{group.listingName}</h3>
+                      <p className="text-xs text-muted-foreground">{t(`stPhoto_${['freezer', 'frozen'].includes(group.rows[0].storageType || '') ? 'frozen' : ['cold', 'dry'].includes(group.rows[0].storageType || '') ? group.rows[0].storageType : 'other'}` as never)} · {t('stListingInUse', { inUse: rows.filter(row => row.listingId === group.listingId && row.rental).length, units: rows.filter(row => row.listingId === group.listingId).length })}</p>
+                    </div>
+                  </div>
+                  <a href="/manager/dashboard?view=storage-listings" className="inline-flex min-h-11 shrink-0 items-center text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground" onClick={event => { if (event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) { event.preventDefault(); navigateNotificationHref(event.currentTarget.getAttribute('href')!); } }}>{t('stEditListing')}</a>
+                </div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                   {group.rows.map((row) => <StorageUnitCard key={row.key} row={row} onDone={refetch} />)}
                 </div>
@@ -163,17 +169,16 @@ export default function ManagerStorageBookingsPage() {
           {(filter === "all" || filter === "past") && <section className="space-y-3" aria-labelledby="storage-past-heading">
             <h2 id="storage-past-heading" className="text-base font-semibold">{t("stPastRentals")}</h2>
             {pastRentals.length === 0 && <p>{t("stPastRentalsEmpty")}</p>}
-            {pastRentals.map(rental => <Card key={rental.id}>
-              <CardContent className="space-y-2 p-4">
-                <Link className="underline" href={`/manager/storage/${rental.id}`}>{rental.ref || rental.listing.name} · {rental.kitchen.name} · {rental.listing.name}</Link>
-                <p>{formatBookingDate(rental.startOn)} – {formatBookingDate(rental.releasedOn || rental.paidThrough)}</p>
-                {rental.chef?.id ? <Link className="underline" href={`/manager/customers/${rental.chef.id}`}>{rental.chef.name}</Link> : <p>{rental.chef?.name || t("stTheChef")}</p>}
-                <p>{t("stRentalEarnings", { amount: formatCurrency(rental.terms.reduce((sum, term) => sum + (term.payoutCents ?? 0), 0), 'CAD', i18n.language) })}</p>
-                <Link className="underline" href="/manager/dashboard?view=revenue">{t("stViewPayouts")}</Link>
-              </CardContent>
-            </Card>)}
+            <div className="divide-y rounded-xl border bg-card">{pastRentals.map(rental => <Link key={rental.id} href={`/manager/storage/${rental.id}`} className="grid min-h-16 grid-cols-[1fr_auto] items-center gap-x-4 gap-y-1 px-4 py-3 text-sm hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_auto_auto]">
+              <span className="font-medium">{rental.ref} · {rental.listing.name} · {t('stUnitLabel', { index: rental.unitLabel })}</span>
+              <span className="text-muted-foreground">{formatStorageDate(rental.startOn, i18n.language)} – {formatStorageDate(rental.releasedOn || rental.paidThrough, i18n.language)}</span>
+              <span className="truncate text-muted-foreground">{rental.chef?.name || t('stTheChef')}</span>
+              <span className="tabular-nums">{t('stRentalEarnings', { amount: formatCurrency(rental.terms.reduce((sum, term) => sum + (term.payoutCents ?? 0), 0), 'CAD', i18n.language) })}</span>
+              <ChevronRight className="h-5 w-5 text-muted-foreground" />
+            </Link>)}</div>
           </section>}
-        </>
+          </TabsContent>
+        </Tabs>
       )}
     </div>
   );

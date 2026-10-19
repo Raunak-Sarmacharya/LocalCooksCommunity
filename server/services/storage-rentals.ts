@@ -27,6 +27,7 @@ import { ensureServerI18n, tLocale } from '../i18n';
 import { unavailableUnitRanges } from './storage-availability';
 import { assertBookingMoneyWritable, BookingMoneyFrozen } from './booking-money-guard';
 import { storageSettings } from './storage-settings';
+import { readVisitDuties } from '@shared/visit-duties';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type Reader = Tx | typeof db;
@@ -376,6 +377,8 @@ export async function sweepStorageRentalRequests(limit = 3, now = new Date(), st
 export async function readRental(id: number, actor: RentalActor, now = new Date(), resolvedChefName?: string) {
   const rental = await owned(db, id, actor);
   const ctx = await contextForRead(rental.storageListingId);
+  const duties = actor.role === 'manager' ? readVisitDuties(rental.visitDuties) : null;
+  const instructions = actor.role === 'manager' && !duties ? await storageInstructions(ctx.kitchen.locationId) : null;
   const terms = await db.select().from(storageRentalTerms).where(eq(storageRentalTerms.rentalId, id)).orderBy(asc(storageRentalTerms.seq));
   const frozen = rental.rentalTerms as FrozenTerms;
   const phase = rentalPhase({ ...rental, ...frozen } as RentalDates & FrozenTerms, localToday(now, rental.timezone!));
@@ -435,6 +438,12 @@ export async function readRental(id: number, actor: RentalActor, now = new Date(
     kitchen: { id: ctx.kitchen.id, name: ctx.kitchen.name },
     listing: { id: ctx.listing.id, name: ctx.listing.name, storageType: ctx.listing.storageType, photos: ctx.listing.photos }, chef: { id: rental.chefId ?? null, name: chefName },
     unitLabel: String(rental.unitIndex), state: rental.rentalState, timezone: rental.timezone,
+    ...(actor.role === 'manager' ? {
+      instructions: { moveIn: duties ? duties.arrival.instructions : instructions?.storageCheckinInstructions ?? null,
+        moveOut: duties ? duties.departure.instructions : instructions?.storageCheckoutInstructions ?? null },
+      chefNotes: { moveIn: rental.checkinNotes, moveOut: rental.checkoutNotes },
+    } : {}),
+    moveOutBy: rental.reclaimEndOn,
     phase: phase?.phase ?? null, startOn: rental.termStart, paidThrough: rental.paidThrough,
     graceEndsOn: phase?.graceEndsOn ?? addDays(rental.paidThrough!, GRACE_DAYS), holdoverDays: phase?.holdoverDays ?? 0,
     accruedCents: phase?.accruedCents ?? 0, holdoverChargeCents: lifecycle.holdoverChargeCents, removalItemIndexes: lifecycle.removalItemIndexes,
