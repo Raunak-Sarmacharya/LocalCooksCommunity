@@ -1,3 +1,4 @@
+import { PhotoRequirementUploader, flattenPhotos } from "@/components/booking/PhotoRequirementUploader";
 /**
  * The kitchen's "More" actions for one storage rental (WP-ST11 / WP-ST9).
  *
@@ -13,11 +14,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { MoreHorizontal } from "@/components/ui/manager-icons";
 import { formatBookingDate, formatCurrency } from "@/lib/formatters";
 import { getAuthHeaders } from "@/lib/api";
 import {
-  actionAmountCents, actionBody, allowedActions, formatKitchenDateTime, rentalTotalCents,
+  actionAmountCents, actionBody, allowedActions, rentalTotalCents,
   type StorageActionDef, type StorageActionField, type StorageRental,
 } from "@/lib/storage-board";
 
@@ -49,8 +49,9 @@ function consequenceParams(rental: StorageRental, def: StorageActionDef, values:
 }
 
 export function StorageMoreActions({ rental, onDone }: { rental: StorageRental; onDone: () => void }) {
-  const { t, i18n } = useTranslation("storage");
+  const { t } = useTranslation("storage");
   const actions = allowedActions(rental);
+  const [photos, setPhotos] = useState<Record<string, string[]>>({});
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState<StorageActionDef | null>(null);
   const [values, setValues] = useState<Values>({});
@@ -60,7 +61,7 @@ export function StorageMoreActions({ rental, onDone }: { rental: StorageRental; 
   const [preview, setPreview] = useState<{ amountCents: number; date?: string; byDate?: string } | null>(null);
   const [operationKey, setOperationKey] = useState('');
 
-  const reset = () => { setActive(null); setValues({}); setReason(""); setError(null); };
+  const reset = () => { setActive(null); setValues({}); setReason(""); setError(null); setPhotos({}); };
   const needsPreview = active && ['move-out-by', 'refund', 'offer-extension'].includes(active.action);
   const amountCents = needsPreview ? preview?.amountCents ?? null : active ? actionAmountCents(rental, active, numericValues(values)) : null;
   async function loadPreview() {
@@ -90,6 +91,7 @@ export function StorageMoreActions({ rental, onDone }: { rental: StorageRental; 
   async function submit() {
     if (!active) return;
     if (active.requiresReason && !reason.trim()) { setError(t("stReasonRequired")); return; }
+    if (active.fields.includes("photoUrls") && !flattenPhotos(photos).length) { setError(t("stPhotoEvidenceRequired")); return; }
     setSaving(true);
     setError(null);
     try {
@@ -98,6 +100,7 @@ export function StorageMoreActions({ rental, onDone }: { rental: StorageRental; 
         headers: { ...(await getAuthHeaders()), "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({ ...actionBody(active, values, reason), operationKey,
+          ...(active.fields.includes("photoUrls") ? { photoUrls: flattenPhotos(photos) } : {}),
           ...(active.action === 'removal/record' ? { itemIndexes: rental.removalItemIndexes, note: reason } : {}) }),
       });
       if (!response.ok) throw new Error(t("stActionFailed"));
@@ -115,9 +118,10 @@ export function StorageMoreActions({ rental, onDone }: { rental: StorageRental; 
 
   return (
     <>
-      <Button variant="outline" size="sm" onClick={() => { reset(); setOpen(true); }}>
-        <MoreHorizontal className="mr-1.5 h-4 w-4" aria-hidden="true" />{t("stMore")}
-      </Button>
+      {actions.map(def => <Button key={def.action} variant="outline" size="sm" onClick={() => {
+        reset(); setActive(def); setValues({ ...def.defaults, ...(def.action === 'holdover-charge' ? { amountCents: rental.holdoverChargeCents ?? rental.accruedCents } : {}) });
+        setPreview(null); setOperationKey(crypto.randomUUID()); setOpen(true);
+      }}>{t(def.labelKey as never)}</Button>)}
       <Sheet open={open} onOpenChange={(next) => { setOpen(next); if (!next) reset(); }}>
         <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
           {active ? (
@@ -129,7 +133,7 @@ export function StorageMoreActions({ rental, onDone }: { rental: StorageRental; 
               {active.fields.map((field) => (
                 <div key={field} className="space-y-1.5">
                   <Label htmlFor={`action-${field}`}>{t(fieldLabelKey(field) as never)}</Label>
-                  {field === 'photoUrls' ? <Textarea id={`action-${field}`} aria-label={t('stPhotosLabel')} value={values.photoUrls ?? ''} onChange={event => setValues(prev => ({ ...prev, photoUrls: event.target.value }))} /> : field === "note" ? (
+                  {field === 'photoUrls' ? <PhotoRequirementUploader requirements={[]} photos={photos} onPhotosChange={setPhotos} uploadFolder="storage-handover" disabled={saving} genericInstruction={t("stPhotosLabel")} /> : field === "note" ? (
                     <Textarea id={`action-${field}`} value={reason} onChange={(event) => setReason(event.target.value)} />
                   ) : field === "byDate" ? (
                     <DateField id={`action-${field}`} minToday={false} value={typeof values.byDate === "string" ? values.byDate : ""}
@@ -172,30 +176,12 @@ export function StorageMoreActions({ rental, onDone }: { rental: StorageRental; 
               </dl>
               {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
               <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                <Button variant="ghost" onClick={() => setActive(null)}>{t("stBack")}</Button>
+                <Button variant="ghost" onClick={() => { setOpen(false); reset(); }}>{t("stCancel")}</Button>
                 {needsPreview && !preview ? <Button onClick={() => void loadPreview()} disabled={saving}>{t('stPreview')}</Button>
                   : <Button onClick={() => void submit()} disabled={saving}>{t("stConfirm")}</Button>}
               </div>
             </div>
-          ) : (
-            <div className="space-y-4">
-              <SheetHeader>
-                <SheetTitle>{t("stMoreTitle")}</SheetTitle>
-                <SheetDescription>{formatKitchenDateTime(new Date().toISOString(), rental.timezone, i18n.language)}</SheetDescription>
-              </SheetHeader>
-              {actions.length === 0 ? (
-                <p className="text-sm text-muted-foreground">{t("stMoreEmpty")}</p>
-              ) : (
-                <div className="flex flex-col gap-2">
-                  {actions.map((def) => (
-                    <Button key={def.action} variant="outline" className="justify-start" onClick={() => { setActive(def); setValues({ ...def.defaults, ...(def.action === 'holdover-charge' ? { amountCents: rental.holdoverChargeCents ?? rental.accruedCents } : {}) }); setReason(""); setError(null); setPreview(null); setOperationKey(crypto.randomUUID()); }}>
-                      {t(def.labelKey as never)}
-                    </Button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+          ) : null}
         </SheetContent>
       </Sheet>
     </>

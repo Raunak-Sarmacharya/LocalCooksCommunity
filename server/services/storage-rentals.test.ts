@@ -13,7 +13,8 @@ vi.mock('../db', () => ({ db: new Proxy({}, { get: (_t, key) => typeof h.db[key]
 vi.mock('../domains/users/chef.service', () => ({ chefService: { getApplicationStatusForBooking: async () => ({ canBook: h.canBook }) } }));
 vi.mock('./damage-claims-v2', () => ({ readClaimBookingHold: async () => ({ held: h.claim }) }));
 vi.mock('./overstay-penalty-service', () => ({ hasChefUnpaidPenalties: async () => h.holdover }));
-vi.mock('./stripe-checkout-fee-service', () => ({ calculateCheckoutFeesAsync: async () => ({ platformCommissionInCents: 100 }) }));
+vi.mock('./stripe-service', () => ({ heldCardCountry: async () => 'US' }));
+vi.mock('./stripe-checkout-fee-service', () => ({ getFeeConfig: async () => ({ stripePercentageFee: 0.025, stripeFlatFeeCents: 20 }), calculateCheckoutFeesAsync: async () => ({ platformCommissionInCents: 100 }) }));
 vi.mock('./storage-rental-notices', () => ({ queueStorageRentalNotice: h.notices }));
 vi.mock('./deadline-timer', () => ({ scheduleDeadlineTimer: h.timer }));
 vi.mock('./notification.service', () => ({ notificationService: { create: vi.fn() } }));
@@ -271,4 +272,12 @@ it('uses location instructions for SQL-backed quote/checkout visibility and pres
   expect(await readRental(id, { id: 3, role: 'chef' }, now)).toMatchObject({ id, state: 'requested' });
   await decideRental(id, 'reserved', approveActor, { now }, provider);
   expect(await one(storageBookings)).toMatchObject({ rentalState: 'reserved' });
+});
+
+it('provides a display payout estimate from admin fees and the held card country, plus timeline dates', async () => {
+  const id = await rental();
+  const result = await readRental(id, approveActor, now);
+  expect(result.estimatedPayoutCents).toBe(3550 - 100 - Math.round(3550 * (0.025 + 0.008) + 20));
+  expect(result.timeline).toMatchObject({ requestedAt: now, approvedAt: null, movedInAt: null, movingOutAt: null, endedAt: null });
+  expect(await one(paymentTransactions)).toMatchObject({ status: 'authorized' });
 });

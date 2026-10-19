@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import type { AppLocale } from "@shared/i18n";
 import type { GeneratedSearchContentDocument, GlobalSearchResult, SearchPortal } from "@shared/search";
 import { kitchenIsVisibleToChefs, licenseAllowsBookings } from "@shared/kitchen-license";
+import { storageListingReadiness, type StorageInstructions, type StorageListingEssentials } from "@shared/storage-listing-readiness";
 import {
   createSearchSnippet,
   isLikelyTypo,
@@ -192,7 +193,7 @@ export async function searchGlobally(options: {
         CASE WHEN $2 = 'admin' THEN 'kitchen-management' ELSE 'storage-listings' END
       FROM storage_listings s JOIN kitchens k ON k.id = s.kitchen_id JOIN locations l ON l.id = k.location_id
       WHERE $2 = 'admin' OR ($2 = 'manager' AND l.manager_id = $3)
-        OR ($2 = 'chef' AND k.is_active = true AND s.is_active = true AND s.status::text IN ('approved', 'active'))
+        OR ($2 = 'chef' AND k.is_active = true AND s.is_active = true)
       UNION ALL
       SELECT 'equipment', e.id, btrim(coalesce(e.brand, '') || ' ' || coalesce(e.equipment_type, '')),
         l.id, k.id, k.is_active, k.listing_status::text,
@@ -229,8 +230,19 @@ export async function searchGlobally(options: {
     [query, portal, userId, databaseLimit, prefixPattern, containsPattern],
   );
 
+  const storageIds = portal === "chef" ? result.rows.filter(row => row.type === "storage").map(row => row.source_id) : [];
+  const visibleStorageIds = new Set<number>();
+  if (storageIds.length) {
+    const storage = await pool.query<StorageListingEssentials & StorageInstructions & { id: number }>(
+      `SELECT s.id, s.name, s.storage_type AS "storageType", s.base_price AS "basePrice", s.unit_count AS "unitCount",
+        s.max_term_days AS "maxTermDays", s.is_active AS "isActive", c.storage_checkin_instructions AS "storageCheckinInstructions",
+        c.storage_checkout_instructions AS "storageCheckoutInstructions"
+       FROM storage_listings s JOIN kitchens k ON k.id = s.kitchen_id
+       LEFT JOIN checkin_checkout_checklists c ON c.location_id = k.location_id WHERE s.id = ANY($1::int[])`, [storageIds]);
+    for (const row of storage.rows) if (storageListingReadiness(row, row).visible) visibleStorageIds.add(row.id);
+  }
   const baseUrl = portal === "chef" ? "/dashboard" : portal === "manager" ? "/manager/booking-dashboard" : "/admin";
-  const visibleRows = result.rows.filter((row) => portal !== "chef" ||
+  const visibleRows = result.rows.filter((row) => portal !== "chef" || (row.type !== "storage" || visibleStorageIds.has(row.source_id)) &&
     (row.type === "location"
       ? licenseAllowsBookings({ kitchenLicenseUrl: row.kitchen_license_url, kitchenLicenseStatus: row.kitchen_license_status, kitchenLicenseExpiry: row.kitchen_license_expiry })
       : kitchenIsVisibleToChefs(

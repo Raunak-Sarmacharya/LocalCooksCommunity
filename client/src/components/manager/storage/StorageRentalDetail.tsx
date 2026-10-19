@@ -94,6 +94,15 @@ export function StorageRentalDetail({ rentalId }: { rentalId: number }) {
   ];
   const hasEvidence = evidence.some((group) => group.urls.length > 0);
 
+  const steps = [
+    { key: "stTimelineRequested", at: rental.timeline?.requestedAt },
+    { key: "stTimelineApproved", at: rental.timeline?.approvedAt },
+    { key: "stTimelineMovedIn", at: rental.timeline?.movedInAt },
+    { key: "stTimelineMovingOut", at: rental.timeline?.movingOutAt },
+    { key: "stTimelineEnded", at: rental.timeline?.endedAt },
+  ];
+  const currentStep = rental.state === "ended" ? 4 : rental.state === "move_out_requested" ? 3
+    : ["active", "removal_review"].includes(rental.state) ? 2 : rental.state === "reserved" ? 1 : 0;
   return (
     <div className="space-y-6">
       {back}
@@ -110,7 +119,7 @@ export function StorageRentalDetail({ rentalId }: { rentalId: number }) {
         </p>
         <p className="text-sm">{formatBookingDate(rental.startOn)} – {formatBookingDate(rental.paidThrough)}</p>
         <div className="flex flex-wrap items-center gap-3 pt-1">
-          <StorageMoreActions rental={rental} onDone={() => void query.refetch()} />
+          {rental.state !== "requested" && <StorageMoreActions rental={rental} onDone={() => void query.refetch()} />}
           {filing.data?.allowed && (
             <div className="space-y-1" data-testid="storage-claim-report">
               <Button variant="outline" onClick={() => setClaimOpen(true)}>{claimT("dcV2Report")}</Button>
@@ -119,6 +128,16 @@ export function StorageRentalDetail({ rentalId }: { rentalId: number }) {
           )}
         </div>
       </header>
+
+      <section aria-label={t("stTimeline")} className="rounded-xl border bg-card p-4">
+        <ol className="grid gap-3 sm:grid-cols-5">
+          {steps.map((step, index) => <li key={step.key} aria-current={index === currentStep ? "step" : undefined}
+            className={index === currentStep ? "rounded-lg bg-primary/10 p-2 text-primary" : "p-2 text-muted-foreground"}>
+            <p className="text-sm font-medium">{t(step.key as never)}</p>
+            {step.at && <p className="mt-1 text-xs">{step.at.length === 10 ? formatBookingDate(step.at) : formatKitchenDateTime(step.at, rental.timezone, i18n.language)}</p>}
+          </li>)}
+        </ol>
+      </section>
 
       {/* A request is answered here too (the dashboard links straight to this page), with the board's same card. */}
       {rental.state === "requested" && <StorageRequestCard rental={rental} onDone={() => void query.refetch()} />}
@@ -156,7 +175,8 @@ export function StorageRentalDetail({ rentalId }: { rentalId: number }) {
               ? t("stPayoutScheduled", { amount: formatCurrency(payout.amountCents), date: formatKitchenDateTime(payout.at!, rental.timezone, i18n.language) })
               : payout.status === "paid"
                 ? t("stPayoutPaid", { amount: formatCurrency(payout.amountCents), date: formatKitchenDateTime(payout.at!, rental.timezone, i18n.language) })
-                : payout.status === "hold" ? t("stPayoutOnHold") : t("stPayoutNone");
+                : payout.status === "hold" ? t("stPayoutOnHold") : rental.state === "requested" && rental.estimatedPayoutCents != null
+                  ? t("stPayoutEstimate", { amount: formatCurrency(rental.estimatedPayoutCents) }) : t("stPayoutNone");
             return (
               <div key={term.id}>
                 {index > 0 && <Separator className="mb-4" />}
@@ -166,7 +186,7 @@ export function StorageRentalDetail({ rentalId }: { rentalId: number }) {
                 </div>
                 <dl className="mt-2 space-y-1 text-sm">
                   <div className="flex items-center justify-between gap-3">
-                    <dt className="text-muted-foreground">{t(rental.state === "requested" ? "stTermOnHold" : "stTermCharged")}</dt>
+                    <dt className="text-muted-foreground">{t(term.status === "authorized" ? "stTermOnHold" : term.status === "paid" ? "stTermCharged" : term.status === "cancelled" ? "stTermReleased" : "stTermUnpaid")}</dt>
                     <dd className="font-medium tabular-nums">{formatCurrency(term.totalCents)}</dd>
                   </div>
                   <div className="flex items-center justify-between gap-3">

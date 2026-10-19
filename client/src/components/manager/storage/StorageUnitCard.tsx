@@ -1,3 +1,5 @@
+import { StoragePhoto } from "@/components/storage/StoragePhoto";
+import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -39,10 +41,13 @@ export function StorageUnitCard({ row, onDone }: { row: UnitRow; onDone?: () => 
     } catch { setError(true); } finally { setSaving(false); }
   }
   return (
-    <Card className="h-full">
+    <Card className={cn("h-full", row.needsAction ? "border-amber-300 bg-amber-50/40" : row.chip === "occupied" ? "border-emerald-300 bg-emerald-50/40" : row.chip === "reserved" ? "border-sky-300 bg-sky-50/40" : row.chip === "outOfService" ? "bg-slate-100" : "bg-card")}>
+
       <CardContent className="flex h-full flex-col gap-3 p-4">
         <div className="flex items-center justify-between gap-2">
-          <span className="font-medium">{t("stUnitLabel", { index: row.unitIndex })}</span>
+          <div className="flex items-center gap-2"><StoragePhoto storageType={row.storageType} photos={row.photos} className="h-9 w-9" />
+            {row.rental ? <Link className="font-medium hover:underline" href={`/manager/storage/${row.rental.id}`}>{t("stUnitLabel", { index: row.unitIndex })}</Link>
+              : <span className="font-medium">{t("stUnitLabel", { index: row.unitIndex })}</span>}</div>
           <StorageStatusChip chip={row.chip} detail={row.chip === 'moveInOverdue' && row.date ? t('stDateStartedOn', { date: formatBookingDate(row.date.value) }) : undefined} />
         </div>
         {row.outOfService && row.chip !== 'outOfService' && <StorageStatusChip chip="outOfService" />}
@@ -59,6 +64,7 @@ export function StorageUnitCard({ row, onDone }: { row: UnitRow; onDone?: () => 
             </p>
           )}
         </div>
+        {row.next && <Link className="text-sm text-muted-foreground underline" href={`/manager/storage/${row.next.id}`}>{t("stUnitNext", { chef: row.next.chef?.name || t("stTheChef"), date: formatBookingDate(row.next.startOn) })}</Link>}
         {row.rental && (
           <Button asChild size="sm" variant="outline" className="w-full">
             <Link href={`/manager/storage/${row.rental.id}`}>{t("stViewUnit")}</Link>

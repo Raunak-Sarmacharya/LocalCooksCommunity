@@ -28,6 +28,7 @@ export default function ManagerStorageBookingsPage() {
   const { t, i18n } = useTranslation("storage");
   const { kitchens } = useManagerDashboard();
   const kitchenIds = useMemo(() => kitchens.map((kitchen) => kitchen.id), [kitchens]);
+  const listingId = Number(new URLSearchParams(window.location.search).get("listingId")) || null;
   const [filter, setFilter] = useState<BoardFilter>("all");
 
   const rentalsQuery = useQuery<StorageRental[]>({
@@ -37,6 +38,7 @@ export default function ManagerStorageBookingsPage() {
       if (!response.ok) throw new Error(t("stBoardError"));
       return response.json();
     },
+    refetchInterval: 30_000,
   });
 
   const listingsQuery = useQuery<StorageListing[]>({
@@ -55,22 +57,18 @@ export default function ManagerStorageBookingsPage() {
           kitchenId: Number(row.kitchenId ?? kitchenId),
           kitchenName,
           unitCount: Number(row.unitCount ?? 1),
+          storageType: String(row.storageType ?? "other"), photos: row.photos as string[] | null,
           outOfServiceUnits: row.outOfServiceUnits as StorageListing["outOfServiceUnits"],
-          visible: Boolean(row.isActive) && ["approved", "active"].includes(String(row.status)),
         }));
       }));
       return perKitchen.flat();
     },
   });
 
-  const rentals = rentalsQuery.data ?? [];
+  const rentals = (rentalsQuery.data ?? []).filter(rental => !listingId || rental.listing.id === listingId);
   const pastRentals = rentals.filter(rental => rental.state === "ended")
     .sort((a, b) => (b.releasedOn || b.paidThrough).localeCompare(a.releasedOn || a.paidThrough));
-  const occupiedListingIds = useMemo(() => new Set(rentals.map((rental) => rental.listing.id)), [rentals]);
-  const listings = useMemo(
-    () => (listingsQuery.data ?? []).filter((listing) => listing.visible !== false || occupiedListingIds.has(listing.id)),
-    [listingsQuery.data, occupiedListingIds],
-  );
+  const listings = useMemo(() => (listingsQuery.data ?? []).filter(listing => !listingId || listing.id === listingId), [listingsQuery.data, listingId]);
   const rows = useMemo(() => unitRows(rentals, listings), [rentals, listings]);
   const summary = useMemo(() => boardSummary(rentals, listings), [rentals, listings]);
   const requests = useMemo(() => pendingRequests(rentals), [rentals]);

@@ -1,3 +1,4 @@
+import { cardFeeRate, estimateCardFeeCents } from "@shared/card-fee-estimate";
 import { storageListingReadiness } from "@shared/storage-listing-readiness";
 import { storageInstructions } from "./storage-listing-readiness";
 /** Standalone storage. Lock order: rental -> listing -> term -> payment; provider I/O follows the committed decision. */
@@ -419,8 +420,20 @@ export async function readRental(id: number, actor: RentalActor, now = new Date(
   // The extend sheet quotes the exact limit (max term, reclaim, next renter); this only gates the button.
   if (actor.role === 'chef' && !pending && ['reserved', 'active'].includes(rental.rentalState!)
     && daysBetween(localToday(now, rental.timezone!), rental.paidThrough!) <= EXTEND_WINDOW_DAYS) actions.push('extend');
-  return { id, ref: rental.referenceCode, kitchen: { id: ctx.kitchen.id, name: ctx.kitchen.name },
-    listing: { id: ctx.listing.id, name: ctx.listing.name }, chef: { id: rental.chefId ?? null, name: chefName },
+  let estimatedPayoutCents: number | null = null;
+  if (rental.rentalState === 'requested') {
+    const { getFeeConfig } = await import('./stripe-checkout-fee-service');
+    const { heldCardCountry } = await import('./stripe-service');
+    const [config, country] = await Promise.all([getFeeConfig(), rental.paymentIntentId ? heldCardCountry(rental.paymentIntentId).catch(() => null) : null]);
+    const rate = cardFeeRate({ percent: config.stripePercentageFee, fixedCents: config.stripeFlatFeeCents }, country);
+    estimatedPayoutCents = terms.reduce((sum, term) => sum + term.totalCents - term.serviceFeeCents - estimateCardFeeCents(term.totalCents, rate), 0);
+  }
+  return { id, ref: rental.referenceCode, estimatedPayoutCents,
+    timeline: { requestedAt: rental.createdAt, approvedAt: rental.approvedAt,
+      movedInAt: rental.checkinCompletedAt ?? rental.handoverAt, movingOutAt: rental.checkoutRequestedAt,
+      endedAt: rental.releasedOn ? rental.checkoutApprovedAt ?? rental.releasedOn : null },
+    kitchen: { id: ctx.kitchen.id, name: ctx.kitchen.name },
+    listing: { id: ctx.listing.id, name: ctx.listing.name, storageType: ctx.listing.storageType, photos: ctx.listing.photos }, chef: { id: rental.chefId ?? null, name: chefName },
     unitLabel: String(rental.unitIndex), state: rental.rentalState, timezone: rental.timezone,
     phase: phase?.phase ?? null, startOn: rental.termStart, paidThrough: rental.paidThrough,
     graceEndsOn: phase?.graceEndsOn ?? addDays(rental.paidThrough!, GRACE_DAYS), holdoverDays: phase?.holdoverDays ?? 0,
