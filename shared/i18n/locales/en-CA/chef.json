@@ -3716,5 +3716,6 @@
   "paItemNotIncluded": "Not included",
   "mdDayOf": "Day {number} of {total}",
   "billingBookingChange": "Booking change",
-  "billingExtraTime": "Extra time"
+  "billingExtraTime": "Extra time",
+  "blDaysCount": "{count, plural, one {# day} other {# days}}"
 }

@@ -116,7 +116,9 @@ it('CP9: a request that began last week shows today’s later day and its inspec
   { id: 11, visitDate: '2026-10-07', startTime: '13:00', endTime: '15:00', checkinStatus: 'checked_out' },
   { id: 12, visitDate: '2026-10-14', startTime: '15:00', endTime: '17:00', checkinStatus: 'not_checked_in' }] })]);
  expect(within(screen.getByTestId('manager-group-today')).getByText('Dated Chef')).toBeInTheDocument();
- expect(screen.getByText('Day 2 of 2')).toBeInTheDocument();
+ // One row for the whole booking: its span and day count, then the day it is on.
+ expect(screen.getByTestId('booking-span')).toHaveTextContent(/Oct 7\s*–\s*.*Oct 14 · 2 days/);
+ expect(screen.getByText(/^Day 2 of 2 · /)).toBeInTheDocument();
 });
 
 it.each(['confirmed', 'cancelled'])('shows the projected kitchen remainder and refund for %s bookings', status => {

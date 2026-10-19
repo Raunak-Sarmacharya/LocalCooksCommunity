@@ -23,6 +23,10 @@ describe("Visit details", () => {
     expect(items[0]).toHaveTextContent("Ada checked in with the check-in codeJan 15, 10:02 a.m.");
     expect(document.body.textContent!.split("check-in code").length - 1).toBe(1);
   });
+  it("says nothing is recorded yet instead of opening blank", () => {
+    render(<BookingVisitRecord title="Visit details" timelineLabel="What happened" emptyText="Nothing recorded yet." events={[]} defaultOpen />);
+    expect(screen.getByTestId("visit-record-empty")).toHaveTextContent("Nothing recorded yet.");
+  });
   it("renders nothing for an empty timeline, and claim lines and the kitchen's fix link when given", () => {
     const onFix = vi.fn();
     render(<BookingVisitRecord title="Visit details" timelineLabel="What happened" events={[]} defaultOpen claimLines={["Damage claim · $45.00 · paid Jan 16"]} fixLabel="Fix the visit record" onFix={onFix} />);

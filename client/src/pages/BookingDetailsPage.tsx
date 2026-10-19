@@ -1726,7 +1726,7 @@ export default function BookingDetailsPage() {
 
   // The manager's Fix dialog lives in the attendance panel inside Visit details (mounted even while collapsed).
   const visitRecord = showVisitRecord && booking && (
-    <BookingVisitRecord title={bt('vrTitle')} timelineLabel={bt('vrTimeline')} events={timelineEvents} defaultOpen={chefNoShow}
+    <BookingVisitRecord title={bt('vrTitle')} timelineLabel={bt('vrTimeline')} emptyText={bt('vrEmpty')} events={timelineEvents} defaultOpen={chefNoShow}
       extensions={<>{visitPills}{['confirmed', 'completed'].includes(booking.status) && <SessionExtensionsCard variant="record" key={`extra-time-record-${booking.id}`} bookingId={booking.id} manager={isManagerView} chefName={chefName}
         refreshKey={[booking.status, booking.checkinStatus, booking.endTime].join('|')} />}</>}
       claimLines={claimLines}

@@ -82,6 +82,17 @@ describe('chef My bookings', () => {
     expect(screen.queryByText(/2026/)).not.toBeInTheDocument();
   });
 
+  it('shows a multi-day booking as one card: its span, the day count, then the day it is on', () => {
+    mount([row({ id: 214, kitchenName: 'Multi Kitchen', scheduleRevision: 1, bookingDate: '2026-11-09T00:00:00.000Z', startTime: '06:00', endTime: '23:00',
+      selectedSlots: ['06:00', '07:00', '08:00'], visitStates: [
+        { id: 1, visitDate: '2026-11-09', startTime: '06:00', endTime: '23:00', checkinStatus: 'not_checked_in' },
+        { id: 2, visitDate: '2026-11-11', startTime: '10:00', endTime: '14:00', checkinStatus: 'not_checked_in' },
+        { id: 3, visitDate: '2026-11-13', startTime: '06:00', endTime: '23:00', checkinStatus: 'not_checked_in' }] })]);
+    const element = card('Multi Kitchen');
+    expect(within(element).getByTestId('booking-span')).toHaveTextContent(/Nov 9\s*–\s*.*Nov 13 · 3 days/);
+    expect(within(element).getByText(/^Day 1 of 3 · /)).toBeInTheDocument();
+    expect(element.textContent).not.toMatch(/7:00–8:00/);
+  });
   it('links the whole card to the booking page', () => {
     mount();
     expect(within(card('Later Kitchen')).getByRole('link', { name: 'Later Kitchen' })).toHaveAttribute('href', '/booking/200');

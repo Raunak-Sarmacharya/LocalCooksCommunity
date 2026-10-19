@@ -4468,5 +4468,6 @@
   "ovrUtilisationNoHours": "Set your open hours to see this",
   "ovrWeekBookings": "Bookings",
   "ovrWeekHours": "Hours booked",
-  "ovrWeekUtilisation": "Utilisation"
+  "ovrWeekUtilisation": "Utilisation",
+  "blDaysCount": "{count, plural, one {# day} other {# days}}"
 }

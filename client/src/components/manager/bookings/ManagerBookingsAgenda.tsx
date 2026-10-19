@@ -15,7 +15,7 @@ import { StatusPill } from "@/components/booking/BookingNowCard";
 import type { BookingHeaderPhase } from "@/lib/booking-header-state";
 import { bookingCancelCause } from "@/lib/booking-cancel-cause";
 import {
-  bookingListPill, listTimezone, listWhenLine, managerBookingGroups, managerRowAction, showArrivalLine, waitingForChef, managerDatedListDay,
+  bookingListPill, listDaySpan, listTimezone, listWhenLine, managerBookingGroups, managerRowAction, showArrivalLine, waitingForChef, managerDatedListDay,
   type ListedBooking, type ManagerListGroup, type ManagerRowAction,
 } from "@/lib/booking-list-status";
 import { friendlyTimezoneName } from "@shared/timezone-utils";
@@ -141,8 +141,10 @@ export function ManagerBookingsAgenda({ bookings, onReviewRequest }: {
                       <p className="text-sm font-medium tabular-nums">
                         {/* The whole row opens the booking; the action and the payment breakdown sit above the link. */}
                         <Link href={`/manager/booking/${row.id}`} className="outline-none after:absolute after:inset-0 after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-ring">
-                          {listWhenLine(row, locale, words)}
-                          {row.scheduleRevision ? <span className="mt-1 block text-xs font-normal text-muted-foreground">{dayLabel(row)}</span> : null}
+                          {row.listDay ? <>
+                            <span data-testid="booking-span">{listDaySpan(row.listDay, locale)} · {mt("blDaysCount", { count: row.listDay.total })}</span>
+                            <span className="mt-1 block text-xs font-normal text-muted-foreground">{dayLabel(row)} · {listWhenLine(row, locale, words)}</span>
+                          </> : listWhenLine(row, locale, words)}
                         </Link>
                       </p>
                       <div className="mt-0.5 min-w-0 md:mt-0">

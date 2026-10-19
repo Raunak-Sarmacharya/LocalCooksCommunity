@@ -36,6 +36,8 @@ export function publicCheckoutOutcome(row: Incident) {
     : ['needs_support', 'closed'].includes(row.outcome) ? 'needs_support' : 'verifying',
     sessionId: row.sessionId, bookingId: row.bookingId, paymentIntentId: row.paymentIntentId,
     operatingDate: row.operatingDate, amountCents: row.amountCents, currency: row.currency,
+    // A multi-day checkout lists every day it covers.
+    dates: ((row.quoteSnapshot as { manifest?: { days?: Array<{ date: string }> } } | null)?.manifest?.days ?? []).map(day => day.date),
     moneyStatus: row.moneyStatus, refundId: row.refundId, lastCheckedAt: row.lastCheckedAt };
 }
 

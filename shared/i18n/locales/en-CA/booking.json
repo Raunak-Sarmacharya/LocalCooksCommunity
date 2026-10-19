@@ -1384,5 +1384,7 @@
   "cpDaysChooseHint": "Select at least one day to continue.",
   "cpCancelDaysButton": "Cancel selected days",
   "dcR2Totals": "Claimed {claimed} · Collected {collected} · Still pending {pending}",
-  "dcR2NoMatch": "No claims match these filters."
+  "dcR2NoMatch": "No claims match these filters.",
+  "vrEmpty": "Nothing recorded yet. Check-in and check-out times will show here.",
+  "checkoutDates": "{count} days: {dates}"
 }

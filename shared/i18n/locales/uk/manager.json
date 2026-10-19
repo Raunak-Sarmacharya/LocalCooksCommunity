@@ -4468,5 +4468,6 @@
   "ovrUtilisationNoHours": "Вкажіть години роботи, щоб побачити це",
   "ovrWeekBookings": "Бронювання",
   "ovrWeekHours": "Заброньовано годин",
-  "ovrWeekUtilisation": "Завантаженість"
+  "ovrWeekUtilisation": "Завантаженість",
+  "blDaysCount": "{count, plural, one {# день} few {# дні} many {# днів} other {# дня}}"
 }

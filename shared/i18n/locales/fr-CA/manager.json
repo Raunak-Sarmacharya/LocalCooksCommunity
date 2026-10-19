@@ -4468,5 +4468,6 @@
   "ovrUtilisationNoHours": "Indiquez vos heures d’ouverture pour voir ce chiffre",
   "ovrWeekBookings": "Réservations",
   "ovrWeekHours": "Heures réservées",
-  "ovrWeekUtilisation": "Taux d’occupation"
+  "ovrWeekUtilisation": "Taux d’occupation",
+  "blDaysCount": "{count, plural, one {# jour} other {# jours}}"
 }

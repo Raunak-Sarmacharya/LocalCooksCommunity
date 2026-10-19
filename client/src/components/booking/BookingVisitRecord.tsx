@@ -28,8 +28,10 @@ export function VisitTimeline({ events, label }: { events: VisitTimelineEvent[];
   </ol>;
 }
 
-export function BookingVisitRecord({ title, events, timelineLabel, extensions, claimLines = [], evidence, attendance, fixLabel, onFix, defaultOpen = false }: {
+export function BookingVisitRecord({ title, events, timelineLabel, emptyText, extensions, claimLines = [], evidence, attendance, fixLabel, onFix, defaultOpen = false }: {
   title: string; events: VisitTimelineEvent[]; timelineLabel: string;
+  /** Shown when nothing has been recorded yet, so an opened record is never blank. */
+  emptyText?: string;
   /** `SessionExtensionsCard variant="record"`: renders nothing when there is no history. */
   extensions?: ReactNode;
   claimLines?: string[];
@@ -50,6 +52,7 @@ export function BookingVisitRecord({ title, events, timelineLabel, extensions, c
       </h2>
       <CollapsibleContent forceMount hidden={!open} className="space-y-5 px-4 pb-5 data-[state=open]:motion-safe:animate-in data-[state=open]:motion-safe:fade-in-0 data-[state=open]:motion-safe:duration-200 sm:px-6 sm:pb-6">
         <VisitTimeline events={events} label={timelineLabel} />
+        {emptyText && !events.length && !claimLines.length && !evidence && <p className="text-sm text-muted-foreground" data-testid="visit-record-empty">{emptyText}</p>}
         {extensions}
         {claimLines.length > 0 && <ul className="space-y-1 text-sm" data-testid="visit-claim-lines">{claimLines.map(line => <li key={line}>{line}</li>)}</ul>}
         {evidence}

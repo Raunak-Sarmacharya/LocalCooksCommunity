@@ -69,7 +69,12 @@ export default function PaymentSuccessPage() {
       <h1 className="text-xl font-semibold">{t(confirmed ? 'checkoutConfirmed' : state === 'request_created' ? 'checkoutRequestCreated' : state === 'slot_taken' ? 'checkoutSlotTaken' : state === 'verifying' ? 'checkoutVerifying' : 'checkoutNeedsSupport')}</h1>
       <p className="text-sm text-muted-foreground">{description}</p>
       {amount && <p className="text-sm font-medium">{amount}</p>}
-      {outcome?.operatingDate && <p className="text-sm">{t('checkoutDate', { date: new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium', timeZone: 'UTC' }).format(new Date(`${outcome.operatingDate}T12:00:00Z`)) })}</p>}
+      {outcome?.operatingDate && (() => {
+        const day = (date: string) => new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium', timeZone: 'UTC' }).format(new Date(`${date}T12:00:00Z`));
+        return outcome.dates && outcome.dates.length > 1
+          ? <p className="text-sm">{t('checkoutDates', { count: outcome.dates.length, dates: outcome.dates.map(day).join(' · ') })}</p>
+          : <p className="text-sm">{t('checkoutDate', { date: day(outcome.operatingDate) })}</p>;
+      })()}
       {state === 'request_created' && outcome?.replacement && <ReplacementResult replacement={outcome.replacement} t={t} />}
       {state === 'slot_taken' && <p className="text-sm">{t('checkoutOthersUnchanged')}</p>}
       {/* Payment-provider ids never show to chefs; "Contact Local Cooks" carries them to support. */}

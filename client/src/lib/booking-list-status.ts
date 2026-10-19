@@ -33,7 +33,11 @@ export interface BookingListRow {
   checkoutRequestedAt?: string | null;
   /** The kitchen's new total waiting for the chef (accepted without some equipment). */
   partialAcceptance?: unknown;
+  /** Set on a multi-day booking narrowed to one day: which day it is and the whole booking's first and last dates. */
+  listDay?: ListDay;
 }
+
+export type ListDay = { number: number; total: number; first: string; last: string };
 
 /** The request waits for the chef's answer to the kitchen's new total: nothing is left for the kitchen to do. */
 export const waitingForChef = (row: BookingListRow) => !!waitingPartialAcceptance(row);
@@ -43,16 +47,23 @@ export const listTimezone = (row: Pick<BookingListRow, 'timezone' | 'locationTim
 type VisitState = NonNullable<BookingListRow['visitStates']>[number];
 const datedDays = (row: BookingListRow) => row.scheduleRevision
   ? (row.visitStates || []).filter(day => day.visitDate && day.startTime && day.endTime).sort((a, b) => a.visitDate!.localeCompare(b.visitDate!)) : [];
-const asDay = <T extends BookingListRow>(row: T, day: VisitState): T => ({ ...row, bookingDate: day.visitDate!, startTime: day.startTime!, endTime: day.endTime!,
-  operatingWindowStartTime: day.operatingWindowStartTime, selectedSlots: undefined, checkinStatus: day.checkinStatus, visitStates: [day] });
+const asDay = <T extends BookingListRow>(row: T, day: VisitState, days: VisitState[]): T => ({ ...row, bookingDate: day.visitDate!, startTime: day.startTime!, endTime: day.endTime!,
+  operatingWindowStartTime: day.operatingWindowStartTime, selectedSlots: undefined, checkinStatus: day.checkinStatus, visitStates: [day],
+  listDay: { number: days.indexOf(day) + 1, total: days.length, first: days[0].visitDate!, last: days.at(-1)!.visitDate! } });
+
+/** "Mon, Nov 9 – Fri, Nov 13": the whole span of a multi-day booking (dates are operating days, not instants). */
+export function listDaySpan(day: ListDay, locale: string) {
+  const format = new Intl.DateTimeFormat(locale, { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
+  return format.formatRange(new Date(`${day.first}T12:00:00Z`), new Date(`${day.last}T12:00:00Z`));
+}
 
 export function managerDatedListDay<T extends BookingListRow>(row: T, now = Date.now()): T {
   const days = datedDays(row);
   const chosen = days.find(day => day.checkinStatus === 'checkout_requested') || days.find(day => {
-    const bounds = bookingListBounds(asDay(row, day));
+    const bounds = bookingListBounds(asDay(row, day, days));
     return day.checkinStatus !== 'checked_out' && bounds && bounds.endAt.getTime() > now;
   }) || days.at(-1);
-  return chosen ? asDay(row, chosen) : row;
+  return chosen ? asDay(row, chosen, days) : row;
 }
 
 /**
@@ -61,7 +72,7 @@ export function managerDatedListDay<T extends BookingListRow>(row: T, now = Date
  */
 export function managerListDays<T extends BookingListRow>(row: T): Array<{ row: T; dayNumber?: number; dayCount?: number; visitId?: number }> {
   const days = datedDays(row);
-  return days.length ? days.map((day, index) => ({ row: asDay(row, day), dayNumber: index + 1, dayCount: days.length, visitId: day.id })) : [{ row }];
+  return days.length ? days.map((day, index) => ({ row: asDay(row, day, days), dayNumber: index + 1, dayCount: days.length, visitId: day.id })) : [{ row }];
 }
 
 /** Start, end and check-in opening as real instants in the kitchen zone (the booking page's `visitBounds`). */
@@ -176,7 +187,9 @@ export function chefUpcomingRank(row: BookingListRow, phase: BookingHeaderPhase,
 export function chefBookingTabs<T extends BookingListRow>(rows: T[], now = Date.now()): Record<ChefListTab, ListedBooking<T>[]> {
   const tabs: Record<ChefListTab, ListedBooking<T>[]> = { upcoming: [], past: [], cancelled: [] };
   const rank = new Map<ListedBooking<T>, number>();
-  for (const row of rows) {
+  for (const raw of rows) {
+    // A multi-day booking is one row, placed and timed by its current day (never its stale day-1 fields).
+    const row = raw ? managerDatedListDay(raw, now) : raw;
     if (!row?.bookingDate || !row.startTime || !row.endTime) continue;
     const listed = { row, phase: bookingListPhase(row, now), startMs: startMs(row) };
     if (listed.phase === 'cancelled') { tabs.cancelled.push(listed); continue; }

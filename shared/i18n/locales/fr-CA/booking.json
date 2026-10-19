@@ -1384,5 +1384,7 @@
   "cpDaysChooseHint": "Sélectionnez au moins un jour pour continuer.",
   "cpCancelDaysButton": "Annuler les jours sélectionnés",
   "dcR2Totals": "Réclamé {claimed} · Reçu {collected} · En attente {pending}",
-  "dcR2NoMatch": "Aucune réclamation ne correspond à ces filtres."
+  "dcR2NoMatch": "Aucune réclamation ne correspond à ces filtres.",
+  "vrEmpty": "Rien n’est encore enregistré. Les heures d’arrivée et de départ s’afficheront ici.",
+  "checkoutDates": "{count} jours : {dates}"
 }

@@ -20,7 +20,7 @@ import { sentence } from "@/lib/booking-header-state"
 import { bookingCancelCause } from "@/lib/booking-cancel-cause"
 import { bookingResponseDeadline, formatResponseDeadline } from "@/lib/booking-response-deadline"
 import {
-  bookingListBounds, bookingListPill, chefBookingTabs, chefUpcomingRank, listTimezone, listWhenLine,
+  bookingListBounds, bookingListPill, chefBookingTabs, chefUpcomingRank, listDaySpan, listTimezone, listWhenLine,
   type BookingListRow, type ChefListTab, type ListedBooking,
 } from "@/lib/booking-list-status"
 import { friendlyTimezoneName } from "@shared/timezone-utils"
@@ -145,6 +145,8 @@ function BookingCard({ item, kitchenName, t, locale, words, primary, showZone }:
   const line = proposal ? t("paListAnswerBy", { deadline: partialAcceptanceDeadlineText(proposal.deadlineAt, locale, listTimezone(booking)) })
     : chefListLine(booking, item, t, locale)
   const action = proposal ? { label: bt("paChefProposedAction"), href: `/booking/${booking.id}` } : chefListAction(booking, item, t, locale)
+  // A multi-day booking reads as one order: its span and day count, then the current day.
+  const span = booking.listDay ? `${listDaySpan(booking.listDay, locale)} · ${t("blDaysCount", { count: booking.listDay.total })}` : ""
   const when = listWhenLine(booking, locale, words)
   const zone = showZone ? friendlyTimezoneName(listTimezone(booking), locale) : ""
   return (
@@ -161,7 +163,10 @@ function BookingCard({ item, kitchenName, t, locale, words, primary, showZone }:
           </h3>
           <StatusPill tone={pill.tone} className="shrink-0">{t(pill.key)}</StatusPill>
         </div>
-        <p className="text-sm font-medium tabular-nums text-foreground/80">{when}{zone ? ` · ${zone}` : ""}</p>
+        {span ? <>
+          <p className="text-sm font-medium tabular-nums text-foreground/80" data-testid="booking-span">{span}{zone ? ` · ${zone}` : ""}</p>
+          <p className="text-[13px] tabular-nums text-muted-foreground">{t("mdDayOf", { number: booking.listDay!.number, total: booking.listDay!.total })} · {when}</p>
+        </> : <p className="text-sm font-medium tabular-nums text-foreground/80">{when}{zone ? ` · ${zone}` : ""}</p>}
         {line && <p className="text-[13px] leading-[18px] text-muted-foreground">{line}</p>}
         {action && (
           <Button asChild size="sm" variant={primary ? "default" : "outline"} className="relative z-10 mt-2 min-h-11 sm:min-h-9">
