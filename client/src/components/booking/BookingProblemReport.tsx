@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { Flag } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -34,9 +35,9 @@ export function BookingProblemReport({ bookingId, initialCategory }: { bookingId
     } finally { setReportBusy(false) }
   }
 
-  const link = "min-h-11 px-1 text-sm underline-offset-4 hover:underline disabled:opacity-50"
+  const link = "inline-flex min-h-11 items-center gap-2 rounded-md px-1 text-sm underline-offset-4 hover:underline disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
   return <>
-    <button type="button" className={link} onClick={() => { setReportSent(false); setReportOpen(true) }}>{t("kciIsReportProblem", { defaultValue: "Report a problem" })}</button>
+    <button type="button" className={link} onClick={() => { setReportSent(false); setReportOpen(true) }}><Flag className="h-4 w-4" aria-hidden="true" />{t("kciIsReportProblem", { defaultValue: "Report a problem" })}</button>
       {reportSent && <p role="status" className="text-sm">{t("kciIsReportSent", { defaultValue: "Report sent. You can follow it on your booking page." })}</p>}
       <Sheet open={reportOpen} onOpenChange={value => { if (!reportBusy) setReportOpen(value) }}>
         <SheetContent side="bottom" className="mx-auto max-h-[90dvh] max-w-lg space-y-4 overflow-y-auto rounded-t-2xl p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]">

@@ -10,8 +10,9 @@ import { previousVisitTaskAnswers, VisitDutyValidationError, type DutyFieldError
  */
 
 import { useState, useEffect, useRef, type ReactNode } from "react"
+import { Link } from "wouter"
 import { useTranslation } from "react-i18next"
-import { Camera, Clock, CheckCircle2, Loader2, FileWarning, LogIn, LogOut, Calendar, XCircle, Info, Ban } from "lucide-react"
+import { Camera, Clock, CheckCircle2, Loader2, FileWarning, LogIn, LogOut, Calendar, XCircle, Info, Ban, ChefHat, MapPin, ArrowUpRight, Phone } from "lucide-react"
 import { InfoChip, type InfoChipVariant } from "@/components/chef/info-chip"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -48,6 +49,8 @@ interface KitchenCheckinTrackerProps {
   initialVisitId?: number | null
   bookingId: number
   kitchenName?: string
+  kitchenAddress?: string | null
+  onVisitChange?: (visitId: number) => void
   /** Cover photo of the kitchen, when it has one. */
   kitchenImageUrl?: string | null
   bookingDate?: string
@@ -86,6 +89,8 @@ export function KitchenCheckinTracker({
   bookingId,
   kitchenName,
   kitchenImageUrl,
+  kitchenAddress,
+  onVisitChange,
   bookingDate,
   startTime,
   endTime,
@@ -129,6 +134,7 @@ export function KitchenCheckinTracker({
   ]) !== JSON.stringify([duties.arrival.instructions, duties.departure.instructions, duties.arrival.items,
     duties.departure.items, duties.arrival.photos, duties.departure.photos])
 
+  const [helpContainer, setHelpContainer] = useState<HTMLDivElement | null>(null)
   const [arrivedAt, setArrivedAt] = useState<string | null>(null)
   const [checkinNotes, setCheckinNotes] = useState("")
   const [checkoutOpen, setCheckoutOpen] = useState(false)
@@ -352,10 +358,12 @@ export function KitchenCheckinTracker({
   const showInSessionEarly = !!data && (data.status === "confirmed" || lateCheckout) && checkinStatus === "checked_in" && !!clockVisit
     && (clockVisit.phase !== "ended" || lateCheckout) && !!data.chefId
   const isArrival = !isDeparture && data?.status === "confirmed" && checkinStatus === "not_checked_in"
-  const title = showInSessionEarly ? t("kciInSessionTitle", "Your visit")
-    : isDeparture ? t("kciDepartureTitle", "Kitchen departure")
-    : isArrival ? t("kciArrivalTitle", "Kitchen arrival")
-      : t("kciVisitTitle", "Kitchen visit")
+  const title = checkoutOpen || isDeparture && !showInSessionEarly ? t("kciStageCheckout", "Check out")
+    : showInSessionEarly ? t("kciStageCooking", "You’re checked in")
+    : isArrival ? t("kciStageArrival", "Check in at {kitchen}", { kitchen: kitchenName || t("kitchenDefault", "Kitchen") })
+    : checkinStatus === "checked_out" ? t("kciStageComplete", "Visit complete")
+    : checkinStatus === "checkout_requested" ? t("kciStageReview", "Checking out")
+    : t("kciVisitTitle", "Kitchen visit")
   const dutiesReady = !!currentDuties || !!currentChecklist
   const isPending = isCheckingIn || isCheckingOut
   const requirementsMessage = t("kciConfiguredTasks", "Only checklist items and photos marked Required must be completed. Everything marked Optional can be skipped.")
@@ -369,13 +377,15 @@ export function KitchenCheckinTracker({
     setCheckoutOpen(true)
   }
   useEffect(() => {
+    if (arrivedAt) document.getElementById("kitchen-visit-title")?.focus()
+  }, [arrivedAt])
+  useEffect(() => {
     if (!checkoutOpen) return
     const section = document.getElementById("visit-checkout-section")
-    section?.scrollIntoView?.({ behavior: "smooth", block: "start" })
+    section?.scrollIntoView?.({ behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" })
     document.getElementById("visit-checkout-title")?.focus()
   }, [checkoutOpen])
 
-  const hideIdleChip = !clockEnded && data?.status === "confirmed" && checkinStatus === "not_checked_in"
   const chip = lateCheckout
     ? { variant: "warning" as InfoChipVariant, icon: <Clock className="h-3 w-3" />, label: t("kciIsTimeEnded", "Your booked time ended") }
     : clockEnded
@@ -404,6 +414,22 @@ export function KitchenCheckinTracker({
     ? createBookingDateTime(calendarDateForBookingTime(visitDate, visitEnd, data.operatingWindowStartTime, visitStart), visitEnd, timezone) : null
   const bookingEndsText = visitEndAt
     ? `${new Intl.DateTimeFormat(locale, { timeZone: timezone, hour: "numeric", minute: "2-digit", hour12: true }).format(visitEndAt)} ${friendlyTimezoneName(timezone, locale)}` : ""
+  const statusLabel = !clockEnded && data?.status === "confirmed" && checkinStatus === "not_checked_in"
+    ? beforeCheckinOpens && checkinOpensAt ? t("kciOpensAt", "Check-in opens at {time}", { time: formatTime(checkinOpensAt.toISOString()) })
+      : canCheckin ? t("kciCheckinOpen", "Check-in open") : chip.label
+    : checkinStatus === "checked_in" && !clockEnded && visitEndAt
+      ? t("kciCheckedInEnds", "Checked in · ends {time}", { time: clockTime(clockVisit?.scheduledEndAt || visitEndAt.toISOString()) })
+      : checkinStatus === "checkout_requested" ? t("kciStageReview", "Checking out")
+      : checkinStatus === "checked_out" ? t("kciStageComplete", "Visit complete") : chip.label
+  const currentStep = checkoutOpen || isDeparture && !showInSessionEarly || checkinStatus === "checkout_requested" || visitFinished && checkinStatus !== "no_show" ? 3
+    : checkinStatus === "checked_in" ? 2 : canCheckin ? 1 : 0
+  const steps = [t("kciStepArrive", "Arrive"), t("kciCheckInHeading", "Check in"), t("kciStepCook", "Cook"), t("kciCheckOutHeading", "Check out")]
+  const dayLabel = (date: string) => {
+    const at = new Date(`${date.slice(0, 10)}T12:00:00Z`)
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date())
+    const label = new Intl.DateTimeFormat(locale, { timeZone: "UTC", weekday: "short", day: "numeric" }).format(at)
+    return date.slice(0, 10) === today ? t("kciTodayPill", "Today · {day}", { day: label }) : label
+  }
   // Late arrival never moves the end: say so before check-in (once the start has passed) and after it.
   const startedBeforeCheckin = !!visitStartAt && !!bookingEndsText && data?.status === "confirmed" && checkinStatus === "not_checked_in" && liveBooking && Date.now() >= visitStartAt.getTime()
   const checkedInLate = !!visitStartAt && !!bookingEndsText && !!data?.checkedInAt && Date.parse(data.checkedInAt) > visitStartAt.getTime()
@@ -454,7 +480,7 @@ export function KitchenCheckinTracker({
     <div className="space-y-2">
       <Label className="text-sm font-medium">{label}</Label>
       {items.map((item: ChecklistItem, index: number) => (
-        <label key={item.id} className="flex items-start gap-2.5 p-2 rounded-lg border bg-background hover:bg-muted/50 cursor-pointer transition-colors">
+        <label key={item.id} className="flex min-h-11 items-start gap-3 p-3 rounded-xl border bg-background hover:bg-muted/50 cursor-pointer motion-safe:transition-colors">
           <Checkbox
             aria-label={item.label}
             disabled={isPending}
@@ -501,115 +527,7 @@ export function KitchenCheckinTracker({
     </div>
   )
 
-  return (
-    <section className="space-y-5" aria-labelledby="kitchen-visit-title">
-        <header className="overflow-hidden rounded-2xl border bg-card [@media(hover:hover)]:shadow-sm sm:flex sm:flex-row-reverse">
-          {coverUrl && <SmartImage src={coverUrl} alt="" hideOnError className="h-36 w-full object-cover sm:h-auto sm:w-56 sm:shrink-0" />}
-          <div className="min-w-0 flex-1 p-4 sm:p-6">
-            <div className="flex items-start gap-4">
-              <div className="min-w-0 flex-1">
-                <h1 id="kitchen-visit-title" className="flex items-center gap-2 text-[22px] font-semibold leading-7 tracking-tight">
-                  <Calendar className="h-5 w-5 shrink-0 text-muted-foreground" />
-                  {title}
-                </h1>
-                <p className="mt-2 text-[15px] font-medium leading-snug">{kitchenName || t("kitchenDefault", "Kitchen")}</p>
-                {/* Wait for the kitchen's timezone so times never flash in a default zone. */}
-                {data && timeLabel && <p className="mt-1 text-[13px] leading-[18px] tabular-nums text-muted-foreground">{timeLabel} · {friendlyTimezoneName(timezone, locale)}</p>}
-              </div>
-            </div>
-
-            {!isLoading && data && (
-              <section aria-label={t("kciVisitStatus", "Visit status")} className="mt-5 space-y-3 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200">
-                {!hideIdleChip && <InfoChip variant={chip.variant} icon={chip.icon}>{chip.label}</InfoChip>}
-                <p className={cn("text-[15px] leading-[22px]", lateCheckout && "font-medium")} data-testid="visit-next-step" role={lateCheckout ? "alert" : undefined}>{nextStep}</p>
-                {times.length > 0 && (
-                  <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
-                    {times.map(time => (
-                      <div key={time.label}>
-                        <dt className="text-[13px] leading-[18px] text-muted-foreground">{time.label}</dt>
-                        <dd className="mt-0.5 text-[15px] font-medium tabular-nums">{time.value}</dd>
-                      </div>
-                    ))}
-                  </dl>
-                )}
-                {data.status === "confirmed" && checkinStatus === "not_checked_in" && beforeCheckinOpens && !data.runningLate && (
-                  <MessageKitchenButton link bookingId={bookingId} label={t("rlArrivedEarly", "Arrived early? Message the kitchen")} />
-                )}
-                {data.status === "confirmed" && checkinStatus === "not_checked_in" && (
-                  <SessionExtensionsCard bookingId={bookingId} manager={false} chefName="" only="early_start" onChanged={() => void refetch()} />
-                )}
-                {data.status === "confirmed" && liveBooking && (
-                  <RunningLateCard bookingId={bookingId} visitId={data.visitId} kitchenName={kitchenName} startAt={visitStartAt} endAt={visitEndAt}
-                    timezone={timezone} status={data.status} checkedIn={checkinStatus !== "not_checked_in"} runningLate={data.runningLate} onChanged={() => void refetch()} />
-                )}
-              </section>
-            )}
-          </div>
-        </header>
-        {data && checkinStatus !== "not_checked_in" && <SessionExtensionsCard bookingId={bookingId} manager={false} chefName=""
-          refreshKey={`${checkinStatus}:${data.visitId ?? ""}`} onChanged={() => void refetch()} />}
-        {showInSession && clockVisit && data && (
-          <InSessionPanel bookingId={bookingId} chefId={data.chefId} kitchenName={kitchenName || t("kitchenDefault", "Kitchen")}
-            timezone={timezone} scheduledStartAt={clockVisit.scheduledStartAt} scheduledEndAt={clockVisit.scheduledEndAt}
-            canCheckout={canCheckout && dutiesReady} checkoutStarted={checkoutOpen} onStartCheckout={startCheckout} onRefresh={() => void refetch()}
-            departureInstructions={checklist?.checkoutInstructions || undefined} requiredTaskCount={requiredCheckoutTasks} />
-        )}
-
-        {data?.visits && (data.visits.length > 1 || data.visitUnavailable) && (
-          <div className="space-y-2" role="group" aria-labelledby="kitchen-visit-choice">
-            <p id="kitchen-visit-choice" className="text-sm font-medium">{t("kciChooseVisit", "Choose a visit")}</p>
-            {data.visits.map((visit, ordinal) => (
-              <Button key={visit.id} type="button" size="sm"
-                variant={data.visitId === visit.id ? 'default' : 'outline'}
-                className="w-full h-auto whitespace-normal flex-wrap gap-2 justify-between text-left"
-                aria-pressed={data.visitId === visit.id}
-                disabled={isPending}
-                onClick={() => setSelectedVisitId(visit.id)}>
-                <span>{data.scheduleRevision ? `${t('mdDayOf', `Day ${ordinal + 1} of ${data.visits!.length}`, { number: ordinal + 1, total: data.visits!.length })} · ${formatVisit(visit.startTime, visit.endTime, visit.visitDate?.slice(0, 10))}` : <>{t("kciVisitNumber", `Visit ${visit.blockIndex + 1}`, { number: visit.blockIndex + 1 })}: {formatVisit(visit.startTime, visit.endTime)}</>}</span>
-                <span>{t(`visitStatus_${visit.checkinStatus}`, visit.checkinStatus.replaceAll("_", " "))}</span>
-              </Button>
-            ))}
-          </div>
-        )}
-
-        {data?.visitUnavailable && <p role="alert">This visit is no longer in the current schedule. Choose a current visit to continue.</p>}
-        {submitError && <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive space-y-2">
-          <p>{submitError}</p>
-          <Button variant="outline" disabled={isPending} onClick={() => void refetch()}>{t("kciRetryVisit", "Retry visit details")}</Button>
-        </div>}
-        {isError && <div role="alert" className="rounded-lg border p-3 text-sm space-y-2">
-          <p>{error instanceof Error ? `${error.message} ` : ""}{t("kciStatusLoadFailed", "Anything you've entered is kept. Retry, or contact the kitchen manager.")}</p>
-          <Button variant="outline" onClick={() => void refetch()}>{t("kciRetryVisit", "Retry visit details")}</Button>
-        </div>}
-        {!isLoading && liveBooking && !visitFinished && !instructionsReleased && checkinStatus === "not_checked_in" && <section className="rounded-2xl border bg-card p-5 sm:p-6" aria-labelledby="visit-instructions-title">
-          <h2 id="visit-instructions-title" className="sr-only">{t("kciRequiredInstructions", "Visit instructions")}</h2>
-          <InstructionsOverview mode={arrivalMode} releaseAt={data?.instructionsReleaseAt} timezone={timezone}
-            visitStartAt={visitStartAt} requiredTasks={overviewTasks} />
-        </section>}
-        {!currentDuties && checklistQuery.isError && <div role="alert" className="rounded-lg border p-3 text-sm">
-          <p>{t("kciDutiesLoadFailed", "Could not load your visit requirements. Retry before submitting.")}</p>
-          <Button variant="outline" onClick={() => void checklistQuery.refetch()}>{t("kciRetryRequirements", "Retry requirements")}</Button>
-        </div>}
-
-        {isLoading ? (
-          <div className="space-y-4 py-3" role="status" aria-label={t("kciLoadingVisit", "Loading visit")}>
-            {Array.from({ length: 3 }, (_, index) => <Skeleton key={index} className="h-16 w-full rounded-lg" />)}
-          </div>
-        ) : (
-          <>
-            {canCheckin && dutiesReady && (
-              <section className="rounded-2xl border bg-card p-4 sm:p-6 space-y-2.5 sm:space-y-3" aria-labelledby="visit-checkin-title">
-                <h2 id="visit-checkin-title" className="font-semibold">{t("kciCheckInHeading", "Check in")}</h2>
-                {arrivalChanged && <p role="status" className="rounded-lg border bg-muted/30 p-3 text-sm">{t("kciAcModeChanged", "Arrival details changed. Review the current instructions.")}</p>}
-                {codeGate !== "none" && codeState && data && (
-                  <VisitCodeField gate={codeGate} state={codeState} value={visitCodeInput} onChange={changeVisitCode}
-                    canReportProblem={!beforeCheckinOpens && !!checkinOpensAt} problem={codeProblem} disabled={isCheckingIn} bookingId={bookingId} chefId={data.chefId}
-                    kitchenName={kitchenName || t("kitchenDefault", "Kitchen")} />
-                )}
-                {(codeGate === "none" || codeGate === "self") && !beforeCheckinOpens && !!checkinOpensAt && <div>
-                  <p className="text-sm text-muted-foreground">{t("kciAcNoAccess", "Can't get inside or find staff? Contact the kitchen. Don't confirm arrival until you're at the kitchen.")}</p>
-                  <BookingProblemReport bookingId={bookingId} initialCategory="access" />
-                </div>}
+  const arrivalRequirements = <>
                 {!!checklist?.checkinItems?.length && <p className="text-sm text-muted-foreground">{requirementsMessage}</p>}
                 {!!previousVisit?.checkinChecklistItems?.length && <Button type="button" variant="outline" onClick={() => copyPreviousTasks('checkin')}>{t("kciSameAsPreviousVisit", "Same as previous visit")}</Button>}
                 {(checklist?.checkinItems || []).length > 0 && renderChecklist(checklist?.checkinItems || [], t("kciChecklistLabel"))}
@@ -631,8 +549,151 @@ export function KitchenCheckinTracker({
 
                 </>}
 
+  </>
+
+  return (
+    <section className={cn("mx-auto max-w-2xl space-y-5 pb-6", canCheckin && dutiesReady && "pb-32 sm:pb-6")} aria-labelledby="kitchen-visit-title">
+        <header className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm">
+          <div className={cn("relative overflow-hidden bg-primary/5", coverUrl ? "h-36 sm:h-44" : "h-20 sm:h-28")}>
+            <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-primary/10 via-primary/5 to-background" aria-hidden="true">
+              <ChefHat className="h-10 w-10 text-primary/30 sm:h-12 sm:w-12" strokeWidth={1} />
+            </div>
+            {coverUrl && <SmartImage src={coverUrl} alt="" hideOnError className="relative h-full w-full object-cover" />}
+          </div>
+          <div className="min-w-0 p-5 sm:p-7">
+            {!isArrival && <p className="mb-2 text-sm font-medium text-muted-foreground">{kitchenLabel}</p>}
+            <h1 id="kitchen-visit-title" tabIndex={-1} className="rounded-md text-3xl font-semibold leading-tight tracking-tight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{title}</h1>
+            {kitchenAddress && <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+              <p className="flex min-w-0 items-start gap-1.5 text-muted-foreground"><MapPin className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />{kitchenAddress}</p>
+              <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(kitchenAddress)}`} target="_blank" rel="noopener noreferrer"
+                className="inline-flex min-h-11 items-center gap-1 rounded-md font-medium underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                {t("kciDirections", "Directions")}<ArrowUpRight className="h-4 w-4" aria-hidden="true" />
+              </a>
+            </div>}
+            {data && timeLabel && <p className="mt-3 flex items-start gap-2 text-sm tabular-nums"><Calendar className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />{timeLabel} · {friendlyTimezoneName(timezone, locale)}</p>}
+
+            {!isLoading && data && (
+              <section aria-label={t("kciVisitStatus", "Visit status")} className="mt-5 space-y-3 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200">
+                <InfoChip variant={chip.variant} icon={chip.icon}>{statusLabel}</InfoChip>
+                <p className={cn("text-[15px] leading-[22px]", lateCheckout && "font-medium")} data-testid="visit-next-step" role={lateCheckout ? "alert" : undefined}>{nextStep}</p>
+                {times.length > 0 && (
+                  <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
+                    {times.map(time => (
+                      <div key={time.label}>
+                        <dt className="text-[13px] leading-[18px] text-muted-foreground">{time.label}</dt>
+                        <dd className="mt-0.5 text-[15px] font-medium tabular-nums">{time.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                )}
+                {data.status === "confirmed" && checkinStatus === "not_checked_in" && beforeCheckinOpens && !data.runningLate && (
+                  <MessageKitchenButton link bookingId={bookingId} label={t("rlArrivedEarly", "Arrived early? Message the kitchen")} />
+                )}
+              </section>
+            )}
+          </div>
+        </header>
+        {data && <ol aria-label={t("kciVisitProgress", "Visit progress")} className="grid grid-cols-4 gap-2 rounded-2xl border border-border/60 bg-card px-3 py-4 sm:px-5">
+          {steps.map((step, index) => <li key={step} aria-current={index === currentStep ? "step" : undefined} className="relative flex flex-col items-center gap-2 text-center text-xs font-medium sm:text-sm">
+            {index < 3 && <span aria-hidden="true" className={cn("absolute left-[calc(50%+1rem)] right-[calc(-50%+1rem)] top-3.5 h-px", index < currentStep ? "bg-primary/40" : "bg-border")} />}
+            <span aria-hidden="true" className={cn("relative flex h-7 w-7 items-center justify-center rounded-full border text-xs", index === currentStep ? "border-primary bg-primary text-primary-foreground" : index < currentStep ? "border-primary/20 bg-primary/10 text-primary" : "bg-background text-muted-foreground")}>
+              {index < currentStep ? <CheckCircle2 className="h-4 w-4" /> : index + 1}
+            </span>
+            <span className={index === currentStep ? "text-foreground" : "text-muted-foreground"}>{step}</span>
+          </li>)}
+        </ol>}
+        {data?.visits && (data.visits.length > 1 || data.visitUnavailable) && (
+          <div className="space-y-2" role="group" aria-labelledby="kitchen-visit-choice">
+            <p id="kitchen-visit-choice" className="text-sm font-medium">{t("kciChooseVisit", "Choose a visit")}</p>
+            <div className="flex flex-wrap gap-2">
+              {data.visits.map((visit, ordinal) => {
+                const status = t(`visitStatus_${visit.checkinStatus}`, visit.checkinStatus.replaceAll("_", " "))
+                const label = visit.visitDate ? dayLabel(visit.visitDate) : `${t("kciVisitNumber", "Visit {number}", { number: visit.blockIndex + 1 })}: ${formatVisit(visit.startTime, visit.endTime)}`
+                const day = t("mdDayOf", "Day {number} of {total}", { number: ordinal + 1, total: data.visits!.length })
+                return <Button key={visit.id} type="button" variant="outline"
+                  className={cn("min-h-11 h-auto max-w-full gap-2 whitespace-normal rounded-full px-4 py-2 text-left", data.visitId === visit.id && "border-primary/50 bg-primary/5 text-foreground ring-1 ring-primary/20 hover:bg-primary/10")}
+                  aria-label={`${visit.visitDate ? `${day} · ` : ""}${label} · ${status}`} title={status}
+                  aria-pressed={data.visitId === visit.id} disabled={isPending}
+                  onClick={() => { setSelectedVisitId(visit.id); onVisitChange?.(visit.id) }}>
+                  <span aria-hidden="true" className={cn("h-2 w-2 shrink-0 rounded-full", visit.checkinStatus === "checked_in" ? "bg-primary" : visit.checkinStatus === "checked_out" ? "bg-emerald-600" : "bg-muted-foreground/50")} />
+                  {label}
+                </Button>
+              })}
+            </div>
+          </div>
+        )}
+
+        {data && checkinStatus !== "not_checked_in" && <SessionExtensionsCard bookingId={bookingId} manager={false} chefName=""
+          refreshKey={`${checkinStatus}:${data.visitId ?? ""}`} onChanged={() => void refetch()} />}
+        {showInSession && clockVisit && data && (
+          <InSessionPanel bookingId={bookingId} chefId={data.chefId} kitchenName={kitchenName || t("kitchenDefault", "Kitchen")}
+            timezone={timezone} scheduledStartAt={clockVisit.scheduledStartAt} scheduledEndAt={clockVisit.scheduledEndAt}
+            canCheckout={canCheckout && dutiesReady} checkoutStarted={checkoutOpen} onStartCheckout={startCheckout} onRefresh={() => void refetch()}
+            helpContainer={helpContainer} departureInstructions={checklist?.checkoutInstructions || undefined} requiredTaskCount={requiredCheckoutTasks} />
+        )}
+
+        {data?.visitUnavailable && <p role="alert">{t("kciVisitUnavailable", "This visit is no longer in the current schedule. Choose a current visit to continue.")}</p>}
+        {submitError && <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive space-y-2">
+          <p>{submitError}</p>
+          <Button variant="outline" disabled={isPending} onClick={() => void refetch()}>{t("kciRetryVisit", "Retry visit details")}</Button>
+        </div>}
+        {isError && <div role="alert" className="rounded-lg border p-3 text-sm space-y-2">
+          <p>{error instanceof Error ? `${error.message} ` : ""}{t("kciStatusLoadFailed", "Anything you've entered is kept. Retry, or contact the kitchen manager.")}</p>
+          <Button variant="outline" onClick={() => void refetch()}>{t("kciRetryVisit", "Retry visit details")}</Button>
+        </div>}
+        {!isLoading && liveBooking && !visitFinished && !instructionsReleased && checkinStatus === "not_checked_in" && <section className="rounded-2xl border bg-card p-5 sm:p-6" aria-labelledby="visit-instructions-title">
+          <h2 id="visit-instructions-title" className="sr-only">{t("kciRequiredInstructions", "Visit instructions")}</h2>
+          <InstructionsOverview mode={arrivalMode} releaseAt={data?.instructionsReleaseAt} timezone={timezone}
+            visitStartAt={visitStartAt} requiredTasks={overviewTasks} />
+        </section>}
+        {!isLoading && liveBooking && !visitFinished && instructionsReleased && !showInSession && <details role="region" open className="rounded-2xl border bg-card p-4 sm:p-6" aria-label={t(beforeArrival ? "kciArrivalInstructions" : "kciRequiredInstructions")} >
+          <summary className="min-h-11 cursor-pointer rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><h2 id="visit-instructions-title" className="inline text-lg font-semibold">{beforeArrival ? t("kciGetInside", "1. Get inside") : t("kciRequiredInstructions", "Visit instructions")}</h2></summary>
+          <div className="space-y-4 pt-3">
+          {updatedSinceBooking && <p className="text-xs text-muted-foreground">{t("kciInstructionsUpdated", "Updated by the kitchen since you booked")}</p>}
+          {instructions.map(item => (
+            <div key={item.key}>
+              <h3 className="text-sm font-medium">{item.title}</h3>
+              <p className="mt-1 text-sm whitespace-pre-line">{item.body}</p>
+            </div>
+          ))}
+          {checkinStatus === "not_checked_in" && !codeState?.consumed && <ArrivalModeLine mode={arrivalMode} />}
+          {canCheckin && dutiesReady && arrivalRequirements}
+          {beforeArrival && <p className="text-xs text-muted-foreground" data-testid="departure-after-checkin">{t("kciDepartureAfterCheckin", "Departure instructions appear here after you check in.")}</p>}
+          </div>
+        </details>}
+                {data?.status === "confirmed" && checkinStatus === "not_checked_in" && (
+                  <SessionExtensionsCard bookingId={bookingId} manager={false} chefName="" only="early_start" onChanged={() => void refetch()} />
+                )}
+        {!currentDuties && checklistQuery.isError && <div role="alert" className="rounded-lg border p-3 text-sm">
+          <p>{t("kciDutiesLoadFailed", "Could not load your visit requirements. Retry before submitting.")}</p>
+          <Button variant="outline" onClick={() => void checklistQuery.refetch()}>{t("kciRetryRequirements", "Retry requirements")}</Button>
+        </div>}
+
+        {!isLoading && isArrival && liveBooking && beforeCheckinOpens && checkinOpensAt && <section aria-label={t("kciCheckInHeading", "Check in")} className="rounded-2xl border bg-card p-5 sm:p-6">
+          <Clock className="mb-3 h-5 w-5 text-primary" aria-hidden="true" />
+          <h2 className="text-lg font-semibold">{t("kciOpensAt", "Check-in opens at {time}", { time: formatTime(checkinOpensAt.toISOString()) })}</h2>
+          <p className="mt-2 text-sm text-muted-foreground">{t("kciBeforeWindowHint", "You can read the instructions while you wait.")}</p>
+        </section>}
+        {isLoading ? (
+          <div className="space-y-4 py-3" role="status" aria-label={t("kciLoadingVisit", "Loading visit")}>
+            {Array.from({ length: 3 }, (_, index) => <Skeleton key={index} className="h-16 w-full rounded-lg" />)}
+          </div>
+        ) : (
+          <>
+            {canCheckin && dutiesReady && (
+              <section className="rounded-2xl border bg-card p-4 sm:p-6 space-y-2.5 sm:space-y-3" aria-labelledby="visit-checkin-title">
+                {!instructionsShown && arrivalRequirements}
+                <h2 id="visit-checkin-title" className="text-lg font-semibold">{codeGate === "none" || codeGate === "self" ? t("kciCheckInHeading", "Check in") : t("kciEnterCode", "2. Enter your check-in code")}</h2>
+                {arrivalChanged && <p role="status" className="rounded-lg border bg-muted/30 p-3 text-sm">{t("kciAcModeChanged", "Arrival details changed. Review the current instructions.")}</p>}
+                {codeGate !== "none" && codeState && data && (
+                  <VisitCodeField gate={codeGate} state={codeState} value={visitCodeInput} onChange={changeVisitCode}
+                    helpContainer={helpContainer} canReportProblem={!beforeCheckinOpens && !!checkinOpensAt} problem={codeProblem} disabled={isCheckingIn} bookingId={bookingId} chefId={data.chefId}
+                    kitchenName={kitchenName || t("kitchenDefault", "Kitchen")} />
+                )}
+                {(codeGate === "none" || codeGate === "self") && !beforeCheckinOpens && !!checkinOpensAt && <p className="text-sm text-muted-foreground">{t("kciAcNoAccess", "Can’t get inside or find staff? Contact the kitchen. Don’t confirm arrival until you’re at the kitchen.")}</p>}
+                <div className="fixed inset-x-0 bottom-0 z-20 border-t bg-card/95 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur sm:static sm:border-0 sm:bg-transparent sm:px-0">
                 <Button
-                  className="w-full"
+                  className="mx-auto flex h-auto min-h-12 w-full max-w-2xl whitespace-normal rounded-xl py-3 text-base leading-snug shadow-sm"
                   aria-describedby="arrival-submit-help"
                   onClick={handleCheckin}
                   disabled={
@@ -643,13 +704,14 @@ export function KitchenCheckinTracker({
                   }
                 >
                   {isCheckingIn ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    <Loader2 className="h-4 w-4 mr-2 motion-safe:animate-spin" />
                   ) : (
                     <LogIn className="h-4 w-4 mr-2" />
                   )}
-                  {t("kciConfirmCheckin", "Confirm check-in")}
+                  {codeGate === "self" ? t("kciSelfCheckinAction", "I’m at the kitchen. Check in") : t("kciCheckInHeading", "Check in")}
                 </Button>
-                <p id="arrival-submit-help" className="text-sm text-muted-foreground" role="status">{submitHelp("checkin")}</p>
+                <p id="arrival-submit-help" className="mx-auto max-w-2xl text-sm text-muted-foreground" role="status">{submitHelp("checkin")}</p>
+                </div>
                 <details className="text-sm">
                   <summary className="flex min-h-11 cursor-pointer items-center font-medium underline underline-offset-4">{t("wfbArrivalOptional")}</summary>
                   <div className="space-y-3 pt-2">
@@ -682,7 +744,7 @@ export function KitchenCheckinTracker({
 
             {canCheckout && dutiesReady && (!showInSession || checkoutOpen) && (
               <section id="visit-checkout-section" className="rounded-2xl border bg-card p-5 sm:p-6 space-y-3" aria-labelledby="visit-checkout-title">
-                <h2 id="visit-checkout-title" tabIndex={-1} className="font-semibold outline-none">{t("kciCheckOutHeading", "Check out")}</h2>
+                <h2 id="visit-checkout-title" tabIndex={-1} className="rounded-md text-lg font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t("kciCheckOutHeading", "Check out")}</h2>
                 {hasCheckoutTasks && <p className="text-sm text-muted-foreground">{requirementsMessage}</p>}
                 {!!previousVisit?.checkoutChecklistItems?.length && <Button type="button" variant="outline" onClick={() => copyPreviousTasks('checkout')}>{t("kciSameAsPreviousVisit", "Same as previous visit")}</Button>}
                 {(checklist?.checkoutItems || []).length > 0 && renderChecklist(checklist?.checkoutItems || [], t("coChecklistLabel"))}
@@ -713,7 +775,7 @@ export function KitchenCheckinTracker({
                 <WhatHappensNextInfo items={[t("kvNextStep", "The kitchen may review the space within 24 hours.")]} />
 
                 <Button
-                  className="w-full"
+                  className="min-h-12 w-full rounded-xl text-base"
                   aria-describedby="departure-submit-help"
                   onClick={handleCheckout}
                   disabled={
@@ -723,11 +785,11 @@ export function KitchenCheckinTracker({
                   }
                 >
                   {isCheckingOut ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    <Loader2 className="h-4 w-4 mr-2 motion-safe:animate-spin" />
                   ) : (
                     <LogOut className="h-4 w-4 mr-2" />
                   )}
-                  {t("kciSubmitCheckout", "Submit checkout")}
+                  {t("kciCheckOutHeading", "Check out")}
                 </Button>
                 <p id="departure-submit-help" className="text-sm text-muted-foreground" role="status">{submitHelp("checkout")}</p>
               </section>
@@ -744,25 +806,18 @@ export function KitchenCheckinTracker({
               renderRecordedChecklist(data.checkoutChecklistItems, t("kciCheckoutChecklist"))}
           </>
         )}
-        {!isLoading && liveBooking && !visitFinished && instructionsReleased && !showInSession && <details role="region" open={canCheckin ? undefined : true} className="rounded-2xl border bg-card p-4 sm:p-6" aria-labelledby="visit-instructions-title">
-          <summary id="visit-instructions-title" className="min-h-11 cursor-pointer text-sm font-medium">{t(canCheckin ? "kciArrivalInstructions" : "kciRequiredInstructions")}</summary>
-          <div className="space-y-4 pt-3">
-          {checkinStatus === "not_checked_in" && !codeState?.consumed && <ArrivalModeLine mode={arrivalMode} />}
-          {updatedSinceBooking && <p className="text-xs text-muted-foreground">{t("kciInstructionsUpdated", "Updated by the kitchen since you booked")}</p>}
-          {instructions.map(item => (
-            <div key={item.key}>
-              <h3 className="text-sm font-medium">{item.title}</h3>
-              <p className="mt-1 text-sm whitespace-pre-line">{item.body}</p>
-            </div>
-          ))}
-          {beforeArrival && <p className="text-xs text-muted-foreground" data-testid="departure-after-checkin">{t("kciDepartureAfterCheckin", "Departure instructions appear here after you check in.")}</p>}
-          {/* In session the panel above already offers Message kitchen. */}
-          {!showInSession && codeGate !== "locked" && codeGate !== "revoked" && <div className="space-y-2">
-            <p className="text-sm text-muted-foreground">{t("kciHelpActions", "Having trouble getting in or submitting? Reach the kitchen:")}</p>
+        <div ref={setHelpContainer} role="region" aria-label={t("kciVisitHelp", "Visit help")} className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border/60 pt-4 [&_button]:min-h-11 [&_button]:focus-visible:ring-2 [&_button]:focus-visible:ring-ring">
+          {kitchenPhone && liveBooking && !visitFinished && !showInSession && codeGate === "code" && canCheckin && dutiesReady && <Button asChild variant="outline" className="min-h-11"><a href={`tel:${kitchenPhone}`}><Phone className="mr-2 h-4 w-4" aria-hidden="true" />{t("kciCallKitchen", "Call kitchen")}</a></Button>}
+                {data?.status === "confirmed" && liveBooking && (
+                  <RunningLateCard bookingId={bookingId} visitId={data.visitId} kitchenName={kitchenName} startAt={visitStartAt} endAt={visitEndAt}
+                    timezone={timezone} status={data.status} checkedIn={checkinStatus !== "not_checked_in"} runningLate={data.runningLate} onChanged={() => void refetch()} />
+                )}
+          {!isLoading && liveBooking && !visitFinished && !showInSession && (codeGate === "none" || codeGate === "self" || !canCheckin || !dutiesReady) && <div className="flex flex-wrap items-center gap-2">
             <MessageKitchenButton bookingId={bookingId} phone={kitchenPhone} />
+            {canCheckin && dutiesReady && !beforeCheckinOpens && !!checkinOpensAt && <BookingProblemReport bookingId={bookingId} initialCategory="access" />}
           </div>}
-          </div>
-        </details>}
+        </div>
+        {data && (visitFinished || checkinStatus === "checkout_requested") && <Button asChild variant="outline" className="min-h-12 w-full rounded-xl"><Link href={`/booking/${bookingId}`}>{t("kciBackToBooking", "Back to booking")}</Link></Button>}
     </section>
   )
 }
@@ -777,14 +832,14 @@ function WhatHappensNextInfo({ items }: { items: string[] }) {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+        className="flex min-h-11 items-center gap-1.5 rounded-md focus-visible:ring-2 focus-visible:ring-ring text-xs text-muted-foreground hover:text-foreground transition-colors"
         aria-expanded={open}
       >
         <Info className="h-3.5 w-3.5" />
         <span>{t("kciWhatHappensNext")}</span>
       </button>
       {open && (
-        <div className="mt-2 rounded-lg border p-3 animate-in fade-in slide-in-from-top-1 duration-150">
+        <div className="mt-2 rounded-lg border p-3 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-top-1 motion-safe:duration-150">
           <div className="flex items-start gap-2">
             <Clock className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
             <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">

@@ -51,7 +51,7 @@ function setup(initialVisitId: number | null = null) {
 const checkinPosts = () => fetchMock.mock.calls.filter(([url, options]) => options?.method === "POST" && String(url).endsWith("/checkin"));
 const bodyOf = (index: number) => JSON.parse(checkinPosts()[index][1].body as string);
 const field = () => screen.getByLabelText("Check-in code") as HTMLInputElement;
-const confirm = () => screen.getByRole("button", { name: "Confirm check-in" }) as HTMLButtonElement;
+const confirm = () => screen.getByRole("button", { name: /^(Check in|I’m at the kitchen. Check in)$/ }) as HTMLButtonElement;
 
 describe("chef arrival check-in code", () => {
   it('shows a failed kitchen offer in session and still allows check-out', async () => {
@@ -73,7 +73,7 @@ describe("chef arrival check-in code", () => {
     expect(screen.getByRole('button', { name: 'Pay with another card · $15.01' })).toBeEnabled();
     expect(screen.getAllByRole('button', { name: 'Need more time?' })).toHaveLength(1);
     fireEvent.click(screen.getByRole('button', { name: 'Check out now' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Submit checkout' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Check out' }));
     await waitFor(() => expect(fetchMock.mock.calls.some(([url, options]) => String(url).endsWith('/checkout') && options?.method === 'POST')).toBe(true));
   });
   beforeEach(() => {
@@ -111,8 +111,8 @@ describe("chef arrival check-in code", () => {
     expect(input).toHaveAttribute("inputmode", "numeric");
     expect(input).toHaveAttribute("autocomplete", "one-time-code");
     expect(input).toHaveAttribute("maxlength", "6");
-    expect(screen.getByText("Kitchen staff will give you your check-in code when you arrive.")).toBeInTheDocument();
-    fireEvent.change(input, { target: { value: "12a34-5678" } });
+    expect(screen.getByText("Ask kitchen staff for today’s code")).toBeInTheDocument();
+    fireEvent.paste(input, { clipboardData: { getData: () => "12a34-5678" } });
     expect(input.value).toBe("123456");
     expect(screen.queryByText(/attempts? left/)).not.toBeInTheDocument();
   });
@@ -130,7 +130,7 @@ describe("chef arrival check-in code", () => {
   it("hides the field in self mode and tells the chef the kitchen enabled self check-in", async () => {
     status = visit({ visitCode: { ...staffed, mode: "self", codeRequired: false } });
     setup();
-    await screen.findByRole("button", { name: "Confirm check-in" });
+    await screen.findByRole("button", { name: "I’m at the kitchen. Check in" });
     expect(screen.queryByLabelText("Check-in code")).not.toBeInTheDocument();
     expect(screen.getByTestId("visit-code-self")).toHaveTextContent(/kitchen turned on self check-in/);
     fireEvent.click(confirm());
@@ -141,7 +141,7 @@ describe("chef arrival check-in code", () => {
   it("keeps legacy bookings unchanged when there is no projection", async () => {
     status = visit({ visitCode: null });
     setup();
-    await screen.findByRole("button", { name: "Confirm check-in" });
+    await screen.findByRole("button", { name: "Check in" });
     expect(screen.queryByLabelText("Check-in code")).not.toBeInTheDocument();
     expect(confirm()).toBeEnabled();
     fireEvent.click(confirm());

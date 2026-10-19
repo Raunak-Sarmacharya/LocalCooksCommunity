@@ -55,7 +55,7 @@ describe("in-session panel", () => {
     mount();
     // The visit page header already names the kitchen and the zone, so the panel only says when it ends.
     expect(screen.queryByRole("heading", { name: "Test kitchen" })).not.toBeInTheDocument();
-    expect(screen.getByText(/^Ends at 2:30\s?p\.m\.$/)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /^Cooking now · ends 2:30\s?p\.m\.$/ })).toBeInTheDocument();
     expect(screen.queryByText(/In session/)).not.toBeInTheDocument();
     expect(screen.queryByText(/St_Johns/)).not.toBeInTheDocument();
     expect(screen.getByText("2 h 0 min left")).toBeInTheDocument();
@@ -193,10 +193,10 @@ describe("in-session panel", () => {
 });
 
 describe("in-session panel restraint", () => {
-  it("has no filled button while active, a neutral progress bar and one end-time label", () => {
+  it("has no filled button while active, a brand progress bar and one end-time label", () => {
     mount();
     expect(screen.getByRole("button", { name: "Need more time?" }).className).toContain("border");
-    expect(screen.getByRole("progressbar").firstElementChild?.className).not.toContain("bg-primary");
+    expect(screen.getByRole("progressbar").firstElementChild?.className).toContain("bg-primary");
     expect(screen.getAllByText(/2:30\s?p\.m\./)).toHaveLength(1);
   });
 });

@@ -8,10 +8,11 @@ import { BookingProblemReport } from "./BookingProblemReport"
  * anywhere except this controlled input.
  */
 import { useId, useState } from "react"
+import { createPortal } from "react-dom"
 import { useTranslation } from "react-i18next"
 import { KeyRound, MessageSquare } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { getAuthHeaders } from "@/lib/api"
 import UnifiedChatView from "@/components/chat/UnifiedChatView"
@@ -41,9 +42,10 @@ interface VisitCodeFieldProps {
   bookingId: number
   chefId: number
   kitchenName: string
+  helpContainer?: HTMLElement | null
 }
 
-export function VisitCodeField({ gate, state, value, onChange, problem, disabled, canReportProblem, bookingId, chefId, kitchenName }: VisitCodeFieldProps) {
+export function VisitCodeField({ gate, state, value, onChange, problem, disabled, canReportProblem, bookingId, chefId, kitchenName, helpContainer }: VisitCodeFieldProps) {
   const { t } = useTranslation("chef")
   const id = useId()
   const [chat, setChat] = useState<{ conversationId: string; draft: string } | null>(null)
@@ -73,7 +75,7 @@ export function VisitCodeField({ gate, state, value, onChange, problem, disabled
       default: return ""
     }
   })()
-  const tap = "min-h-11 w-full sm:w-auto whitespace-normal h-auto py-2"
+  const tap = "min-h-11 whitespace-normal h-auto py-2"
 
   // One conversation dialog for every "Message kitchen" on this field.
   const chatDialog = (
@@ -91,9 +93,10 @@ export function VisitCodeField({ gate, state, value, onChange, problem, disabled
   )
 
   // Can't get in: message the kitchen right here (pre-written), or report it so the kitchen and Local Cooks are both alerted.
-  const noAccess = (draft: string) => <div className="space-y-2" data-testid="visit-no-access">
-    <p className="text-sm text-muted-foreground">{t("kciAcNoAccess", { defaultValue: "Can't get inside or find staff? Contact the kitchen. Don't confirm arrival until you're at the kitchen." })}</p>
-    <div className="flex flex-wrap items-start gap-2">
+  const noAccess = (draft: string) => {
+    const help = <div className={helpContainer ? "contents" : "space-y-2"} data-testid="visit-no-access">
+    <p className={helpContainer ? "order-last basis-full text-sm text-muted-foreground" : "text-sm text-muted-foreground"}>{t("kciAcNoAccess", { defaultValue: "Can't get inside or find staff? Contact the kitchen. Don't confirm arrival until you're at the kitchen." })}</p>
+    <div className={helpContainer ? "contents" : "flex flex-wrap items-start gap-2"}>
       <Button type="button" variant="outline" className={tap} disabled={busy} onClick={() => void messageKitchen(draft)}>
         <MessageSquare className="h-4 w-4 mr-2 shrink-0" />
         {busy ? t("kciVcOpening", { defaultValue: "Opening conversation…" }) : t("kciVcMessageKitchen", { defaultValue: "Message kitchen" })}
@@ -102,7 +105,9 @@ export function VisitCodeField({ gate, state, value, onChange, problem, disabled
     </div>
     {chatError && <p role="alert" className="text-sm text-destructive">{chatError}</p>}
     {chatDialog}
-  </div>
+    </div>
+    return helpContainer ? createPortal(help, helpContainer) : help
+  }
 
   if (gate === "self") {
     return (
@@ -130,23 +135,27 @@ export function VisitCodeField({ gate, state, value, onChange, problem, disabled
   return (
     <div className="space-y-2">
       <label htmlFor={id} className="block text-sm font-medium">{t("kciVcLabel", { defaultValue: "Check-in code" })}</label>
-      <Input
+      <InputOTP
         id={id}
         name="visit-code"
-        type="text"
         inputMode="numeric"
         autoComplete="one-time-code"
-        pattern="[0-9]*"
+        pattern="^[0-9]*$"
+        pasteTransformer={text => text.replace(/\D/g, "")}
         maxLength={VISIT_CODE_LENGTH}
         value={value}
         disabled={disabled}
         aria-invalid={!!problemText}
         aria-describedby={`${id}-hint ${id}-status`}
-        placeholder="000000"
-        className="h-12 sm:h-12 min-h-12 max-w-[12rem] text-center text-2xl font-semibold tracking-[0.35em] tabular-nums"
-        onChange={event => onChange(event.target.value.replace(/\D/g, "").slice(0, VISIT_CODE_LENGTH))}
-      />
-      <p id={`${id}-hint`} className="text-sm text-muted-foreground">{t("kciVcHint", { defaultValue: "Kitchen staff will give you your check-in code when you arrive." })}</p>
+        containerClassName="w-full"
+        onChange={digits => onChange(digits.replace(/\D/g, "").slice(0, VISIT_CODE_LENGTH))}
+      >
+        <InputOTPGroup className="w-full max-w-sm gap-2" aria-hidden="true">
+          {Array.from({ length: VISIT_CODE_LENGTH }, (_, index) => <InputOTPSlot key={index} index={index}
+            className="h-14 min-w-0 flex-1 rounded-xl border border-input bg-background text-2xl font-semibold tabular-nums first:rounded-l-xl last:rounded-r-xl motion-reduce:transition-none" />)}
+        </InputOTPGroup>
+      </InputOTP>
+      <p id={`${id}-hint`} className="text-sm text-muted-foreground">{t("kciCodeStaffHint", { defaultValue: "Ask kitchen staff for today’s code" })}</p>
       {noAccess(t("kciVcNoAccessDraft", { kitchen: kitchenName }))}
       <div id={`${id}-status`} aria-live="polite" className="space-y-1">
         {problemText && <p className="text-sm text-destructive">{problemText}</p>}
