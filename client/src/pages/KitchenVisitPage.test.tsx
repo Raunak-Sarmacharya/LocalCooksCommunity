@@ -186,7 +186,7 @@ describe("full-page kitchen visit", () => {
     expect(details.querySelector('textarea')).toBeInTheDocument();
   });
 
-  it("opens the checkout form only after choosing Check out early", async () => {
+  it("opens the checkout form on Check out early, with the no-refund note by the final button", async () => {
     const end = new Date(Date.now() + 2 * 3_600_000);
     const start = new Date(Date.now() - 3_600_000);
     status = visit({ chefId: 3, checkinStatus: 'checked_in', checkedInAt: start.toISOString(),
@@ -195,8 +195,9 @@ describe("full-page kitchen visit", () => {
     const early = await screen.findByRole('button', { name: 'Check out early' });
     expect(screen.queryByRole('button', { name: 'Check out' })).not.toBeInTheDocument();
     fireEvent.click(early);
-    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Check out early' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(await screen.findByRole('button', { name: 'Check out' })).toBeInTheDocument();
+    expect(screen.getByText('Leaving early does not refund unused booked time.')).toBeInTheDocument();
   });
 
   it("hides preparation on a completed direct visit route while keeping its recorded outcome", async () => {

@@ -773,6 +773,8 @@ export function KitchenCheckinTracker({
                 />
 
                 <WhatHappensNextInfo items={[t("kvNextStep", "The kitchen may review the space within 24 hours.")]} />
+                {/* Before the booked end: said once, right where they confirm. */}
+                {!clockEnded && <p className="text-sm text-muted-foreground">{t("kciIsLeaveEarlyNote", "Leaving early does not refund unused booked time.")}</p>}
 
                 <Button
                   className="min-h-12 w-full rounded-xl text-base"

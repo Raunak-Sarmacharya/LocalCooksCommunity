@@ -31,7 +31,7 @@ export function StorageUnitCard({ row, onDone }: { row: UnitRow; onDone?: () => 
   const [reason, setReason] = useState('');
   const [error, setError] = useState(false);
   const [saving, setSaving] = useState(false);
-  const bookedChefs = [...new Set([row.rental, row.next].filter(Boolean).map(rental => rental?.chef?.name || t('stTheChef')))];
+  const bookedChefs = Array.from(new Set([row.rental, row.next].filter(Boolean).map(rental => rental?.chef?.name || t("stTheChef"))));
   async function save() {
     if (!reason.trim()) return;
     setSaving(true); setError(false);

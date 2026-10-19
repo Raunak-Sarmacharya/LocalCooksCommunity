@@ -112,7 +112,6 @@ export function InSessionPanel({
 
   const tap = "min-h-11 w-full whitespace-normal h-auto py-2 sm:w-auto"
   const link = "inline-flex min-h-11 items-center rounded-md px-1 focus-visible:ring-2 focus-visible:ring-ring text-sm underline-offset-4 hover:underline disabled:opacity-50"
-  const [earlyOpen, setEarlyOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
   const help = <>
       <div className="flex flex-wrap items-center gap-x-3 text-sm">
@@ -155,23 +154,13 @@ export function InSessionPanel({
         </Button>}
         {phase !== "ended" && <SessionExtensionRequest bookingId={bookingId} kitchenName={kitchenName} timezone={timezone} className={tap}
           moreTimeDraft={moreTimeDraft} onMessage={draft => void openChat(draft)} onExtended={() => refresh.current?.()} />}
-        {phase === "active" && canCheckout && !checkoutStarted && <Button type="button" variant="outline" className={tap} onClick={() => setEarlyOpen(true)}>
+        {phase === "active" && canCheckout && !checkoutStarted && <Button type="button" variant="outline" className={tap} onClick={onStartCheckout}>
           <LogOut className="h-4 w-4 mr-2 shrink-0" />{t("kvIsCheckOutEarly", { defaultValue: "Check out early" })}
         </Button>}
       </div>
 
       {helpContainer ? createPortal(help, helpContainer) : help}
 
-      <Dialog open={earlyOpen} onOpenChange={setEarlyOpen}>
-        <DialogContent showCloseButton>
-          <DialogTitle>{t("kvIsEarlyTitle", { defaultValue: "Check out early?" })}</DialogTitle>
-          <DialogDescription>{t("kciIsLeaveEarlyNote", { defaultValue: "Leaving early does not refund unused booked time." })}</DialogDescription>
-          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            <Button type="button" variant="outline" className="min-h-11" onClick={() => setEarlyOpen(false)}>{t("kvIsKeepGoing", { defaultValue: "Keep going" })}</Button>
-            <Button type="button" className="min-h-11" onClick={() => { setEarlyOpen(false); onStartCheckout() }}>{t("kvIsCheckOutEarly", { defaultValue: "Check out early" })}</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       <details className="rounded-lg border p-3">
         <summary className="min-h-11 cursor-pointer text-sm font-medium flex items-center">{t("kciIsDeparturePreview", { defaultValue: "Departure instructions and tasks" })}</summary>

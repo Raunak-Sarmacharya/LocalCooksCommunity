@@ -30,7 +30,7 @@ import { assertBookingMoneyWritable } from './booking-money-guard';
 
 const { kitchens, locations, storageListings, storageBookings, storageRentalTerms, paymentTransactions, users, bookingFlags, supportActions,
   commitmentProblems, damageClaims, storageOverstayRecords, platformSettings, kitchenBookingDayPayouts } = schema;
-const tables = [kitchens, locations, storageListings, storageBookings, storageRentalTerms, paymentTransactions, users, bookingFlags, supportActions,
+const tables = [schema.checkinCheckoutChecklists, kitchens, locations, storageListings, storageBookings, storageRentalTerms, paymentTransactions, users, bookingFlags, supportActions,
   commitmentProblems, damageClaims, storageOverstayRecords, platformSettings, schema.emailLogs, schema.equipmentBookings, schema.kitchenBookings, schema.kitchenBookingChanges, kitchenBookingDayPayouts];
 let pg: PGlite;
 const now = new Date('2026-10-10T12:00:00Z');

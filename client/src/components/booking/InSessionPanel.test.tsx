@@ -111,14 +111,10 @@ describe("in-session panel", () => {
     expect(onRefresh).toHaveBeenCalledTimes(1);
   });
 
-  it("states that leaving early gives no refund and goes to the departure flow", () => {
+  it("goes straight to the departure flow when leaving early (the no-refund note sits by the final Check out)", () => {
     mount();
-    // The no-refund note lives in the confirm, not on the page.
-    expect(screen.queryByText("Leaving early does not refund unused booked time.")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Check out early" }));
-    expect(screen.getByText("Leaving early does not refund unused booked time.")).toBeInTheDocument();
-    expect(onStartCheckout).not.toHaveBeenCalled();
-    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Check out early" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(onStartCheckout).toHaveBeenCalledTimes(1);
   });
 
