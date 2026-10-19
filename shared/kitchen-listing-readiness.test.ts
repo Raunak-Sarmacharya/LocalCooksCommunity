@@ -20,7 +20,6 @@ const READY: ListingReadinessInput = {
   hasBookingRules: true,
   hasEquipment: true,
   hasStorage: true,
-  hasStorageVisitSetup: true,
 };
 
 describe("buildListingChecklist", () => {
@@ -122,16 +121,11 @@ describe("buildListingChecklist", () => {
 
   it("always reports the full checklist, so the review screen can show what is already done", () => {
     const checklist = buildListingChecklist({ ...READY, hasTerms: false });
-    expect(checklist.requirements).toHaveLength(10);
+    expect(checklist.requirements).toHaveLength(9);
     expect(checklist.recommendations).toHaveLength(5);
   });
 });
 
-it('requires storage setup only for kitchens with storage listings', () => {
-  const withStorage = buildListingChecklist({ ...READY, hasStorageVisitSetup: false });
-  expect(withStorage.missingRequirementIds).toEqual(['storageVisitSetup']);
-  expect(withStorage.canPublish).toBe(false);
-  const noStorage = buildListingChecklist({ ...READY, hasStorage: false, hasStorageVisitSetup: false });
-  expect(noStorage.requirements.some(row => row.id === 'storageVisitSetup')).toBe(false);
-  expect(noStorage.canPublish).toBe(true);
+it('allows a ready kitchen with storage independently of storage setup', () => {
+  expect(buildListingChecklist({ ...READY, hasStorage: true }).canPublish).toBe(true);
 });

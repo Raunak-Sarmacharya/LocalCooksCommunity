@@ -27,6 +27,7 @@ import { localToday, occupancyRange, toDateRange, type RentalDates } from '@shar
 import { queueStorageRentalNotice } from './storage-rental-notices';
 import { scheduleStorageTermPayout } from './storage-payouts';
 import { StorageRentalError } from './storage-rentals';
+import { isAllowedR2Url } from '../utils/upload-url';
 
 type Rental = typeof storageBookings.$inferSelect;
 type VisitAction = 'move-in' | 'move-out' | 'handover' | 'clear-move-out' | 'items-still-here' | 'mark-ready';
@@ -61,6 +62,8 @@ export async function storageRentalVisitAction(id: number, actor: { id: number; 
     needsCleaning: z.boolean().optional(), checklistItems: z.array(z.object({ id: z.string().max(200), label: z.string().max(500), checked: z.boolean() })).max(100).optional() }).strict().safeParse(input);
   if (!parsed.success) throw new StorageRentalError('invalid_details', 400);
   input = parsed.data;
+  if (['handover', 'items-still-here'].includes(action) && input.photoUrls?.some(url => !isAllowedR2Url(url)))
+    throw new StorageRentalError('invalid_details', 400);
   return db.transaction(async tx => {
     const [rental] = await tx.select().from(storageBookings).where(eq(storageBookings.id, id)).for('update');
     if (!rental?.rentalState || !rental.timezone || !rental.termStart || !rental.paidThrough) throw new StorageRentalError('not_found', 404);

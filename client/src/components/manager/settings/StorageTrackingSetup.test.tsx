@@ -22,56 +22,26 @@ const mount = () => {
   return { ...page, client, configure };
 };
 
-it("dismisses only the prompt and enables both stages with saved notes and no duties", async () => {
+it("edits and saves the shared instructions without changing optional tasks or kitchen settings", async () => {
   const page = mount();
-  await screen.findByText("storageChecklistBannerTitle");
-  fireEvent.click(screen.getByRole("button", { name: "dismiss" }));
-  expect(screen.queryByText("storageChecklistBannerTitle")).toBeNull();
-  expect(screen.getByRole("switch")).toBeVisible();
-  expect(state.put).not.toHaveBeenCalled();
-  page.unmount(); page.client.clear();
-  const next = mount();
-  await screen.findByRole("switch");
-  expect(screen.queryByText("storageChecklistBannerTitle")).toBeNull();
-  fireEvent.click(screen.getByRole("switch"));
-  await waitFor(() => expect(screen.getByRole('switch')).toBeChecked());
-  expect(screen.queryByText('storageChecklistBannerTitle')).toBeNull();
-  expect(state.put).toHaveBeenCalledWith("/manager/locations/33/checkin-checkout-settings", { storageCheckinEnabled: true, storageCheckoutEnabled: true });
-  fireEvent.click(screen.getByRole("button", { name: "kitchenTrackingConfigureShared" }));
-  expect(next.configure).toHaveBeenCalledOnce();
-  next.client.clear();
-});
-
-it('opens setup instead of enabling tracking without saved notes', async () => {
-  state.settings = { ...state.settings, storageCheckinInstructions: '   ', storageCheckoutInstructions: null };
-  const page = mount();
-  fireEvent.click(await screen.findByRole('switch'));
+  fireEvent.change(await screen.findByRole("textbox", { name: "slMoveInInstructions" }), { target: { value: "Use shelf B" } });
+  fireEvent.click(screen.getByRole("button", { name: "saveChanges" }));
+  await waitFor(() => expect(state.put).toHaveBeenCalledWith("/manager/locations/33/checkin-checkout-settings", {
+    storageCheckinInstructions: "Use shelf B", storageCheckoutInstructions: "Remove all items.",
+  }));
+  expect(state.settings.storageCheckinEnabled).toBe(false);
+  fireEvent.click(screen.getByRole("button", { name: "slOptionalChecklist" }));
   expect(page.configure).toHaveBeenCalledOnce();
-  expect(state.put).not.toHaveBeenCalled();
-  expect(screen.getByRole('switch')).not.toBeChecked();
   page.client.clear();
 });
-
-it("hides completed setup and disables both flows without deleting checklist items", async () => {
-  const items = [{ id: "shelf", label: "Shelf clean", required: true }];
-  state.settings = { ...state.settings, storageCheckinEnabled: true, storageCheckoutEnabled: true, storageCheckinItems: items, storageCheckoutItems: items };
-  const page = mount();
-  await screen.findByRole("switch");
-  expect(screen.queryByText("storageChecklistBannerTitle")).toBeNull();
-  fireEvent.click(screen.getByRole("switch"));
-  await waitFor(() => expect(screen.getByRole("switch")).not.toBeChecked());
-  expect(state.put).toHaveBeenCalledWith("/manager/locations/33/checkin-checkout-settings", { storageCheckinEnabled: false, storageCheckoutEnabled: false });
-  expect(state.settings.storageCheckinItems).toEqual(items);
-  expect(state.settings.storageCheckoutItems).toEqual(items);
-  page.client.clear();
-});
-
-it("retains saved state and reports a failed toggle", async () => {
+it("requires both instructions and retains the draft after a failed save", async () => {
   state.put.mockRejectedValue(new Error("Unable to save"));
   const page = mount();
-  await screen.findByRole("switch");
-  fireEvent.click(screen.getByRole("switch"));
+  fireEvent.change(await screen.findByRole("textbox", { name: "slMoveOutInstructions" }), { target: { value: " " } });
+  expect(screen.getByRole("button", { name: "saveChanges" })).toBeDisabled();
+  fireEvent.change(screen.getByRole("textbox", { name: "slMoveOutInstructions" }), { target: { value: "Empty shelf B" } });
+  fireEvent.click(screen.getByRole("button", { name: "saveChanges" }));
   await waitFor(() => expect(state.toast).toHaveBeenCalledWith(expect.objectContaining({ description: "Unable to save", variant: "destructive" })));
-  expect(screen.getByRole("switch")).not.toBeChecked();
+  expect(screen.getByRole("textbox", { name: "slMoveOutInstructions" })).toHaveValue("Empty shelf B");
   page.client.clear();
 });

@@ -16,6 +16,7 @@ vi.mock("../services/storage-availability", () => ({
   listingAvailability: () => ({ state: "now" }),
   occupancyByListing: vi.fn().mockResolvedValue(new Map()),
 }));
+vi.mock("../services/storage-listing-readiness", () => ({ storageInstructions: vi.fn().mockResolvedValue(null) }));
 
 import storageRouter from "./storage-listings";
 import equipmentRouter from "./equipment";

@@ -37,7 +37,9 @@ export interface StorageRental {
   id: number;
   ref: string | null;
   kitchen: { id: number; name: string };
-  listing: { id: number; name: string };
+  listing: { id: number; name: string; storageType?: string; photos?: string[] | null };
+  estimatedPayoutCents?: number | null;
+  timeline?: { requestedAt: string | null; approvedAt: string | null; movedInAt: string | null; movingOutAt: string | null; endedAt: string | null };
   chef: { id: number | null; name: string } | null;
   unitLabel: string;
   state: RentalState;
@@ -70,6 +72,8 @@ export interface StorageListing {
   name: string;
   kitchenId: number;
   kitchenName?: string;
+  storageType?: string;
+  photos?: string[] | null;
   unitCount: number;
   outOfServiceUnits?: Record<string, { reason: string; at: string }>;
   /** False for a draft/inactive listing the board hides unless a rental still occupies a unit. */
@@ -104,6 +108,9 @@ export interface UnitRow {
   outOfService?: { reason: string; at: string };
   chip: UnitChip;
   rental: StorageRental | null;
+  next?: StorageRental | null;
+  storageType?: string;
+  photos?: string[] | null;
   occupantName: string | null;
   date: { key: UnitDateKey; value: string } | null;
   /** Grace, holdover, move-out due, removal review and units waiting to be cleaned. */
@@ -206,6 +213,11 @@ export function unitRows(rentals: StorageRental[], listings: StorageListing[], n
         chip,
         outOfService,
         rental,
+        next: rentals.filter(candidate => candidate !== rental && candidate.state === "reserved"
+          && candidate.listing.id === listing.id && unitIndex(candidate) === unit
+          && (!rental || candidate.startOn > rental.startOn))
+          .sort((a, b) => a.startOn.localeCompare(b.startOn))[0] ?? null,
+        storageType: listing.storageType, photos: listing.photos,
         occupantName: rental?.chef?.name?.trim() || null,
         date: rental ? unitDateFor(rental, now) : null,
         needsAction: chipNeedsAction(chip),

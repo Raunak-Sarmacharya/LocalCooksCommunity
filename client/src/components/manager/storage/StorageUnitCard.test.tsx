@@ -29,3 +29,14 @@ it('shows move-in overdue and the actual start date instead of a future start la
   expect(screen.queryByText('stChipReserved')).not.toBeInTheDocument();
   expect(screen.queryByText(/stDateStartsOn/)).not.toBeInTheDocument();
 });
+
+it('opens the current rental from the tile and links its next reservation separately', () => {
+  const row: UnitRow = { key: '1:1', listingId: 1, listingName: 'Shelf', kitchenId: 1, kitchenName: 'Harbour', unitIndex: 1,
+    chip: 'occupied', occupantName: 'Morgan Lee', date: { key: 'paidThrough', value: '2026-10-22' }, needsAction: false,
+    rental: { id: 5, startOn: '2026-10-19', paidThrough: '2026-10-22' } as any,
+    next: { id: 6, chef: { name: 'Alex' }, startOn: '2026-11-01' } as any };
+  render(<StorageUnitCard row={row} />);
+  expect(screen.getByRole('link', { name: 'stUnitLabel' })).toHaveAttribute('href', '/manager/storage/5');
+  expect(screen.getByRole('link', { name: /stUnitNext/ })).toHaveAttribute('href', '/manager/storage/6');
+  expect(screen.getByText(/Oct 19.*Oct 22/)).toBeInTheDocument();
+});

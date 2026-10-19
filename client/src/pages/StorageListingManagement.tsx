@@ -1,9 +1,14 @@
+import { useQuery } from "@tanstack/react-query";
+import { storageListingReadiness, type StorageInstructions } from "@shared/storage-listing-readiness";
+import { unitRows, type StorageRental } from "@/lib/storage-board";
+import { StoragePhoto } from "@/components/storage/StoragePhoto";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { StorageIcon as Package } from "@/components/ui/inventory-icons";
 import { StorageTrackingSetup } from "@/components/manager/settings/StorageTrackingSetup";
 import { mt } from "@/i18n/manager";
 import { useSessionFileUpload } from "@/hooks/useSessionFileUpload";
 import { ACCEPTED_IMAGE_TYPES, GalleryPhotoField } from "@/components/manager/kitchen/KitchenPhotoFields";
-import { Plus, Pencil, Trash2, Thermometer, Snowflake, ChevronLeft, ClipboardCheck } from "@/components/ui/manager-icons";
+import { Plus, Pencil, Trash2, ChevronLeft } from "@/components/ui/manager-icons";
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
@@ -38,29 +43,6 @@ import { STORAGE_CATEGORIES, StorageTemplate, StorageTypeId, getDefaultTemperatu
 import { PLATFORM_MAX_TERM_DAYS } from "@shared/storage-rental";
 import { cn } from "@/lib/utils";
 
-/**
- * Storage tab — "My Kitchens".
- *
- * Adding and editing are **pages**, not modals. The form has eleven fields, and a
- * modal cannot hold that without a height ceiling and its own scrollbar — which is
- * what made the earlier popover get clamped and cut off. A page has no ceiling, the
- * page's own scroll does the work, and it matches how listing setup works on the
- * platforms this is modelled on.
- *
- * Adding is master–detail: the platform's suggestions on the left, the listing's
- * own form on the right. Selecting a suggestion only *previews* it — nothing is
- * written until Add is pressed — so every detail can be read first, and the same
- * suggestion can be added twice if the kitchen genuinely has two of something.
- *
- * Field rows follow the Booking Policies page: `SettingsRow` with the label on the
- * left and a control sized to its content on the right, so a two-digit number never
- * gets a full-width input.
- */
-
-const StorageTypeIcon = ({ type, className }: { type: string; className?: string }) => {
-  return <Package className={className} />;
-};
-
 interface Kitchen {
   id: number;
   name: string;
@@ -81,6 +63,7 @@ interface StorageListing {
   temperatureRange?: string;
   photos?: string[] | null;
   isActive?: boolean;
+  status?: string;
   /** Identical units of this listing a chef can rent (migration 0093). */
   unitCount?: number;
   /** Effective longest term, clamped to the platform maximum on read. */
@@ -164,6 +147,7 @@ function StorageFields({
       {/* Same convention as every other form in the app. */}
       <FormLegend className="mb-0 border-b px-4 py-2" />
       <div className="divide-y">
+        <h3 className="px-4 py-3 text-sm font-medium">{mt("slGroupBasics")}</h3>
         <SettingsRow id="sf-type" label={mt("slKind")} required>
           <Select
             value={values.storageType}
@@ -194,6 +178,7 @@ function StorageFields({
           )}
         </SettingsRow>
 
+        <h3 className="px-4 py-3 text-sm font-medium">{mt("slGroupPricing")}</h3>
         <SettingsRow id="sf-units" label={mt("storageUnitCount")} help={mt("storageUnitCountHelp")}>
           <NumericInput
             id="sf-units"
@@ -215,6 +200,17 @@ function StorageFields({
           />
         </SettingsRow>
 
+        <SettingsRow id="sf-term" label={mt("slMaxTerm", { max: platformMaxTermDays })} help={maxTermNote ?? mt("storageMaxTermDaysHelp")}>
+          <NumericInput
+            id="sf-term"
+            className="w-28"
+            suffix={mt("daysUnit")}
+            value={String(values.maxTermDays || platformMaxTermDays)}
+            onValueChange={(v) => onChange({ maxTermDays: Math.min(parseInt(v) || platformMaxTermDays, platformMaxTermDays) })}
+          />
+        </SettingsRow>
+
+        <h3 className="px-4 py-3 text-sm font-medium">{mt("slGroupPhotos")}</h3>
         <SettingsRow layout="stacked" id="sf-photos" label={mt("slPhotos")} help={mt("slPhotosHelp", { max: PHOTOS_MAX })}>
           <GalleryPhotoField
             images={values.photos}
@@ -228,6 +224,7 @@ function StorageFields({
           />
         </SettingsRow>
 
+        <h3 className="px-4 py-3 text-sm font-medium">{mt("slGroupDetails")}</h3>
         <SettingsRow layout="stacked" id="sf-size" label={mt("slSize")}>
           <Input
             id="sf-size"
@@ -271,20 +268,7 @@ function StorageFields({
           />
         </SettingsRow>
 
-        <details className="px-4 py-3">
-          <summary className="cursor-pointer text-sm font-medium">{mt("slMoreOptions")}</summary>
-          <div className="mt-3">
-            <SettingsRow id="sf-term" label={mt("slMaxTerm", { max: platformMaxTermDays })} help={maxTermNote ?? mt("storageMaxTermDaysHelp")}>
-              <NumericInput
-                id="sf-term"
-                className="w-28"
-                suffix={mt("daysUnit")}
-                value={String(values.maxTermDays || platformMaxTermDays)}
-                onValueChange={(v) => onChange({ maxTermDays: Math.min(parseInt(v) || platformMaxTermDays, platformMaxTermDays) })}
-              />
-            </SettingsRow>
-          </div>
-        </details>
+
 
         <p className="px-4 py-3 text-sm text-muted-foreground">{mt("slRulesNote")}</p>
       </div>
@@ -352,8 +336,17 @@ export function StorageListingContent({
   onListingsChanged?: () => void
 }) {
   const { toast } = useToast();
+  const instructionsQuery = useQuery<StorageInstructions>({
+    queryKey: ["checkin-checkout-settings", selectedLocationId], enabled: !!selectedLocationId,
+    queryFn: () => apiGet(`/manager/locations/${selectedLocationId}/checkin-checkout-settings`),
+  });
+  const rentalsQuery = useQuery<StorageRental[]>({
+    queryKey: ["/api/manager/storage-rentals"],
+    queryFn: () => apiGet("/manager/storage-rentals"), refetchInterval: 30_000,
+  });
 
-  /** The tab shows either the listings or a full page for one listing. */
+
+  /** Adding stays a page; editing opens beside the listing rows. */
   const [view, setView] = useState<'list' | 'add' | 'edit'>('list');
 
   const [kitchens, setKitchens] = useState<Kitchen[]>([]);
@@ -744,7 +737,7 @@ export function StorageListingContent({
     unitCount: storage.unitCount || 1,
     maxTermDays: storage.maxTermDays || null,
     currency: 'CAD',
-    isActive: true,
+    isActive: false,
   });
 
   /**
@@ -910,13 +903,13 @@ export function StorageListingContent({
 
   const handleToggleActive = async (listing: StorageListing) => {
     if (listing.id == null) return;
-    const next = listing.isActive === false;
+    const next = !listing.isActive || !storageListingReadiness(listing, instructionsQuery.data).visible;
     setIsToggling(true);
     try {
       await apiPut(`/manager/storage-listings/${listing.id}`, { isActive: next });
       await loadListings();
       onListingsChanged?.();
-      toast({ title: mt("statusUpdated"), description: next ? mt("listingNowActive") : mt("listingNowInactive") });
+      toast({ title: mt("statusUpdated"), description: next ? mt("slListed") : mt("slPaused") });
     } catch (error: any) {
       toast({ title: mt("error"), description: error.message || "Failed to update status", variant: "destructive" });
     } finally {
@@ -985,7 +978,8 @@ export function StorageListingContent({
 
   // ── Add / Edit page ───────────────────────────────────────────────────────
 
-  if (view !== 'list') {
+  const editor = (() => {
+    if (view === 'list') return null;
     const isAdd = view === 'add';
 
     /**
@@ -1001,7 +995,7 @@ export function StorageListingContent({
         {isAdd ? (
           <Button onClick={() => void submitAdd()} disabled={!canSubmitAdd || isCreating}>
             <Plus className="mr-2 h-4 w-4" />
-            {mt("listThisStorage")}
+            {mt("slSaveDraft")}
           </Button>
         ) : (
           editDirty && (
@@ -1105,17 +1099,18 @@ export function StorageListingContent({
           </div>
         </div>
 
-        {unsavedDialog}
+        {isAdd && unsavedDialog}
       </div>
     );
-  }
+  })();
+  if (view === "add") return editor;
 
   // ── List page ─────────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-4">
       <div className="mt-0 space-y-4">
-      {!isLoading && visibleListings.length > 0 && selectedLocationId && onConfigureInspections && <StorageTrackingSetup locationId={selectedLocationId} onConfigure={onConfigureInspections} />}
+      {selectedLocationId && <StorageTrackingSetup locationId={selectedLocationId} onConfigure={onConfigureInspections ?? (() => navigate("/manager/dashboard?view=settings-storage-checkin-checkout"))} />}
       <div className="rounded-lg border bg-card">
         <div className="flex flex-wrap items-start justify-between gap-4 border-b p-4">
           <div className="flex min-w-0 items-center gap-3">
@@ -1168,7 +1163,7 @@ export function StorageListingContent({
             {groupedListings.map((group) => (
               <section key={group.type}>
                 <div className="flex items-center gap-2 bg-muted/40 px-4 py-2">
-                  <StorageTypeIcon type={group.type} className="h-4 w-4 text-muted-foreground" />
+                  <Package className="h-4 w-4 text-muted-foreground" />
                   <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                     {storageTypeLabel(group.type)}
                   </h3>
@@ -1177,48 +1172,59 @@ export function StorageListingContent({
                 <div className="divide-y">
                   {group.items.map((listing) => {
                     const alsoIn = kitchensAlsoHaving(listing);
+                    const readiness = storageListingReadiness(listing, instructionsQuery.data);
+                    const units = unitRows(rentalsQuery.data ?? [], [{ ...listing, id: listing.id!, unitCount: listing.unitCount ?? 1 }]);
+                    const inUse = units.filter(row => row.rental !== null).length;
+                    const requests = (rentalsQuery.data ?? []).filter(rental => rental.state === "requested" && rental.listing.id === listing.id).length;
                     return (
                       <div
                         key={listing.id}
                         className={cn(
-                          "flex items-start justify-between gap-4 px-4 py-3",
+                          "flex flex-wrap items-start gap-3 px-4 py-3 sm:flex-nowrap",
                           listing.isActive === false && "opacity-60",
                         )}
                       >
+                        <StoragePhoto storageType={listing.storageType} photos={listing.photos} className="h-12 w-12" />
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                             <span className="truncate text-sm font-medium">{listing.name}</span>
-                            <Badge variant={listing.isActive !== false ? "success" : "outline"} className="text-xs">
-                              {listing.isActive !== false ? mt("active") : mt("inactive")}
+                            <Badge variant={readiness.visible ? "success" : "outline"} className="text-xs">
+                              {mt(readiness.status === "draft" ? "slDraft" : readiness.status === "listed" ? "slListed" : "slPaused")}
                             </Badge>
                           </div>
                           <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted-foreground">
                             <span className="font-medium text-foreground">
                               ${(listing.basePrice || 0).toFixed(2)}{mt("perDay")}
                             </span>
-                            <span>{mt("storageUnitsCount", { count: listing.unitCount ?? 1 })}</span>
+                            <span>{storageTypeLabel(listing.storageType)}</span>
                             <span>{mt("storageMaxTermShort", { max: listing.maxTermDays ?? platformMaxTermDays })}</span>
                             {listing.sizeLabel ? <span>{listing.sizeLabel}</span> : null}
                           </div>
+                          {!readiness.ready && <p className="mt-1 text-xs text-amber-800">{mt("slFinishSetup", { items: readiness.missing.map(item => mt(`slMissing_${item}`)).join(", ") })}</p>}
+                          {rentalsQuery.isError ? <Button variant="link" size="sm" onClick={() => void rentalsQuery.refetch()}>{mt("retry")}</Button>
+                            : rentalsQuery.isLoading ? <Skeleton className="mt-2 h-4 w-48" /> : <div className="mt-2 max-w-xs space-y-1">
+                              <p className="text-xs text-muted-foreground">{mt("slOccupancy", { units: units.length, inUse, requests })}</p>
+                              <div className="h-1 overflow-hidden rounded-full bg-muted"><div className="h-full bg-primary" style={{ width: `${units.length ? inUse / units.length * 100 : 0}%` }} /></div>
+                            </div>}
                           {alsoIn.length > 0 && (
                             <p className="mt-1 text-xs text-muted-foreground">
                               {mt("listingsAlsoIn", { kitchens: alsoIn.join(", ") })}
                             </p>
                           )}
                         </div>
-                        <div className="flex shrink-0 items-center gap-1">
-                          <Switch
-                            checked={listing.isActive !== false}
-                            onCheckedChange={() => void handleToggleActive(listing)}
-                            disabled={isToggling}
-                          />
+                        <div className="flex w-full shrink-0 flex-wrap items-center gap-1 sm:w-auto">
+                          {readiness.status === "draft" ? <Button size="sm" variant="outline" disabled={isToggling || !readiness.ready || instructionsQuery.isFetching} onClick={() => void handleToggleActive(listing)}>{mt("slList")}</Button>
+                            : <div className="flex items-center gap-2"><span className="text-xs">{mt(listing.isActive ? "slListed" : "slPaused")}</span><Switch
+                              aria-label={mt("slListed")}
+                              checked={readiness.visible} onCheckedChange={() => void handleToggleActive(listing)} disabled={isToggling || instructionsQuery.isFetching} /></div>}
+                          <Button size="sm" variant="outline" onClick={() => navigate(`/manager/dashboard?view=storage-bookings&listingId=${listing.id}`)}>{mt("slViewUnits")}</Button>
                           <Button
                             variant="ghost"
-                            size="icon"
+                            size="sm"
                             onClick={() => openEdit(listing, matchSource)}
                             title={mt("editStorageDetails")}
                           >
-                            <Pencil className="h-4 w-4" />
+                            <Pencil className="mr-1 h-4 w-4" />{mt("edit")}
                           </Button>
                           <Button
                             variant="ghost"
@@ -1248,6 +1254,12 @@ export function StorageListingContent({
         />
       )}
 
+      <Sheet open={view === "edit"} onOpenChange={open => { if (!open) requestExit(); }}>
+        <SheetContent className="w-full overflow-y-auto sm:max-w-2xl">
+          <SheetHeader className="sr-only"><SheetTitle>{mt("editStorageListing")}</SheetTitle><SheetDescription>{draft?.name}</SheetDescription></SheetHeader>
+          {editor}
+        </SheetContent>
+      </Sheet>
       {unsavedDialog}
       </div>
     </div>

@@ -18,6 +18,12 @@ export interface EquipmentListing {
 }
 
 export interface StorageListing {
+  photos?: string[];
+  sizeLabel?: string | null;
+  temperatureRange?: string | null;
+  unitCount?: number;
+  maxTermDays?: number;
+  availability?: { state: "now" | "from" | "full"; from?: string };
   id: number;
   storageType: string;
   name: string;

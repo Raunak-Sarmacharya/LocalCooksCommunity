@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, expect, it, vi } from "vitest";
 
@@ -41,17 +41,16 @@ const rental = {
   evidence: { checkinPhotoUrls: null, handoverPhotoUrls: null, checkoutPhotoUrls: null },
 };
 
-function renderDetail() {
-  vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => rental })));
+function renderDetail(overrides: Record<string, unknown> = {}) {
+  vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ ...rental, ...overrides }) })));
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(<QueryClientProvider client={client}><StorageRentalDetail rentalId={5} /></QueryClientProvider>);
 }
 
-it("shows evidence, the paid term's payout and the More menu the DTO allows", async () => {
+it("shows evidence, the paid term's payout and visible allowed actions", async () => {
   renderDetail();
   expect(await screen.findByText("stEvidenceNone")).toBeInTheDocument();
   expect(screen.getByText("stPayoutPaid")).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "stMore" }));
   expect(await screen.findByRole("button", { name: "stActionHoldoverCharge" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "stActionWaiveHoldover" })).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "stActionApprove" })).toBeNull();
@@ -66,7 +65,6 @@ it("states the amount on the confirm sheet and posts the WP-ST9 action", async (
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(<QueryClientProvider client={client}><StorageRentalDetail rentalId={5} /></QueryClientProvider>);
 
-  fireEvent.click(await screen.findByRole("button", { name: "stMore" }));
   fireEvent.click(await screen.findByRole("button", { name: "stActionHoldoverCharge" }));
   expect(await screen.findByTestId("action-amount")).toHaveTextContent("$11.50");
   fireEvent.click(screen.getByRole("button", { name: "stConfirm" }));
@@ -79,7 +77,6 @@ it("previews the server refund amount before confirmation and retains exact cent
   vi.stubGlobal('fetch', fetchMock);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(<QueryClientProvider client={client}><StorageRentalDetail rentalId={5} /></QueryClientProvider>);
-  fireEvent.click(await screen.findByRole('button', { name: 'stMore' }));
   fireEvent.click(await screen.findByRole('button', { name: 'stActionRefund' }));
   expect(screen.queryByRole('button', { name: 'stConfirm' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'stPreview' }));
@@ -115,4 +112,26 @@ it("shows the report damage button only while the filing context allows it", asy
   expect(screen.getByText(/dcV2FileBy/)).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "dcV2Report" }));
   expect(await screen.findByTestId("claim-sheet")).toHaveTextContent("sheet:5");
+});
+
+it("shows the dated timeline with the current step highlighted", async () => {
+  renderDetail({ timeline: { requestedAt: "2026-09-29T12:00:00Z", approvedAt: "2026-09-30T12:00:00Z", movedInAt: "2026-10-01T12:00:00Z", movingOutAt: null, endedAt: null } });
+  const timeline = await screen.findByRole("region", { name: "stTimeline" });
+  expect(within(timeline).getAllByRole("listitem")).toHaveLength(5);
+  expect(within(timeline).getByText("stTimelineMovedIn").closest("li")).toHaveAttribute("aria-current", "step");
+  expect(within(timeline).getByText(/Sep 29/)).toBeInTheDocument();
+  expect(within(timeline).getByText(/Sep 30/)).toBeInTheDocument();
+  expect(within(timeline).getByText(/Oct 1/)).toBeInTheDocument();
+});
+it("labels authorized money as a card hold with an estimated payout", async () => {
+  renderDetail({ state: "requested", actions: [], estimatedPayoutCents: 3300, terms: [{ ...rental.terms[0], status: "authorized" }] });
+  expect(await screen.findByText("stTermOnHold")).toBeInTheDocument();
+  expect(screen.getByText("stPayoutEstimate")).toBeInTheDocument();
+  expect(screen.queryByText("stTermCharged")).toBeNull();
+});
+it("labels each term by its own charge status, including a pending extension", async () => {
+  renderDetail({ terms: [rental.terms[0], { ...rental.terms[0], id: 10, seq: 2, status: "authorized" }] });
+  expect(await screen.findByText("stTermCharged")).toBeInTheDocument();
+  expect(screen.getByText("stTermOnHold")).toBeInTheDocument();
+  expect(screen.getAllByText("stTermPayout")).toHaveLength(2);
 });

@@ -25,6 +25,9 @@ export function StorageRequestCard({ rental, onDone }: { rental: StorageRental; 
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const total = rentalTotalCents(rental);
+  const payoutLine = rental.estimatedPayoutCents != null
+    ? t("stRequestPayout", { total: formatCurrency(total), payout: formatCurrency(rental.estimatedPayoutCents) })
+    : t("stRequestTotal", { amount: formatCurrency(total) });
   const canApprove = rental.actions.includes("approve");
   const canDecline = rental.actions.includes("decline");
 
@@ -61,9 +64,9 @@ export function StorageRequestCard({ rental, onDone }: { rental: StorageRental; 
             <span className="truncate">{rental.chef?.name ?? t("stNoOccupant")}</span>
           </div>
           <p className="truncate text-sm text-muted-foreground">{rental.listing.name} · {t("stUnitLabel", { index: rental.unitLabel })}</p>
-          <p className="text-sm">{formatBookingDate(rental.startOn)} – {formatBookingDate(rental.paidThrough)}</p>
+          <p className="text-sm">{formatBookingDate(rental.startOn)} – {formatBookingDate(rental.paidThrough)} · {t("stTermDays", { days: rental.terms.reduce((sum, term) => sum + term.days, 0) })}</p>
           <p className="flex flex-wrap items-center gap-x-2 text-sm text-muted-foreground">
-            <span>{t("stRequestTotal", { amount: formatCurrency(total) })}</span>
+            <span>{payoutLine}</span>
             {rental.responseDeadline && (
               <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5" aria-hidden="true" />
                 {t("stAnswerBy", { time: formatKitchenDateTime(rental.responseDeadline, rental.timezone, i18n.language) })}
@@ -90,6 +93,7 @@ export function StorageRequestCard({ rental, onDone }: { rental: StorageRental; 
                     : t("stDeclineBody", { chef: rental.chef?.name ?? "", listing: rental.listing.name, amount: formatCurrency(total) })}
                 </SheetDescription>
               </SheetHeader>
+              {decision === "approve" && <p className="text-sm font-medium">{payoutLine}</p>}
               {decision === "decline" && (
                 <div className="space-y-1.5">
                   <Label htmlFor="decline-reason">{t("stReasonLabel")}</Label>

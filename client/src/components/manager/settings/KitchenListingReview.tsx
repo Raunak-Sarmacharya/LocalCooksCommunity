@@ -61,7 +61,6 @@ const REQUIREMENT_TARGET: Record<ListingRequirementId, RowTarget> = {
   applicationRequirements: { view: "application-requirements" },
   bookingRules: { view: "settings-booking-rules" },
   visitSetup: { view: "settings-checkin-checkout" },
-  storageVisitSetup: { view: 'settings-storage-checkin-checkout' },
 };
 
 const RECOMMENDATION_TARGET: Record<ListingRecommendationId, RowTarget> = {
@@ -399,15 +398,7 @@ function requirementValue(
   d: KitchenReadinessReview["details"],
   met: boolean,
 ): string | null {
-  if (id === 'storageVisitSetup' && d.storageVisitSetup) {
-    const setup = d.storageVisitSetup;
-    return [
-      mt('listingStorageCount', { count: setup.listingCount }),
-      mt(setup.checkinEnabled ? 'listingVisitArrivalOn' : 'listingVisitArrivalOff'),
-      mt(setup.checkoutEnabled ? 'listingVisitDepartureOn' : 'listingVisitDepartureOff'),
-      mt(setup.arrivalNotesSaved && setup.departureNotesSaved ? 'listingVisitNotesReady' : 'listingVisitNotesMissing'),
-    ].join(' · ');
-  }
+
   if (id === "visitSetup" && d.visitSetup) {
     const setup = d.visitSetup;
     return [

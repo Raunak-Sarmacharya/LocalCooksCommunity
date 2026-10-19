@@ -167,8 +167,6 @@ export async function buildKitchenReadiness(
      */
     hasApplicationRequirements: hasAnyApplicationRequirement(requirements),
     hasVisitSetup: hasTrackingNotes(visitChecklist),
-    hasStorageVisitSetup: visitChecklist?.storageCheckinEnabled === true
-      && visitChecklist?.storageCheckoutEnabled === true && hasTrackingNotes(visitChecklist, true),
     hasGalleryImages: galleryImages.length > 0,
     hasTerms: isNonEmptyText(location?.kitchenTermsUrl),
     toursEnabled: Boolean(viewingSettings[0]?.isActive && tourReadiness(viewingSettings[0], tourHours).ready),
@@ -184,13 +182,6 @@ export async function buildKitchenReadiness(
   return {
     checklist: buildListingChecklist(input),
     details: {
-      storageVisitSetup: {
-        listingCount: storageRows.length,
-        checkinEnabled: visitChecklist?.storageCheckinEnabled === true,
-        checkoutEnabled: visitChecklist?.storageCheckoutEnabled === true,
-        arrivalNotesSaved: typeof visitChecklist?.storageCheckinInstructions === 'string' && visitChecklist.storageCheckinInstructions.trim().length > 0,
-        departureNotesSaved: typeof visitChecklist?.storageCheckoutInstructions === 'string' && visitChecklist.storageCheckoutInstructions.trim().length > 0,
-      },
       visitSetup: {
         checkinEnabled: true,
         checkoutEnabled: true,

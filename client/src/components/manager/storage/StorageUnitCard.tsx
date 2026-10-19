@@ -1,3 +1,5 @@
+import { StoragePhoto } from "@/components/storage/StoragePhoto";
+import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -39,10 +41,13 @@ export function StorageUnitCard({ row, onDone }: { row: UnitRow; onDone?: () => 
     } catch { setError(true); } finally { setSaving(false); }
   }
   return (
-    <Card className="h-full">
+    <Card className={cn("relative h-full", row.needsAction ? "border-amber-300 bg-amber-50/40" : ["occupied", "endingSoon"].includes(row.chip) ? "border-emerald-300 bg-emerald-50/40" : row.chip === "reserved" ? "border-sky-300 bg-sky-50/40" : row.chip === "outOfService" ? "bg-slate-100" : "bg-card")}>
+
       <CardContent className="flex h-full flex-col gap-3 p-4">
         <div className="flex items-center justify-between gap-2">
-          <span className="font-medium">{t("stUnitLabel", { index: row.unitIndex })}</span>
+          <div className="flex items-center gap-2"><StoragePhoto storageType={row.storageType} photos={row.photos} className="h-9 w-9" />
+            {row.rental ? <Link className="font-medium hover:underline after:absolute after:inset-0 after:content-['']" href={`/manager/storage/${row.rental.id}`}>{t("stUnitLabel", { index: row.unitIndex })}</Link>
+              : <span className="font-medium">{t("stUnitLabel", { index: row.unitIndex })}</span>}</div>
           <StorageStatusChip chip={row.chip} detail={row.chip === 'moveInOverdue' && row.date ? t('stDateStartedOn', { date: formatBookingDate(row.date.value) }) : undefined} />
         </div>
         {row.outOfService && row.chip !== 'outOfService' && <StorageStatusChip chip="outOfService" />}
@@ -52,6 +57,7 @@ export function StorageUnitCard({ row, onDone }: { row: UnitRow; onDone?: () => 
             <User className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
             <span className="truncate">{row.occupantName ?? t("stNoOccupant")}</span>
           </p>
+          {row.rental && <p className="text-muted-foreground">{formatBookingDate(row.rental.startOn)} – {formatBookingDate(row.rental.paidThrough)}</p>}
           {row.date && row.chip !== 'moveInOverdue' && (
             <p className="flex items-center gap-1.5 text-muted-foreground">
               <Calendar className="h-4 w-4 shrink-0" aria-hidden="true" />
@@ -59,18 +65,19 @@ export function StorageUnitCard({ row, onDone }: { row: UnitRow; onDone?: () => 
             </p>
           )}
         </div>
+        {row.next && <Link className="relative z-10 text-sm text-muted-foreground underline" href={`/manager/storage/${row.next.id}`}>{t("stUnitNext", { chef: row.next.chef?.name || t("stTheChef"), date: formatBookingDate(row.next.startOn) })}</Link>}
         {row.rental && (
-          <Button asChild size="sm" variant="outline" className="w-full">
+          <Button asChild size="sm" variant="outline" className="relative z-10 w-full">
             <Link href={`/manager/storage/${row.rental.id}`}>{t("stViewUnit")}</Link>
           </Button>
         )}
-        {editing ? <div className="space-y-2">
+        <div className="relative z-10">{editing ? <div className="space-y-2">
           <label htmlFor={`unit-reason-${row.key}`} className="text-sm">{t('stReasonLabel')}</label>
           <Input id={`unit-reason-${row.key}`} value={reason} onChange={event => setReason(event.target.value)} />
           {error && <p role="alert">{t('stActionFailed')}</p>}
           <Button size="sm" disabled={saving || !reason.trim()} onClick={() => void save()}>{t('stConfirm')}</Button>
           <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>{t('stBack')}</Button>
-        </div> : <Button size="sm" variant="outline" onClick={() => setEditing(true)}>{t(row.outOfService ? 'stPutBack' : 'stTakeOutOfService')}</Button>}
+        </div> : <Button size="sm" variant="outline" onClick={() => setEditing(true)}>{t(row.outOfService ? 'stPutBack' : 'stTakeOutOfService')}</Button>}</div>
       </CardContent>
     </Card>
   );

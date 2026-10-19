@@ -41,7 +41,7 @@ import { pickPreviewActiveSectionId } from "@/lib/preview-scroll-spy";
 import { CancellationPolicyDialog, KitchenTermsDialog, cancellationPolicyFirstLine } from "@/components/booking/CancellationPolicyDialog";
 import { PublishedCancellationPolicySummary } from '@/components/booking/CancellationPolicySummary';
 import { StorageRentCta } from "@/components/storage/StorageRentCta";
-import { KitchenInventoryModals, KitchenEquipmentSections, KitchenStorageSections, InventoryModal, InventoryShowAllButton } from "@/components/kitchen-application/KitchenInventory";
+import { KitchenInventoryModals, KitchenEquipmentSections, KitchenStorageSections, InventoryModal, InventoryShowAllButton, type StorageListing } from "@/components/kitchen-application/KitchenInventory";
 import { SmartImage } from "@/components/ui/smart-image";
 import { Calendar as UICalendar } from "@/components/ui/calendar";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
@@ -411,21 +411,6 @@ interface EquipmentListing {
   currency?: string;
 }
 
-interface StorageListing {
-  id: number;
-  storageType: string;
-  name: string;
-  description?: string;
-  basePrice?: number;
-  pricePerCubicFoot?: number;
-  pricingModel: string;
-  dimensionsLength?: number;
-  dimensionsWidth?: number;
-  dimensionsHeight?: number;
-  totalVolume?: number;
-  climateControl?: boolean;
-  currency?: string;
-}
 
 interface PublicKitchen {
   slug?: string | null;
@@ -960,10 +945,10 @@ function KitchenInventoryPair({
               </span>
             </h3>
             <div className="min-h-0 flex-1 overflow-hidden">
-              <KitchenStorageSections kitchen={kitchen} maxVisible={CARD_PREVIEW_COUNT} />
+              {!storageCta && <KitchenStorageSections kitchen={kitchen} maxVisible={CARD_PREVIEW_COUNT} />}
             </div>
             {storageCta?.(true)}
-            {storage.length > CARD_PREVIEW_COUNT && (
+            {!storageCta && storage.length > CARD_PREVIEW_COUNT && (
               <div className="mt-auto shrink-0 border-t border-gray-100 pt-2">
                 <InventoryShowAllButton
                   count={storage.length}
@@ -2464,7 +2449,7 @@ function KitchenDetailsSection({
                     exit={{ opacity: 0, x: 10 }}
                     transition={{ duration: 0.2 }}
                   >
-                    <KitchenStorageSections kitchen={kitchen} />
+                    {!storageCta && <KitchenStorageSections kitchen={kitchen} />}
                     {storageCta?.(false)}
                   </motion.div>
                 </TabsContent>
@@ -3045,6 +3030,8 @@ export default function KitchenPreviewPage() {
             setKitchenStorage((storageData || []).map((s: StorageListing & { basePrice?: number; pricePerCubicFoot?: number }) => ({
               id: s.id,
               storageType: s.storageType,
+              photos: s.photos, sizeLabel: s.sizeLabel, temperatureRange: s.temperatureRange,
+              unitCount: s.unitCount, maxTermDays: s.maxTermDays, availability: s.availability,
               name: s.name,
               description: s.description,
               basePrice: s.basePrice ? s.basePrice / 100 : undefined,
@@ -3824,7 +3811,11 @@ export default function KitchenPreviewPage() {
                   cancellationPolicyHours={selectedKitchen.cancellationPolicyHours ?? location.cancellationPolicyHours}
                   cancellationPolicyMessage={location.cancellationPolicyMessage}
                   kitchenTermsUrl={location.kitchenTermsUrl}
-                  storageCta={compact => !applicationLoading && <StorageRentCta kitchenId={selectedKitchen.id} canBook={canBook} onApply={handleApplyClick} compact={compact} />}
+                  storageCta={compact => !applicationLoading && <StorageRentCta kitchenId={selectedKitchen.id} canBook={canBook} onApply={handleApplyClick} compact={compact}
+                    listings={(kitchenStorage ?? []).map(row => ({ listingId: row.id, name: row.name, storageType: row.storageType,
+                      dailyPriceCents: Math.round((row.basePrice ?? 0) * 100), maxTermDays: row.maxTermDays ?? 30,
+                      availability: row.availability ?? { state: "full" }, photos: row.photos, temperatureRange: row.temperatureRange,
+                      sizeLabel: row.sizeLabel, unitCount: row.unitCount }))} />}
                 />
               ) : (
                 <motion.div

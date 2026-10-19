@@ -17,7 +17,7 @@ export function RentalCard({ rental }: { rental: StorageRental }) {
   const { t: tt, i18n } = useTranslation("storage")
   const t = tt as unknown as (key: string, options?: Record<string, unknown>) => string
   const status = rentalStatus(rental, t, i18n.language)
-  const urgent = can(rental, "extend") && (rental.phase === "grace" || rental.phase === "holdover" || rental.phase === "ending_soon")
+  const urgent = rental.state !== "removal_review" && can(rental, "extend") && (rental.phase === "grace" || rental.phase === "holdover" || rental.phase === "ending_soon")
   return <article className="rounded-2xl border bg-card p-4 sm:p-5" data-testid={`storage-card-${rental.id}`}>
     <div className="flex items-start justify-between gap-3">
       <div className="min-w-0">

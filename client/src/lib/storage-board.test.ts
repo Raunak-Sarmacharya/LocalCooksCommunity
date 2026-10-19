@@ -186,3 +186,15 @@ it("shows out-of-service units without evicting renters or counting empty broken
   expect(filterUnitRows(rows, "free")).toHaveLength(1);
   expect(boardSummary([rental()], [listing({ unitCount: 3, outOfServiceUnits: units })])).toMatchObject({ occupied: 1, units: 2, outOfService: 1 });
 });
+
+it("keeps the current-first reservation and exposes the earliest next rental on that same unit", () => {
+  const current = rental({ id: 1, state: "reserved", startOn: "2026-10-01" });
+  const next = rental({ id: 2, state: "reserved", startOn: "2026-10-25" });
+  const later = rental({ id: 3, state: "reserved", startOn: "2026-11-15" });
+  const other = rental({ id: 4, state: "reserved", unitLabel: "2", startOn: "2026-10-20" });
+  const rows = unitRows([later, next, other, current], [listing({ unitCount: 2 })]);
+  expect(rows[0].rental?.id).toBe(1);
+  expect(rows[0].next?.id).toBe(2);
+  expect(rows[1].next).toBeNull();
+  expect(unitRows([rental({ state: "active" }), next], [listing()])[0].next?.id).toBe(2);
+});

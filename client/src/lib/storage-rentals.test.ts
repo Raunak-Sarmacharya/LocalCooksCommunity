@@ -4,7 +4,7 @@ const state = vi.hoisted(() => ({ fetch: vi.fn(), cardAction: vi.fn() }))
 vi.mock("@/lib/api", () => ({ getAuthHeaders: async () => ({ "Content-Type": "application/json" }) }))
 vi.mock("@/lib/session-extensions", () => ({ completeCardAction: state.cardAction, newRequestKey: () => "key-12345678" }))
 
-import { payExtension, requestRental } from "./storage-rentals"
+import { payExtension, requestRental, rentalStatus, can, type StorageRental } from "./storage-rentals"
 
 const ok = (body: unknown) => ({ ok: true, json: async () => body })
 const quote = (overrides: Record<string, unknown> = {}) => ({ listingId: 4, startOn: "2026-10-20", days: 7, endOn: "2026-10-26", dailyPriceCents: 500,
@@ -67,3 +67,32 @@ describe("extension payment", () => {
     expect(state.cardAction).not.toHaveBeenCalled()
   })
 })
+
+describe("chef status sentences", () => {
+  const base = { id: 1, kitchen: { name: "Harbour" }, unitLabel: "2", startOn: "2026-10-17", paidThrough: "2026-10-25", terms: [], state: "reserved", timezone: "America/St_Johns" } as unknown as StorageRental;
+  const t = (key: string, values?: Record<string, unknown>) => `${key}:${JSON.stringify(values)}`;
+  const now = new Date("2026-10-19T12:00:00Z");
+  it.each(["2026-10-17", "2026-10-19"])("says a reserved unit is ready when its start is %s", startOn => {
+    const status = rentalStatus({ ...base, startOn }, t, "en-CA", now);
+    expect(status.sentence).toContain("stcStatusReservedReady");
+    expect(status.sentence).toContain('"unit":"2"');
+    expect(status.sentence).toContain('"end":"Sun, Oct 25"');
+    expect(status.sentence).not.toContain('"start"');
+  });
+  it("uses future start dates only for future reservations and avoids a past move-in deadline", () => {
+    expect(rentalStatus({ ...base, startOn: "2026-10-20" }, t, "en-CA", now).sentence).toContain("stcStatusReserved:");
+    expect(rentalStatus({ ...base, paidThrough: "2026-10-18" }, t, "en-CA", now).sentence).toContain("stcStatusReservedPast:");
+  });
+  it("uses the actual release date for ended rentals and refuses a stale removal-review extension", () => {
+    expect(rentalStatus({ ...base, state: "ended", releasedOn: "2026-10-18" }, t, "en-CA", now).sentence).toContain("Sun, Oct 18");
+    expect(can({ state: "removal_review", actions: ["extend"] }, "extend")).toBe(false);
+  });
+});
+
+it("does not promise an answer or extension by a past deadline", () => {
+  const base = { kitchen: { name: "Harbour" }, state: "requested", responseDeadline: "2026-10-17T12:00:00Z", startOn: "2026-10-01", paidThrough: "2026-10-10", graceEndsOn: "2026-10-15", terms: [] } as unknown as StorageRental;
+  const t = (key: string) => key;
+  const now = new Date("2026-10-19T12:00:00Z");
+  expect(rentalStatus(base, t, "en-CA", now).sentence).toBe("stcStatusRequestedElapsed");
+  expect(rentalStatus({ ...base, state: "active", phase: "grace" }, t, "en-CA", now).sentence).toBe("stcStatusGraceEnded");
+});

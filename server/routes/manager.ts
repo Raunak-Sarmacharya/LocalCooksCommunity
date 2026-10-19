@@ -1,3 +1,4 @@
+import { storageListingReadiness } from "@shared/storage-listing-readiness";
 import { bookingDaysCap, bookingWindowCap } from '../services/booking-policy-settings';
 import { readManagerRevenue, revenueQuery } from '../services/manager-revenue-service';
 import { bufferWritePatch, isBookingBufferMinutes, validBookingDays, validBookingWindowDays, validWeeklyChefHoursLimit } from '@shared/kitchen-booking-policies';
@@ -3108,9 +3109,10 @@ router.get("/workspace-navigation", requireFirebaseAuthWithUser, requireManager,
       db.select({ count: count() }).from(kitchenViewings).innerJoin(locations, eq(kitchenViewings.locationId, locations.id)).where(owner),
       db.select({ count: count() }).from(storageBookingsTable).innerJoin(storageListings, eq(storageBookingsTable.storageListingId, storageListings.id))
         .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq(kitchens.locationId, locations.id)).where(owner),
-      db.select({ count: count() }).from(storageListings).innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
-        .innerJoin(locations, eq(kitchens.locationId, locations.id)).where(and(owner, eq(kitchens.isActive, true),
-          eq(kitchens.listingStatus, "active"), eq(storageListings.isActive, true), inArray(storageListings.status, ["approved", "active"]))),
+      db.select({ listing: storageListings, instructions: checkinCheckoutChecklists }).from(storageListings)
+        .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq(kitchens.locationId, locations.id))
+        .leftJoin(checkinCheckoutChecklists, eq(checkinCheckoutChecklists.locationId, locations.id))
+        .where(and(owner, eq(kitchens.isActive, true), eq(kitchens.listingStatus, "active"))),
       db.select({ count: count() }).from(chefKitchenApplications).innerJoin(locations, eq(chefKitchenApplications.locationId, locations.id)).where(owner),
       db.select({ count: count() }).from(paymentTransactions).where(eq(paymentTransactions.managerId, req.neonUser!.id)),
     ]);
@@ -3122,7 +3124,7 @@ router.get("/workspace-navigation", requireFirebaseAuthWithUser, requireManager,
         .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
         .innerJoin(locations, eq(kitchens.locationId, locations.id))
         .where(and(owner, sql`jsonb_array_length(CASE WHEN jsonb_typeof(${kitchenBookings.storageItems}) = 'array' THEN ${kitchenBookings.storageItems} ELSE '[]'::jsonb END) > 0`)))[0].count,
-      storageInventory: inventory[0].count,
+      storageInventory: inventory.filter(row => storageListingReadiness(row.listing, row.instructions).visible).length,
       applications: applications[0].count,
       payments: payments[0].count,
     }));
