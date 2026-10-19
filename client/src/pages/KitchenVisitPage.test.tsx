@@ -79,6 +79,50 @@ describe("full-page kitchen visit", () => {
   });
   afterEach(() => { cleanup(); clients.forEach(value => value.clear()); vi.unstubAllGlobals(); });
 
+  it.each([
+    ['arrival', { bookingDate: '2099-01-15' }, 'Arrive'],
+    ['check-in', {}, 'Check in'],
+    ['cooking', { checkinStatus: 'checked_in', chefId: 3, visitCloseout: { phase: 'in_booked_time', scheduledStartAt: new Date(Date.now() - 3_600_000).toISOString(), scheduledEndAt: new Date(Date.now() + 3_600_000).toISOString() } }, 'Cook'],
+    ['checkout', { checkinStatus: 'checkout_requested' }, 'Check out'],
+    ['complete', { checkinStatus: 'checked_out' }, 'Check out'],
+  ])('marks only the current progress step during %s', async (_state, overrides, step) => {
+    status = visit(overrides as Record<string, unknown>);
+    setup();
+    const progress = await screen.findByRole('list', { name: 'Visit progress' });
+    const current = progress.querySelectorAll('[aria-current="step"]');
+    expect(current).toHaveLength(1);
+    expect(current[0]).toHaveTextContent(step as string);
+    expect(within(progress).getAllByRole('listitem')).toHaveLength(4);
+  });
+
+  it('shows only the allowed help actions before the window, while open, and after completion', async () => {
+    status = visit({ bookingDate: '2099-01-15' });
+    setup();
+    let help = await screen.findByRole('region', { name: 'Visit help' });
+    await screen.findByRole('heading', { name: /Check-in opens at/ });
+    expect(within(help).getByRole('button', { name: 'Message kitchen' })).toBeVisible();
+    expect(within(help).queryByRole('button', { name: 'Running late?' })).not.toBeInTheDocument();
+    expect(within(help).queryByRole('button', { name: 'Report a problem' })).not.toBeInTheDocument();
+    cleanup(); client.clear();
+    status = visit(); setup();
+    await screen.findByRole('button', { name: 'Check in' });
+    help = screen.getByRole('region', { name: 'Visit help' });
+    expect(within(help).getByRole('button', { name: 'Message kitchen' })).toBeVisible();
+    expect(within(help).getByRole('button', { name: 'Report a problem' })).toBeVisible();
+    cleanup(); client.clear();
+    status = visit({ checkinStatus: 'checked_out' }); setup();
+    await screen.findByRole('heading', { name: 'Visit complete' });
+    help = screen.getByRole('region', { name: 'Visit help' });
+    expect(within(help).queryAllByRole('button')).toHaveLength(0);
+  });
+
+  it('uses the existing location address for directions and the existing kitchen photo', async () => {
+    mocks.apiGet.mockResolvedValue({ kitchen: { name: 'Test kitchen', photos: ['/kitchen.jpg'] }, location: { address: '10 Water St, St. John’s' }, bookingDate: status.bookingDate, startTime: status.startTime, endTime: status.endTime });
+    setup(true);
+    expect(await screen.findByRole('link', { name: 'Directions' })).toHaveAttribute('href', `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent('10 Water St, St. John’s')}`);
+    expect(document.querySelector('header img')).toHaveAttribute('src', '/kitchen.jpg');
+  });
+
   it('opens a dated day-2 URL and copies matching tasks only, still requiring new photos and confirmation', async () => {
     const date = new Date().toISOString().slice(0, 10);
     const previous = new Date(); previous.setUTCDate(previous.getUTCDate() - 3);
@@ -90,8 +134,8 @@ describe("full-page kitchen visit", () => {
       visits: [{ id: 11, blockIndex: 4, visitDate: pastDate, startTime: '00:00', endTime: '23:59', checkinStatus: 'no_show',
         checkinChecklistItems: [{ id: 'clean', label: 'Old counter label', checked: true }, { id: 'removed', label: 'Removed', checked: true }] },
       { id: 12, blockIndex: 7, visitDate: date, startTime: '00:00', endTime: '23:59', checkinStatus: 'not_checked_in' }] });
-    setup(true, '/booking/901/visit?visitId=12');
-    const confirm = await screen.findByRole('button', { name: 'Confirm check-in' });
+    const { navigation } = setup(true, '/booking/901/visit?visitId=12');
+    const confirm = await screen.findByRole('button', { name: 'Check in' });
     fireEvent.click(screen.getByRole('button', { name: 'Same as previous visit' }));
     expect(screen.getByRole('checkbox', { name: /Check counter/ })).toBeChecked();
     expect(screen.getByRole('checkbox', { name: /New task/ })).not.toBeChecked();
@@ -101,9 +145,12 @@ describe("full-page kitchen visit", () => {
     expect(screen.getByText('Today photo')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Day 2 of 2/ })).toHaveAttribute('aria-pressed', 'true');
     // Each day is labelled with its own date (live bug Oct 18: every day showed the selected day's date).
-    const md = (iso: string) => new Intl.DateTimeFormat('en-CA', { timeZone: 'UTC', month: 'short', day: 'numeric' }).format(new Date(`${iso}T12:00:00Z`));
+    const md = (iso: string) => new Intl.DateTimeFormat('en-CA', { timeZone: 'UTC', weekday: 'short', day: 'numeric' }).format(new Date(`${iso}T12:00:00Z`));
     expect(screen.getByRole('button', { name: /Day 1 of 2/ })).toHaveTextContent(md(pastDate));
     expect(screen.getByRole('button', { name: /Day 1 of 2/ })).not.toHaveTextContent(/\d{4}-\d{2}-\d{2}/);
+    fireEvent.click(screen.getByRole('button', { name: /Day 1 of 2/ }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /Day 1 of 2/ })).toHaveAttribute('aria-pressed', 'true'));
+    expect(navigation.history.at(-1)).toBe('/booking/901/visit?visitId=11');
   });
 
   it('keeps a removed dated visit URL from falling through to a different mutable day', async () => {
@@ -111,27 +158,27 @@ describe("full-page kitchen visit", () => {
       startTime: '00:00', endTime: '23:59', checkinStatus: 'not_checked_in' }] });
     setup(true, '/booking/901/visit?visitId=11');
     expect(await screen.findByRole('alert')).toHaveTextContent('no longer in the current schedule');
-    expect(screen.queryByRole('button', { name: 'Confirm check-in' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Check in' })).not.toBeInTheDocument();
     expect(posts()).toHaveLength(0);
   });
 
-  it('keeps required arrival photos before Confirm and instructions collapsed after the form', async () => {
+  it('keeps required arrival photos before Confirm and instructions expanded before the form', async () => {
     status.currentVisitDuties = { ...status.currentVisitDuties, arrival: { ...section,
       photos: [{ id: 'floor', label: 'Floor photo', required: true }] } } as any;
     setup();
-    const confirm = await screen.findByRole('button', { name: 'Confirm check-in' });
+    const confirm = await screen.findByRole('button', { name: 'Check in' });
     const photo = screen.getByText('Floor photo');
     const instructions = screen.getByRole('region', { name: 'Arrival instructions' });
     expect(photo).toBeVisible();
-    expect(photo.closest('details')).toBeNull();
+    expect(photo.closest('details')).toBe(instructions);
     expect(photo.compareDocumentPosition(confirm) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(confirm.compareDocumentPosition(instructions) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(instructions).not.toHaveAttribute('open');
+    expect(instructions.compareDocumentPosition(confirm) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(instructions).toHaveAttribute('open');
   });
 
   it("keeps optional arrival photos and notes collapsed after Confirm", async () => {
     setup();
-    const confirm = await screen.findByRole('button', { name: 'Confirm check-in' });
+    const confirm = await screen.findByRole('button', { name: 'Check in' });
     const toggle = screen.getByText('Add photos or a note (optional)');
     const details = toggle.closest('details')!;
     expect(details).not.toHaveAttribute('open');
@@ -146,10 +193,10 @@ describe("full-page kitchen visit", () => {
       visitCloseout: { id: 901, blockIndex: 0, phase: 'in_progress', scheduledStartAt: start.toISOString(), scheduledEndAt: end.toISOString() } });
     setup();
     const early = await screen.findByRole('button', { name: 'Check out early' });
-    expect(screen.queryByRole('button', { name: 'Submit checkout' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Check out' })).not.toBeInTheDocument();
     fireEvent.click(early);
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Check out early' }));
-    expect(await screen.findByRole('button', { name: 'Submit checkout' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Check out' })).toBeInTheDocument();
   });
 
   it("hides preparation on a completed direct visit route while keeping its recorded outcome", async () => {
@@ -157,10 +204,10 @@ describe("full-page kitchen visit", () => {
       checkoutApprovedAt: "2026-10-12T17:40:00Z", checkinChecklistItems: [{ id: "floor", label: "Check the floor", checked: true }] });
     setup(true);
     await screen.findByRole("region", { name: "Visit status" });
-    expect(screen.getByRole("heading", { level: 1, name: "Kitchen visit" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Visit complete" })).toBeInTheDocument();
     await waitFor(() => expect(client.getQueryData(["kitchen-checkin-status", 901])).toBeDefined());
     const summary = screen.getByRole("region", { name: "Visit status" });
-    expect(within(summary).getByText("Checked out")).toBeInTheDocument();
+    expect(within(summary).getByText("Visit complete")).toBeInTheDocument();
     expect(within(summary).getByText(/Visit complete\. See your booking/)).toBeInTheDocument();
     expect(within(summary).queryByText(/manager.*review.*finished/i)).not.toBeInTheDocument();
     for (const label of ["Check-in time", "Checkout time", "Kitchen closed the visit"]) {
@@ -172,27 +219,27 @@ describe("full-page kitchen visit", () => {
     expect(screen.getByText("Check the floor")).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Visit instructions" })).not.toBeInTheDocument();
     expect(within(screen.getByRole('region', { name: 'Instructions saved with your booking' })).getByText('Use the side entrance.')).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Submit checkout" })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Back to booking" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Check out" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: "Back to booking" })).toHaveLength(2);
   });
 
   it("shows a neutral visit title after cancellation even when arrival was recorded", async () => {
     status = visit({ status: "cancelled", checkinStatus: "checked_in", checkedInAt: "2026-10-12T16:00:00Z" });
     setup(true);
     expect(await screen.findByRole("heading", { level: 1, name: "Kitchen visit" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Submit checkout" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Check out" })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Visit instructions" })).not.toBeInTheDocument();
   });
 
   it("presents full-page context and separates instructions from optional actions", async () => {
     setup(true);
-    expect(await screen.findByRole("heading", { level: 1, name: "Kitchen arrival" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: "Check in at Test kitchen" })).toBeInTheDocument();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Back to booking" })).toHaveAttribute("href", "/booking/901");
-    expect(screen.getByText("Test kitchen")).toBeInTheDocument();
+    screen.getAllByRole("link", { name: "Back to booking" }).forEach(link => expect(link).toHaveAttribute("href", "/booking/901"));
+    expect(screen.getByRole("heading", { name: "Check in at Test kitchen" })).toBeInTheDocument();
     expect(screen.getAllByText(/GMT/).length).toBeGreaterThan(0);
     const instructions = screen.getByRole("region", { name: "Arrival instructions" });
-    fireEvent.click(within(instructions).getByText("Arrival instructions", { selector: "summary" }));
+    expect(instructions).toHaveAttribute("open");
     expect(within(instructions).getByText("Use the side entrance.")).toBeInTheDocument();
     // Departure details wait until the chef has checked in.
     expect(within(instructions).queryByText("Lock the side entrance.")).not.toBeInTheDocument();
@@ -205,7 +252,7 @@ describe("full-page kitchen visit", () => {
   it.each(["arrival", "departure"])("submits a zero-task %s without photos", async (phase) => {
     if (phase === "departure") status = visit({ checkinStatus: "checked_in", checkedInAt: new Date().toISOString() });
     const { onSuccess } = setup();
-    const button = await screen.findByRole("button", { name: phase === "arrival" ? "Confirm check-in" : "Submit checkout" });
+    const button = await screen.findByRole("button", { name: phase === "arrival" ? "Check in" : "Check out" });
     expect(button).toBeEnabled(); fireEvent.click(button);
     await waitFor(() => expect(onSuccess).toHaveBeenCalledOnce());
     const payload = JSON.parse(posts()[0][1].body);
@@ -227,7 +274,7 @@ describe("full-page kitchen visit", () => {
     expect(screen.getByText('Original submitted task')).toBeInTheDocument();
     // The recorded text equals the arrival instructions still shown above, so it is not repeated.
     expect(screen.queryByRole('region', { name: 'Instructions saved with your booking' })).not.toBeInTheDocument();
-    const submit = screen.getByRole('button', { name: 'Submit checkout' });
+    const submit = screen.getByRole('button', { name: 'Check out' });
     expect(submit).toBeDisabled();
     fireEvent.click(screen.getByRole('checkbox', { name: /Check the new exit/ }));
     expect(submit).toBeEnabled();
@@ -237,20 +284,20 @@ describe("full-page kitchen visit", () => {
     status.checkinEnabled = false; status.checkoutEnabled = false;
     status.visitDuties.arrival = { ...section, enabled: false, items: [{ id: 'old', label: 'Removed task', required: true }] } as any;
     setup();
-    expect(await screen.findByRole('button', { name: 'Confirm check-in' })).toBeEnabled();
+    expect(await screen.findByRole('button', { name: 'Check in' })).toBeEnabled();
     expect(screen.queryByRole('checkbox', { name: /Removed task/ })).not.toBeInTheDocument();
     expect(screen.queryByText(/doesn.t ask you to check in/)).not.toBeInTheDocument();
   });
 
   it('keeps matching current requirements free of an update note', async () => {
     setup();
-    await screen.findByRole('button', { name: 'Confirm check-in' });
+    await screen.findByRole('button', { name: 'Check in' });
     expect(screen.queryByText('Updated by the kitchen since you booked')).not.toBeInTheDocument();
   });
 
   it('shows authoritative item and photo field errors and preserves the draft when tasks change at submit', async () => {
     setup();
-    const submit = await screen.findByRole('button', { name: 'Confirm check-in' });
+    const submit = await screen.findByRole('button', { name: 'Check in' });
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Sam’s draft' } });
     failure = 'Current requirements changed';
     failureFields = { items: 'Complete required checklist items: New safety task', photos: 'Upload the required condition photo' };
@@ -266,7 +313,7 @@ describe("full-page kitchen visit", () => {
     const optional = { id: "note", label: "Check supplies", required: false, category: "general" };
     status.currentVisitDuties.arrival = { ...section, items: [required, optional], photos: [{ id: "floor", label: "Floor photo", required: true }] } as any;
     setup();
-    const submit = await screen.findByRole("button", { name: "Confirm check-in" });
+    const submit = await screen.findByRole("button", { name: "Check in" });
     expect(submit).toBeDisabled(); fireEvent.click(submit); expect(posts()).toHaveLength(0);
     fireEvent.click(screen.getByRole("checkbox", { name: /Check the floor/ }));
     expect(submit).toBeDisabled();
@@ -285,7 +332,7 @@ describe("full-page kitchen visit", () => {
     status.currentVisitDuties[duty] = { ...section, items: [{ id: "reset", label: "Reset station", required: true, category: "general" }], photos: [] } as any;
     failure = "Please contact the kitchen manager before submitting";
     const { onSuccess } = setup();
-    const submit = await screen.findByRole("button", { name: phase === "arrival" ? "Confirm check-in" : "Submit checkout" });
+    const submit = await screen.findByRole("button", { name: phase === "arrival" ? "Check in" : "Check out" });
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "Draft message" } });
     fireEvent.click(screen.getByRole("checkbox", { name: /Reset station/ }));
     act(() => mocks.uploads.at(-1).onSuccess({ url: "https://test.invalid/retained.jpg" }));
@@ -305,7 +352,7 @@ describe("full-page kitchen visit", () => {
     setup();
     fireEvent.change(await screen.findByRole("textbox"), { target: { value: "Retained arrival note" } });
     failure = "Cannot check in — booking is pending";
-    fireEvent.click(screen.getByRole("button", { name: "Confirm check-in" }));
+    fireEvent.click(screen.getByRole("button", { name: "Check in" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(failure);
     status = { ...status, status: "pending" };
     await act(async () => { await client.invalidateQueries({ queryKey: ["kitchen-checkin-status", 901] }); });
@@ -319,11 +366,11 @@ describe("full-page kitchen visit", () => {
   it("refreshes status, details, list and attendance before returning to the booking", async () => {
     status = visit({ checkinStatus: "checked_in", checkedInAt: new Date().toISOString() });
     const { navigation } = setup(true);
-    await screen.findByRole("button", { name: "Submit checkout" });
+    await screen.findByRole("button", { name: "Check out" });
     client.setQueryData(["/api/chef/bookings"], []);
     client.setQueryData(["/api/chef/bookings/901/attendance"], {});
     const invalidate = vi.spyOn(client, "invalidateQueries");
-    fireEvent.click(screen.getByRole("button", { name: "Submit checkout" }));
+    fireEvent.click(screen.getByRole("button", { name: "Check out" }));
     await waitFor(() => expect(navigation.history).toEqual(["/booking/901"]));
     for (const key of [["kitchen-checkin-status", 901], ["/api/chef/bookings"], ["/api/chef/bookings/901/details"], ["/api/chef/bookings/901/attendance"]]) {
       expect(invalidate).toHaveBeenCalledWith({ queryKey: key });
@@ -337,8 +384,8 @@ describe("full-page kitchen visit", () => {
 
   it("stays on the visit page after arrival and says when it was confirmed", async () => {
     const { navigation } = setup(true);
-    await screen.findByRole("button", { name: "Confirm check-in" });
-    fireEvent.click(screen.getByRole("button", { name: "Confirm check-in" }));
+    await screen.findByRole("button", { name: "Check in" });
+    fireEvent.click(screen.getByRole("button", { name: "Check in" }));
     const sentence = await screen.findByTestId("visit-next-step");
     expect(sentence).toHaveTextContent(/^You checked in at \d{1,2}:\d{2}\s[ap]\.m\./);
     // The time is stated once: no second "Arrival confirmed" line and no "Check-in time" row.
@@ -351,10 +398,10 @@ describe("full-page kitchen visit", () => {
   it("waits for active booking details to refresh before navigating", async () => {
     status = visit({ checkinStatus: "checked_in", checkedInAt: new Date().toISOString() });
     const { navigation } = setup(true);
-    await screen.findByRole("button", { name: "Submit checkout" });
+    await screen.findByRole("button", { name: "Check out" });
     let finishRefresh!: (value: any) => void;
     mocks.apiGet.mockImplementationOnce(() => new Promise(resolve => { finishRefresh = resolve; }));
-    fireEvent.click(screen.getByRole("button", { name: "Submit checkout" }));
+    fireEvent.click(screen.getByRole("button", { name: "Check out" }));
     await waitFor(() => expect(mocks.apiGet).toHaveBeenCalledTimes(2));
     expect(navigation.history).toEqual(["/booking/901/visit"]);
     await act(async () => finishRefresh({ kitchen: { name: "Test kitchen" }, bookingDate: status.bookingDate, startTime: status.startTime, endTime: status.endTime }));
@@ -363,7 +410,7 @@ describe("full-page kitchen visit", () => {
 
   it("keeps the form mounted when booking context revalidation fails", async () => {
     setup(true);
-    await screen.findByRole("button", { name: "Confirm check-in" });
+    await screen.findByRole("button", { name: "Check in" });
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "Keep this draft" } });
     mocks.apiGet.mockRejectedValueOnce(new Error("Booking context temporarily unavailable"));
     await act(async () => { await client.invalidateQueries({ queryKey: ["/api/chef/bookings/901/details"] }); });
@@ -380,18 +427,18 @@ describe("full-page kitchen visit", () => {
     mocks.apiGet.mockRejectedValue(new Error("Settings unavailable"));
     setup();
     expect(await screen.findByRole("alert")).toHaveTextContent("Could not load your visit requirements");
-    expect(screen.queryByRole("button", { name: "Confirm check-in" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Check in" })).not.toBeInTheDocument();
     expect(posts()).toHaveLength(0);
     mocks.apiGet.mockResolvedValue({ checkinItems: [], checkoutItems: [], checkinPhotoRequirements: [], checkoutPhotoRequirements: [] });
     fireEvent.click(screen.getByRole("button", { name: "Retry requirements" }));
-    expect(await screen.findByRole("button", { name: "Confirm check-in" })).toBeEnabled();
+    expect(await screen.findByRole("button", { name: "Check in" })).toBeEnabled();
   });
 
   it("shows an overnight visit on the correct kitchen-local calendar dates", async () => {
     status = visit({ bookingDate: "2026-10-12", startTime: "22:00", endTime: "02:00", operatingWindowStartTime: "22:00", timezone: "America/Toronto", checkinStatus: "checked_out" });
     setup();
     await screen.findByRole("region", { name: "Visit status" });
-    expect(screen.getByRole("heading", { level: 1, name: "Kitchen visit" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Visit complete" })).toBeInTheDocument();
     expect(screen.getByText(/Mon, Oct 12 · 10:00\s*p\.m\.\s*[–-]\s*Tue, Oct 13 · 2:00\s*a\.m\./)).toBeInTheDocument();
     expect(screen.getByText(/Oct 13 · 2:00\s*a\.m\. · Eastern Time$/)).toBeInTheDocument();
     expect(screen.queryByText(/Times are shown in the kitchen/)).not.toBeInTheDocument();
@@ -406,7 +453,7 @@ describe("full-page kitchen visit", () => {
     const second = await screen.findByRole("button", { name: /Visit 2:/ });
     expect(second).toHaveTextContent(/Oct|Nov|Dec|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep/);
     fireEvent.click(second);
-    fireEvent.click(screen.getByRole("button", { name: "Submit checkout" }));
+    fireEvent.click(screen.getByRole("button", { name: "Check out" }));
     await waitFor(() => expect(posts()).toHaveLength(1));
     expect(JSON.parse(posts()[0][1].body).visitId).toBe(911);
   });
@@ -422,7 +469,7 @@ describe("full-page kitchen visit", () => {
     expect(screen.getByRole("button", { name: "Message kitchen" })).toBeInTheDocument();
     expect(screen.getByText(/^\w{3}, \w{3} \d{1,2} · 12:00\s*a\.m\.\s*[–-]\s*11:59\s*p\.m\. · GMT$/)).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 2, name: "Check in" })).toBeVisible();
-    expect(screen.getByRole("button", { name: "Confirm check-in" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Check in" })).toBeVisible();
   });
 
   it("shows when check-in opens before the window without inventing absence", async () => {
@@ -431,8 +478,9 @@ describe("full-page kitchen visit", () => {
     const summary = await screen.findByRole("region", { name: "Visit status" });
     expect(within(summary).getByText(/isn’t open yet/)).toBeInTheDocument();
     expect(within(summary).getByText("Check-in opens").parentElement).toHaveTextContent(/8:45/);
-    expect(screen.queryByRole("button", { name: "Confirm check-in" })).not.toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Visit instructions" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /Check-in opens at .*8:45/ })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Check in" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Arrival instructions" })).toHaveAttribute("open");
     expect(screen.queryByText(/no-show/i)).not.toBeInTheDocument();
   });
 
@@ -442,7 +490,7 @@ describe("full-page kitchen visit", () => {
       visitCloseout: { key: "b", phase: "in_booked_time", arrivalRecorded: true, scheduledStartAt: new Date(now - 3_600_000).toISOString(),
         scheduledEndAt: new Date(now + 3_600_000).toISOString(), inspection: { outcome: "not_due", deadline: new Date(now + 86_400_000).toISOString(), canRespond: false } } });
     setup();
-    expect(await screen.findByRole("heading", { level: 1, name: "Your visit" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: "You’re checked in" })).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "Message kitchen" })).toHaveLength(1);
     expect(screen.queryByRole("region", { name: "Instructions saved with your booking" })).not.toBeInTheDocument();
     expect(screen.queryByText("Use the side entrance.")).not.toBeInTheDocument();
@@ -463,7 +511,7 @@ describe("full-page kitchen visit", () => {
       expect(screen.queryByText("Visit finished")).not.toBeInTheDocument();
       expect(screen.getByText(/min past your booking/)).toBeInTheDocument();
       fireEvent.click(screen.getByRole("button", { name: "Check out now" }));
-      fireEvent.click(await screen.findByRole("button", { name: "Submit checkout" }));
+      fireEvent.click(await screen.findByRole("button", { name: "Check out" }));
       await waitFor(() => expect(posts().some(([url]) => String(url).endsWith("/checkout"))).toBe(true));
     });
     it("a chef still checked in sees the ended state once: no 'In session', no kitchen deadline, one Check out now", async () => {
@@ -476,18 +524,19 @@ describe("full-page kitchen visit", () => {
       expect(screen.getAllByRole("button", { name: "Check out now" })).toHaveLength(1);
       expect(screen.queryByRole("button", { name: "Leave early / check out now" })).not.toBeInTheDocument();
     });
-    it("a finished visit says Visit finished once", async () => {
+    it("a finished visit shows a completion title and status", async () => {
       status = ended({ status: "completed", checkinStatus: "checked_out", checkoutRequestedAt: new Date(Date.now() - 3_000_000).toISOString() }, "manager_cleared");
       setup();
-      expect(await screen.findAllByText("Visit finished")).toHaveLength(1);
-      expect(screen.queryByRole("button", { name: /Check out now|Submit checkout/ })).not.toBeInTheDocument();
+      expect(await screen.findByRole("heading", { name: "Visit complete" })).toBeInTheDocument();
+      expect(within(screen.getByRole("region", { name: "Visit status" })).getByText("Visit complete")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Check out now|Check out/ })).not.toBeInTheDocument();
     });
     it("once the inspection window has closed there is no checkout, and it says what to do", async () => {
       status = ended({ status: "completed", checkinStatus: "checked_in" }, "auto_closed_uninspected");
       setup();
       expect(await screen.findByTestId("visit-next-step")).toHaveTextContent("Your booked time has ended and your checkout wasn’t recorded. Message Test kitchen if your departure needs to be added.");
       expect(screen.getAllByText("Visit finished")).toHaveLength(1);
-      expect(screen.queryByRole("button", { name: /Check out now|Submit checkout/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Check out now|Check out/ })).not.toBeInTheDocument();
     });
   });
 
@@ -511,11 +560,11 @@ describe("full-page kitchen visit", () => {
     status = visit({ checkinStatus: "checkout_requested", checkedInAt: "2026-10-12T14:05:00Z", checkoutRequestedAt: "2026-10-12T17:10:00Z", checkoutReviewDeadline: "2026-10-12T18:10:00Z" });
     setup();
     const summary = await screen.findByRole("region", { name: "Visit status" });
-    expect(within(summary).getByText("Checked out")).toBeInTheDocument();
+    expect(within(summary).getByText("Checking out")).toBeInTheDocument();
     expect(within(summary).getByText(/^You checked out at \d{1,2}:\d{2}\s[ap]\.m\. You’re all set\.$/)).toBeInTheDocument();
     // The review deadline is the kitchen's business, not the chef's.
     expect(summary).not.toHaveTextContent(/Review due by|inspection|paid|payout|refund|complete/i);
-    expect(screen.queryByRole("button", { name: /Confirm check-in|Submit checkout/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Check in|Check out/ })).not.toBeInTheDocument();
   });
 
   it.each([
@@ -530,7 +579,7 @@ describe("full-page kitchen visit", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Kitchen visit" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Visit instructions" })).not.toBeInTheDocument();
     expect(screen.queryByText("Use the side entrance.")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Confirm check-in|Submit checkout/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Check in|Check out/ })).not.toBeInTheDocument();
     expect(screen.queryByText(/no-show/i)).not.toBeInTheDocument();
   });
 
@@ -543,11 +592,11 @@ describe("full-page kitchen visit", () => {
     const summary = await screen.findByRole("region", { name: "Visit status" });
     expect(await within(summary).findByText("Kitchen closed the visit")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Visit 1:/ })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.queryByRole("button", { name: "Submit checkout" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Check out" })).not.toBeInTheDocument();
     expect(screen.getByRole("group", { name: "Choose a visit" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Visit 2:/ }));
     expect(await within(screen.getByRole("region", { name: "Visit status" })).findByText(/^You checked in at /)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Submit checkout" }));
+    fireEvent.click(screen.getByRole("button", { name: "Check out" }));
     await waitFor(() => expect(posts()).toHaveLength(1));
     expect(JSON.parse(posts()[0][1].body).visitId).toBe(911);
   });
@@ -559,7 +608,7 @@ describe("full-page kitchen visit", () => {
     });
     setup(true);
     expect(await screen.findByTestId("visit-next-step")).toHaveTextContent(/^Check-in is open\. .* Your booking still ends at 11:59 p\.m\. GMT\.$/);
-    fireEvent.click(await screen.findByRole("button", { name: "Confirm check-in" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Check in" }));
     await waitFor(() => expect(screen.getByTestId("visit-next-step")).toHaveTextContent(/^You checked in at .* Your booking still ends at 11:59 p\.m\. GMT\.$/));
   });
 
