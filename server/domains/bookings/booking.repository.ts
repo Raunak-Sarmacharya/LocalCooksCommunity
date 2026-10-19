@@ -674,6 +674,7 @@ export class BookingRepository {
                 id: equipmentBookings.id,
                 equipmentListingId: equipmentBookings.equipmentListingId,
                 kitchenBookingId: equipmentBookings.kitchenBookingId,
+                kitchenBookingVisitId: equipmentBookings.kitchenBookingVisitId,
                 chefId: equipmentBookings.chefId,
                 startDate: equipmentBookings.startDate,
                 endDate: equipmentBookings.endDate,
