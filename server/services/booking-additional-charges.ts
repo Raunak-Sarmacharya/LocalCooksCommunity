@@ -17,14 +17,21 @@ export interface AdditionalCharge {
   minutes: number | null;
   /** What the chef paid for this line, in cents. */
   amountCents: number;
+  /** What the chef paid, split: before tax, tax, Local Cooks service fee (they add up to `amountCents`). */
+  subtotalCents: number;
+  taxCents: number;
+  serviceFeeCents: number;
   /** Manager view only: what the kitchen nets from this line, in cents (after its card processing fee; claims carry none). */
   kitchenShareCents?: number;
+  /** Manager view only: the card processing fee on this line (0 on claims: Local Cooks absorbs it) and the part of its refunds taken from the kitchen. */
+  cardFeeCents?: number;
+  refundShareCents?: number;
   refundedCents: number;
   paidAt: string | null;
   status: string;
 }
 
-type Row = { id: number; amount: string | number | null; managerRevenue: string | number | null; stripeProcessingFee?: string | number | null; refundAmount: string | number | null;
+type Row = { id: number; amount: string | number | null; managerRevenue: string | number | null; stripeProcessingFee?: string | number | null; refundAmount: string | number | null; taxAmount?: string | number | null;
   status: string; paidAt: Date | string | null; paymentIntentId: string | null; metadata: unknown;
   baseAmount?: string | number | null; serviceFee?: string | number | null; transferId?: string | null; payoutTiming?: string | null; payoutReleasedAt?: Date | string | null };
 
@@ -54,9 +61,13 @@ export function toAdditionalCharges(rows: Row[], role: 'chef' | 'manager', paren
       : kitchenPayout({ amount: row.amount ?? 0, baseAmount: row.baseAmount ?? 0, serviceFee: row.serviceFee ?? 0, stripeProcessingFee: row.stripeProcessingFee,
         managerRevenue: row.managerRevenue, metadata: row.metadata, transferId: row.transferId, payoutTiming: row.payoutTiming, payoutReleasedAt: row.payoutReleasedAt }).amountCents;
     const minutes = kind === 'damage_claim' || kind === 'kitchen_change' ? null : Number.isFinite(Number(meta.minutes)) ? Number(meta.minutes) : null;
-    const line: AdditionalCharge = { id: row.id, kind, minutes, amountCents: cents(row.amount), refundedCents: cents(row.refundAmount),
+    // baseAmount is the kitchen's gross (before-tax amount + tax); the service fee is on top.
+    const serviceFee = cents(row.serviceFee), tax = cents(row.taxAmount), amount = cents(row.amount);
+    const line: AdditionalCharge = { id: row.id, kind, minutes, amountCents: amount, refundedCents: cents(row.refundAmount),
+      subtotalCents: amount - serviceFee - tax, taxCents: tax, serviceFeeCents: serviceFee,
       paidAt: row.paidAt ? new Date(row.paidAt).toISOString() : null, status: row.status };
-    return [role === 'manager' ? { ...line, kitchenShareCents: kitchenShare } : line];
+    const refundShare = (Array.isArray(meta.refunds) ? meta.refunds as Array<{ managerDebited?: number }> : []).reduce((sum, item) => sum + Math.max(0, Number(item?.managerDebited || 0)), 0);
+    return [role === 'manager' ? { ...line, kitchenShareCents: kitchenShare, cardFeeCents: kind === 'damage_claim' ? 0 : cents(row.stripeProcessingFee), refundShareCents: refundShare } : line];
   });
 }
 
@@ -66,7 +77,7 @@ export async function readAdditionalCharges(db: any, bookingId: number, role: 'c
     id: paymentTransactions.id, amount: paymentTransactions.amount, managerRevenue: paymentTransactions.managerRevenue, stripeProcessingFee: paymentTransactions.stripeProcessingFee,
     baseAmount: paymentTransactions.baseAmount, serviceFee: paymentTransactions.serviceFee, transferId: paymentTransactions.transferId,
     payoutTiming: paymentTransactions.payoutTiming, payoutReleasedAt: paymentTransactions.payoutReleasedAt,
-    refundAmount: paymentTransactions.refundAmount, status: paymentTransactions.status, paidAt: paymentTransactions.paidAt,
+    refundAmount: paymentTransactions.refundAmount, taxAmount: paymentTransactions.taxAmount, status: paymentTransactions.status, paidAt: paymentTransactions.paidAt,
     paymentIntentId: paymentTransactions.paymentIntentId, metadata: paymentTransactions.metadata,
   }).from(paymentTransactions).where(and(
     eq(paymentTransactions.bookingId, bookingId),

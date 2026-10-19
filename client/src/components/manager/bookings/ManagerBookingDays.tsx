@@ -102,7 +102,7 @@ export function ManagerBookingDays({ bookingId, revision, visits, money = [], pa
           {ceiling != null && <p className="text-sm">{t('mdMaxRefund', { amount: cash(ceiling) })}</p>}
           {amountCents > 0 && <><p>{t('mdChefReceives', { amount: cash(amountCents) })}</p><p>{t('mdKitchenPays', { amount: cash(amountCents) })}</p></>}
         </>}
-        {quote && <div className="space-y-2 text-sm"><p>{t('mdChefReceives', { amount: cash(quote.chefRefundCents) })}</p><p>{t('mdKitchenPays', { amount: cash(quote.kitchenPaysCents) })}</p><p>{t('mdLocalCooksPays', { amount: cash(quote.localCooksPaysCents) })}</p></div>}
+        {quote && <div className="space-y-2 text-sm"><p>{t('mdChefReceives', { amount: cash(quote.chefRefundCents) })}</p><p>{t('mdKitchenPays', { amount: cash(quote.kitchenPaysCents) })}</p></div>}
         <Label htmlFor="day-action-reason">{t('mdReason')}</Label><Textarea id="day-action-reason" value={reason} maxLength={500} disabled={busy || locked} onChange={event => setReason(event.target.value)} />
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
         <Button variant="ghost" disabled={busy} onClick={() => setAction(null)}>{t('cancel')}</Button>

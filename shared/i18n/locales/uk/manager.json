@@ -4241,7 +4241,6 @@
   "mdRefundDay": "Повернути більше за цей день",
   "mdChefReceives": "Кухар отримує {amount}",
   "mdKitchenPays": "Ваша виплата зменшиться на {amount}",
-  "mdLocalCooksPays": "Local Cooks сплачує {amount}",
   "mdReason": "Причина",
   "mdConfirm": "Підтвердити",
   "mdRefundHelp": "Додаткове повернення сплачується з частки кухні за цей день. Комісії за картку та сервіс не змінюються.",

@@ -14,8 +14,14 @@ describe('booking additional charges', () => {
   });
   it('chef sees what they paid, never the kitchen share', () => {
     const [line] = toAdditionalCharges([row()], 'chef');
-    expect(line).toEqual({ id: 1, kind: 'extension', minutes: 30, amountCents: 1438, refundedCents: 0, paidAt: '2026-10-14T23:00:00.000Z', status: 'succeeded' });
-    expect(line).not.toHaveProperty('kitchenShareCents');
+    expect(line).toEqual({ id: 1, kind: 'extension', minutes: 30, amountCents: 1438, refundedCents: 0, subtotalCents: 1250, taxCents: 0, serviceFeeCents: 188,
+      paidAt: '2026-10-14T23:00:00.000Z', status: 'succeeded' });
+    for (const hidden of ['kitchenShareCents', 'cardFeeCents', 'refundShareCents']) expect(line).not.toHaveProperty(hidden);
+  });
+  it('manager: a booking change splits into before-tax, tax and service fee; card fee and the kitchen share of its refunds (Oct 19 statement)', () => {
+    const [line] = toAdditionalCharges([row({ id: 198, amount: '3050', baseAmount: '2875', taxAmount: '375', serviceFee: '175', stripeProcessingFee: '143',
+      managerRevenue: '2732', refundAmount: '2907', status: 'refunded', metadata: { kitchenChangeId: 'c1', refunds: [{ id: 're_1', customerReceived: 2907, managerDebited: 2732, platformServiceFeeReturned: 175 }] } })], 'manager');
+    expect(line).toMatchObject({ kind: 'kitchen_change', subtotalCents: 2500, taxCents: 375, serviceFeeCents: 175, cardFeeCents: 143, refundShareCents: 2732, refundedCents: 2907 });
   });
   it('manager also gets the kitchen share; a Local Cooks-funded claim row is not kitchen money', () => {
     const lines = toAdditionalCharges([row(),

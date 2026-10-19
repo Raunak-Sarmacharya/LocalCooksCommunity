@@ -33,7 +33,8 @@ vi.mock("@/components/booking/BookingHistoryPanel", () => ({ BookingHistoryPanel
 vi.mock("@/components/booking/BookingAttendancePanel", () => ({ BookingAttendancePanel: (props: Record<string, unknown>) => { h.attendance = props; return <p>Visit record line</p>; } }));
 vi.mock("@/components/manager/bookings/VisitCodePanel", () => ({ POLL_LEAD_MINUTES: 30, VisitCodePanel: (props: Record<string, unknown>) => { h.code = props; return <p>Check-in code panel</p>; } }));
 vi.mock("@/components/booking/CancellationRefundReview", () => ({ CancellationRefundReview: nothing }));
-vi.mock("@/components/booking/BookingPricingBreakdown", () => ({ ChefBookingReceiptBreakdown: nothing, KitchenPayoutStatementBreakdown: nothing }));
+vi.mock("@/components/booking/BookingPricingBreakdown", () => ({ ChefBookingReceiptBreakdown: nothing,
+  KitchenPayoutStatementBreakdown: (props: Record<string, unknown>) => { (h as Record<string, unknown>).statement = props; return null; } }));
 vi.mock("@/components/booking/CheckinPolicyTimesCard", () => ({ CheckinPolicyTimesCard: nothing }));
 vi.mock("@/components/booking/RefundRequestStatus", () => ({ RefundRequestStatus: nothing }));
 vi.mock("@/components/booking/StripeProcessingFeeRefundInfo", () => ({ StripeProcessingFeeRefundInfo: nothing }));
@@ -279,7 +280,8 @@ describe("Local Cooks goodwill refund on the payment card", () => {
     render(<BookingDetailsPage />);
     const card = await screen.findByTestId("payment-card");
     expect(within(card).getByText("Refunded $26.00")).toBeInTheDocument();
-    expect(within(card).getByTestId("goodwill-line")).toHaveTextContent("Local Cooks refund · $26.00");
+    // One statement: the refund line says how much of it came from Local Cooks.
+    expect(within(card).getByTestId("statement-refunded")).toHaveTextContent("Includes $26.00 from Local Cooks");
     expect(within(card).queryByText("Part of your payment was refunded.")).not.toBeInTheDocument();
   });
   it("tells the manager the payout is unchanged", async () => {
@@ -307,8 +309,9 @@ describe("payout after closeout on the payment card", () => {
     expect(within(card).queryByTestId("payment-status-line")).not.toBeInTheDocument();
     expect(card).not.toHaveTextContent("The chef has paid.");
     expect(card).not.toHaveTextContent("Payment collected from the chef.");
-    // The payout amount appears once on the page (the breakdown repeats it only when opened).
-    expect(document.body.textContent!.split("$27.32").length - 1).toBe(1);
+    // The headline, then once more as the statement's bottom line (the statement adds up to it).
+    expect(document.body.textContent!.split("$27.32").length - 1).toBe(2);
+    expect(within(card).getByTestId("statement-payout")).toHaveTextContent("Your payout$27.32");
   });
   it("keeps the legacy wording for an at-capture payout", async () => {
     h.manager = true; h.booking = paid({ timing: "at_capture", status: "sent" });
@@ -591,7 +594,8 @@ describe("payout said once (manager, checkout to review)", () => {
     expect(await screen.findByTestId("booking-next-step")).toHaveTextContent("Ada Lovelace checked out. Finish the inspection to get paid now — or it’s sent Jan 16 at 12:00 p.m.");
     expect(within(screen.getByTestId("payment-card")).getByTestId("kitchen-payout-status")).toHaveTextContent(/^Sent automatically if you don’t inspect\.$/);
     expect(count("Jan 16 at 12:00 p.m.")).toBe(1);
-    expect(count("$54.64")).toBe(1);
+    // Headline + the statement's bottom line.
+    expect(count("$54.64")).toBe(2);
     expect(document.body.textContent).not.toMatch(/Finish the inspection to send it now/);
   });
 });
@@ -629,8 +633,8 @@ describe("payment card: card holds and the true total (round 3)", () => {
     expect(card).not.toHaveTextContent("Total paid");
   });
   const extras = [
-    { id: 21, kind: "extension", minutes: 30, amountCents: 1438, kitchenShareCents: 1250, refundedCents: 0, paidAt: "2030-01-15T15:00:00Z", status: "succeeded" },
-    { id: 22, kind: "damage_claim", minutes: null, amountCents: 9000, kitchenShareCents: 9000, refundedCents: 0, paidAt: "2030-01-16T15:00:00Z", status: "succeeded" },
+    { id: 21, kind: "extension", minutes: 30, amountCents: 1438, subtotalCents: 1250, taxCents: 0, serviceFeeCents: 188, cardFeeCents: 0, refundShareCents: 0, kitchenShareCents: 1250, refundedCents: 0, paidAt: "2030-01-15T15:00:00Z", status: "succeeded" },
+    { id: 22, kind: "damage_claim", minutes: null, amountCents: 9000, subtotalCents: 9000, taxCents: 0, serviceFeeCents: 0, cardFeeCents: 0, refundShareCents: 0, kitchenShareCents: 9000, refundedCents: 0, paidAt: "2030-01-16T15:00:00Z", status: "succeeded" },
   ];
   it('chef: live #197 includes the change charge and states the refunded amount', async () => {
     h.manager = false;
@@ -652,18 +656,43 @@ describe("payment card: card holds and the true total (round 3)", () => {
     render(<BookingDetailsPage />);
     await screen.findByTestId('payment-card');
     expect(headline()).toBe('$91.50');
-    expect(screen.getByTestId('payment-status-line')).toHaveTextContent('Refunded $34.22');
+    expect(screen.getByTestId('payment-status-line')).toHaveTextContent('Refunded $34.22 of $91.50');
   });
   it('manager: original and change payout shares count once, including add-on refund debits', async () => {
     h.manager = true;
     h.booking = withMoney({ status: 'confirmed', paymentStatus: 'partially_refunded', totalPrice: 5000,
-      paymentTransaction: { amount: 6100, serviceFee: 350, managerRevenue: 5750, status: 'partially_refunded', refundAmount: 2922, kitchenShareCents: 2747 },
-      additionalCharges: [{ id: 197, kind: 'kitchen_change', minutes: null, amountCents: 3050, kitchenShareCents: 2739, refundedCents: 0, status: 'succeeded', paidAt: null }],
+      paymentTransaction: { amount: 6100, serviceFee: 350, taxAmount: 750, managerRevenue: 5750, stripeProcessingFee: 256, status: 'partially_refunded', refundAmount: 2922, kitchenShareCents: 2747 },
+      additionalCharges: [{ id: 197, kind: 'kitchen_change', minutes: null, amountCents: 3050, subtotalCents: 2500, taxCents: 375, serviceFeeCents: 175, cardFeeCents: 136,
+        refundShareCents: 0, kitchenShareCents: 2739, refundedCents: 0, status: 'succeeded', paidAt: null }],
       payout: { timing: 'after_closeout', status: 'scheduled', amountCents: 5486 } });
     render(<BookingDetailsPage />);
-    await screen.findByTestId('payment-card');
+    const card = await screen.findByTestId('payment-card');
     expect(headline()).toBe('$54.86');
-    expect(screen.getByTestId('extra-charge-line')).toHaveTextContent('Booking change$27.39');
+    // Chef paid: the change at its before-tax price; the service fee and HST of both payments together.
+    expect(screen.getByTestId('extra-charge-line')).toHaveTextContent('Booking change$25.00');
+    expect(card).toHaveTextContent('Local Cooks service fee');
+    expect(screen.getByTestId('statement-total-paid')).toHaveTextContent('Total paid$91.50');
+    // Your payout: $86.25 booking amount − $3.92 card fees − $27.47 share of refunds = $54.86, with no unexplained line.
+    const payout = screen.getByTestId('statement-payout');
+    expect(payout).toHaveTextContent('Your booking amount');
+    expect(payout).toHaveTextContent('$86.25');
+    expect(payout).toHaveTextContent('Card processing fees−$3.92');
+    expect(payout).toHaveTextContent('Your share of refunds−$27.47');
+    expect(payout).not.toHaveTextContent('Other adjustments');
+  });
+  it('manager: the statement subtracts the kitchen share of refunds, not the chef refund, so it adds up to the payout (Oct 19)', async () => {
+    h.manager = true;
+    // The chef got $29.22 back; $27.47 of it came out of the kitchen's share (the rest was service and card fees).
+    h.booking = withMoney({ status: 'confirmed', paymentStatus: 'partially_refunded', totalPrice: 5000,
+      paymentTransaction: { amount: 6100, serviceFee: 350, managerRevenue: 5750, stripeProcessingFee: 256, status: 'partially_refunded', refundAmount: 2922, kitchenShareCents: 2747 },
+      additionalCharges: [] });
+    render(<BookingDetailsPage />);
+    await screen.findByTestId('payment-card');
+    expect(headline()).toBe('$27.47');
+    // $61.00 − $3.50 service fee − $2.56 card fee − $27.47 share of refunds = the $27.47 payout.
+    expect(screen.getByTestId('statement-payout')).toHaveTextContent('Your share of refunds−$27.47');
+    expect(screen.getByTestId('statement-payout')).not.toHaveTextContent('Other adjustments');
+    expect(screen.getByTestId('statement-refunded')).toHaveTextContent('Refunded to the chef−$29.22');
   });
   it("chef: Total paid includes extra time and the claim payment, each listed, with an honest receipt note", async () => {
     h.manager = false; h.booking = withMoney({ status: "completed", paymentStatus: "paid" });
@@ -677,10 +706,10 @@ describe("payment card: card holds and the true total (round 3)", () => {
     expect(Number(headline().replace(/[^0-9.]/g, ""))).toBeCloseTo(parent + 104.38, 2);
     expect(screen.getByTestId("payment-card")).toHaveTextContent("Total paid");
     const lines = screen.getAllByTestId("extra-charge-line");
-    expect(lines[0]).toHaveTextContent("Extra time · 30 min$14.38");
+    // Before-tax prices; the extension's service fee is in the one service fee line.
+    expect(lines[0]).toHaveTextContent("Extra time · 30 min$12.50");
     expect(lines[1]).toHaveTextContent("Damage and cleaning$90.00");
-    expect(screen.getByTestId("extra-charges-total")).toHaveTextContent(`Total paid, all charges${headline()}`);
-    expect(screen.getByTestId("extra-charges")).toHaveTextContent("Extra charges have their own receipts in your email.");
+    expect(screen.getByTestId("statement-total-paid")).toHaveTextContent(`Total paid${headline()}`);
   });
   it("manager: the payout headline adds the kitchen share of each extra line, listed separately", async () => {
     h.manager = true;
@@ -694,7 +723,6 @@ describe("payment card: card holds and the true total (round 3)", () => {
     const lines = screen.getAllByTestId("extra-charge-line");
     expect(lines[0]).toHaveTextContent("Extra time · 30 min$12.50");
     expect(lines[1]).toHaveTextContent("Damage and cleaning$90.00");
-    expect(screen.getByTestId("extra-charges")).not.toHaveTextContent("$14.38");
   });
   it("extra charges never count before the booking itself was captured", async () => {
     h.manager = false; h.booking = withMoney({ status: "pending", paymentStatus: "authorized", additionalCharges: extras,
@@ -727,7 +755,7 @@ describe('claim-aware booking page', () => {
     h.claims = [{ ...sent(), status: 'charge_succeeded', chefOwes: false }];
     fireEvent.click(paid);
     await waitFor(() => expect(vi.mocked(fetch).mock.calls.length).toBeGreaterThan(before));
-    expect(await screen.findByTestId('extra-charges-total')).toHaveTextContent('$170.00');
+    expect(await screen.findByTestId('statement-total-paid')).toHaveTextContent('$170.00');
     expect(screen.getByTestId('booking-next-step')).toHaveTextContent('You paid $70.00 for damage or extra cleaning.');
   });
   it('manager gets support instead of another report entry for this visit', async () => {

@@ -4241,7 +4241,6 @@
   "mdRefundDay": "Refund more for this day",
   "mdChefReceives": "Chef receives {amount}",
   "mdKitchenPays": "Your payout decreases by {amount}",
-  "mdLocalCooksPays": "Local Cooks pays {amount}",
   "mdReason": "Reason",
   "mdConfirm": "Confirm",
   "mdRefundHelp": "This extra refund comes from this day’s kitchen share. Card and service fees are unchanged.",

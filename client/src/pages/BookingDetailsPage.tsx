@@ -32,7 +32,7 @@ import { bookingChangeSchedule, kitchenRescheduleCutoff } from '@shared/kitchen-
 import { EquipmentIcon as Wrench } from "@/components/ui/inventory-icons";
 import { logger } from "@/lib/logger";
 import { calendarDateForBookingTime, sortTimesInOperatingWindow } from '@shared/operating-hours';
-import { lazy, Suspense, useState, useEffect, useMemo, useRef, type ComponentType } from "react";
+import { lazy, Suspense, useState, useEffect, useMemo, useRef, type ComponentType, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { formatTime as formatKitchenClock } from "@/lib/formatters";
 import { useLocation, useRoute } from "wouter";
@@ -242,7 +242,8 @@ interface BookingDetails {
   noShowGraceMinutes?: number;
   /** Extra time, changes and claim payments (their own payment rows). `kitchenShareCents` only in the manager view. */
   additionalCharges?: Array<{ id: number; kind: 'extension' | 'extra_time' | 'damage_claim' | 'kitchen_change'; minutes: number | null; amountCents: number;
-    kitchenShareCents?: number; refundedCents: number; paidAt: string | null; status: string }>;
+    kitchenShareCents?: number; refundedCents: number; paidAt: string | null; status: string;
+    subtotalCents?: number; taxCents?: number; serviceFeeCents?: number; cardFeeCents?: number; refundShareCents?: number }>;
   /** The chef's latest "running late" heads-up to the kitchen. */
   runningLate?: RunningLateState | null;
   visits?: Array<{ id: number; updatedAt: string; blockIndex: number; startTime: string; endTime: string; checkinStatus: string; checkedInAt: string | null; checkoutRequestedAt: string | null; checkedOutAt: string | null; checkoutApprovedAt: string | null; noShowDetectedAt: string | null; checkoutManagerMessage?: string | null; visitDate?: string | null; scheduleRevision?: number | null; scheduleState?: string | null; pricingMode?: string | null; operatingWindowStartTime?: string | null; priceSnapshot?: { kitchenCents?: number; equipment?: Array<{ cents: number }> } | null; closeout?: { scheduledStartAt?: string; scheduledEndAt?: string } }>;
@@ -652,7 +653,10 @@ export default function BookingDetailsPage() {
     }
     if (status === 'refunded' || status === 'partially_refunded' || refundedCents > 0) return {
       // The kitchen didn't pay: it reads what happened to the chef's payment, never "your payment".
-      summary: refundedCents > 0 ? t('bnChargeRefunded', { amount: formatCurrency(refundedCents) })
+      // With a second payment (a paid change, extra time), say what the refund is out of: every charge, not the first one only.
+      summary: refundedCents > 0 && booking.additionalCharges?.length ? t('bnRefundedOf', { amount: formatCurrency(refundedCents),
+          total: formatCurrency((booking.paymentTransaction?.amount || 0) + booking.additionalCharges.reduce((sum, line) => sum + line.amountCents, 0)) })
+        : refundedCents > 0 ? t('bnChargeRefunded', { amount: formatCurrency(refundedCents) })
         : status === 'refunded' ? t('bdRefundedSummary', { defaultValue: 'Your payment was refunded.' }) : t('bdPartialRefundSummary', { defaultValue: 'Part of your payment was refunded.' }),
       detail: `${refundedCents ? t(isManagerView ? 'bdRefundedToChef' : 'bdRefundedYou', { amount: formatCurrency(refundedCents) }) : t('bdRefundAmountUnavailable', { defaultValue: 'The refund amount is not yet available.' })}${booking.paymentTransaction?.refundedAt ? ` ${t('bdRefundedOn', { date: formatShortDate(booking.paymentTransaction.refundedAt) })}` : ''}${booking.paymentTransaction?.refundReason && isManagerView ? ` ${t('bdRefundReason', { reason: booking.paymentTransaction.refundReason })}` : ''}`,
     };
@@ -742,6 +746,10 @@ export default function BookingDetailsPage() {
           ? estimatedStripe
           : 0;
     const feesAreEstimated = isAuthorizedHold && actualStripe <= 0 && stripeFee > 0;
+    // The kitchen's statement subtracts only what refunds took from its share (the chef's refund also returns the service and card fees).
+    const txn = booking.paymentTransaction;
+    const kitchenRefundShare = isManagerView && txn?.kitchenShareCents != null && actualStripe > 0
+      ? Math.max(0, (txn.amount || 0) - (txn.serviceFee || 0) - actualStripe - txn.kitchenShareCents) : null;
 
     return {
       kitchenBaseSubtotalCents: subtotal,
@@ -756,7 +764,7 @@ export default function BookingDetailsPage() {
         : booking.paymentTransaction?.managerRevenue,
       chargeAmountCents: booking.paymentTransaction?.amount,
       // Local Cooks goodwill never reduces the kitchen's payout.
-      refundAmountCents: Math.max(0, (booking.paymentTransaction?.refundAmount || 0) - (isManagerView ? goodwillRefund : 0)),
+      refundAmountCents: kitchenRefundShare ?? Math.max(0, (booking.paymentTransaction?.refundAmount || 0) - (isManagerView ? goodwillRefund : 0)),
       hourlyRateCents: booking.hourlyRate,
       bookedHours: booking.durationHours,
       showPaymentProcessorFee: stripeFee > 0,
@@ -1249,6 +1257,8 @@ export default function BookingDetailsPage() {
   const extraCharges = paymentCaptured ? (booking?.additionalCharges || []) : [];
   const extraCents = (line: NonNullable<BookingDetails['additionalCharges']>[number]) => isManagerView ? (line.kitchenShareCents ?? 0) : line.amountCents;
   const extraTotalCents = extraCharges.reduce((sum, line) => sum + extraCents(line), 0);
+  // The "Refunded" line is every refund on the booking, matching the header (a change payment is refunded on its own charge).
+  const extraRefundedCents = extraCharges.reduce((sum, line) => sum + (line.refundedCents || 0), 0);
   const paymentHeadline = (() => {
     if (!booking?.paymentTransaction || !pricingBreakdownInput || booking.paymentDecision?.state === 'pending'
       || (!paymentCaptured && bookingEnded)) return null;
@@ -1262,6 +1272,27 @@ export default function BookingDetailsPage() {
     if (!paymentCaptured) return { label: t('bnCardHold'), cents: booking.paymentTransaction.amount || buildChefBookingReceiptBreakdown(pricingBreakdownInput).totalPaidCents, struck: false };
     return { label: t('bdhTotalPaid'), cents: booking.paymentTransaction.amount + extraTotalCents, struck: false };
   })();
+  // Once money is captured: one statement over every payment (Airbnb's "Guest paid" then "Host payout"). Holds keep the receipt view.
+  const statement = (() => {
+    const txn = booking?.paymentTransaction;
+    if (!txn || !pricingBreakdownInput || !paymentCaptured || !paymentHeadline || (isManagerView && proposal)) return null;
+    const sum = (key: 'amountCents' | 'serviceFeeCents' | 'taxCents' | 'refundedCents' | 'cardFeeCents' | 'refundShareCents') => extraCharges.reduce((total, line) => total + (line[key] ?? 0), 0);
+    const serviceFee = pricingBreakdownInput.platformFeeAmountCents || 0, paid = txn.amount + sum('amountCents');
+    const gross = txn.amount - serviceFee + sum('amountCents') - sum('serviceFeeCents');
+    const cardFees = (pricingBreakdownInput.paymentProcessorFeeCents || 0) + sum('cardFeeCents');
+    const refundShare = (pricingBreakdownInput.refundAmountCents || 0) + sum('refundShareCents');
+    return { serviceFee: serviceFee + sum('serviceFeeCents'), tax: (txn.taxAmount || 0) + sum('taxCents'), paid, refunded: refundAmount + sum('refundedCents'),
+      gross, cardFees, refundShare, payout: paymentHeadline.cents, adjustment: paymentHeadline.cents - (gross - cardFees - refundShare) };
+  })();
+  const chargeLabel = (line: NonNullable<BookingDetails['additionalCharges']>[number]) => line.kind === 'damage_claim' ? t('bnChargeDamage')
+    : line.kind === 'kitchen_change' ? t('bnChargeBookingChange')
+    : line.kind === 'extra_time' ? t('bnChargeExtraTime')
+    : line.minutes ? t('bnChargeExtension', { length: formatBookedDuration(line.minutes, lang) }) : t('bnChargeExtensionNoLength');
+  const moneyRow = (label: ReactNode, cents: number, options: { sub?: string; muted?: boolean; total?: boolean; testId?: string } = {}) => (
+    <div className={`flex justify-between gap-3 text-sm ${options.total ? 'mt-1 border-t pt-2 font-semibold' : ''}`} data-testid={options.testId}>
+      <span className={options.muted ? 'text-muted-foreground' : ''}>{label}{options.sub && <span className="block text-xs font-normal text-muted-foreground">{options.sub}</span>}</span>
+      <span className={`tabular-nums ${cents < 0 ? 'text-muted-foreground' : ''}`}>{cents < 0 ? `−${formatCurrency(-cents)}` : formatCurrency(cents)}</span>
+    </div>);
   // ── State, times and facts for the Now card (design-booking-consolidation.md §2) ─────────────────────────────
   const hasMultipleVisits = (booking?.visits?.length ?? 0) > 1;
   const datedBooking = !!booking?.scheduleRevision;
@@ -1840,6 +1871,7 @@ export default function BookingDetailsPage() {
         <span className="tabular-nums text-muted-foreground line-through">{formatCurrency(booking.paymentTransaction?.amount || totals.subtotal)}</span>
       </div>
     ) : (<>
+      {statement && isManagerView && <h4 className="text-xs font-semibold text-muted-foreground">{t('bdChefPaidHeading')}</h4>}
       <div className="flex justify-between text-sm">
         <span className="text-muted-foreground">{ct('sweepLabel34')}</span>
         <span className="tabular-nums">{formatCurrency(totals.kitchen > 0 ? totals.kitchen : booking.totalPrice)}</span>
@@ -1866,16 +1898,33 @@ export default function BookingDetailsPage() {
           </div>
         </div>
       )}
+      {statement ? extraCharges.map(line => <div key={line.id} data-testid="extra-charge-line">{moneyRow(chargeLabel(line), line.subtotalCents ?? line.amountCents, { muted: true })}</div>) : (
       <div className="flex justify-between text-sm">
-        <span className="text-muted-foreground">{isRefunded || isPartiallyRefunded ? t("bdAmountCharged") : t("bdSubtotal")}</span>
-        <span className={`tabular-nums ${isRefunded ? 'text-muted-foreground line-through' : ''}`}>{formatCurrency(totals.subtotal)}</span>
-      </div>
+        <span className="text-muted-foreground">{t("bdSubtotal")}</span>
+        <span className="tabular-nums">{formatCurrency(totals.subtotal)}</span>
+      </div>)}
       {Number(booking.extraTimeRateCents) > 0 ? (
         <p className="text-xs leading-relaxed text-muted-foreground" data-testid="booking-extra-time-rate">
           {bt('bpsExtraTimeRate', { amount: formatCurrency(booking.extraTimeRateCents) })}
         </p>
       ) : null}
-      {booking.paymentTransaction && pricingBreakdownInput && (
+      {statement ? (<>
+        {moneyRow(t('bdServiceFeeLine'), statement.serviceFee, { muted: true, sub: isManagerView ? t('bdServiceFeeChefPaid') : undefined })}
+        {statement.tax > 0 && moneyRow(t('bdHstPercent', { percent: pricingBreakdownInput!.kitchenHstRatePercent ?? 0 }), statement.tax, { muted: true })}
+        {moneyRow(t('bdhTotalPaid'), statement.paid, { total: true, testId: 'statement-total-paid' })}
+        {statement.refunded > 0 && moneyRow(isManagerView ? t('bdRefundedToChefLine') : t('bdRefundedLine'), -statement.refunded, { testId: 'statement-refunded',
+          sub: goodwillRefund > 0 ? t('bdGoodwillIncluded', { amount: formatCurrency(goodwillRefund) }) : undefined })}
+        {!isManagerView && statement.refunded > 0 && moneyRow(t('bdAfterRefunds'), statement.paid - statement.refunded, { total: true, testId: 'statement-after-refunds' })}
+        {isManagerView && (<div className="space-y-1 pt-3" data-testid="statement-payout">
+          <h4 className="text-xs font-semibold text-muted-foreground">{payoutTitle}</h4>
+          {moneyRow(t('bdYourBookingAmount'), statement.gross, { sub: t('bdYourBookingAmountSub') })}
+          {statement.cardFees > 0 && moneyRow(t('bdCardFees'), -statement.cardFees)}
+          {statement.refundShare > 0 && moneyRow(t('bdKitchenRefundShare'), -statement.refundShare)}
+          {statement.adjustment !== 0 && moneyRow(t('bdPayoutAdjustment'), statement.adjustment)}
+          {moneyRow(payoutTitle, statement.payout, { total: true })}
+          {statement.tax > 0 && <p className="text-xs text-muted-foreground">{t('bdHstIncludedNote', { amount: formatCurrency(statement.tax) })}</p>}
+        </div>)}
+      </>) : booking.paymentTransaction && pricingBreakdownInput && (
         isManagerView ? (
           proposal ? null : (
           <KitchenPayoutStatementBreakdown
@@ -1888,7 +1937,7 @@ export default function BookingDetailsPage() {
             platformFeeLabel={t("bdLocalCooksServiceFee", { percent: Math.round((pricingBreakdownInput.platformFeeRate || 0) * 100), defaultValue: "Service fee ({percent}%)" })}
             platformFeeChefPaidLabel={t("wfbChefServiceFee")}
             platformFeeInfo={<ServiceFeeInfoPopover iconClassName="h-3 w-3" />}
-            refundLabel={t("bdRefund")}
+            refundLabel={t("bdKitchenRefundShare")}
             hstLabel={t("bdHstPercent", { percent: pricingBreakdownInput.kitchenHstRatePercent ?? 0 })}
             hstCollectedLabel={t("bdHstCollectedLine")}
           />
@@ -1903,7 +1952,7 @@ export default function BookingDetailsPage() {
         )
       )}
     </>)}
-    {extraCharges.length > 0 && paymentHeadline && (
+    {!statement && extraCharges.length > 0 && paymentHeadline && (
       <div className="space-y-2 border-t pt-3" data-testid="extra-charges">
         {extraCharges.map(line => (
           <div key={line.id} className="flex justify-between gap-3 text-sm" data-testid="extra-charge-line">
@@ -1922,18 +1971,18 @@ export default function BookingDetailsPage() {
         <p className="text-xs text-muted-foreground">{isManagerView ? t('bnExtraStatementNote') : t('bnExtraReceiptsNote')}</p>
       </div>
     )}
-    {!isManagerView && goodwillRefund > 0 && (
+    {!statement && !isManagerView && goodwillRefund > 0 && (
       <div className="flex items-center justify-between gap-2 text-sm text-warning" data-testid="goodwill-line">
         <span>{t("bdGoodwillLine", { amount: formatCurrency(goodwillRefund) })}</span>
       </div>
     )}
-    {!isManagerView && refundAmount - goodwillRefund > 0 && (
+    {!statement && !isManagerView && refundAmount + extraRefundedCents - goodwillRefund > 0 && (
       <div className="flex items-center justify-between gap-2 text-sm">
         <span className="inline-flex items-center gap-1 text-warning">
           {t("bdRefundedLine")}
           <StripeProcessingFeeRefundInfo iconClassName="h-3 w-3" beforeConfirmation={booking.status === 'pending'} />
         </span>
-        <span className="tabular-nums text-warning">−{formatCurrency(refundAmount - goodwillRefund)}</span>
+        <span className="tabular-nums text-warning">−{formatCurrency(refundAmount + extraRefundedCents - goodwillRefund)}</span>
       </div>
     )}
   </>);
@@ -2008,7 +2057,8 @@ export default function BookingDetailsPage() {
             schedule: datedBooking && bookingDays.length
               ? daySpan
               : `${formatDate(bookingStartDateKey(booking) ?? booking.bookingDate)}\n${bookingTimeSlots.join(', ')} · ${friendlyTimezoneName(booking.location?.timezone, i18n.language)}`,
-            amount: booking.paymentTransaction ? formatCurrency(booking.paymentTransaction.amount) : undefined }}
+            // Everything the chef paid on this booking (a paid change is its own charge), as the page's "Total paid".
+            amount: booking.paymentTransaction ? formatCurrency(booking.paymentTransaction.amount + extraTotalCents) : undefined }}
           cancellationDeadline={cancellationDeadlineText}
           decisionPending={booking.paymentDecision?.state === 'pending'} declined={!!booking.cancellationRequestDeclinedAt}
           paidCancellationAvailable={paidCancellationAvailable}

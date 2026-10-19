@@ -1039,7 +1039,7 @@
   "chgErrExtraPaymentNotSucceeded": "The extra payment has not succeeded.",
   "chgErrEligibilityNotConfirmed": "Only a confirmed booking can be changed.",
   "chgErrEligibilityStarted": "This booking has already started, so it can’t be changed.",
-  "chgErrEligibilityTooClose": "It’s too close to your cancellation deadline to change this booking. Message the kitchen or cancel under your policy.",
+  "chgErrEligibilityTooClose": "This booking can’t be changed anymore: changes close before your refund deadline, so the kitchen has time to answer. Message the kitchen, or cancel under your policy.",
   "chgErrPaymentProviderUnavailable": "Payments are unavailable right now. No payment was started.",
   "chgErrChooseReturnPage": "Choose a booking page to return to.",
   "chgErrChooseValidBooking": "Choose a valid booking.",

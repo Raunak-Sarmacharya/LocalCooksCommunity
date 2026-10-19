@@ -4241,7 +4241,6 @@
   "mdRefundDay": "Rembourser davantage pour ce jour",
   "mdChefReceives": "Le chef reçoit {amount}",
   "mdKitchenPays": "Votre versement diminue de {amount}",
-  "mdLocalCooksPays": "Local Cooks paie {amount}",
   "mdReason": "Motif",
   "mdConfirm": "Confirmer",
   "mdRefundHelp": "Ce remboursement supplémentaire provient de la part de la cuisine pour ce jour. Les frais de carte et de service restent inchangés.",

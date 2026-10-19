@@ -1036,7 +1036,7 @@
   "chgErrExtraPaymentNotSucceeded": "Le paiement supplémentaire n’a pas réussi.",
   "chgErrEligibilityNotConfirmed": "Seule une réservation confirmée peut être modifiée.",
   "chgErrEligibilityStarted": "Cette réservation a déjà commencé, elle ne peut pas être modifiée.",
-  "chgErrEligibilityTooClose": "Il est trop tard avant votre date limite d’annulation pour modifier cette réservation. Écrivez à la cuisine ou annulez selon votre politique.",
+  "chgErrEligibilityTooClose": "Cette réservation ne peut plus être modifiée : les modifications ferment avant votre date limite de remboursement, pour laisser à la cuisine le temps de répondre. Écrivez à la cuisine ou annulez selon votre politique.",
   "chgErrPaymentProviderUnavailable": "Les paiements ne sont pas disponibles pour le moment. Aucun paiement n’a été lancé.",
   "chgErrChooseReturnPage": "Choisissez une page de réservation vers laquelle revenir.",
   "chgErrChooseValidBooking": "Choisissez une réservation valide.",
