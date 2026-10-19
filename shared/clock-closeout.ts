@@ -155,7 +155,8 @@ export function reduceClockCloseout(booking: ClockBooking, evidence: ClockEviden
     const row: ClockEvidence = stored || (saved.visits.length === 1 && !evidence.length ? booking : { startTime: visit.startTime, endTime: visit.endTime });
     const key = stored?.id != null ? String(stored.id) : identity.clockKey;
     const departure = row.checkoutRequestedAt ? instant(row.checkoutRequestedAt) : null;
-    const due = Math.min(end, departure ?? end);
+    // Never due before the visit starts, whatever the recorded departure says (no payout for a day that hasn't begun).
+    const due = Math.max(start, Math.min(end, departure ?? end));
     const deadline = Math.max(end, departure ?? end) + saved.inspectionAutoCloseHours * 3_600_000;
     const closed = saved.inspections?.[key] ?? saved.inspections?.[identity.clockKey];
     const outcome: InspectionOutcome = row.checkinStatus === 'checkout_claim_filed' ? 'issue_filed'

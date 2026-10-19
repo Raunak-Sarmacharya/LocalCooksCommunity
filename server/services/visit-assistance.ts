@@ -62,6 +62,11 @@ export async function assistKitchenVisit(bookingId: number, managerId: number, i
       throw Error('Correct the visit record or use the pending inspection/claim action; this visit cannot be assisted in its current state');
     if (input.action === 'departure' && current.checkedInAt && actual < current.checkedInAt)
       throw Error('Departure cannot precede the recorded arrival; correct the visit record first');
+    // A missed arrival or departure belongs to a visit that has started: nothing can be recorded for a later day,
+    // so its inspection (and payout) can't be brought forward.
+    const window = await (await import('./clock-closeout')).visitClock(context.booking, timezone, visits, visit?.id, context.locationId, tx);
+    if (window && (Date.now() < window.arrivalOpensAt || actual.getTime() < window.arrivalOpensAt))
+      throw Error('This visit hasn’t started yet. You can add a missed check-in or checkout once its arrival window opens, with times from that visit.');
     const duties = await kitchenDuties(bookingId, tx, 'legacy_first_action');
     const now = new Date(Math.max(Date.now(), current.updatedAt.getTime() + 1));
     const history = [...(Array.isArray(current.assistanceHistory) ? current.assistanceHistory : []), {

@@ -237,7 +237,8 @@ function InspectionTask({ booking, evidence, visitId, formatEvent, refresh, bloc
   const payoutNow = booking.payout?.timing === 'after_closeout' && booking.payout.status === 'scheduled' && booking.payout.amountCents > 0 ? booking.payout : null;
   const payoutAmount = payoutNow ? new Intl.NumberFormat(i18n.language, { style: 'currency', currency: 'CAD' }).format(payoutNow.amountCents / 100) : '';
   const canClear = clock ? clock.inspection.canRespond : booking.status === 'confirmed' && evidence.checkinStatus === 'checkout_requested' && !!deadline && Number.isFinite(Date.parse(deadline));
-  const canAssist = booking.status === 'confirmed' && [null, undefined, 'not_checked_in', 'checked_in'].includes(evidence.checkinStatus);
+  // Nothing to add for a visit that hasn't started (the server refuses it too).
+  const canAssist = booking.status === 'confirmed' && [null, undefined, 'not_checked_in', 'checked_in'].includes(evidence.checkinStatus) && clock?.phase !== 'upcoming';
   // Inspection and the separate 72-hour claim filing window have independent deadlines.
   const finished = saved || (clock ? clock.inspection.outcome === 'manager_cleared' : evidence.checkinStatus === 'checked_out' && !!evidence.checkoutApprovedAt);
   const reportWindow = clock ? claimFilingWindow(new Date(clock.scheduledEndAt), recordedDepartureAt(evidence)) : null;

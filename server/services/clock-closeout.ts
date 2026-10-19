@@ -73,6 +73,15 @@ export async function lateDepartureOpen(booking: ClockBooking, timezone: string,
   return lateCheckoutOpen(clock);
 }
 
+/** One visit's projected clock (start, arrival window, phase), from the same saved snapshot the inspection reads. */
+export async function visitClock(booking: ClockBooking, timezone: string, visits: ClockEvidence[], visitId: number | undefined,
+  locationId?: number, reader: Reader = db, now = new Date()) {
+  const saved = savedCloseout(booking.visitDuties) || makeCloseoutSnapshot(booking, timezone, await closeoutTiming(locationId, reader), visits);
+  const projection = reduceClockCloseout(booking, visits, saved, now);
+  const clock = visitId ? projection.visits.find(visit => visit.visitId === visitId) : projection.visits.length === 1 ? projection.visits[0] : undefined;
+  return clock ? { clock, arrivalOpensAt: Date.parse(clock.scheduledStartAt) - saved.checkinWindowMinutesBefore * 60_000 } : null;
+}
+
 /** Fixed query count for list surfaces; retain the list's money/customer DTO. */
 export async function projectBookingCloseouts<T extends { id: number }>(items: T[]) {
   if (!items.length) return items;

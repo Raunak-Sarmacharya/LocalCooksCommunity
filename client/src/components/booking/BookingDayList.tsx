@@ -38,8 +38,8 @@ export function BookingDayList({ bookingId, visits, timezone, status, money, not
           <span className="text-sm">{t(state)}</span></div>
         {(day => day && <div className="ml-auto text-right text-sm" data-testid="day-price"><p className="font-medium tabular-nums">{cash(day.allocatedCents)}</p>
           {day.refundedCents > 0 && <p className="text-muted-foreground">{t('mdDayRefunded', { amount: cash(day.refundedCents) })}</p>}</div>)(money?.find(day => day.visitId === visit.id))}
-        {!cancelled && isToday && status === 'confirmed' && visit.checkinStatus !== 'checked_out' &&
-          <a className="inline-flex min-h-11 items-center text-sm font-medium underline underline-offset-4" href={`/booking/${bookingId}/visit?visitId=${visit.id}`}>{t(visit.checkinStatus === 'checked_in' || visit.checkinStatus === 'checkout_requested' ? 'mdCheckOut' : 'mdOpenVisit')}</a>}
+        {!cancelled && isToday && status === 'confirmed' && !['checked_out', 'checkout_requested'].includes(visit.checkinStatus ?? '') &&
+          <a className="inline-flex min-h-11 items-center text-sm font-medium underline underline-offset-4" href={`/booking/${bookingId}/visit?visitId=${visit.id}`}>{t(visit.checkinStatus === 'checked_in' ? 'mdCheckOut' : 'mdOpenVisit')}</a>}
       </li>;
     })}</ul>
   </Card>;

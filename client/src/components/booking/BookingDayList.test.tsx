@@ -22,6 +22,9 @@ describe('chef booking days', () => {
     cleanup();
     render(<BookingDayList bookingId={5} visits={days.map(day => day.id === 2 ? { ...day, checkinStatus: 'checked_in' } : day)} timezone="America/St_Johns" status="confirmed" />);
     expect(screen.getByRole('link', { name: 'Check out' })).toHaveAttribute('href', '/booking/5/visit?visitId=2');
+    cleanup();
+    render(<BookingDayList bookingId={5} visits={days.map(day => day.id === 2 ? { ...day, checkinStatus: 'checkout_requested' } : day)} timezone="America/St_Johns" status="confirmed" />);
+    expect(screen.queryByRole('link')).toBeNull();
     expect(within(rows[0]).queryByRole('link')).toBeNull(); expect(within(rows[3]).queryByRole('link')).toBeNull();
   });
   it('shows what each day cost and any refund on it', () => {

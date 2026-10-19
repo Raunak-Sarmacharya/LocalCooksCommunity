@@ -30,6 +30,13 @@ describe('clock closeout (fake clock, no providers)', () => {
     expect(result.phase).toBe('in_booked_time'); expect(result.status).toBe('confirmed');
     expect(result.visits[0].inspection).toMatchObject({ dueAt: '2026-10-13T12:45:00.000Z', deadline: '2026-10-14T13:30:00.000Z' });
   });
+  it('never makes an inspection due before the visit starts, whatever departure is on the record', () => {
+    // Visit starts 12:30Z; a departure recorded the day before must not open the inspection (or release the payout) early.
+    const row = { ...booking, checkinStatus: 'checkout_requested', checkoutRequestedAt: '2026-10-12T18:00:00Z' };
+    const before = at('2026-10-12T19:00:00Z', row).visits[0].inspection;
+    expect(before).toMatchObject({ outcome: 'not_due', dueAt: '2026-10-13T12:30:00.000Z', canRespond: false });
+    expect(at('2026-10-13T12:31:00Z', row).visits[0].inspection.canRespond).toBe(true);
+  });
   it('early manager clear records inspection without early completion', () => {
     const result = at('2026-10-13T13:00:00Z', { ...booking, checkinStatus: 'checked_out', checkoutApprovedBy: 7,
       checkoutApprovedAt: '2026-10-13T12:50:00Z' });

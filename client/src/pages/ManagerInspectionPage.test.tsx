@@ -361,6 +361,15 @@ describe('manager inspection with isolated API mocks', () => {
     expect(JSON.parse(posts()[0][1].body)).toMatchObject({ visitId: 1002, action: 'departure', expectedUpdatedAt: booking.updatedAt });
   });
 
+  it("offers no missed check-in or checkout for a day that hasn't started", async () => {
+    const upcoming = { key: 'v2', phase: 'upcoming', arrivalRecorded: false, attendance: 'unknown', scheduledStartAt: '2030-10-12T18:00:00Z', scheduledEndAt: '2030-10-12T19:00:00Z',
+      inspection: { outcome: 'not_due', dueAt: '2030-10-12T19:00:00Z', deadline: '2030-10-13T19:00:00Z', closedAt: null, canRespond: false } };
+    booking.visits = [{ ...booking, id: 1002, blockIndex: 1, checkinStatus: 'not_checked_in', closeout: upcoming } as any];
+    mount('/manager/booking/901/inspection?visitId=1002');
+    expect(await screen.findByRole('button', { name: 'Report damage or extra cleaning' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add a missed check-in or checkout' })).not.toBeInTheDocument();
+  });
+
   it('lists each damage claim as one line that links to the booking page, not as a full claim card', async () => {
     claims = [{ id: 7, status: 'in_review', claimedAmountCents: 4500, amountCents: 4500, lines: [], history: [], evidence: [] }];
     mount(); await clearButton();

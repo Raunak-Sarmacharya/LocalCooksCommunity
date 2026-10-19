@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-const state = vi.hoisted(() => ({ booking: {} as any, visits: [] as any[], managerId: 2, timezone: undefined as string | null | undefined, writes: [] as any[], notice: vi.fn(), captured: vi.fn(), lateOpen: vi.fn(async () => false), persist: vi.fn(async () => ({ changed: true })) }));
+const state = vi.hoisted(() => ({ booking: {} as any, visits: [] as any[], managerId: 2, timezone: undefined as string | null | undefined, writes: [] as any[], notice: vi.fn(), captured: vi.fn(), lateOpen: vi.fn(async () => false), window: vi.fn(async (): Promise<any> => null), persist: vi.fn(async () => ({ changed: true })) }));
 vi.mock('../db', () => {
   const db: any = { execute: async () => [], select: () => { let table: string; const q: any = {
     from: (t: any) => { table = t[Symbol.for('drizzle:Name')]; return q; }, innerJoin: () => q, where: () => q,
@@ -11,7 +11,7 @@ vi.mock('../db', () => {
 vi.mock('./visit-duties', () => ({ kitchenDuties: state.captured }));
 vi.mock('./outcome-delivery', () => ({}));
 vi.mock('./booking-lifecycle-delivery', () => ({ queueBookingLifecycleEvent: state.notice, deliverBookingLifecycleEvents: async () => { throw Error('SMTP unavailable'); } }));
-vi.mock('./clock-closeout', () => ({ lateDepartureOpen: state.lateOpen, persistBookingCloseout: state.persist }));
+vi.mock('./clock-closeout', () => ({ lateDepartureOpen: state.lateOpen, persistBookingCloseout: state.persist, visitClock: state.window }));
 import { assistKitchenVisit } from './visit-assistance';
 const input = { action: 'departure' as const, reason: 'Chef reported leaving; upload repeatedly failed', actualAt: '2026-10-02T19:30:00Z',
   expectedUpdatedAt: '2026-10-02T18:00:00Z', expectedBookingUpdatedAt: '2026-10-02T18:00:00Z' };
@@ -33,6 +33,19 @@ describe('audited manager assistance (mocked database)', () => {
     await assistKitchenVisit(10, 2, { ...input, action: 'arrival' });
     expect(state.writes[0].assistanceHistory).toHaveLength(2); expect(state.writes[0].checkedInMethod).toBe('manager');
     expect(state.writes[0].checkedInAt).toEqual(new Date(input.actualAt));
+  });
+  it("refuses to record anything for a visit whose arrival window hasn't opened, or with times from before it", async () => {
+    // Tomorrow's visit: recording today's times would let its inspection (and payout) run a day early.
+    state.window.mockResolvedValue({ arrivalOpensAt: Date.parse('2026-10-04T19:45:00Z') });
+    await expect(assistKitchenVisit(10, 2, { ...input, action: 'arrival' })).rejects.toThrow(/hasn’t started yet/);
+    await expect(assistKitchenVisit(10, 2, input)).rejects.toThrow(/hasn’t started yet/);
+    // Window open (today's visit), but the reported time is before it.
+    state.window.mockResolvedValue({ arrivalOpensAt: Date.parse('2026-10-02T19:45:00Z') });
+    await expect(assistKitchenVisit(10, 2, input)).rejects.toThrow(/hasn’t started yet/);
+    expect(state.writes).toEqual([]); expect(state.notice).not.toHaveBeenCalled();
+    state.window.mockResolvedValue({ arrivalOpensAt: Date.parse('2026-10-02T19:00:00Z') });
+    expect(await assistKitchenVisit(10, 2, input)).toEqual({ success: true });
+    state.window.mockResolvedValue(null);
   });
   it('rejects another location manager before changing anything', async () => {
     await expect(assistKitchenVisit(10, 999, input)).rejects.toThrow(/not found/); expect(state.writes).toEqual([]);
