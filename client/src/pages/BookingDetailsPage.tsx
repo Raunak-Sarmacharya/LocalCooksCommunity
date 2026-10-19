@@ -186,6 +186,7 @@ interface BookingDetails {
   equipmentBookings?: Array<{
     id: number;
     equipmentListingId: number;
+    kitchenBookingVisitId?: number | null;
     totalPrice: number;
     status: string;
     paymentStatus?: string;
@@ -313,6 +314,8 @@ export default function BookingDetailsPage() {
   const [itemCancellationPending, setItemCancellationPending] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [changeOpen, setChangeOpen] = useState(false);
+  // Bumped after a change request is sent so the pending-change panel refetches at once.
+  const [changesVersion, setChangesVersion] = useState(0);
   const [kitchenCancelOpen, setKitchenCancelOpen] = useState(false);
   const { t: policyT } = useTranslation('booking');
   const bt = policyT as unknown as (key: string, options?: Record<string, unknown>) => string;
@@ -683,7 +686,9 @@ export default function BookingDetailsPage() {
   // Helper: item was refunded (was charged, then money returned — include in totals, show as refunded)
   const isItemRefunded = (item: { paymentStatus?: string; status: string }) =>
     item.paymentStatus === 'refunded' && item.status === 'cancelled';
-
+  // Multi-day: an approved change replaces the old days and their equipment rows; those rows are history, not money or add-ons.
+  const isReplacedEquipment = (item: { kitchenBookingVisitId?: number | null }) => !!booking?.scheduleRevision && !!item.kitchenBookingVisitId
+    && !booking.visits?.some(visit => visit.id === item.kitchenBookingVisitId && visit.scheduleRevision === booking.scheduleRevision);
 
   const totals = useMemo(() => {
     if (!booking) return { kitchen: 0, storage: 0, equipment: 0, subtotal: 0, tax: 0, total: 0 };
@@ -697,7 +702,7 @@ export default function BookingDetailsPage() {
       return sum + (s.totalPrice || 0);
     }, 0) || 0;
     const equipmentTotal = booking.equipmentBookings?.reduce((sum, e) => {
-      if (e.paymentStatus === 'failed') return sum; // Voided — never charged
+      if (e.paymentStatus === 'failed' || isReplacedEquipment(e)) return sum; // Voided — never charged; replaced by a change
       return sum + (e.totalPrice || 0);
     }, 0) || 0;
 
@@ -760,7 +765,7 @@ export default function BookingDetailsPage() {
 
   // Show ALL storage/equipment bookings including rejected ones for full audit trail
   const allStorageBookings = booking?.storageBookings || [];
-  const allEquipmentBookings = booking?.equipmentBookings || [];
+  const allEquipmentBookings = (booking?.equipmentBookings || []).filter(item => !isReplacedEquipment(item));
 
   // Original totals including ALL items (for showing what was originally booked)
   const allStorageTotal = allStorageBookings.reduce((sum, s) => sum + (s.totalPrice || 0), 0);
@@ -1671,7 +1676,7 @@ export default function BookingDetailsPage() {
         <OpenProblemAlert bookingId={booking.id} role={isManagerView ? 'manager' : 'chef'} chefName={chefName} kitchenName={kitchenName}
           timezone={tz || 'America/St_Johns'} active={booking.status === 'confirmed' && !!visitBounds && nowMs < visitBounds.endAt.getTime()}
           checkedIn={!!booking.checkinStatus && booking.checkinStatus !== 'not_checked_in'} messageButton={messageButton()} onViewReport={goToHelp} />
-        {now.attention.includes('changes') && <KitchenBookingChanges variant="now" timezone={booking.location?.timezone} key={`changes-${booking.id}`} bookingId={booking.id} manager={isManagerView} counterpart={isManagerView ? chefName : kitchenName}
+        {now.attention.includes('changes') && <KitchenBookingChanges variant="now" timezone={booking.location?.timezone} key={`changes-${booking.id}-${changesVersion}`} bookingId={booking.id} manager={isManagerView} counterpart={isManagerView ? chefName : kitchenName}
           onChanged={async () => { await reloadBookingDetails(); await queryClient.invalidateQueries(); }} />}
         {/* A payable claim comes first: unpaid after a final decision, it pauses new bookings. */}
         {now.attention.includes('claims') && claims && <NowClaimRows claims={claims} manager={isManagerView} chefName={chefName} timezone={tz || 'America/St_Johns'}
@@ -1795,9 +1800,10 @@ export default function BookingDetailsPage() {
   const storageRows = allStorageBookings.map(storage => ({ id: storage.id, name: storage.storageListing?.name || `Storage #${storage.storageListingId}`,
     detail: storage.startDate ? `${formatShortDate(storage.pricingModel === 'hourly' ? storage.startDate : storage.startDate.slice(0, 10))} – ${formatShortDate(storage.pricingModel === 'hourly' ? storage.endDate : storage.endDate.slice(0, 10))}` : null,
     price: formatCurrency(storage.totalPrice), struck: isItemVoided(storage) || isItemRefunded(storage) || storage.status === 'cancelled', chip: itemChip(storage, true) }));
-  const equipmentRows = allEquipmentBookings.map(equipment => ({ id: equipment.id, name: equipment.equipmentListing?.equipmentType || `Equipment #${equipment.equipmentListingId}`,
-    // Multi-day: the same equipment can be on several days, so each row names its day.
-    detail: [datedBooking ? (day => day?.visitDate ? formatShortDate(day.visitDate) : null)(bookingDays.find(visit => visit.id === (equipment as { kitchenBookingVisitId?: number | null }).kitchenBookingVisitId)) : null,
+  // Multi-day: the same equipment can be on several days, so each row names its day, in day order.
+  const equipmentDay = (equipment: { kitchenBookingVisitId?: number | null }) => datedBooking ? bookingDays.find(visit => visit.id === equipment.kitchenBookingVisitId)?.visitDate ?? null : null;
+  const equipmentRows = [...allEquipmentBookings].sort((a, b) => (equipmentDay(a) ?? '').localeCompare(equipmentDay(b) ?? '')).map(equipment => ({ id: equipment.id, name: equipment.equipmentListing?.equipmentType || `Equipment #${equipment.equipmentListingId}`,
+    detail: [(date => date ? formatShortDate(date) : null)(equipmentDay(equipment)),
       equipment.equipmentListing?.brand].filter(Boolean).join(' · ') || null, price: formatCurrency(equipment.totalPrice),
     struck: isItemVoided(equipment) || isItemRefunded(equipment) || equipment.status === 'cancelled', chip: itemChip(equipment, false) }));
   const addOns = booking && (storageRows.length > 0 || equipmentRows.length > 0) && (
@@ -1864,7 +1870,7 @@ export default function BookingDetailsPage() {
       </div>
       {Number(booking.extraTimeRateCents) > 0 ? (
         <p className="text-xs leading-relaxed text-muted-foreground" data-testid="booking-extra-time-rate">
-          {t('bpsExtraTimeRate', { amount: formatCurrency(booking.extraTimeRateCents) })}
+          {bt('bpsExtraTimeRate', { amount: formatCurrency(booking.extraTimeRateCents) })}
         </p>
       ) : null}
       {booking.paymentTransaction && pricingBreakdownInput && (
@@ -1992,7 +1998,7 @@ export default function BookingDetailsPage() {
         visits={unreportedVisits} onFiled={() => void claimsQuery.refetch()} />}
       {!isManagerView && booking.status === 'confirmed' && (
         <ChangeBookingDialog bookingId={booking.id} kitchenId={booking.kitchenId} kitchenName={kitchenName} timezone={booking.location?.timezone}
-          open={changeOpen} onOpenChange={setChangeOpen} onChanged={async () => { await reloadBookingDetails(); await queryClient.invalidateQueries(); }} />
+          open={changeOpen} onOpenChange={setChangeOpen} onChanged={async () => { setChangesVersion(v => v + 1); await reloadBookingDetails(); await queryClient.invalidateQueries(); }} />
       )}
       {!isManagerView && (
         <BookingCancellationChooser hideTrigger open={cancelOpen} onOpenChange={setCancelOpen} visitActive={visitActive} bookingId={booking.id} status={booking.status} paymentStatus={booking.paymentStatus}
@@ -2007,7 +2013,7 @@ export default function BookingDetailsPage() {
           visits={booking.visits} scheduleRevision={booking.scheduleRevision ?? 0} dayMoney={booking.dayMoney}
           items={[...(booking.storageBookings || []).map(item => ({ id: item.id, kind: 'storage' as const,
             name: item.storageListing?.name || `Storage #${item.id}`, status: item.status, dates: `${formatShortDate(item.startDate)} – ${formatShortDate(item.endDate)}` })),
-            ...(booking.equipmentBookings || []).map(item => ({ id: item.id, kind: 'equipment' as const,
+            ...allEquipmentBookings.map(item => ({ id: item.id, kind: 'equipment' as const,
               name: item.equipmentListing?.equipmentType || `Equipment #${item.id}`, status: item.status,
               ...(datedBooking ? { dates: (day => day?.visitDate ? formatShortDate(day.visitDate) : undefined)(bookingDays.find(visit => visit.id === (item as { kitchenBookingVisitId?: number | null }).kitchenBookingVisitId)) } : {}) }))]}
           onChanged={async () => { await reloadBookingDetails(); await queryClient.invalidateQueries(); }} />

@@ -76,10 +76,12 @@ export async function createDatedKitchenCheckoutSession(params: {
     if (amount) lineItems.push({ price_data: { currency: 'cad', product_data: { name }, unit_amount: amount }, quantity: 1 });
   };
   for (const day of m.days) {
-    add(`${day.date}: Kitchen (${day.pricingMode === 'daily' ? 'full day' : `${day.slots.length} hours`}${params.invitation ? ', invited rate' : ''})`, day.kitchenCents);
-    add(`${day.date}: Equipment`, day.equipment.reduce((sum, item) => sum + item.cents, 0));
+    // Chef-facing: "Mon, Nov 16: Kitchen (2 hours)", then each rental by name.
+    const date = new Intl.DateTimeFormat('en-CA', { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' }).format(new Date(`${day.date}T12:00:00Z`));
+    add(`${date}: Kitchen (${day.pricingMode === 'daily' ? 'full day' : `${day.slots.length} ${day.slots.length === 1 ? 'hour' : 'hours'}`}${params.invitation ? ', invited rate' : ''})`, day.kitchenCents);
+    for (const item of day.equipment) add(`${date}: ${item.name || 'Equipment'}`, item.cents);
   }
-  add(`Tax (${m.taxRatePercent}%)`, m.taxCents); add('Service Fee', m.serviceFeeCents);
+  add(`Tax (${m.taxRatePercent}%)`, m.taxCents); add('Service fee', m.serviceFeeCents);
   const session = await provider.checkout.sessions.create({ mode: 'payment', submit_type: 'book', payment_method_types: ['card'],
     // Same as single-day: a customer so the card can be reused off-session (extra time, overstay, claims).
     customer_email: params.customerEmail, customer_creation: 'always', expires_at: m.checkoutExpiresAt, line_items: lineItems, metadata,

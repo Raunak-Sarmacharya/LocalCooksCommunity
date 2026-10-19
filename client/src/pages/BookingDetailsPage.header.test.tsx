@@ -759,6 +759,22 @@ it('shows a dated chef booking as a span, day count and chronological day list w
   expect(screen.getByTestId('cancellation-card')).toHaveTextContent(/refund deadline passed on Jan 14.*50%/);
 });
 
+it('lists only the current days’ equipment after an approved change, each with its day (live, Oct 19)', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(START - 3 * 86_400_000);
+  h.manager = false;
+  const oven = { equipmentListingId: 89, totalPrice: 2500, paymentStatus: 'paid', equipmentListing: { equipmentType: 'Commercial Oven' } };
+  h.booking = { ...base(), scheduleRevision: 2, status: 'confirmed', paymentStatus: 'paid',
+    paymentTransaction: { amount: 15250, serviceFee: 875, managerRevenue: 13781, status: 'succeeded' }, totalPrice: 15000,
+    visits: [[10, 1, 'superseded'], [11, 2, 'active'], [12, 2, 'active']].map(([id, revision, state], i) => ({ id, blockIndex: i, visitDate: `2030-01-${i ? 13 + i * 2 : 15}`,
+      scheduleRevision: revision, scheduleState: state, startTime: '10:00', endTime: '12:00', checkinStatus: 'not_checked_in', updatedAt: '2030-01-10T12:00:00Z' })),
+    equipmentBookings: [{ ...oven, id: 1, status: 'cancelled', kitchenBookingVisitId: 10 }, { ...oven, id: 2, status: 'confirmed', kitchenBookingVisitId: 11 }] };
+  render(<BookingDetailsPage />);
+  const addOns = (await screen.findByText('Commercial Oven')).closest('section')!;
+  expect(within(addOns).getAllByText('Commercial Oven')).toHaveLength(1);
+  expect(addOns).toHaveTextContent('Jan 15');
+  expect(addOns).not.toHaveTextContent(/Cancelled/i);
+});
+
 it('opens a pending dated request for the kitchen when every day has its own clock (live crash, Oct 18)', async () => {
   vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(START - 3 * 86_400_000);
   h.manager = true;

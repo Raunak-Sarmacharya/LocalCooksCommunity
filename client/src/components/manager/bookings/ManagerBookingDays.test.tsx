@@ -60,8 +60,11 @@ it('freezes and reuses the original refund after a lost response and a closed di
  fireEvent.click(within(dialog).getByRole('button', { name: 'Confirm' }));
  await waitFor(() => expect(api.post).toHaveBeenCalledTimes(2)); expect(api.post.mock.calls[0]).toEqual(api.post.mock.calls[1]);
 });
-it('names each day’s payout amount and hides a zero refund', () => {
-  render(<ManagerBookingDays {...props} payout={{ installments: [{ installmentId: 9, sourceId: 1, visitId: 1, operatingDate: '2030-01-15', status: 'scheduled', amountCents: 11000, feePending: false, transferId: null }] } as never} />);
-  expect(screen.getByText('You receive $110.00 after this day’s inspection')).toBeInTheDocument();
+it('names each day’s payout as one total across charges and hides zero amounts', () => {
+  render(<ManagerBookingDays {...props} payout={{ installments: [{ installmentId: 9, sourceId: 1, visitId: 1, operatingDate: '2030-01-15', status: 'scheduled', amountCents: 11000, feePending: false, transferId: null },
+    { installmentId: 10, sourceId: 2, visitId: 1, operatingDate: '2030-01-15', status: 'scheduled', amountCents: 2732, feePending: false, transferId: null },
+    { installmentId: 11, sourceId: 2, visitId: 2, operatingDate: '2030-01-18', status: 'scheduled', amountCents: 0, feePending: false, transferId: null }] } as never} />);
+  expect(screen.getByText('You receive $137.32 after this day’s inspection')).toBeInTheDocument();
+  expect(screen.queryByText('You receive $0.00 after this day’s inspection')).toBeNull();
   expect(screen.getByText('This day: $122.00')).toBeInTheDocument();
 });

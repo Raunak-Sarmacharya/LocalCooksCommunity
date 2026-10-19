@@ -41,6 +41,9 @@ export function DatedChangeEditor({ bookingId, kitchenId, original, disabled, on
   const [slots, setSlots] = useState<Record<string, Slot[]>>({});
   const [equipment, setEquipment] = useState<Record<string, Equipment[]>>({});
   const [announcement, setAnnouncement] = useState('');
+  // The kitchen's longest booking per day, same cap as a new booking (null = no cap).
+  const [dayCap, setDayCap] = useState<number | null>(null);
+  useEffect(() => { void get<{ maxSlotsPerChef?: number | null }>(`/api/chef/kitchens/${kitchenId}/policy`).then(policy => setDayCap(policy.maxSlotsPerChef || null)).catch(() => undefined); }, [kitchenId]);
 
   // The booking's own days never block it (`changing`): the picker shows what the change could use.
   useEffect(() => {
@@ -105,7 +108,7 @@ export function DatedChangeEditor({ bookingId, kitchenId, original, disabled, on
       <p role="status" aria-live="polite" className="text-sm">{announcement || t('mdSelectedDays', { count: dates.length })}</p>
     </DatedCalendarContext.Provider>
     {dates.map(date => {
-      const choice = choices[date], loaded = !!slots[date], open = free(date), longest = choice.start ? run(date, choice.start) : 0;
+      const choice = choices[date], loaded = !!slots[date], open = free(date), longest = choice.start ? Math.min(run(date, choice.start), dayCap ?? Infinity) : 0;
       return <fieldset key={date} className="space-y-2 rounded-xl border p-3" data-testid={`change-day-${date}`}>
         <legend className="px-1 text-sm font-medium">{dayLabel(date)}</legend>
         <div className="flex flex-wrap gap-2">
