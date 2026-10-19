@@ -235,7 +235,7 @@ export async function searchGlobally(options: {
   if (storageIds.length) {
     const storage = await pool.query<StorageListingEssentials & StorageInstructions & { id: number }>(
       `SELECT s.id, s.name, s.storage_type AS "storageType", s.base_price AS "basePrice", s.unit_count AS "unitCount",
-        s.max_term_days AS "maxTermDays", s.is_active AS "isActive", c.storage_checkin_instructions AS "storageCheckinInstructions",
+        s.max_term_days AS "maxTermDays", s.is_active AS "isActive", s.status::text AS status, c.storage_checkin_instructions AS "storageCheckinInstructions",
         c.storage_checkout_instructions AS "storageCheckoutInstructions"
        FROM storage_listings s JOIN kitchens k ON k.id = s.kitchen_id
        LEFT JOIN checkin_checkout_checklists c ON c.location_id = k.location_id WHERE s.id = ANY($1::int[])`, [storageIds]);

@@ -26,6 +26,7 @@ export function storageListingReadiness(listing: StorageListingEssentials, instr
   if (!instructions?.storageCheckinInstructions?.trim()) missing.push("moveIn");
   if (!instructions?.storageCheckoutInstructions?.trim()) missing.push("moveOut");
   const ready = missing.length === 0;
-  return { ready, missing, visible: listing.isActive === true && ready,
+  // An admin-rejected, pending or retired listing never shows, whatever its toggle says (the pre-redesign rule).
+  return { ready, missing, visible: listing.isActive === true && ready && ["approved", "active"].includes(listing.status ?? ""),
     status: !ready || listing.status === "draft" && listing.isActive !== true ? "draft" as const : listing.isActive === true ? "listed" as const : "paused" as const };
 }

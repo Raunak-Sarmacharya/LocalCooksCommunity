@@ -65,13 +65,13 @@ describe("global search service", () => {
     const row = (id: number) => ({ type: "storage", source_id: id, title: `Shelf ${id}`, body: "Shelf", view: "storage",
       score: 12, fuzzy: false, location_id: 1, kitchen_id: 1, kitchen_active: true, listing_status: "active",
       kitchen_license_url: "https://example.com/license.pdf", kitchen_license_status: "approved", kitchen_license_expiry: "2099-01-01" });
-    const storage = { name: "Shelf", storageType: "dry", basePrice: "500", unitCount: 1, isActive: true,
+    const storage = { status: "active", name: "Shelf", storageType: "dry", basePrice: "500", unitCount: 1, isActive: true,
       storageCheckinInstructions: "Use shelf", storageCheckoutInstructions: "Empty shelf" };
-    queryMock.mockResolvedValueOnce({ rows: [row(1), row(2), row(3)] }).mockResolvedValueOnce({ rows: [
-      { ...storage, id: 1 }, { ...storage, id: 2, storageCheckoutInstructions: " " }, { ...storage, id: 3, isActive: false },
+    queryMock.mockResolvedValueOnce({ rows: [row(1), row(2), row(3), row(4)] }).mockResolvedValueOnce({ rows: [
+      { ...storage, id: 1 }, { ...storage, id: 2, storageCheckoutInstructions: " " }, { ...storage, id: 3, isActive: false }, { ...storage, id: 4, status: "rejected" },
     ] });
     const results = await searchGlobally({ query: "Shelf", portal: "chef", userId: 42, locale: "en-CA" });
     expect(results.filter(result => result.type === "storage").map(result => result.id)).toEqual(["storage:1"]);
-    expect(queryMock.mock.calls[1][1]).toEqual([[1, 2, 3]]);
+    expect(queryMock.mock.calls[1][1]).toEqual([[1, 2, 3, 4]]);
   });
 });
