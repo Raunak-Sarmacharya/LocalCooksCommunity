@@ -44,7 +44,7 @@ const chef = { id: 3, role: 'chef' as const }, manager = { id: 2, role: 'manager
 const rental = async () => (await h.db.select().from(storageBookings).where(eq(storageBookings.id, 7)))[0];
 const payment = async () => (await h.db.select().from(paymentTransactions).where(eq(paymentTransactions.id, 1)))[0];
 const cost = { type: 'damage', description: 'Replace cracked tray', amountCents: 2000,
-  document: { fileUrl: 'https://example.invalid/quote.pdf', fileName: 'quote.pdf' } };
+  document: { fileUrl: 'https://files.localcooks.ca/quote.pdf', fileName: 'quote.pdf' } };
 const filing = { storageRentalId: 7, description: 'The tray was broken during storage.', lines: [cost], requestKey: 'claim-storage-one' };
 const support = (claimId: number, type: string, extra = {}) => ({ claimId, type, operationKey: `support-${type}`, reasonCode: 'reviewed',
   note: 'Private staff review of this claim.', publicMessage: 'We reviewed the evidence you provided.', requestSource: 'proactive', ...extra });
@@ -91,7 +91,7 @@ beforeEach(async () => {
 
 describe('storage move-in and move-out', () => {
   it('the old chef dialog activates a rental, schedules term 1 at term end and queues the localized notice', async () => {
-    expect(await requestStorageCheckin(7, 3, 'Shelf is clean', ['https://example.invalid/before.jpg'])).toMatchObject({ success: true });
+    expect(await requestStorageCheckin(7, 3, 'Shelf is clean', ['https://files.localcooks.ca/before.jpg'])).toMatchObject({ success: true });
     expect(await rental()).toMatchObject({ rentalState: 'active', checkinStatus: 'checkin_completed' });
     expect((await payment()).payoutEligibleAt.toISOString()).toBe('2026-10-19T02:30:00.000Z');
     expect(h.notices.mock.calls.some(call => call[2] === 'moved_in')).toBe(true); expect(h.oldNotice).not.toHaveBeenCalled();
@@ -105,7 +105,7 @@ describe('storage move-in and move-out', () => {
   it('advertises exactly the allowed kitchen route names and both chef action spellings', async () => {
     expect((await readRental(7, manager)).actions).toEqual(['handover', 'move-out-by', 'refund', 'offer-extension']);
     expect((await readRental(7, chef)).actions).toEqual(['move-in', 'move_in', 'move-out', 'move_out', 'report_problem', 'extend']);
-    await storageRentalVisitAction(7, manager, 'handover', { photoUrls: ['https://example.invalid/handover.jpg'], note: 'Ready for you' });
+    await storageRentalVisitAction(7, manager, 'handover', { photoUrls: ['https://files.localcooks.ca/handover.jpg'], note: 'Ready for you' });
     expect((await rental()).rentalState).toBe('active');
     expect((await payment()).payoutEligibleAt.toISOString()).toBe('2026-10-19T02:30:00.000Z');
     expect((await readRental(7, manager)).actions).toEqual(['move-out-by', 'refund', 'offer-extension']);
@@ -129,23 +129,23 @@ describe('storage move-in and move-out', () => {
     await storageRentalVisitAction(7, manager, 'mark-ready'); expect((await rental()).occupancy).toBeNull();
   });
   it('reopens within 7 days and preserves the original departure evidence and release timestamp', async () => {
-    await storageRentalVisitAction(7, chef, 'move-out', { note: 'Chef note', photoUrls: ['https://example.invalid/after.jpg'] });
+    await storageRentalVisitAction(7, chef, 'move-out', { note: 'Chef note', photoUrls: ['https://files.localcooks.ca/after.jpg'] });
     await storageRentalVisitAction(7, manager, 'clear-move-out');
-    await storageRentalVisitAction(7, manager, 'items-still-here', { note: 'Box left on shelf', photoUrls: ['https://example.invalid/box.jpg'] });
+    await storageRentalVisitAction(7, manager, 'items-still-here', { note: 'Box left on shelf', photoUrls: ['https://files.localcooks.ca/box.jpg'] });
     expect(await rental()).toMatchObject({ rentalState: 'active', reopenedFrom: now, checkoutRequestedAt: now, checkoutNotes: 'Chef note',
-      checkoutPhotoUrls: ['https://example.invalid/after.jpg'], releasedOn: null });
+      checkoutPhotoUrls: ['https://files.localcooks.ca/after.jpg'], releasedOn: null });
   });
   it('returns 409 after 8 days and hides the reopen action', async () => {
     await storageRentalVisitAction(7, chef, 'move-out'); await storageRentalVisitAction(7, manager, 'clear-move-out');
     const late = new Date(now.getTime() + 8 * 86400000);
-    await expect(storageRentalVisitAction(7, manager, 'items-still-here', { photoUrls: ['https://example.invalid/box.jpg'] }, late)).rejects.toMatchObject({ status: 409 });
+    await expect(storageRentalVisitAction(7, manager, 'items-still-here', { photoUrls: ['https://files.localcooks.ca/box.jpg'] }, late)).rejects.toMatchObject({ status: 409 });
     expect((await readRental(7, manager, late)).actions).not.toContain('items-still-here');
   });
   it('returns 409 if the shelf has been re-let, including a future reservation', async () => {
     await storageRentalVisitAction(7, chef, 'move-out'); await storageRentalVisitAction(7, manager, 'clear-move-out');
     await h.db.insert(storageBookings).values({ ...(await rental()), id: 8, referenceCode: 'SB-8', rentalState: 'reserved',
       endReason: null, releasedOn: null, occupancy: '[2026-10-20,2026-10-24)' });
-    await expect(storageRentalVisitAction(7, manager, 'items-still-here', { photoUrls: ['https://example.invalid/box.jpg'] })).rejects.toMatchObject({ code: 'relet', status: 409 });
+    await expect(storageRentalVisitAction(7, manager, 'items-still-here', { photoUrls: ['https://files.localcooks.ca/box.jpg'] })).rejects.toMatchObject({ code: 'relet', status: 409 });
     expect((await readRental(7, manager)).actions).not.toContain('items-still-here');
   });
   it('auto-clears once and keeps payout behind the full 72-hour claim window', async () => {
@@ -174,13 +174,13 @@ describe('storage problems and claims', () => {
     await expect(fileDamageClaim(2, filing)).rejects.toMatchObject({ status: 409 });
   });
   it('files review-first, caps at $250, attaches before/after evidence and holds payout', async () => {
-    await requestStorageCheckin(7, 3, 'Clean shelf', ['https://example.invalid/before.jpg']);
-    await storageRentalVisitAction(7, manager, 'handover', { photoUrls: ['https://example.invalid/handover.jpg'] });
-    await requestStorageCheckout(7, 3, 'Tray cracked', ['https://example.invalid/after.jpg']);
+    await requestStorageCheckin(7, 3, 'Clean shelf', ['https://files.localcooks.ca/before.jpg']);
+    await storageRentalVisitAction(7, manager, 'handover', { photoUrls: ['https://files.localcooks.ca/handover.jpg'] });
+    await requestStorageCheckout(7, 3, 'Tray cracked', ['https://files.localcooks.ca/after.jpg']);
     await expect(fileDamageClaim(2, { ...filing, lines: [{ ...cost, amountCents: 20000 }, cost, { ...cost, amountCents: 4000 }] })).rejects.toMatchObject({ status: 400 });
     const claim = await fileDamageClaim(2, filing);
     expect(claim).toMatchObject({ storageRentalId: 7, status: 'in_review', chefVisible: false, amountCents: 2000,
-      visitEvidence: { before: ['https://example.invalid/before.jpg', 'https://example.invalid/handover.jpg'], after: ['https://example.invalid/after.jpg'], noBaseline: false } });
+      visitEvidence: { before: ['https://files.localcooks.ca/before.jpg', 'https://files.localcooks.ca/handover.jpg'], after: ['https://files.localcooks.ca/after.jpg'], noBaseline: false } });
     expect(await rental()).toMatchObject({ rentalState: 'ended', endReason: 'claim' });
     expect((await payment()).payoutHoldReason).toBe('damage_claim');
     expect(await storageTermPayoutFacts(7)).toMatchObject({ openClaim: true });
@@ -216,7 +216,7 @@ it('a reopened rental uses the prior release time for the 72-hour claim clock', 
   vi.setSystemTime(new Date(now.getTime() + 3 * 3600000));
   await storageRentalVisitAction(7, manager, 'clear-move-out');
   vi.setSystemTime(new Date(now.getTime() + 73 * 3600000));
-  await storageRentalVisitAction(7, manager, 'items-still-here', { note: 'A box remains.', photoUrls: ['https://example.invalid/box.jpg'] });
+  await storageRentalVisitAction(7, manager, 'items-still-here', { note: 'A box remains.', photoUrls: ['https://files.localcooks.ca/box.jpg'] });
   expect((await readStorageClaimFilingContext(7, 2)).deadline).toBe('2026-10-19T15:00:00.000Z');
   expect(await fileDamageClaim(2, filing)).toMatchObject({ status: 'in_review' });
 });
@@ -233,7 +233,7 @@ it('closing a storage claim clears its payout hold and audits the rental source'
 
 it('a new move-out after reopening starts a new clock and clears reopenedFrom', async () => {
   await requestStorageCheckout(7, 3); await storageRentalVisitAction(7, manager, 'clear-move-out');
-  await storageRentalVisitAction(7, manager, 'items-still-here', { photoUrls: ['https://example.invalid/box.jpg'] });
+  await storageRentalVisitAction(7, manager, 'items-still-here', { photoUrls: ['https://files.localcooks.ca/box.jpg'] });
   vi.setSystemTime(new Date(now.getTime() + 24 * 3600000));
   await requestStorageCheckout(7, 3);
   expect((await rental()).reopenedFrom).toBeNull();
@@ -266,4 +266,9 @@ it('storage claim payment uses the rental card/source, exact metadata, and clear
   expect(sources.find((row: any) => row.paymentIntentId === 'pi_claim')).toMatchObject({ bookingId: 7, bookingType: 'storage', status: 'succeeded' });
   expect((await payment()).payoutHoldReason).toBeNull();
   expect(h.transfer).toHaveBeenCalledTimes(1);
+});
+
+it('refuses external manager evidence even when called without the route', async () => {
+  await expect(storageRentalVisitAction(7, manager, 'handover', { photoUrls: ['https://example.invalid/photo.jpg'] }))
+    .rejects.toMatchObject({ status: 400 });
 });

@@ -96,7 +96,7 @@ describe('storage rental API contract', () => {
 
 describe('storage visit endpoints', () => {
   it.each(['handover', 'clear-move-out', 'items-still-here', 'mark-ready'])('forwards %s as the authenticated manager and returns the refreshed DTO', async action => {
-    const input = action === 'clear-move-out' ? { needsCleaning: true } : action === 'mark-ready' ? {} : { photoUrls: ['https://example.invalid/photo.jpg'], note: ' Shelf inspected ' };
+    const input = action === 'clear-move-out' ? { needsCleaning: true } : action === 'mark-ready' ? {} : { photoUrls: ['https://files.localcooks.ca/photo.jpg'], note: ' Shelf inspected ' };
     await call('post', `/manager/storage-rentals/:id/${action}`, { ...input, operationKey: 'storage:7:op' });
     expect(h.visit).toHaveBeenCalledWith(7, { id: 3, role: 'manager' }, action,
       action === 'clear-move-out' || action === 'mark-ready' ? input : { ...input, note: 'Shelf inspected' });
@@ -106,8 +106,16 @@ describe('storage visit endpoints', () => {
     expect((await call('post', '/manager/storage-rentals/:id/clear-move-out', {})).status).toHaveBeenCalledWith(400);
     expect((await call('post', '/manager/storage-rentals/:id/handover', { photoUrls: ['bad'] })).status).toHaveBeenCalledWith(400);
     h.visit.mockRejectedValue(new StorageRentalError('relet'));
-    const result = await call('post', '/manager/storage-rentals/:id/items-still-here', { photoUrls: ['https://example.invalid/box.jpg'] });
+    const result = await call('post', '/manager/storage-rentals/:id/items-still-here', { photoUrls: ['https://files.localcooks.ca/box.jpg'] });
     expect(result.status).toHaveBeenCalledWith(409);
     expect(result.json).toHaveBeenCalledWith({ code: 'relet', error: expect.not.stringContaining('stError_') });
   });
+});
+
+it('rejects external handover and items-still-here evidence before the service runs', async () => {
+  for (const action of ['handover', 'items-still-here']) {
+    const result = await call('post', `/manager/storage-rentals/:id/${action}`, { photoUrls: ['https://example.invalid/photo.jpg'] });
+    expect(result.status).toHaveBeenCalledWith(400);
+  }
+  expect(h.visit).not.toHaveBeenCalled();
 });

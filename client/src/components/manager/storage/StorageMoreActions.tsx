@@ -1,11 +1,5 @@
 import { PhotoRequirementUploader, flattenPhotos } from "@/components/booking/PhotoRequirementUploader";
-/**
- * The kitchen's "More" actions for one storage rental (WP-ST11 / WP-ST9).
- *
- * The menu lists exactly the actions the server put in the DTO's `actions[]`, so a tool shows up
- * only once its endpoint exists. Selecting one opens a confirm view that states the consequence —
- * with the amount and the date — before anything is sent.
- */
+/** Allowed rental actions stay visible; each opens its existing confirmation and validation. */
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";

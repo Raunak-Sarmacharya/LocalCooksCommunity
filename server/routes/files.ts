@@ -11,6 +11,7 @@ import { ChatAccessError, withParticipantChat } from '../services/participant-ch
 import { attachmentKey, storedFileUrl } from '../services/chat-file-access';
 import { getAdminDb } from '../chat-service';
 import { canReadPrivateFile } from '../services/private-file-access';
+import { isAllowedR2Url } from '../utils/upload-url';
 
 const router = Router();
 
@@ -136,16 +137,6 @@ router.get('/kitchen-application/:applicationId/preview', requireFirebaseAuthWit
         return res.status(500).json({ error: 'Could not load document preview' });
     }
 });
-
-// HIGH-6 Security: SSRF protection — only allow our R2 domain
-function isAllowedR2Url(url: string): boolean {
-    try {
-        const parsed = new URL(url);
-        return parsed.hostname === 'files.localcooks.ca';
-    } catch {
-        return false;
-    }
-}
 
 // ===============================
 // FILE UPLOAD ROUTES

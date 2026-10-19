@@ -54,7 +54,7 @@ describe("storage rental page", () => {
   })
 
   it("offers only withdraw on a request, and shows the amount and the payment", async () => {
-    show({ state: "requested", phase: null, actions: ["withdraw"], responseDeadline: "2026-10-17T15:00:00Z", terms: [{ ...base.terms[0], status: "authorized" }] })
+    show({ state: "requested", phase: null, actions: ["withdraw"], responseDeadline: "2099-10-17T15:00:00Z", terms: [{ ...base.terms[0], status: "authorized" }] })
     expect(await screen.findByTestId("rental-status")).toHaveTextContent(/Harbour Kitchen answers by .*\. Your card is on hold for \$118\.00\./)
     expect([...actionButtons()].map(button => button.textContent)).toEqual(["Withdraw request"])
     expect(screen.getByText("Card on hold", { exact: false })).toBeInTheDocument()

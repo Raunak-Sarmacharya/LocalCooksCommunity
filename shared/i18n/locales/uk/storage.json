@@ -167,7 +167,7 @@
   "stcStatusHoldover": "{count, plural, one {# день} few {# дні} many {# днів} other {# дня}} після оплаченого часу. {kitchen} може стягнути до {amount}.",
   "stcStatusMoveOut": "Виїзд надіслано. {kitchen} перевіряє місце.",
   "stcStatusRemoval": "Ваші речі на перевірці щодо вивезення. Зв’яжіться з Local Cooks сьогодні.",
-  "stcStatusEnded": "Завершено. Сплачено до {end}.",
+  "stcStatusEnded": "Завершено {end}.",
   "stcStatusDeclined": "Не схвалено. Блокування коштів на картці знято.",
   "stcStatusExpired": "{kitchen} не відповіла вчасно. Блокування коштів на картці знято.",
   "stcStatusWithdrawn": "Ви відкликали цей запит. Блокування коштів на картці знято.",
@@ -575,5 +575,7 @@
   "stPayoutEstimate": "Приблизно {amount} (оцінка)",
   "stTermReleased": "Резерв на картці знято",
   "stTermUnpaid": "Не списано",
-  "stPhotoEvidenceRequired": "Завантажте принаймні одне фото перед підтвердженням."
+  "stPhotoEvidenceRequired": "Завантажте принаймні одне фото перед підтвердженням.",
+  "stcStatusRequestedElapsed": "Строк відповіді минув. Перегляньте запит, щоб дізнатися поточний стан.",
+  "stcStatusGraceEnded": "Строк продовження минув {grace}. Перегляньте оренду, щоб дізнатися наступний крок."
 }

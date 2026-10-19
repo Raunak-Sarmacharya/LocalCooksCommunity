@@ -167,7 +167,7 @@
   "stcStatusHoldover": "{count, plural, one {# day} other {# days}} past your paid time. {kitchen} may charge up to {amount}.",
   "stcStatusMoveOut": "Move-out sent. {kitchen} is checking the unit.",
   "stcStatusRemoval": "Your items are under removal review. Contact Local Cooks today.",
-  "stcStatusEnded": "Ended. Paid through {end}.",
+  "stcStatusEnded": "Ended {end}.",
   "stcStatusDeclined": "Not approved. Your card hold was released.",
   "stcStatusExpired": "{kitchen} didn’t answer in time. Your card hold was released.",
   "stcStatusWithdrawn": "You withdrew this request. Your card hold was released.",
@@ -575,5 +575,7 @@
   "stPayoutEstimate": "About {amount} (estimate)",
   "stTermReleased": "Card hold released",
   "stTermUnpaid": "Not charged",
-  "stPhotoEvidenceRequired": "Upload at least one photo before confirming."
+  "stPhotoEvidenceRequired": "Upload at least one photo before confirming.",
+  "stcStatusRequestedElapsed": "The response window ended. View this request for the latest update.",
+  "stcStatusGraceEnded": "Your extension window ended {grace}. View your rental for the next step."
 }

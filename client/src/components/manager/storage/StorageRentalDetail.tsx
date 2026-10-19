@@ -1,7 +1,7 @@
 /**
  * One storage rental, from the kitchen's side (WP-ST11).
  *
- * Evidence photos, the money per paid term with its payout status, and the "More" actions the DTO
+ * Evidence photos, the money per term with its payout status, and the actions the DTO
  * allows — each stating its consequence, with the amount and date, before it is sent.
  */
 import { useState } from "react";

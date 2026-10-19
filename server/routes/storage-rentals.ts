@@ -12,6 +12,7 @@ import { storageRentalVisitAction } from '../services/storage-checkout-service';
 import { previewStorageTool, runStorageTool, setStorageUnitService, storageToolInput } from '../services/storage-rental-actions';
 import { StorageRefundError } from '../services/storage-rental-money';
 import { BookingMoneyFrozen } from '../services/booking-money-guard';
+import { isAllowedR2Url } from '../utils/upload-url';
 
 const router = Router();
 const id = z.coerce.number().int().positive().safe();
@@ -93,7 +94,7 @@ for (const action of ['handover', 'clear-move-out', 'items-still-here', 'mark-re
     // The kitchen tools send an operationKey with every action; these visit steps are idempotent by state, so it is not needed here.
     const { operationKey: _operationKey, ...body } = req.body ?? {};
     const input = action === 'clear-move-out' ? z.object({ needsCleaning: z.boolean() }).strict().parse(body)
-      : action === 'mark-ready' ? {} : visitDetails.extend({ photoUrls: z.array(z.string().url().max(2000)).min(1).max(20) }).parse(body);
+      : action === 'mark-ready' ? {} : visitDetails.extend({ photoUrls: z.array(z.string().url().max(2000).refine(isAllowedR2Url)).min(1).max(20) }).parse(body);
     await storageRentalVisitAction(rentalId, actor, action, input);
     return readRental(rentalId, actor);
   }));

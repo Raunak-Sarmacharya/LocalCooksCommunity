@@ -167,7 +167,7 @@
   "stcStatusHoldover": "{count, plural, one {# jour} other {# jours}} après votre période payée. {kitchen} peut facturer jusqu’à {amount}.",
   "stcStatusMoveOut": "Départ signalé. {kitchen} vérifie l’unité.",
   "stcStatusRemoval": "Vos articles font l’objet d’un examen de retrait. Contactez Local Cooks aujourd’hui.",
-  "stcStatusEnded": "Terminée. Payé jusqu’au {end}.",
+  "stcStatusEnded": "Terminée le {end}.",
   "stcStatusDeclined": "Non approuvée. La retenue sur votre carte a été libérée.",
   "stcStatusExpired": "{kitchen} n’a pas répondu à temps. La retenue sur votre carte a été libérée.",
   "stcStatusWithdrawn": "Vous avez retiré cette demande. La retenue sur votre carte a été libérée.",
@@ -575,5 +575,7 @@
   "stPayoutEstimate": "Environ {amount} (estimation)",
   "stTermReleased": "Retenue libérée",
   "stTermUnpaid": "Non facturé",
-  "stPhotoEvidenceRequired": "Téléversez au moins une photo avant de confirmer."
+  "stPhotoEvidenceRequired": "Téléversez au moins une photo avant de confirmer.",
+  "stcStatusRequestedElapsed": "Le délai de réponse est écoulé. Consultez cette demande pour connaître son état actuel.",
+  "stcStatusGraceEnded": "Votre délai de prolongation s’est terminé le {grace}. Consultez votre location pour la suite."
 }

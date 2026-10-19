@@ -41,7 +41,7 @@ import { pickPreviewActiveSectionId } from "@/lib/preview-scroll-spy";
 import { CancellationPolicyDialog, KitchenTermsDialog, cancellationPolicyFirstLine } from "@/components/booking/CancellationPolicyDialog";
 import { PublishedCancellationPolicySummary } from '@/components/booking/CancellationPolicySummary';
 import { StorageRentCta } from "@/components/storage/StorageRentCta";
-import { KitchenInventoryModals, KitchenEquipmentSections, KitchenStorageSections, InventoryModal, InventoryShowAllButton } from "@/components/kitchen-application/KitchenInventory";
+import { KitchenInventoryModals, KitchenEquipmentSections, KitchenStorageSections, InventoryModal, InventoryShowAllButton, type StorageListing } from "@/components/kitchen-application/KitchenInventory";
 import { SmartImage } from "@/components/ui/smart-image";
 import { Calendar as UICalendar } from "@/components/ui/calendar";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
@@ -411,21 +411,6 @@ interface EquipmentListing {
   currency?: string;
 }
 
-interface StorageListing {
-  id: number;
-  storageType: string;
-  name: string;
-  description?: string;
-  basePrice?: number;
-  pricePerCubicFoot?: number;
-  pricingModel: string;
-  dimensionsLength?: number;
-  dimensionsWidth?: number;
-  dimensionsHeight?: number;
-  totalVolume?: number;
-  climateControl?: boolean;
-  currency?: string;
-}
 
 interface PublicKitchen {
   slug?: string | null;

@@ -85,6 +85,8 @@ export function rentalStatus(rental: StorageRental, t: T, locale: string, now = 
   const kitchen = rental.kitchen.name, first = rental.terms[0]
   const today = localToday(now, rentalTimezone(rental))
   const end = storageDay(rental.paidThrough, locale), start = storageDay(rental.startOn, locale)
+  if (rental.state === "requested" && rental.responseDeadline && Date.parse(rental.responseDeadline) <= now.getTime())
+    return { pill: t("stcPillRequested"), tone: "neutral", sentence: t("stcStatusRequestedElapsed") }
   if (rental.state === "requested") return { pill: t("stcPillRequested"), tone: "neutral", sentence: rental.responseDeadline
     ? t("stcStatusRequested", { kitchen, deadline: kitchenMoment(rental.responseDeadline, rentalTimezone(rental), locale), amount: cad(first?.totalCents ?? 0, locale) })
     : t("stcStatusRequestedSoon", { kitchen, amount: cad(first?.totalCents ?? 0, locale) }) }
@@ -94,7 +96,7 @@ export function rentalStatus(rental: StorageRental, t: T, locale: string, now = 
   if (rental.state === "removal_review") return { pill: t("stcPillRemoval"), tone: "bad", sentence: t("stcStatusRemoval") }
   if (rental.state === "active") {
     if (rental.phase === "holdover") return { pill: t("stcPillHoldover"), tone: "bad", sentence: t("stcStatusHoldover", { count: rental.holdoverDays, kitchen, amount: cad(rental.accruedCents, locale) }) }
-    if (rental.phase === "grace") return { pill: t("stcPillGrace"), tone: "warn", sentence: t("stcStatusGrace", { end, grace: storageDay(rental.graceEndsOn, locale) }) }
+    if (rental.phase === "grace") return { pill: t("stcPillGrace"), tone: "warn", sentence: t(today > rental.graceEndsOn ? "stcStatusGraceEnded" : "stcStatusGrace", { end, grace: storageDay(rental.graceEndsOn, locale) }) }
     if (rental.phase === "ending_soon" && rental.paidThrough >= today) return { pill: t("stcPillEndingSoon"), tone: "warn", sentence: t("stcStatusEndingSoon", { end }) }
     return { pill: t("stcPillActive"), tone: "good", sentence: t("stcStatusActive", { end }) }
   }

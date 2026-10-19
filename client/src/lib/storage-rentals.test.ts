@@ -88,3 +88,11 @@ describe("chef status sentences", () => {
     expect(can({ state: "removal_review", actions: ["extend"] }, "extend")).toBe(false);
   });
 });
+
+it("does not promise an answer or extension by a past deadline", () => {
+  const base = { kitchen: { name: "Harbour" }, state: "requested", responseDeadline: "2026-10-17T12:00:00Z", startOn: "2026-10-01", paidThrough: "2026-10-10", graceEndsOn: "2026-10-15", terms: [] } as unknown as StorageRental;
+  const t = (key: string) => key;
+  const now = new Date("2026-10-19T12:00:00Z");
+  expect(rentalStatus(base, t, "en-CA", now).sentence).toBe("stcStatusRequestedElapsed");
+  expect(rentalStatus({ ...base, state: "active", phase: "grace" }, t, "en-CA", now).sentence).toBe("stcStatusGraceEnded");
+});

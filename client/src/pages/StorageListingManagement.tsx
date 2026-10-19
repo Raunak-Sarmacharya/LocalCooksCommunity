@@ -8,7 +8,7 @@ import { StorageTrackingSetup } from "@/components/manager/settings/StorageTrack
 import { mt } from "@/i18n/manager";
 import { useSessionFileUpload } from "@/hooks/useSessionFileUpload";
 import { ACCEPTED_IMAGE_TYPES, GalleryPhotoField } from "@/components/manager/kitchen/KitchenPhotoFields";
-import { Plus, Pencil, Trash2, Thermometer, Snowflake, ChevronLeft, ClipboardCheck } from "@/components/ui/manager-icons";
+import { Plus, Pencil, Trash2, ChevronLeft } from "@/components/ui/manager-icons";
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
@@ -200,15 +200,15 @@ function StorageFields({
           />
         </SettingsRow>
 
-            <SettingsRow id="sf-term" label={mt("slMaxTerm", { max: platformMaxTermDays })} help={maxTermNote ?? mt("storageMaxTermDaysHelp")}>
-              <NumericInput
-                id="sf-term"
-                className="w-28"
-                suffix={mt("daysUnit")}
-                value={String(values.maxTermDays || platformMaxTermDays)}
-                onValueChange={(v) => onChange({ maxTermDays: Math.min(parseInt(v) || platformMaxTermDays, platformMaxTermDays) })}
-              />
-            </SettingsRow>
+        <SettingsRow id="sf-term" label={mt("slMaxTerm", { max: platformMaxTermDays })} help={maxTermNote ?? mt("storageMaxTermDaysHelp")}>
+          <NumericInput
+            id="sf-term"
+            className="w-28"
+            suffix={mt("daysUnit")}
+            value={String(values.maxTermDays || platformMaxTermDays)}
+            onValueChange={(v) => onChange({ maxTermDays: Math.min(parseInt(v) || platformMaxTermDays, platformMaxTermDays) })}
+          />
+        </SettingsRow>
 
         <h3 className="px-4 py-3 text-sm font-medium">{mt("slGroupPhotos")}</h3>
         <SettingsRow layout="stacked" id="sf-photos" label={mt("slPhotos")} help={mt("slPhotosHelp", { max: PHOTOS_MAX })}>

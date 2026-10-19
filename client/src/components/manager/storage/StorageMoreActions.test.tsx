@@ -8,7 +8,7 @@ vi.mock("@/lib/api", () => ({ getAuthHeaders: async () => ({}) }));
 vi.mock("@/components/booking/PhotoRequirementUploader", () => ({
   flattenPhotos: (photos: Record<string, string[]>) => Object.values(photos).flat(),
   PhotoRequirementUploader: ({ uploadFolder, photos, onPhotosChange, requirements }: any) => <button
-    data-folder={uploadFolder} data-requirements={requirements.length} onClick={() => onPhotosChange({ ...photos, __generic__: ["https://uploads.example/handover.jpg"] })}>Upload evidence</button>,
+    data-folder={uploadFolder} data-requirements={requirements.length} onClick={() => onPhotosChange({ ...photos, __generic__: ["https://files.localcooks.ca/handover.jpg"] })}>Upload evidence</button>,
 }));
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
@@ -29,6 +29,6 @@ it.each(["handover", "items-still-here"])("uploads and submits evidence for %s t
   fireEvent.click(screen.getByRole("button", { name: "stConfirm" }));
   await waitFor(() => expect(onDone).toHaveBeenCalledOnce());
   expect(fetchMock).toHaveBeenCalledWith(`/api/manager/storage-rentals/5/${action}`, expect.objectContaining({
-    body: expect.stringContaining('"photoUrls":["https://uploads.example/handover.jpg"]'),
+    body: expect.stringContaining('"photoUrls":["https://files.localcooks.ca/handover.jpg"]'),
   }));
 });
