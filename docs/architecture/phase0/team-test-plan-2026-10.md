@@ -107,6 +107,16 @@ Worked example: full days on Monday, Wednesday and Friday at $180/day, HST 15%, 
 9. **Problems:** chef "Report a problem" holds the kitchen's payout until resolved.
 10. **Money the kitchen sees:** "You'll be paid $X on {date}" (net after the Local Cooks fee and the card fee). Payout at the end of each paid term.
 
+## Kitchen dashboard, lists, claims and revenue (kitchen side)
+
+1. **Dashboard:** a new kitchen sees only setup steps; after activity it shows Today, follow-ups (a multi-day booking names the right day, e.g. "Day 2 of 3 · Wed"), the calendar (cancelled hidden; agenda on phones) and a revenue card that matches the Revenue page ("Paid out", "Upcoming").
+2. **Bookings list:** one row per booking (multi-day too); "You receive" is the whole booking; refunded rows show the refund. Every row opens the booking.
+3. **Storage list:** status per rental (e.g. "Move-in overdue"), links to the rental.
+4. **Damage claims:** grouped Open / Closed; each claim shows the booking (linked), "Day N of M · date", chef, filed date, amounts claimed / collected / pending.
+5. **Revenue → Upcoming:** each multi-day day is its own payout, "Day N of M · date", **Scheduled** after that day closes (on hold only when there's a real reason, shown in words). References are KB-… / SB-…, never "#123".
+6. **Revenue → Paid and bank deposits:** each payout links to its booking; amounts match the booking.
+7. **Revenue → Reports:** pick a month; kitchen time, equipment, storage, extra time, claims, refunds, HST (separate), card fees, net. Download CSV and check the totals match the screen.
+
 ## Admin
 
 - Storage rentals list + drawer (payments, holds, problems, claims, holdover requests) and actions (filtered by state, reason required).
