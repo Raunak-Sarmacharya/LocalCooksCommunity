@@ -30,7 +30,8 @@ interface Booking {
   noShowDetectedAt?: string | null;
   timezone?: string | null;
   closeout?: { phase?: string | null; visits?: Array<{ inspection?: { canRespond?: boolean } | null }> | null } | null;
-  visitStates?: Array<{ checkinStatus: string; checkoutRequestedAt?: string | null }> | null;
+  visitStates?: Array<{ id?: number; checkinStatus: string; checkoutRequestedAt?: string | null; visitDate?: string | null; startTime?: string; endTime?: string; operatingWindowStartTime?: string | null }> | null;
+  scheduleRevision?: number;
   checkinWindowMinutesBefore?: number | null;
   responseDeadlineAt?: string | null;
   paymentDecision?: { state?: string; target?: string; actorId?: number | null } | null;
@@ -189,6 +190,8 @@ export function useKitchenBookings() {
         timezone: booking.timezone ?? null,
         closeout: booking.closeout ?? null,
         visitStates: Array.isArray(booking.visitStates) ? booking.visitStates : null,
+        // Multi-day (dated) bookings: lists show one row with the span and the current day.
+        scheduleRevision: booking.scheduleRevision ?? 0,
         checkinWindowMinutesBefore: booking.checkinWindowMinutesBefore ?? null,
         responseDeadlineAt: booking.responseDeadlineAt ?? null,
         paymentDecision: booking.paymentDecision ?? null,
