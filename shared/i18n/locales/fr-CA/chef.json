@@ -361,7 +361,7 @@
   "billingNoTransactionsFilteredDesc": "Aucune transaction ne correspond à votre recherche.",
   "billingNoTransactionsTitle": "Aucune transaction pour le moment",
   "billingNotAvailable": "S.O.",
-  "billingOverstayPenaltyType": "Pénalité de dépassement",
+  "billingOverstayPenaltyType": "Frais de dépassement de rangement",
   "billingPartialRefund": "Remboursement partiel",
   "billingPending": "En attente",
   "billingProcessing": "En cours",
@@ -3714,5 +3714,7 @@
   "paItemKitchenDeciding": "La cuisine ne peut pas fournir · le chef décide",
   "paItemChefIfAccept": "Non inclus si vous acceptez",
   "paItemNotIncluded": "Non inclus",
-  "mdDayOf": "Jour {number} sur {total}"
+  "mdDayOf": "Jour {number} sur {total}",
+  "billingBookingChange": "Modification de réservation",
+  "billingExtraTime": "Temps supplémentaire"
 }

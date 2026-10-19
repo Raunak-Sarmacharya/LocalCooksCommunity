@@ -360,7 +360,7 @@
   "billingNoTransactionsAllDesc": "Charges and payments will appear here after your first booking.",
   "billingNoTransactionsFilteredDesc": "No transactions match your search.",
   "billingNoTransactionsTitle": "No transactions yet",
-  "billingOverstayPenaltyType": "Storage overstay penalty",
+  "billingOverstayPenaltyType": "Storage holdover charge",
   "billingPartialRefund": "Partial refund",
   "billingPending": "Pending",
   "billingProcessing": "Processing",
@@ -3714,5 +3714,7 @@
   "paItemKitchenDeciding": "Kitchen can’t provide · chef deciding",
   "paItemChefIfAccept": "Not included if you accept",
   "paItemNotIncluded": "Not included",
-  "mdDayOf": "Day {number} of {total}"
+  "mdDayOf": "Day {number} of {total}",
+  "billingBookingChange": "Booking change",
+  "billingExtraTime": "Extra time"
 }

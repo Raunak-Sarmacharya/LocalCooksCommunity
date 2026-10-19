@@ -361,7 +361,7 @@
   "billingNoTransactionsFilteredDesc": "Жодна транзакція не відповідає вашому пошуку.",
   "billingNoTransactionsTitle": "Транзакцій ще немає",
   "billingNotAvailable": "Н/Д",
-  "billingOverstayPenaltyType": "Штраф за простій",
+  "billingOverstayPenaltyType": "Плата за прострочене зберігання",
   "billingPartialRefund": "Часткове повернення",
   "billingPending": "Очікує",
   "billingProcessing": "Обробка",
@@ -3714,5 +3714,7 @@
   "paItemKitchenDeciding": "Кухня не може надати · кухар вирішує",
   "paItemChefIfAccept": "Не входить, якщо ви погодитесь",
   "paItemNotIncluded": "Не входить",
-  "mdDayOf": "День {number} із {total}"
+  "mdDayOf": "День {number} із {total}",
+  "billingBookingChange": "Зміна бронювання",
+  "billingExtraTime": "Додатковий час"
 }

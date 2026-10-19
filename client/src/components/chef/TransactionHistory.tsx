@@ -10,6 +10,7 @@ import { StorageIcon as Package } from "@/components/ui/inventory-icons";
 import { useState, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "wouter";
 // date-fns format removed — using toLocaleDateString with timeZone for timezone-aware display
 import { ColumnDef, flexRender, getCoreRowModel, getSortedRowModel, getFilteredRowModel, SortingState, useReactTable } from "@tanstack/react-table";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -120,9 +121,11 @@ function getBookingTypeIcon(type: string) {
 function getBookingTypeLabel(type: string, metadata: Record<string, unknown> | null, t: any): string {
   // Check metadata for specific transaction types
   if (metadata) {
-    if (metadata.damage_claim_id) return t("billingDamageClaim", "Damage Claim");
-    if (metadata.overstay_id) return t("billingOverstayPenaltyType", "Overstay Penalty");
-    if (metadata.storage_extension_id) return t("billingStorageExtension", "Storage Extension");
+    if (metadata.damage_claim_id || metadata.type === 'damage_claim') return t("billingDamageClaim", "Damage claim");
+    if (metadata.overstay_id || metadata.type === 'overstay_penalty') return t("billingOverstayPenaltyType", "Storage holdover charge");
+    if (metadata.storage_extension_id || metadata.type === 'storage_term') return t("billingStorageExtension", "Storage extension");
+    if (metadata.type === 'kitchen_booking_change') return t("billingBookingChange", "Booking change");
+    if (metadata.type === 'session_extension' || metadata.sessionExtensionId) return t("billingExtraTime", "Extra time");
   }
   
   switch (type) {
@@ -146,11 +149,13 @@ function getTransactionColumns(t: any, language: string): ColumnDef<Transaction>
       id: "reference",
       header: t("billingRefColumn", { defaultValue: "Ref" }),
       cell: ({ row }) => {
-        const ref = row.original.referenceCode || row.original.bookingId;
-        return (
-          <div className="font-mono text-xs text-muted-foreground whitespace-nowrap">
-            {ref ? `#${ref}` : "—"}
-          </div>
+        const { referenceCode, bookingId, bookingType } = row.original;
+        const href = bookingType === 'storage' ? `/storage/${bookingId}` : bookingType === 'kitchen' ? `/booking/${bookingId}` : null;
+        const label = referenceCode || `#${bookingId}`;
+        return href ? (
+          <Link href={href} className="font-mono text-xs whitespace-nowrap text-primary underline-offset-4 hover:underline">{label}</Link>
+        ) : (
+          <div className="font-mono text-xs text-muted-foreground whitespace-nowrap">{label}</div>
         );
       },
     },
@@ -349,7 +354,8 @@ export function TransactionHistory() {
   // Calculate totals
   const totals = useMemo(() => {
     const totalPaid = transactions
-      .filter(t => t.status === 'succeeded' || t.status === 'partially_refunded')
+      // Refunded payments were paid first; their refunds come off in Net.
+      .filter(t => ['succeeded', 'partially_refunded', 'refunded'].includes(t.status))
       .reduce((sum, t) => sum + t.amount, 0);
     const totalRefunded = transactions.reduce((sum, t) => sum + t.refundAmount, 0);
     return { totalPaid, totalRefunded, netTotal: totalPaid - totalRefunded };
