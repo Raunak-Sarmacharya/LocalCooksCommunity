@@ -129,7 +129,7 @@ export function StorageRentalDetail({ rentalId }: { rentalId: number }) {
             ? <StorageStatusChip chip={chipForRental(rental)} />
             : <Badge variant="outline">{t((STATE_KEY[rental.state] ?? "stStateLabel") as never)}</Badge>}
         </div>
-        <div className="flex items-center gap-2 text-sm"><Avatar className="h-8 w-8"><AvatarFallback className="text-xs">{chef.split(/\s+/).map(part => part[0]).slice(0, 2).join('')}</AvatarFallback></Avatar><span className="font-medium">{chef}</span><span className="text-muted-foreground">· {rental.kitchen.name}</span></div>
+        <div className="flex items-center gap-2 text-sm"><Avatar className="h-8 w-8"><AvatarFallback className="text-xs">{chef.split(/\s+/).map(part => part[0]).slice(0, 2).join('').toUpperCase()}</AvatarFallback></Avatar><span className="font-medium">{chef}</span><span className="text-muted-foreground">· {rental.kitchen.name}</span></div>
         <p className="text-sm">{date(rental.startOn)} – {date(rental.paidThrough)}</p>
         <p className="text-xs text-muted-foreground">{rental.ref ?? `#${rental.id}`}</p>
         <div className="flex flex-wrap items-center gap-3 pt-1">

@@ -171,7 +171,7 @@ export default function ManagerStorageBookingsPage() {
             {pastRentals.length === 0 && <p>{t("stPastRentalsEmpty")}</p>}
             <div className="divide-y rounded-xl border bg-card">{pastRentals.map(rental => <Link key={rental.id} href={`/manager/storage/${rental.id}`} className="grid min-h-16 grid-cols-[1fr_auto] items-center gap-x-4 gap-y-1 px-4 py-3 text-sm hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_auto_auto]">
               <span className="font-medium">{rental.ref} · {rental.listing.name} · {t('stUnitLabel', { index: rental.unitLabel })}</span>
-              <span className="text-muted-foreground">{formatStorageDate(rental.startOn, i18n.language)} – {formatStorageDate(rental.releasedOn || rental.paidThrough, i18n.language)}</span>
+              <span className="text-muted-foreground">{(end => rental.startOn === end ? formatStorageDate(end, i18n.language) : `${formatStorageDate(rental.startOn, i18n.language)} – ${formatStorageDate(end, i18n.language)}`)(rental.releasedOn || rental.paidThrough)}</span>
               <span className="truncate text-muted-foreground">{rental.chef?.name || t('stTheChef')}</span>
               <span className="tabular-nums">{t('stRentalEarnings', { amount: formatCurrency(rental.terms.reduce((sum, term) => sum + (term.payoutCents ?? 0), 0), 'CAD', i18n.language) })}</span>
               <ChevronRight className="h-5 w-5 text-muted-foreground" />

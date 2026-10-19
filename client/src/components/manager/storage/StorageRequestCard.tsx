@@ -63,7 +63,7 @@ export function StorageRequestCard({ rental, onDone }: { rental: StorageRental; 
       <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0 space-y-1">
           <div className="flex items-center gap-1.5 font-medium">
-            <Avatar className="h-7 w-7"><AvatarFallback className="text-xs">{chef.split(/\s+/).map(part => part[0]).slice(0, 2).join('')}</AvatarFallback></Avatar>
+            <Avatar className="h-7 w-7"><AvatarFallback className="text-xs">{chef.split(/\s+/).map(part => part[0]).slice(0, 2).join('').toUpperCase()}</AvatarFallback></Avatar>
             <span className="truncate">{chef}</span>
           </div>
           <p className="truncate text-sm text-muted-foreground">{rental.listing.name} · {t("stUnitLabel", { index: rental.unitLabel })}</p>

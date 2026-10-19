@@ -350,6 +350,11 @@ export function KitchenCheckinTracker({
   const clockEnded = !!clockVisit && ["booked_time_ended", "ended"].includes(clockVisit.phase)
   const liveBooking = !clockEnded && !!data && ["confirmed", "cancellation_requested"].includes(data.status)
   const beforeCheckinOpens = !!checkinOpensAt && Date.now() < checkinOpensAt.getTime()
+  const todayKey = new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date())
+  const visitIsToday = visitDate === todayKey
+  // A later day says which day ("Tue, Oct 20, 4:45 p.m."); today says only the time.
+  const opensText = checkinOpensAt ? visitIsToday ? formatTime(checkinOpensAt.toISOString())
+    : new Intl.DateTimeFormat(locale, { timeZone: timezone, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(checkinOpensAt) : null
   const visitFinished = clockEnded || ["checked_out", "checkout_claim_filed", "no_show"].includes(checkinStatus)
   // Still checked in after the booked end: checkout stays open until the inspection window closes (the booking may
   // already read "completed"). One clear state: the booking ended, check out now, the kitchen may charge extra time.
@@ -415,7 +420,7 @@ export function KitchenCheckinTracker({
   const bookingEndsText = visitEndAt
     ? `${new Intl.DateTimeFormat(locale, { timeZone: timezone, hour: "numeric", minute: "2-digit", hour12: true }).format(visitEndAt)} ${friendlyTimezoneName(timezone, locale)}` : ""
   const statusLabel = !clockEnded && data?.status === "confirmed" && checkinStatus === "not_checked_in"
-    ? beforeCheckinOpens && checkinOpensAt ? t("kciOpensAt", "Check-in opens at {time}", { time: formatTime(checkinOpensAt.toISOString()) })
+    ? beforeCheckinOpens && checkinOpensAt ? t("kciOpensAt", "Check-in opens at {time}", { time: opensText })
       : canCheckin ? t("kciCheckinOpen", "Check-in open") : chip.label
     : checkinStatus === "checked_in" && !clockEnded && visitEndAt
       ? t("kciCheckedInEnds", "Checked in · ends {time}", { time: clockTime(clockVisit?.scheduledEndAt || visitEndAt.toISOString()) })
@@ -444,9 +449,6 @@ export function KitchenCheckinTracker({
   // states is not repeated, and the kitchen's review deadline is never shown to the chef.
   const times: Array<{ label: string; value: string }> = []
   if (data) {
-    if (data.status === "confirmed" && checkinStatus === "not_checked_in" && beforeCheckinOpens && checkinOpensAt) {
-      times.push({ label: t("bdCheckinOpens", "Check-in opens"), value: formatTime(checkinOpensAt.toISOString()) })
-    }
     if (data.checkedInAt && !sentence.coversCheckin) times.push({ label: t("kciTimeCheckedIn", "Check-in time"), value: formatTime(data.checkedInAt) })
     if (data.checkoutRequestedAt && !sentence.coversCheckout) times.push({ label: t("kciTimeCheckoutSubmitted", "Checkout time"), value: formatTime(data.checkoutRequestedAt) })
     if (checkinStatus === "checked_out" && data.checkoutApprovedAt) times.push({ label: t("kciTimeReviewed", "Checkout closed"), value: formatTime(data.checkoutApprovedAt) })
@@ -586,7 +588,7 @@ export function KitchenCheckinTracker({
                     ))}
                   </dl>
                 )}
-                {data.status === "confirmed" && checkinStatus === "not_checked_in" && beforeCheckinOpens && !data.runningLate && (
+                {data.status === "confirmed" && checkinStatus === "not_checked_in" && beforeCheckinOpens && visitIsToday && !data.runningLate && (
                   <MessageKitchenButton link bookingId={bookingId} label={t("rlArrivedEarly", "Arrived early? Message the kitchen")} />
                 )}
               </section>
@@ -671,7 +673,7 @@ export function KitchenCheckinTracker({
 
         {!isLoading && isArrival && liveBooking && beforeCheckinOpens && checkinOpensAt && <section aria-label={t("kciCheckInHeading", "Check in")} className="rounded-2xl border bg-card p-5 sm:p-6">
           <Clock className="mb-3 h-5 w-5 text-primary" aria-hidden="true" />
-          <h2 className="text-lg font-semibold">{t("kciOpensAt", "Check-in opens at {time}", { time: formatTime(checkinOpensAt.toISOString()) })}</h2>
+          <h2 className="text-lg font-semibold">{t("kciOpensAt", "Check-in opens at {time}", { time: opensText })}</h2>
           <p className="mt-2 text-sm text-muted-foreground">{t("kciBeforeWindowHint", "You can read the instructions while you wait.")}</p>
         </section>}
         {isLoading ? (

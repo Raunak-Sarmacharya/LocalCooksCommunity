@@ -478,8 +478,9 @@ describe("full-page kitchen visit", () => {
     setup();
     const summary = await screen.findByRole("region", { name: "Visit status" });
     expect(within(summary).getByText(/isn’t open yet/)).toBeInTheDocument();
-    expect(within(summary).getByText("Check-in opens").parentElement).toHaveTextContent(/8:45/);
-    expect(screen.getByRole("heading", { name: /Check-in opens at .*8:45/ })).toBeVisible();
+    // A later day names the day, once in the chip and once on the card, never as a bare time.
+    expect(screen.getByRole("heading", { name: /Check-in opens at .*Jan 15.*8:45/ })).toBeVisible();
+    expect(screen.queryByText("Check-in opens")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Check in" })).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Arrival instructions" })).toHaveAttribute("open");
     expect(screen.queryByText(/no-show/i)).not.toBeInTheDocument();
@@ -613,12 +614,22 @@ describe("full-page kitchen visit", () => {
     await waitFor(() => expect(screen.getByTestId("visit-next-step")).toHaveTextContent(/^You checked in at .* Your booking still ends at 11:59 p\.m\. GMT\.$/));
   });
 
-  it("offers Message the kitchen next to the check-in time when you arrive early, and no late line", async () => {
+  it("on the day, before the window, says only the time and offers Arrived early", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-20T11:00:00Z")); // 8:30 a.m. Newfoundland
+    try {
+      status = visit({ bookingDate: "2026-10-20", startTime: "10:00", endTime: "14:00", timezone: "America/St_Johns", checkinWindowMinutesBefore: 15 });
+      setup(true);
+      expect(await screen.findByRole("heading", { name: /^Check-in opens at 9:45\s*a\.m\.$/ })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Arrived early? Message the kitchen" })).toBeInTheDocument();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("on a later day, names the day check-in opens and doesn't offer Arrived early, and no late line", async () => {
     const tomorrow = new Date(Date.now() + 36 * 3600_000).toISOString().split("T")[0];
     status = visit({ bookingDate: tomorrow, startTime: "10:00", endTime: "14:00" });
     setup(true);
-    expect(await screen.findByText("Check-in opens")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Arrived early? Message the kitchen" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /Check-in opens at \w{3}, / })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Arrived early? Message the kitchen" })).not.toBeInTheDocument();
     expect(screen.queryByTestId("booking-still-ends")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Running late?" })).not.toBeInTheDocument();
   });

@@ -62,7 +62,7 @@ export function StorageUnitCard({ row, onDone }: { row: UnitRow; onDone?: () => 
         {row.outOfService && <p className="truncate text-sm text-muted-foreground" title={row.outOfService.reason}>{row.outOfService.reason}</p>}
         <div className="flex-1 space-y-1 text-sm">
           {row.occupantName && <p className="flex items-center gap-2">
-            <Avatar className="h-7 w-7"><AvatarFallback className="text-xs">{row.occupantName.split(/\s+/).map(part => part[0]).slice(0, 2).join('')}</AvatarFallback></Avatar>
+            <Avatar className="h-7 w-7"><AvatarFallback className="text-xs">{row.occupantName.split(/\s+/).map(part => part[0]).slice(0, 2).join('').toUpperCase()}</AvatarFallback></Avatar>
             <span className="truncate">{row.occupantName}</span>
           </p>}
           {!row.rental && !row.outOfService && <p className="text-muted-foreground">{t('stUnitReady')}</p>}
