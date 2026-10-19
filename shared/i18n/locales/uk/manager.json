@@ -4235,7 +4235,7 @@
   "mdAllDays": "Усі заброньовані дні",
   "mdDaySubtotal": "Проміжна сума за день: {amount}",
   "mdDayOf": "День {number} із {total}",
-  "mdPaysAfter": "Виплата після перевірки цього дня",
+  "mdPaysAfter": "Ви отримаєте {amount} після перевірки цього дня",
   "mdPaidOut": "Виплачено {amount} {date}",
   "mdCancelDay": "Скасувати цей день",
   "mdRefundDay": "Повернути більше за цей день",

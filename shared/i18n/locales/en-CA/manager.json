@@ -4235,7 +4235,7 @@
   "mdAllDays": "All booking days",
   "mdDaySubtotal": "Day subtotal: {amount}",
   "mdDayOf": "Day {number} of {total}",
-  "mdPaysAfter": "Pays out after this day’s inspection",
+  "mdPaysAfter": "You receive {amount} after this day’s inspection",
   "mdPaidOut": "Paid out {amount} on {date}",
   "mdCancelDay": "Cancel this day",
   "mdRefundDay": "Refund more for this day",

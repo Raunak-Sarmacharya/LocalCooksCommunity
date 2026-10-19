@@ -4235,7 +4235,7 @@
   "mdAllDays": "Tous les jours réservés",
   "mdDaySubtotal": "Sous-total du jour : {amount}",
   "mdDayOf": "Jour {number} sur {total}",
-  "mdPaysAfter": "Versement après l’inspection de ce jour",
+  "mdPaysAfter": "Vous recevez {amount} après l’inspection de ce jour",
   "mdPaidOut": "Versement de {amount} le {date}",
   "mdCancelDay": "Annuler ce jour",
   "mdRefundDay": "Rembourser davantage pour ce jour",

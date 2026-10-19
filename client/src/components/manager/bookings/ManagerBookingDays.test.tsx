@@ -60,3 +60,8 @@ it('freezes and reuses the original refund after a lost response and a closed di
  fireEvent.click(within(dialog).getByRole('button', { name: 'Confirm' }));
  await waitFor(() => expect(api.post).toHaveBeenCalledTimes(2)); expect(api.post.mock.calls[0]).toEqual(api.post.mock.calls[1]);
 });
+it('names each day’s payout amount and hides a zero refund', () => {
+  render(<ManagerBookingDays {...props} payout={{ installments: [{ installmentId: 9, sourceId: 1, visitId: 1, operatingDate: '2030-01-15', status: 'scheduled', amountCents: 11000, feePending: false, transferId: null }] } as never} />);
+  expect(screen.getByText('You receive $110.00 after this day’s inspection')).toBeInTheDocument();
+  expect(screen.getByText('This day: $122.00')).toBeInTheDocument();
+});
