@@ -977,7 +977,9 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
                 ? (capturedTaxAmount * 100) / capturedSubtotal
                 : fallbackTaxRatePercent;
         const reconciledSubtotal = reconciledFinancials.totalPriceCents || capturedSubtotal;
-        const reconciledKitchenOnlyPrice = Math.max(0, reconciledSubtotal - addonSubtotal);
+        // Multi-day: the charge's own day allocations give the exact kitchen/equipment split (single-day rate math doesn't apply).
+        const chargeSplit = booking.scheduleRevision > 0 ? await (await import('../services/booking-day-money')).readBookingChargeSplit(id) : null;
+        const reconciledKitchenOnlyPrice = chargeSplit ? chargeSplit.kitchenCents : Math.max(0, reconciledSubtotal - addonSubtotal);
         const reconciledServiceFee = reconciledFinancials.serviceFeeCents;
         const historicalCommissionRate = reconciledSubtotal > 0 ? reconciledServiceFee / reconciledSubtotal : 0;
         if (paymentTransaction) {
@@ -1021,6 +1023,7 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
             } : null,
             visits: derived.visits,
             totalPrice: reconciledKitchenOnlyPrice,
+            ...(chargeSplit ? { chargeEquipmentCents: chargeSplit.equipmentCents } : {}),
             pricingMode: capturedKitchenRate.mode,
             serviceFee: reconciledServiceFee,
             platformCommissionRate: historicalCommissionRate,

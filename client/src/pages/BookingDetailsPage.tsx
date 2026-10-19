@@ -101,6 +101,8 @@ function useMedia(query: string) {
 interface BookingDetails {
   scheduleRevision?: number;
   dayMoney?: import('@shared/booking-day-money').BookingDayMoney[];
+  /** Multi-day: the booking charge's equipment subtotal (its kitchen part is totalPrice). */
+  chargeEquipmentCents?: number;
   cancellationPolicySnapshot?: import('@shared/cancellation-policy').CancellationPolicySnapshot | null;
   payout?: import('@shared/kitchen-payout').KitchenPayout;
   closeout?: import("@shared/clock-closeout").BookingCloseout;
@@ -701,10 +703,10 @@ export default function BookingDetailsPage() {
       if (s.paymentStatus === 'failed') return sum; // Voided — never charged
       return sum + (s.totalPrice || 0);
     }, 0) || 0;
-    const equipmentTotal = booking.equipmentBookings?.reduce((sum, e) => {
+    const equipmentTotal = booking.chargeEquipmentCents ?? (booking.equipmentBookings?.reduce((sum, e) => {
       if (e.paymentStatus === 'failed' || isReplacedEquipment(e)) return sum; // Voided — never charged; replaced by a change
       return sum + (e.totalPrice || 0);
-    }, 0) || 0;
+    }, 0) || 0);
 
     // Subtotal is kitchen + non-voided storage + non-voided equipment (what was actually charged)
     const subtotal = kitchenTotal + storageTotal + equipmentTotal;

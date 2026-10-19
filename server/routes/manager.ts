@@ -4480,7 +4480,9 @@ router.get(
       const reconciledSubtotal = coherentStoredFaces
         ? capturedSubtotal
         : (reconciledFinancials.totalPriceCents || capturedSubtotal);
-      const reconciledKitchenOnlyPrice = Math.max(0, reconciledSubtotal - addonSubtotal);
+      // Multi-day: the charge's own day allocations give the exact kitchen/equipment split (single-day rate math doesn't apply).
+      const chargeSplit = booking.scheduleRevision > 0 ? await (await import('../services/booking-day-money')).readBookingChargeSplit(id) : null;
+      const reconciledKitchenOnlyPrice = chargeSplit ? chargeSplit.kitchenCents : Math.max(0, reconciledSubtotal - addonSubtotal);
       const reconciledServiceFee = coherentStoredFaces
         ? Number(paymentTransaction?.serviceFee || booking.serviceFee || 0)
         : reconciledFinancials.serviceFeeCents;
@@ -4549,6 +4551,7 @@ router.get(
         },
         visits: derived.visits.map((visit: { id: number }) => ({ ...visit, visitCode: visitCodeFor(visit.id) })),
         totalPrice: reconciledKitchenOnlyPrice,
+        ...(chargeSplit ? { chargeEquipmentCents: chargeSplit.equipmentCents } : {}),
         pricingMode: capturedKitchenRate.mode,
         serviceFee: reconciledServiceFee,
         platformCommissionRate: historicalCommissionRate,
