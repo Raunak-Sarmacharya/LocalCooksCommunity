@@ -136,12 +136,10 @@ export function InSessionPanel({
     <section className="rounded-2xl border bg-card p-4 sm:p-6 space-y-4" aria-label={t("kciInSessionTitle", { defaultValue: "Your visit" })} data-phase={phase}>
       <div className="space-y-2">
         {phase !== "ended" && <h2 className="text-base font-semibold">{t("kciCookingEnds", { defaultValue: "Cooking now · ends {time}", time: endTime })}</h2>}
-        {/* One countdown, announced politely: its text changes at most once a minute. The end time is its small label. */}
+        {/* One countdown, announced politely: its text changes at most once a minute. */}
         <div>
           <p className="text-[22px] font-semibold leading-7 tabular-nums" role="status" aria-live="polite">{countdown}</p>
-          <p className="text-[13px] leading-[18px] text-muted-foreground tabular-nums">{phase === "ended"
-            ? t("kvIsEndedAt", { defaultValue: "Ended at {time}", time: endTime })
-            : t("kvIsEndsAt", { defaultValue: "Ends at {time}", time: endTime })}</p>
+          {phase === "ended" && <p className="text-[13px] leading-[18px] text-muted-foreground tabular-nums">{t("kvIsEndedAt", { defaultValue: "Ended at {time}", time: endTime })}</p>}
         </div>
         <div role="progressbar" aria-label={t("kciIsProgressLabel", { defaultValue: "Booked time used" })} aria-valuemin={0} aria-valuemax={100}
           aria-valuenow={Math.round(progress)} className="h-1.5 w-full overflow-hidden rounded-full bg-muted">

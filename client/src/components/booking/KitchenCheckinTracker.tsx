@@ -418,7 +418,7 @@ export function KitchenCheckinTracker({
     ? beforeCheckinOpens && checkinOpensAt ? t("kciOpensAt", "Check-in opens at {time}", { time: formatTime(checkinOpensAt.toISOString()) })
       : canCheckin ? t("kciCheckinOpen", "Check-in open") : chip.label
     : checkinStatus === "checked_in" && !clockEnded && visitEndAt
-      ? t("kciCheckedInEnds", "Checked in · ends {time}", { time: clockTime(visitEndAt.toISOString()) })
+      ? t("kciCheckedInEnds", "Checked in · ends {time}", { time: clockTime(clockVisit?.scheduledEndAt || visitEndAt.toISOString()) })
       : checkinStatus === "checkout_requested" ? t("kciStageReview", "Checking out")
       : checkinStatus === "checked_out" ? t("kciStageComplete", "Visit complete") : chip.label
   const currentStep = checkoutOpen || isDeparture && !showInSessionEarly || checkinStatus === "checkout_requested" || visitFinished && checkinStatus !== "no_show" ? 3
@@ -552,16 +552,16 @@ export function KitchenCheckinTracker({
   </>
 
   return (
-    <section className="mx-auto max-w-2xl space-y-5 pb-6" aria-labelledby="kitchen-visit-title">
+    <section className={cn("mx-auto max-w-2xl space-y-5 pb-6", canCheckin && dutiesReady && "pb-32 sm:pb-6")} aria-labelledby="kitchen-visit-title">
         <header className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm">
-          <div className="relative h-36 overflow-hidden bg-primary/5 sm:h-44">
+          <div className={cn("relative overflow-hidden bg-primary/5", coverUrl ? "h-36 sm:h-44" : "h-20 sm:h-28")}>
             <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-primary/10 via-primary/5 to-background" aria-hidden="true">
-              <ChefHat className="h-16 w-16 text-primary/30" strokeWidth={1} />
+              <ChefHat className="h-10 w-10 text-primary/30 sm:h-12 sm:w-12" strokeWidth={1} />
             </div>
             {coverUrl && <SmartImage src={coverUrl} alt="" hideOnError className="relative h-full w-full object-cover" />}
           </div>
           <div className="min-w-0 p-5 sm:p-7">
-            <p className="mb-2 text-sm font-medium text-muted-foreground">{kitchenLabel}</p>
+            {!isArrival && <p className="mb-2 text-sm font-medium text-muted-foreground">{kitchenLabel}</p>}
             <h1 id="kitchen-visit-title" tabIndex={-1} className="rounded-md text-3xl font-semibold leading-tight tracking-tight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{title}</h1>
             {kitchenAddress && <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
               <p className="flex min-w-0 items-start gap-1.5 text-muted-foreground"><MapPin className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />{kitchenAddress}</p>
@@ -649,7 +649,6 @@ export function KitchenCheckinTracker({
         {!isLoading && liveBooking && !visitFinished && instructionsReleased && !showInSession && <details role="region" open className="rounded-2xl border bg-card p-4 sm:p-6" aria-label={t(beforeArrival ? "kciArrivalInstructions" : "kciRequiredInstructions")} >
           <summary className="min-h-11 cursor-pointer rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><h2 id="visit-instructions-title" className="inline text-lg font-semibold">{beforeArrival ? t("kciGetInside", "1. Get inside") : t("kciRequiredInstructions", "Visit instructions")}</h2></summary>
           <div className="space-y-4 pt-3">
-          {checkinStatus === "not_checked_in" && !codeState?.consumed && <ArrivalModeLine mode={arrivalMode} />}
           {updatedSinceBooking && <p className="text-xs text-muted-foreground">{t("kciInstructionsUpdated", "Updated by the kitchen since you booked")}</p>}
           {instructions.map(item => (
             <div key={item.key}>
@@ -657,6 +656,7 @@ export function KitchenCheckinTracker({
               <p className="mt-1 text-sm whitespace-pre-line">{item.body}</p>
             </div>
           ))}
+          {checkinStatus === "not_checked_in" && !codeState?.consumed && <ArrivalModeLine mode={arrivalMode} />}
           {canCheckin && dutiesReady && arrivalRequirements}
           {beforeArrival && <p className="text-xs text-muted-foreground" data-testid="departure-after-checkin">{t("kciDepartureAfterCheckin", "Departure instructions appear here after you check in.")}</p>}
           </div>
@@ -691,9 +691,9 @@ export function KitchenCheckinTracker({
                     kitchenName={kitchenName || t("kitchenDefault", "Kitchen")} />
                 )}
                 {(codeGate === "none" || codeGate === "self") && !beforeCheckinOpens && !!checkinOpensAt && <p className="text-sm text-muted-foreground">{t("kciAcNoAccess", "Can’t get inside or find staff? Contact the kitchen. Don’t confirm arrival until you’re at the kitchen.")}</p>}
-                <div className="sticky bottom-0 z-20 -mx-4 border-t bg-card/95 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:px-0">
+                <div className="fixed inset-x-0 bottom-0 z-20 border-t bg-card/95 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur sm:static sm:border-0 sm:bg-transparent sm:px-0">
                 <Button
-                  className="min-h-12 w-full rounded-xl text-base shadow-sm"
+                  className="mx-auto flex h-auto min-h-12 w-full max-w-2xl whitespace-normal rounded-xl py-3 text-base leading-snug shadow-sm"
                   aria-describedby="arrival-submit-help"
                   onClick={handleCheckin}
                   disabled={
@@ -710,7 +710,7 @@ export function KitchenCheckinTracker({
                   )}
                   {codeGate === "self" ? t("kciSelfCheckinAction", "I’m at the kitchen. Check in") : t("kciCheckInHeading", "Check in")}
                 </Button>
-                <p id="arrival-submit-help" className="text-sm text-muted-foreground" role="status">{submitHelp("checkin")}</p>
+                <p id="arrival-submit-help" className="mx-auto max-w-2xl text-sm text-muted-foreground" role="status">{submitHelp("checkin")}</p>
                 </div>
                 <details className="text-sm">
                   <summary className="flex min-h-11 cursor-pointer items-center font-medium underline underline-offset-4">{t("wfbArrivalOptional")}</summary>
