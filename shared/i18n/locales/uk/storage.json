@@ -349,6 +349,7 @@
   "stTermHeading": "Період {seq}: {start} – {end}",
   "stTermDays": "{days, plural, one {# день} few {# дні} many {# днів} other {# дня}}",
   "stTermCharged": "Стягнено",
+  "stTermOnHold": "Заблоковано на картці кухаря",
   "stTermPayout": "Виплата",
   "stStateRequested": "Запит",
   "stStateDeclined": "Відхилено",

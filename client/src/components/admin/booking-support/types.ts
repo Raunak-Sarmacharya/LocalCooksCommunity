@@ -14,7 +14,7 @@ export type SearchRow = {
 export type Party = { id: number | null; name: string | null; email: string | null; phone: string | null };
 
 export type CaseVisit = {
-  visitDate?: string | null; startTime?: string; endTime?: string; pricingMode?: string | null; scheduleRevision?: number | null; scheduleState?: string | null;
+  visitDate?: string | null; startTime?: string; endTime?: string; pricingMode?: string | null; scheduleRevision?: number | null; scheduleState?: string | null; declinedAtAcceptance?: boolean;
   id: number; blockIndex: number; checkinStatus: string | null; updatedAt: string;
   checkedInAt: string | null; checkoutRequestedAt: string | null; checkoutApprovedAt: string | null;
 };
@@ -60,7 +60,8 @@ export type SupportCase = {
   decision: { state: string; target: string | null } | null;
   /** The kitchen accepted without some equipment; the chef approves the new total before anything is captured. */
   partialAcceptance?: { state: string; deadlineAt: string; proposedAt: string; oldTotalCents: number; newTotalCents: number;
-    declined: Array<{ id: number; name: string; cents: number; date?: string }>; answeredAt: string | null; supportReason: string | null } | null;
+    declined: Array<{ id: number; name: string; cents: number; date?: string }>; declinedDays?: Array<{ visitId: number; date: string; cents: number }>;
+    answeredAt: string | null; supportReason: string | null } | null;
   deadlines: {
     responseAt: string | null; inspectionAt: string | null; closeoutAt: string | null;
     closeout?: { phase?: string; nextDueAt?: string | null; visits?: CloseoutVisit[] } | null;

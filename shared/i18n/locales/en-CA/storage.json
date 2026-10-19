@@ -349,6 +349,7 @@
   "stTermHeading": "Term {seq}: {start} – {end}",
   "stTermDays": "{days, plural, one {# day} other {# days}}",
   "stTermCharged": "Charged",
+  "stTermOnHold": "Held on the chef’s card",
   "stTermPayout": "Payout",
   "stStateRequested": "Requested",
   "stStateDeclined": "Declined",

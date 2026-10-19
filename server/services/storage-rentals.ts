@@ -2,7 +2,7 @@
 import Stripe from 'stripe';
 import { and, asc, eq, inArray, isNotNull, lte, or, sql } from 'drizzle-orm';
 import { db } from '../db';
-import { kitchens, locations, storageListings, storageBookings, storageRentalTerms, paymentTransactions, platformSettings, kitchenCheckoutIncidents } from '@shared/schema';
+import { kitchens, locations, storageListings, storageBookings, storageRentalTerms, paymentTransactions, platformSettings, kitchenCheckoutIncidents, users } from '@shared/schema';
 import { addDays, approvedTermDates, GRACE_DAYS, localDayStart, localToday, MAX_LEAD_DAYS, occupancyRange, pickFreeUnit,
   rentalPhase, REMOVAL_REVIEW_DAYS, responseDeadline, STORAGE_TERMS_VERSION, storageCancellationSnapshot, termPayoutEligibleAt,
   termPrice, toDateRange, daysBetween, EXTEND_WINDOW_DAYS, type RentalDates } from '@shared/storage-rental';
@@ -125,7 +125,10 @@ export async function createRentalCheckout(chefId: number, input: RentalCheckout
   const item = (name: string, cents: number): Stripe.Checkout.SessionCreateParams.LineItem =>
     ({ price_data: { currency: 'cad', unit_amount: cents, product_data: { name } }, quantity: 1 });
   await ensureServerI18n();
+  // Same as a kitchen checkout: the chef's account email is filled in (Stripe asked for it on storage, live Oct 19).
+  const [chef] = await db.select({ email: users.username }).from(users).where(eq(users.id, chefId)).limit(1);
   const session = await stripe.checkout.sessions.create({ mode: 'payment', payment_method_types: ['card'], customer_creation: 'always',
+    ...(chef?.email?.includes('@') ? { customer_email: chef.email } : {}),
     expires_at: Math.floor(quotedAt.getTime() / 1000) + 32 * 60,
     payment_intent_data: { capture_method: 'manual', setup_future_usage: 'on_session', metadata }, metadata,
     line_items: [item(`${q.ctx.listing.name} · ${q.ctx.kitchen.name} · ${input.startOn}–${q.endOn} (${tLocale(locale, 'stCheckoutDays', { ns: 'storage', count: input.days })})`, q.price.subtotalCents),

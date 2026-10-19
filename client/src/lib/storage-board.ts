@@ -185,7 +185,9 @@ export function unitRows(rentals: StorageRental[], listings: StorageListing[], n
     if (!occupiesUnit(rental)) continue;
     const key = `${rental.listing.id}:${unitIndex(rental)}`;
     const current = claims.get(key);
-    if (!current || (STATE_PRIORITY[rental.state] ?? 0) >= (STATE_PRIORITY[current.state] ?? 0)) claims.set(key, rental);
+    const priority = STATE_PRIORITY[rental.state] ?? 0, held = current ? STATE_PRIORITY[current.state] ?? 0 : -1;
+    // Same state (a unit reserved back to back): the rental that starts first is the one in the unit now.
+    if (!current || priority > held || priority === held && rental.startOn < current.startOn) claims.set(key, rental);
   }
   const rows: UnitRow[] = [];
   for (const listing of listings) {

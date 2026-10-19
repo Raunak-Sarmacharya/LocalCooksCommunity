@@ -9,6 +9,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Link, useParams } from "wouter";
 import { Badge } from "@/components/ui/badge";
+import { StorageRequestCard } from "./StorageRequestCard";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -119,6 +120,9 @@ export function StorageRentalDetail({ rentalId }: { rentalId: number }) {
         </div>
       </header>
 
+      {/* A request is answered here too (the dashboard links straight to this page), with the board's same card. */}
+      {rental.state === "requested" && <StorageRequestCard rental={rental} onDone={() => void query.refetch()} />}
+
       <Card>
         <CardHeader><CardTitle className="text-base">{t("stEvidenceHeading")}</CardTitle></CardHeader>
         <CardContent className="space-y-4">
@@ -162,7 +166,7 @@ export function StorageRentalDetail({ rentalId }: { rentalId: number }) {
                 </div>
                 <dl className="mt-2 space-y-1 text-sm">
                   <div className="flex items-center justify-between gap-3">
-                    <dt className="text-muted-foreground">{t("stTermCharged")}</dt>
+                    <dt className="text-muted-foreground">{t(rental.state === "requested" ? "stTermOnHold" : "stTermCharged")}</dt>
                     <dd className="font-medium tabular-nums">{formatCurrency(term.totalCents)}</dd>
                   </div>
                   <div className="flex items-center justify-between gap-3">

@@ -53,6 +53,11 @@ describe("unitRows", () => {
     expect(rows[0].needsAction).toBe(true);
   });
 
+  it("a unit reserved back to back shows the rental in it now, not the next one (live Oct 19: unit 2 hid the overdue move-in)", () => {
+    const rows = unitRows([rental({ id: 47, unitLabel: "2", state: "reserved", phase: null, startOn: "2026-10-30" }),
+      rental({ id: 45, unitLabel: "2", state: "reserved", phase: null, startOn: "2026-10-17" })], [listing({ unitCount: 2 })]);
+    expect(rows[1].rental?.id).toBe(45);
+  });
   it("groups by listing, in listing order, and picks the most actionable claim when two overlap", () => {
     const rows = unitRows(
       [

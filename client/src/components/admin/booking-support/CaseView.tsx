@@ -141,7 +141,7 @@ export function MoneyCard({ c }: { c: SupportCase }) {
             const day = c.dayMoney?.find(row => row.visitId === visit.id);
             return <div key={visit.id} className="rounded-lg border p-3 text-sm">
               <p className="font-medium">{t('bsDayOf', { number: index + 1, total: days.length })} · {adminDay(visit.visitDate!)} · {visit.startTime}–{visit.endTime}</p>
-              <p>{t('bsDayState', { state: t(`mdState_${visit.scheduleState}`, { defaultValue: visit.scheduleState }) })}</p>
+              <p>{visit.declinedAtAcceptance ? t('bsDayDeclinedAtAcceptance') : t('bsDayState', { state: t(`mdState_${visit.scheduleState}`, { defaultValue: visit.scheduleState }) })}</p>
               {day && <><p>{t('bsDayAllocation', { amount: fmtMoney(day.allocatedCents, m.currency) })}</p><p>{t('bsDayRefunded', { amount: fmtMoney(day.refundedCents, m.currency) })}</p></>}
               {!!day?.pendingRefundCents && <p role="status">{t('bsDayRefundProcessing', { amount: fmtMoney(day.pendingRefundCents, m.currency) })}</p>}
               {m.dayPayouts?.filter(payout => payout.visitId === visit.id && (payout.transferId || payout.feePending || payout.amountCents > 0)).map(payout => <p key={payout.installmentId}>{fmtMoney(payout.amountCents, m.currency)} · {humanize(payout.status)}{payout.transferId ? ` · ${payout.transferId}` : ''}</p>)}
@@ -203,8 +203,12 @@ export function DeadlinesCard({ c }: { c: SupportCase }) {
         <Row label={t("bsDeadlineCloseout")}>{when(c.deadlines.closeoutAt)}</Row>
         {c.partialAcceptance && <>
           <Row label={t("bsProposal")}>{t(`bsProposalState_${c.partialAcceptance.state}`)}</Row>
+          {/* The offer's changes: the days the kitchen couldn't host, then items on kept days. */}
           <Row label={t("bsProposalTerms")}>{t("bsProposalTermsValue", { newTotal: fmtMoney(c.partialAcceptance.newTotalCents, c.money.currency),
-            oldTotal: fmtMoney(c.partialAcceptance.oldTotalCents, c.money.currency), items: c.partialAcceptance.declined.map(item => item.date ? `${item.name} (${item.date})` : item.name).join(", ") })}</Row>
+            oldTotal: fmtMoney(c.partialAcceptance.oldTotalCents, c.money.currency), changes: [
+              ...(c.partialAcceptance.declinedDays ?? []).map(day => t("bsProposalNotOn", { day: adminDay(day.date) })),
+              ...(c.partialAcceptance.declined.length ? [t("bsProposalWithout", { items: c.partialAcceptance.declined.map(item => item.date ? `${item.name} (${adminDay(item.date)})` : item.name).join(", ") })] : []),
+            ].join("; ") })}</Row>
           <Row label={t("bsDeadlineChefAnswer")}>{when(c.partialAcceptance.deadlineAt)}</Row>
           {c.partialAcceptance.supportReason && <Row label={t("bsProposalSupportReason")}>{c.partialAcceptance.supportReason}</Row>}
         </>}

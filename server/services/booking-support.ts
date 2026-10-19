@@ -408,12 +408,14 @@ export async function readBookingSupport(id: number) {
       const proposal = ctx.booking.partialAcceptance as PartialAcceptance | null;
       return proposal ? { state: waitingPartialAcceptance(ctx.booking) ? 'waiting' : proposal.state === 'waiting' ? 'closed' : proposal.state,
         deadlineAt: proposal.deadlineAt, proposedAt: proposal.proposedAt, oldTotalCents: proposal.oldTotalCents, newTotalCents: proposal.newTotalCents,
-        declined: proposal.declined, answeredAt: proposal.answeredAt ?? null, supportReason: proposal.supportReason ?? null } : null;
+        declined: proposal.declined, declinedDays: proposal.declinedDays ?? [], answeredAt: proposal.answeredAt ?? null, supportReason: proposal.supportReason ?? null } : null;
     })(),
     deadlines: { responseAt: ctx.booking.status === 'pending' ? ctx.responseDeadlineAt?.toISOString() ?? null : null,
       inspectionAt: closeout.checkoutReviewDeadline || null, closeoutAt: closeout.closeout.serviceEndedAt, closeout: closeout.closeout },
     visits: ctx.visits.map(visit => ({ id: visit.id, blockIndex: visit.blockIndex, checkinStatus: visit.checkinStatus,
       visitDate: visit.visitDate, startTime: visit.startTime, endTime: visit.endTime, pricingMode: visit.pricingMode, scheduleRevision: visit.scheduleRevision, scheduleState: visit.scheduleState,
+      // A day the kitchen couldn't host when it accepted: never booked, said so rather than "cancelled".
+      declinedAtAcceptance: (visit.cancellationPlan as { mode?: string } | null)?.mode === 'declined_at_acceptance',
       updatedAt: visit.updatedAt, checkedInAt: visit.checkedInAt, checkoutRequestedAt: visit.checkoutRequestedAt,
       checkoutApprovedAt: visit.checkoutApprovedAt })),
     visitCodes: codes.map(code => ({ targetKey: code.targetKey, visitId: code.visitId, mode: code.mode, codeRequired: code.codeRequired,

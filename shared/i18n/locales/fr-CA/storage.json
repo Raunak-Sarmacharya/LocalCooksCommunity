@@ -349,6 +349,7 @@
   "stTermHeading": "Période {seq} : du {start} au {end}",
   "stTermDays": "{days, plural, one {# jour} other {# jours}}",
   "stTermCharged": "Débité",
+  "stTermOnHold": "Retenu sur la carte du chef",
   "stTermPayout": "Versement",
   "stStateRequested": "Demandée",
   "stStateDeclined": "Refusée",
