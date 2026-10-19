@@ -1,3 +1,5 @@
+import { useState } from "react"
+import { StoragePhoto } from "./StoragePhoto"
 /** Storage entry points outside "My storage": the kitchen page's Storage section and the prompt after a session booking. */
 import { Link } from "wouter"
 import { useQuery } from "@tanstack/react-query"
@@ -22,16 +24,15 @@ function availabilityText(row: StorageAvailability, t: T, locale: string) {
 export function StorageListingDetails({ row, compact = false, showName = true }: { row: StorageAvailability; compact?: boolean; showName?: boolean }) {
   const { t: tt, i18n } = useTranslation("storage")
   const t = tt as unknown as T
-  const facts = [
+  const facts = compact ? [t(`stcKind_${row.storageType}`, { defaultValue: "" }), row.temperatureRange?.trim() || row.sizeLabel?.trim() || ""].filter(Boolean) : [
     t(`stcKind_${row.storageType}`, { defaultValue: "" }),
     row.unitCount && row.unitCount > 1 ? t("stcUnits", { count: row.unitCount }) : "",
     row.sizeLabel?.trim() ?? "",
     row.accessType && ACCESS.includes(row.accessType) ? t(`stcAccess_${row.accessType}`) : "",
     row.temperatureRange?.trim() && row.storageType !== "dry" ? t("stcTemperature", { range: row.temperatureRange.trim() }) : "",
   ].filter(Boolean)
-  const photo = row.photos?.[0]
   return <div className="flex min-w-0 gap-3">
-    {photo && !compact && <img src={photo} alt="" loading="lazy" className="h-16 w-16 shrink-0 rounded-lg object-cover sm:h-20 sm:w-20" />}
+    <StoragePhoto storageType={row.storageType} photos={row.photos} className={compact ? "h-12 w-12" : undefined} />
     <div className="min-w-0 space-y-0.5 text-sm">
       {showName && <p className="font-medium text-gray-900">{row.name}</p>}
       <p className="text-gray-700">{t("stcPerDay", { amount: cad(row.dailyPriceCents, i18n.language) })} · {availabilityText(row, t, i18n.language)}</p>
@@ -45,28 +46,28 @@ export function StorageListingDetails({ row, compact = false, showName = true }:
  * Kitchen page Storage section. Approved chefs get "Rent storage" per listing; everyone else sees the same listings,
  * prices and rules plus "Apply to this kitchen first", which goes into the existing application flow.
  */
-export function StorageRentCta({ kitchenId, canBook, onApply, compact = false }: { kitchenId: number; canBook: boolean; onApply: () => void; compact?: boolean }) {
+export function StorageRentCta({ kitchenId, canBook, onApply, compact = false, listings }: { kitchenId: number; canBook: boolean; onApply: () => void; compact?: boolean; listings?: StorageAvailability[] }) {
   const { t: tt } = useTranslation("storage")
   const t = tt as unknown as T
-  // Signed-in chefs can read availability before approval; a visitor gets an error here and still sees the apply block.
-  const rows = useQuery({ queryKey: ["storage-availability", kitchenId], queryFn: () => storageAvailability(kitchenId), retry: false })
-  const list = rows.data ?? []
-  if (!canBook) return <div className="mt-3 space-y-3 border-t border-gray-100 pt-3" data-testid="storage-apply-first">
-    {!compact && list.length > 0 && <ul className="space-y-3">{list.map(row => <li key={row.listingId}><StorageListingDetails row={row} /></li>)}</ul>}
-    <p className="text-sm leading-relaxed text-gray-700">{t("stcKitchenApplyHint")}</p>
-    {!compact && <PublishedCancellationPolicySummary kitchenId={kitchenId} />}
-    <Button type="button" variant="outline" className="min-h-11 w-full" onClick={onApply}>{t("stcApply")}</Button>
-  </div>
-  if (!list.length) return null
-  return <div className="mt-3 space-y-2 border-t border-gray-100 pt-3" data-testid="storage-rent">
+  const [showAll, setShowAll] = useState(false)
+  const rows = useQuery({ queryKey: ["storage-availability", kitchenId], queryFn: () => storageAvailability(kitchenId), retry: false, enabled: !listings })
+  const list = listings ?? rows.data ?? []
+  if (!list.length && canBook) return null
+  return <div className="space-y-3" data-testid={canBook ? "storage-rent" : "storage-apply-first"}>
     <p className="text-xs text-gray-600">{t("stcKitchenRentHint")}</p>
-    <ul className="space-y-3">
-      {list.map(row => <li key={row.listingId} className="flex items-center justify-between gap-3">
-        <StorageListingDetails row={row} compact={compact} />
-        {row.availability.state === "full" ? null
-          : <Button asChild size="sm" className="min-h-11 shrink-0"><Link href={rentHref(kitchenId, row)} aria-label={t("stcRentNamed", { listing: row.name })}>{t("stcRent")}</Link></Button>}
+    <ul className="divide-y">
+      {(showAll ? list : list.slice(0, 3)).map(row => <li key={row.listingId} className="flex items-center justify-between gap-3 py-3">
+        <StorageListingDetails row={row} compact />
+        {canBook && row.availability.state !== "full"
+          ? <Button asChild size="sm" className="min-h-11 shrink-0"><Link href={rentHref(kitchenId, row)} aria-label={t("stcRentNamed", { listing: row.name })}>{t("stcRent")}</Link></Button> : null}
       </li>)}
     </ul>
+    {list.length > 3 && !showAll && <Button variant="link" className="p-0" onClick={() => setShowAll(true)}>{t("stcShowAllStorage", { count: list.length })}</Button>}
+    {!canBook && <div className="space-y-3">
+      <p className="text-sm leading-relaxed text-gray-700">{t("stcKitchenApplyHint")}</p>
+      {!compact && <PublishedCancellationPolicySummary kitchenId={kitchenId} />}
+      <Button type="button" variant="outline" className="min-h-11 w-full" onClick={onApply}>{t("stcApply")}</Button>
+    </div>}
   </div>
 }
 

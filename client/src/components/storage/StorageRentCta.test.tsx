@@ -31,7 +31,7 @@ const show = (canBook: boolean, onApply = vi.fn()) => {
 describe("kitchen page storage section", () => {
   it("approved chefs rent per listing; a full listing has no button", async () => {
     show(true)
-    expect(await screen.findByText("Cooler · 2 units · Access anytime · Kept at 2–4 °C")).toBeInTheDocument()
+    expect(await screen.findByText("Cooler · 2–4 °C")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Rent storage: Walk-in shelf" })).toHaveAttribute("href", "/storage/new?kitchenId=1&listingId=4")
     expect(screen.getByText("$9.00/day · Full right now")).toBeInTheDocument()
     expect(screen.queryByRole("link", { name: "Rent storage: Freezer bin" })).toBeNull()
@@ -42,7 +42,7 @@ describe("kitchen page storage section", () => {
     expect(await screen.findByText("Walk-in shelf")).toBeInTheDocument()
     expect(screen.getByText("$7.00/day · Available now")).toBeInTheDocument()
     expect(screen.getByText("Cancellation policy line")).toBeInTheDocument()
-    expect(screen.getByText(/No automatic charges/)).toBeInTheDocument()
+    expect(screen.getAllByText(/No automatic charges/)[0]).toBeInTheDocument()
     expect(screen.queryByRole("link", { name: /Rent storage/ })).toBeNull()
     fireEvent.click(screen.getByRole("button", { name: "Apply to this kitchen first" }))
     expect(onApply).toHaveBeenCalled()
@@ -54,3 +54,15 @@ describe("kitchen page storage section", () => {
     expect(await screen.findByRole("button", { name: "Apply to this kitchen first" })).toBeInTheDocument()
   })
 })
+
+it("shows three compact listings, expands the rest and uses public rows without a second fetch", async () => {
+  const list = Array.from({ length: 5 }, (_, i) => ({ ...rows[0], listingId: i + 1, name: `Shelf ${i + 1}`, photos: [] })) as any;
+  const fetchMock = vi.fn(); vi.stubGlobal("fetch", fetchMock);
+  render(<QueryClientProvider client={new QueryClient()}><StorageRentCta kitchenId={1} canBook onApply={vi.fn()} listings={list} /></QueryClientProvider>);
+  expect(screen.getAllByRole("link", { name: /Rent storage/ })).toHaveLength(3);
+  expect(screen.queryByText("Shelf 4")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Show all storage (5)" }));
+  expect(screen.getAllByRole("link", { name: /Rent storage/ })).toHaveLength(5);
+  expect(screen.getAllByRole("img", { name: "Cold storage" })).toHaveLength(5);
+  expect(fetchMock).not.toHaveBeenCalled();
+});

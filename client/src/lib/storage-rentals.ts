@@ -1,3 +1,4 @@
+import { localToday } from "@shared/storage-rental"
 /** Client calls for standalone storage rentals (WP-ST4/ST5). Server errors arrive translated; they are shown as-is. */
 import { getAuthHeaders } from "@/lib/api"
 import { completeCardAction } from "@/lib/session-extensions"
@@ -15,6 +16,7 @@ export type RentalTerm = { id: number; seq: number; kind: string; startsOn: stri
 /** Only these are wired on the chef side; any other server action is ignored, never guessed. */
 export type RentalAction = "withdraw" | "extend" | "move_in" | "move_out" | "report_problem"
 export type StorageRental = { id: number; ref: string | null; kitchen: { id: number; name: string }; listing: { id: number; name: string }
+  timezone?: string | null; releasedOn?: string | null;
   unitLabel: string; state: "requested" | "declined" | "expired" | "withdrawn" | "reserved" | "active" | "move_out_requested" | "removal_review" | "ended"
   phase: "current" | "ending_soon" | "grace" | "holdover" | null; startOn: string; paidThrough: string; graceEndsOn: string; holdoverDays: number
   accruedCents: number; responseDeadline: string | null; declineReason: string | null; actions: string[]; terms: RentalTerm[]
@@ -70,31 +72,33 @@ export async function payExtension(id: number, body: { days: number; expectedTot
 export const storageDay = (day: string, locale: string, withYear = false) =>
   new Intl.DateTimeFormat(locale, { weekday: "short", month: "short", day: "numeric", ...(withYear ? { year: "numeric" } : {}), timeZone: "UTC" }).format(new Date(`${day}T12:00:00Z`))
 export const cad = (cents: number, locale: string) => new Intl.NumberFormat(locale, { style: "currency", currency: "CAD" }).format(cents / 100)
-export const can = (rental: Pick<StorageRental, "actions">, action: RentalAction) => rental.actions.includes(action)
+export const can = (rental: Pick<StorageRental, "actions"> & Partial<Pick<StorageRental, "state">>, action: RentalAction) => rental.actions.includes(action) && (action !== "extend" || rental.state !== "removal_review")
 /** A moment (the kitchen's answer-by time) in the kitchen's own clock and zone. */
 export const kitchenMoment = (at: string, timezone: string, locale: string) =>
   `${new Intl.DateTimeFormat(locale, { timeZone: timezone, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(at))} (${friendlyTimezoneName(timezone, locale)})`
-export const rentalTimezone = (rental: StorageRental) => rental.rentalTerms?.cancellationPolicySnapshot?.timezone || "America/St_Johns"
+export const rentalTimezone = (rental: StorageRental) => rental.timezone || rental.rentalTerms?.cancellationPolicySnapshot?.timezone || "America/St_Johns"
 export const CURRENT_STATES: StorageRental["state"][] = ["requested", "reserved", "active", "move_out_requested", "removal_review"]
 
 type T = (key: string, options?: Record<string, unknown>) => string
 /** One pill + one plain sentence (≤ 20 words) per rental, from the server's state and phase only. */
-export function rentalStatus(rental: StorageRental, t: T, locale: string): { pill: string; tone: "neutral" | "good" | "warn" | "bad" | "muted"; sentence: string } {
+export function rentalStatus(rental: StorageRental, t: T, locale: string, now = new Date()): { pill: string; tone: "neutral" | "good" | "warn" | "bad" | "muted"; sentence: string } {
   const kitchen = rental.kitchen.name, first = rental.terms[0]
+  const today = localToday(now, rentalTimezone(rental))
   const end = storageDay(rental.paidThrough, locale), start = storageDay(rental.startOn, locale)
   if (rental.state === "requested") return { pill: t("stcPillRequested"), tone: "neutral", sentence: rental.responseDeadline
     ? t("stcStatusRequested", { kitchen, deadline: kitchenMoment(rental.responseDeadline, rentalTimezone(rental), locale), amount: cad(first?.totalCents ?? 0, locale) })
     : t("stcStatusRequestedSoon", { kitchen, amount: cad(first?.totalCents ?? 0, locale) }) }
-  if (rental.state === "reserved") return { pill: t("stcPillReserved"), tone: "good", sentence: t("stcStatusReserved", { unit: rental.unitLabel, start }) }
+  if (rental.state === "reserved") return { pill: t("stcPillReserved"), tone: "good", sentence: rental.startOn > today ? t("stcStatusReserved", { unit: rental.unitLabel, start })
+    : rental.paidThrough >= today ? t("stcStatusReservedReady", { unit: rental.unitLabel, end }) : t("stcStatusReservedPast", { unit: rental.unitLabel, end }) }
   if (rental.state === "move_out_requested") return { pill: t("stcPillMoveOut"), tone: "neutral", sentence: t("stcStatusMoveOut", { kitchen }) }
   if (rental.state === "removal_review") return { pill: t("stcPillRemoval"), tone: "bad", sentence: t("stcStatusRemoval") }
   if (rental.state === "active") {
     if (rental.phase === "holdover") return { pill: t("stcPillHoldover"), tone: "bad", sentence: t("stcStatusHoldover", { count: rental.holdoverDays, kitchen, amount: cad(rental.accruedCents, locale) }) }
     if (rental.phase === "grace") return { pill: t("stcPillGrace"), tone: "warn", sentence: t("stcStatusGrace", { end, grace: storageDay(rental.graceEndsOn, locale) }) }
-    if (rental.phase === "ending_soon") return { pill: t("stcPillEndingSoon"), tone: "warn", sentence: t("stcStatusEndingSoon", { end }) }
+    if (rental.phase === "ending_soon" && rental.paidThrough >= today) return { pill: t("stcPillEndingSoon"), tone: "warn", sentence: t("stcStatusEndingSoon", { end }) }
     return { pill: t("stcPillActive"), tone: "good", sentence: t("stcStatusActive", { end }) }
   }
-  if (rental.state === "ended") return { pill: t("stcPillEnded"), tone: "muted", sentence: t("stcStatusEnded", { end }) }
+  if (rental.state === "ended") return { pill: t("stcPillEnded"), tone: "muted", sentence: t("stcStatusEnded", { end: storageDay(rental.releasedOn || rental.paidThrough, locale) }) }
   if (rental.state === "declined") return { pill: t("stcPillDeclined"), tone: "muted", sentence: t("stcStatusDeclined") }
   if (rental.state === "expired") return { pill: t("stcPillExpired"), tone: "muted", sentence: t("stcStatusExpired", { kitchen }) }
   return { pill: t("stcPillWithdrawn"), tone: "muted", sentence: t("stcStatusWithdrawn") }
