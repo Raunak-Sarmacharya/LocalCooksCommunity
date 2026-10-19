@@ -132,7 +132,7 @@ export function InSessionPanel({
 
   </>
   return (
-    <section className="rounded-2xl border bg-card p-4 sm:p-6 space-y-4" aria-label={t("kciInSessionTitle", { defaultValue: "Your visit" })} data-phase={phase}>
+    <section className="rounded-2xl border border-border/70 bg-card p-4 sm:p-6 space-y-4" aria-label={t("kciInSessionTitle", { defaultValue: "Your visit" })} data-phase={phase}>
       <div className="space-y-2">
         {phase !== "ended" && <h2 className="text-base font-semibold">{t("kciCookingEnds", { defaultValue: "Cooking now · ends {time}", time: endTime })}</h2>}
         {/* One countdown, announced politely: its text changes at most once a minute. */}
