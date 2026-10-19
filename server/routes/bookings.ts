@@ -2437,6 +2437,7 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
         res.json({
             sessionUrl: checkoutSession.sessionUrl,
             sessionId: checkoutSession.sessionId,
+            holdId,
             booking: {
                 price: totalWithTaxCents / 100,
                 platformFee: feeCalculation.platformCommissionInCents / 100,

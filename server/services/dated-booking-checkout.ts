@@ -64,5 +64,5 @@ export async function checkoutDatedBooking(chefId: number, input: {
   const session = await createDatedKitchenCheckoutSession({ quote, customerEmail: chef.username,
     successUrl: `${baseUrl}/payment-success?session_id={CHECKOUT_SESSION_ID}`, cancelUrl: `${baseUrl}/kitchen-checkout-cancel?hold_id=${headId}` });
   await bindKitchenCheckout(headId, session.sessionId);
-  return { ...session, booking: { price: (subtotalCents + taxCents) / 100, platformFee: manifest.serviceFeeCents / 100, total: manifest.totalCents / 100 } };
+  return { ...session, holdId: headId, booking: { price: (subtotalCents + taxCents) / 100, platformFee: manifest.serviceFeeCents / 100, total: manifest.totalCents / 100 } };
 }

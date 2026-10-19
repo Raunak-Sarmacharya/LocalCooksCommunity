@@ -418,6 +418,8 @@ export default function KitchenBookingFlow({
   const isMultiDay = multipleAllowed && selectedDates.length > 1;
   const pickerDate = isMultiDay && editingDay ? new Date(`${editingDay}T12:00:00`) : selectedDate;
   const [dateAvailability, setDateAvailability] = useState<Record<string, boolean>>({});
+  /** Bumped after returning from Stripe releases the chef's own checkout hold, so availability reloads. */
+  const [holdReleases, setHoldReleases] = useState(0);
   const [isLoadingAvailability, setIsLoadingAvailability] = useState(false);
   const availabilityRequest = useRef(0);
 
@@ -572,7 +574,7 @@ export default function KitchenBookingFlow({
       .catch(() => { if (!stale) { setDayResources({}); setLoadError(t('mdLoadDays')); } })
       .finally(() => { if (!stale) setDaysLoading(false); });
     return () => { stale = true; };
-  }, [isMultiDay, selectedDates.join(','), selectedKitchen?.id, kitchenPricing?.timezone, dayRules.minimumBookingWindowHours, replacesQuery]);
+  }, [isMultiDay, selectedDates.join(','), selectedKitchen?.id, kitchenPricing?.timezone, dayRules.minimumBookingWindowHours, replacesQuery, holdReleases]);
 
   // Equipment pricing
   const equipmentPricing = useMemo(() => {
@@ -677,7 +679,30 @@ export default function KitchenBookingFlow({
     if (selectedKitchen && selectedDate && !isMultiDay) {
       loadAvailableSlots(selectedKitchen.id, toLocalDateString(selectedDate));
     }
-  }, [selectedKitchen, selectedDate, isMultiDay]);
+  }, [selectedKitchen, selectedDate, isMultiDay, holdReleases]);
+
+  // Back from Stripe with the browser button skips the cancel page: release this chef's own checkout hold
+  // (the server also expires that Stripe session) so their days don't show as taken, then reload availability.
+  useEffect(() => {
+    if (!selectedKitchen) return;
+    const key = `kitchen_checkout_hold_${selectedKitchen.id}`;
+    const release = () => {
+      const holdId = sessionStorage.getItem(key);
+      if (!holdId) return;
+      sessionStorage.removeItem(key);
+      void (async () => {
+        const { auth } = await import('@/lib/firebase');
+        const token = await auth?.currentUser?.getIdToken();
+        await fetch('/api/chef/bookings/checkout/cancel', { method: 'POST', credentials: 'include',
+          headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify({ holdId }) });
+        setHoldReleases(count => count + 1);
+      })().catch(() => undefined);
+    };
+    release();
+    const onShow = (event: PageTransitionEvent) => { if (event.persisted) release(); };
+    window.addEventListener('pageshow', onShow);
+    return () => window.removeEventListener('pageshow', onShow);
+  }, [selectedKitchen?.id]);
 
   // Load month availability for the date step (two months) and confirm popover (one month)
   useEffect(() => {
@@ -695,7 +720,7 @@ export default function KitchenBookingFlow({
         { year: currentYear, month: currentMonth },
       ]);
     }
-  }, [selectedKitchen, currentYear, currentMonth, currentStep, confirmDatePopoverOpen, multipleAllowed]);
+  }, [selectedKitchen, currentYear, currentMonth, currentStep, confirmDatePopoverOpen, multipleAllowed, holdReleases]);
 
   const loadMonthsAvailability = async (
     kitchenId: number,
@@ -1367,6 +1392,7 @@ export default function KitchenBookingFlow({
       
       // Redirect to Stripe Checkout
       if (data.sessionUrl) {
+        if (data.holdId) sessionStorage.setItem(`kitchen_checkout_hold_${selectedKitchen.id}`, data.holdId);
         window.location.href = data.sessionUrl;
       } else {
         throw new Error(tt("noCheckoutUrl"));
