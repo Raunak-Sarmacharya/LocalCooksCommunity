@@ -147,7 +147,7 @@ export async function fulfillDatedKitchenBooking(session: Stripe.Checkout.Sessio
       if (m.replacesBookingId) await recordReplacementPending(tx, parent.id, m.replacesBookingId, replaced?.booking.referenceCode ?? null);
       // A pre-approved invitation is confirmed right after this; a "new request to review" notice would be wrong.
       if (!invitation) await queueBookingLifecycleEvent(tx, parent.id, 'requested', 'New kitchen booking request',
-        `Review all ${m.days.length} selected days. The chef's card is held for the whole booking and is charged in full only if you accept all days.`, m.chefId,
+        `Review all ${m.days.length} selected days. The chef's card is held for the whole booking. Accept every day, or mark the days and add-ons you can't do and the chef approves the new total before anything is charged.`, m.chefId,
         { dates: m.days.map(day => day.date), quoteHash: quote.hash });
       await tx.update(kitchenCheckoutIncidents).set({ outcome: 'booking_created', bookingId: parent.id, paymentIntentId: intent.id,
         quoteSnapshot: quote, amountCents: m.totalCents, currency: 'cad', lastCheckedAt: new Date() }).where(eq(kitchenCheckoutIncidents.sessionId, session.id));

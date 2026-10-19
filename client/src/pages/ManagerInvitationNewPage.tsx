@@ -179,6 +179,7 @@ export default function ManagerInvitationNewPage() {
       setShared(first);
       setDayEdits(Object.fromEntries(days.slice(1).map(day => [day.date, edit(day)]).filter(([, value]) => JSON.stringify(value) !== JSON.stringify(first))));
       setSelectedDates(days.map(day => day.date));
+      setCalendarMonth(new Date(Number(days[0].date.slice(0, 4)), Number(days[0].date.slice(5, 7)) - 1, 1));
       if (multiAllowed) setDayEquipment(Object.fromEntries(days.map(day => [day.date, (request.equipmentBookings || [])
         .filter(item => request.scheduleRevision ? item.kitchenBookingVisitId === day.id : true).map(item => item.equipmentListingId)])));
     }
@@ -381,7 +382,7 @@ export default function ManagerInvitationNewPage() {
               {multiAllowed ? <>
                 <p className="text-sm text-muted-foreground">{t('mdSelectHelp', { count: maxDays })}</p>
                 <DatedCalendarContext.Provider value={{ reason: blockedDateReason, announce: setDateAnnouncement, locale }}>
-                  <UICalendar mode="multiple" numberOfMonths={2} pagedNavigation
+                  <UICalendar mode="multiple" numberOfMonths={2} pagedNavigation showOutsideDays={false}
                     selected={selectedDates.map(date => new Date(`${date}T12:00:00`))} onSelect={selectDates}
                     month={calendarMonth} onMonthChange={setCalendarMonth} disabled={date => !!blockedDateReason(date)}
                     components={{ Day: DatedCalendarDay }} className="w-full bg-transparent p-1"

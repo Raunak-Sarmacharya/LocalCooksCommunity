@@ -1569,7 +1569,7 @@ export default function KitchenBookingFlow({
             {bookableThrough && <p className="text-sm text-muted-foreground">{t("bookingBookableThrough", { defaultValue: "Bookable up to {date}", date: new Intl.DateTimeFormat(i18n.resolvedLanguage || i18n.language || "en-CA", { dateStyle: "medium" }).format(new Date(`${bookableThrough}T12:00:00`)) })}</p>}
             {multipleAllowed ? <DatedCalendarContext.Provider value={{ reason: blockedDateReason, announce: setDateAnnouncement, locale: i18n.language }}>
               <p className="mb-2 text-sm text-muted-foreground">{t('mdSelectHelp', { count: Math.min(dayRules.maxBookingDays ?? 7, 14) })}</p>
-              <UICalendar mode="multiple" numberOfMonths={2} pagedNavigation
+              <UICalendar mode="multiple" numberOfMonths={2} pagedNavigation showOutsideDays={false}
                 selected={selectedDates.map(date => new Date(`${date}T12:00:00`))} onSelect={selectMultipleDates}
                 month={calendarMonth} onMonthChange={setCalendarMonth} disabled={date => !!blockedDateReason(date)}
                 components={{ Day: DatedCalendarDay }}
@@ -1580,6 +1580,8 @@ export default function KitchenBookingFlow({
               mode="single"
               numberOfMonths={2}
               pagedNavigation
+              // Days of the next month belong to that month's grid (two months show at once, as on Airbnb).
+              showOutsideDays={false}
               selected={selectedDate ?? undefined}
               onSelect={handleDateClick}
               month={calendarMonth}

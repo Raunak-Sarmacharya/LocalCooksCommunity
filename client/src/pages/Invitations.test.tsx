@@ -197,8 +197,9 @@ describe('chef: an invitation', () => {
     expect(days).toHaveTextContent('Tuesday, October 27 · 10:00 a.m.–12:00 p.m.');
     expect(days).toHaveTextContent('Thursday, October 29 · Full day');
     expect(days).toHaveTextContent('Prep table (included)');
-    expect(page).toHaveTextContent(/One refund deadline for every day: October 26/);
-    expect(page).toHaveTextContent('Your card is charged in full when payment completes.');
+    // One deadline sentence, in the multi-day checkout's words; "pre-approved" said once.
+    expect(page).toHaveTextContent('Cancel by October 26 at 10:00 a.m. for a refund, minus the card processing fee. After that, you get half back for each day you cancel, minus its card fee.');
+    expect(page.textContent!.split('pre-approved').length - 1).toBe(1);
     expect(page).toHaveTextContent('Discounts apply to kitchen time only, not equipment.');
     await waitFor(() => expect(page).toHaveTextContent('Extra time: $50.00/hour if you ask for more time or stay past the end.'));
     await waitFor(() => expect(calls.filter(call => call.url.endsWith('/quote')).at(-1)?.body)

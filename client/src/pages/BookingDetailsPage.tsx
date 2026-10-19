@@ -61,6 +61,7 @@ import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { invitationRequest } from "@/lib/invitations";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import { BookingActionDialog, type BookingForAction } from "@/components/manager/bookings/BookingActionDialog";
 import { BookingManagementDialog, type BookingForManagement, type ManagementSubmitParams } from "@/components/manager/bookings/BookingManagementDialog";
@@ -118,7 +119,8 @@ interface BookingDetails {
   selectedSlots?: Array<{ startTime: string; endTime: string }>;
   status: string;
   paymentStatus?: string;
-  paymentDecision?: { state?: string; amount?: number; target?: string; actorId?: number | null; replacedBy?: { bookingId?: number; reference?: string } | null } | null;
+  paymentDecision?: { state?: string; amount?: number; target?: string; actorId?: number | null; replacedBy?: { bookingId?: number; reference?: string } | null;
+    /** Declined so the kitchen could invite the chef to other times. */ suggestingOtherTimes?: boolean } | null;
   /** The kitchen accepted without some equipment; the chef answers the new total before anything is charged. */
   partialAcceptance?: PartialAcceptance | null;
   /** Kitchen view: whether accepting without some equipment may still ask the chef (false in the last 3 h). */
@@ -1342,7 +1344,12 @@ export default function BookingDetailsPage() {
   }) : 'confirmed';
   const cancelCause = booking ? bookingCancelCause({ status: booking.status, chefId: booking.chefId, paymentDecision: booking.paymentDecision, partialAcceptance: booking.partialAcceptance }) : null;
   // After a declined or expired request: the chef finds another time; the kitchen can invite the chef to one (spec row 5).
-  const findAnotherTimeHref = booking && (cancelCause === 'declined' || cancelCause === 'expired') && (booking.location?.id ?? booking.kitchen?.locationId)
+  // Declined to suggest other times: the kitchen's open invitation is where the chef continues (Peerspace invite-to-book).
+  const suggested = !isManagerView && cancelCause === 'declined' && !!booking?.paymentDecision?.suggestingOtherTimes;
+  const openInvitations = useQuery({ queryKey: ['chef-invitations-for', booking?.id], enabled: suggested, retry: false,
+    queryFn: () => invitationRequest<{ invitations: Array<{ id: string; status: string; kitchen: { id: number } }> }>('/api/chef/invitations') });
+  const invitationHref = (id => id ? `/invitation/${id}` : null)(openInvitations.data?.invitations?.find(item => item.kitchen.id === booking?.kitchenId && item.status === 'sent')?.id);
+  const findAnotherTimeHref = suggested && invitationHref ? invitationHref : booking && (cancelCause === 'declined' || cancelCause === 'expired') && (booking.location?.id ?? booking.kitchen?.locationId)
     ? isManagerView ? (booking.chefId ? `/manager/invitations/new?chefId=${booking.chefId}&location=${booking.location?.id ?? booking.kitchen?.locationId}` : null)
       : `/book/${booking.location?.id ?? booking.kitchen?.locationId}?kitchenId=${booking.kitchenId}` : null;
   // A request the chef changed: its replacement is where things continue.
@@ -1416,7 +1423,7 @@ export default function BookingDetailsPage() {
       : latestClaim && ['rejected', 'resolved'].includes(latestClaim.status) ? { outcome: 'closed' as const, amount: '' } : null;
 
   const now = bookingNowContent({ phase, role: isManagerView ? 'manager' : 'chef', t, facts: {
-    chef: chefName, kitchen: kitchenName, cancelCause, status: booking?.status,
+    chef: chefName, kitchen: kitchenName, cancelCause, status: booking?.status, suggestingOtherTimes: !!booking?.paymentDecision?.suggestingOtherTimes,
     responseDeadline: responseDeadlineText, detailsReleaseAt,
     opensAt: visitBounds ? shortWhen(visitBounds.opensAt) : null,
     startClock: visitBounds ? clockTime(visitBounds.startAt) : null,
@@ -1512,7 +1519,7 @@ export default function BookingDetailsPage() {
       case 'need_more_time': return booking ? [{ key, label: t('bnNeedMoreTime'), onSelect: () => navigate(`/booking/${booking.id}/visit`) }] : [];
       case 'download_invoice': case 'download_payout_statement': return [{ key, label: downloadLabel, icon: Download, onSelect: () => void handleDownloadInvoice() }];
       case 'contact_local_cooks': return [{ key, label: t('bdContactSupport', { defaultValue: 'Contact Local Cooks' }), onSelect: goToHelp }];
-      case 'find_another_time': return findAnotherTimeHref ? [{ key, label: isManagerView ? t('bdhInviteAnotherTime', { chef: chefName }) : t('bdhFindAnotherTime'), href: findAnotherTimeHref, onSelect: () => navigate(findAnotherTimeHref), testId: 'find-another-time' }] : [];
+      case 'find_another_time': return findAnotherTimeHref ? [{ key, label: isManagerView ? t('bdhInviteAnotherTime', { chef: chefName }) : suggested && invitationHref ? t('bdhSeeInvitation', { kitchen: kitchenName }) : t('bdhFindAnotherTime'), href: findAnotherTimeHref, onSelect: () => navigate(findAnotherTimeHref), testId: 'find-another-time' }] : [];
       case 'view_new_request': return newRequestHref ? [{ key, label: t('bnViewNewRequest'), href: newRequestHref, onSelect: () => navigate(newRequestHref), testId: 'view-new-request' }] : [];
       case 'extension_tools': return extTools.map(tool => ({ key: `tool-${tool}`, label: toolLabel(tool), onSelect: () => setExtTool(tool) }));
       case 'change_booking': return [{ key, label: t('bdhChangeBooking'), onSelect: openManagementDialog }];

@@ -19,7 +19,7 @@ import {
     storageOverstayRecords,
     checkinCheckoutChecklists
 } from "@shared/schema";
-import { eq, and, desc, asc, lt, not, inArray, gte, lte, or, sql, ne } from "drizzle-orm";
+import { eq, and, desc, asc, lt, not, inArray, gte, lte, or, sql, ne, isNull } from "drizzle-orm";
 import { KitchenBooking, StorageBooking, EquipmentBooking, InsertKitchenBooking } from "./booking.types";
 import { calculateRefundBreakdown } from "../../services/stripe-service";
 import { resolveKitchenTransactionTaxAndSubtotal } from "../../services/revenue-transaction-tax";
@@ -129,7 +129,8 @@ export class BookingRepository {
                     eq(paymentTransactions.bookingType, 'bundle')
                 )
             ))
-            .where(eq(kitchenBookings.chefId, chefId))
+            // A checkout the chef never finished (older flow saved the row first) is not a request: same rule as the kitchen list.
+            .where(and(eq(kitchenBookings.chefId, chefId), or(isNull(kitchenBookings.paymentStatus), ne(kitchenBookings.paymentStatus, 'pending'))))
             .orderBy(desc(kitchenBookings.createdAt));
 
         return results.map(row => {

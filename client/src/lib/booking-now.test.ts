@@ -57,6 +57,11 @@ describe('copy per moment', () => {
     expect(sentence('in_session', 'manager')).toBe('Ada Lovelace is in the kitchen until 12:00 p.m. Checked in 10:02 a.m. with the check-in code.');
     expect(sentence('in_session', 'manager', { checkedInMethod: 'self' })).toMatch(/Checked in 10:02 a\.m\. on their own\.$/);
   });
+  it('chef: a decline to suggest other times says so (owner, Oct 19), a plain decline does not', () => {
+    expect(sentence('cancelled', 'chef', { cancelCause: 'declined', suggestingOtherTimes: true }))
+      .toBe('Harbour Kitchen couldn’t take this request as sent and is suggesting other times. Your card wasn’t charged.');
+    expect(sentence('cancelled', 'chef', { cancelCause: 'declined' })).toBe('Harbour Kitchen couldn’t take this request. Your card wasn’t charged.');
+  });
   it('chef running late: the heads-up becomes the sentence', () => {
     expect(sentence('checkin_open', 'chef', { runningLate: { duration: '15 min' }, startPassed: true }))
       .toBe('You told Harbour Kitchen you’re about 15 min late. Your booking still ends at 12:00 p.m. NT.');

@@ -3404,6 +3404,8 @@
   "bdhPill_declined": "Declined",
   "bdhPill_expired": "Expired",
   "bdhNextChef_declined": "{kitchen} couldn’t take this request. Your card wasn’t charged.",
+  "bdhNextChef_declined_suggest": "{kitchen} couldn’t take this request as sent and is suggesting other times. Your card wasn’t charged.",
+  "bdhSeeInvitation": "See {kitchen}’s invitation",
   "bdhNextChef_expired": "{kitchen} didn’t respond in time, so the request expired. Your card wasn’t charged.",
   "bdhNextChef_withdrawn": "You cancelled this request. Your card wasn’t charged.",
   "bdhNextManager_declined": "You declined this request. {chef}’s card wasn’t charged.",

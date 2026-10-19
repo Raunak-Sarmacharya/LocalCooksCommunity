@@ -3404,6 +3404,8 @@
   "bdhPill_declined": "Refusée",
   "bdhPill_expired": "Expirée",
   "bdhNextChef_declined": "{kitchen} n’a pas pu accepter cette demande. Votre carte n’a pas été débitée.",
+  "bdhNextChef_declined_suggest": "{kitchen} ne pouvait pas accepter cette demande telle quelle et propose d’autres horaires. Votre carte n’a pas été débitée.",
+  "bdhSeeInvitation": "Voir l’invitation de {kitchen}",
   "bdhNextChef_expired": "{kitchen} n’a pas répondu à temps, la demande a donc expiré. Votre carte n’a pas été débitée.",
   "bdhNextChef_withdrawn": "Vous avez annulé cette demande. Votre carte n’a pas été débitée.",
   "bdhNextManager_declined": "Vous avez refusé cette demande. La carte de {chef} n’a pas été débitée.",

@@ -1360,7 +1360,7 @@
   "mdReviewDay": "Check your hours for {date}. Choose hours that are free that day.",
   "mdEquipmentHelp": "Your choices apply to all days. Untick an item on any day you do not need it. Only equipment free that day is shown.",
   "mdCancellation": "Cancel by {deadline} for a refund, minus the card processing fee. {late, select, 50 {After that, you get half back for each day you cancel, minus its card fee.} other {After that, the days you cancel aren’t refunded.}}",
-  "mdCardHold": "Your card is held for the whole booking. You’re charged only if the kitchen accepts all days.",
+  "mdCardHold": "Your card is held for the whole booking and charged only when the kitchen accepts. If it can’t host every day, you approve the new total first.",
   "mdYourDays": "Your days",
   "mdDayRefunded": "Refunded {amount}",
   "mdDayUpcoming": "Upcoming",

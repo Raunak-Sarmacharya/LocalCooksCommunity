@@ -21,6 +21,8 @@ export interface BookingNowFacts {
   chef: string;
   kitchen: string;
   cancelCause?: BookingCancelCause | null;
+  /** The kitchen declined to invite the chef to other times instead (owner, Oct 19). */
+  suggestingOtherTimes?: boolean;
   /** Formatted response deadline of a pending request. */
   responseDeadline?: string | null;
   /** Formatted release time when arrival details are still to come. */
@@ -103,6 +105,7 @@ function chefSentence(phase: BookingHeaderPhase, f: BookingNowFacts, t: T): stri
     case 'cancellation_requested': return t('cancelCopy07');
     case 'cancelled':
       if (f.cancelCause === 'replaced' && f.replacedByRef) return t('bnChefReplaced', { ref: f.replacedByRef });
+      if (f.cancelCause === 'declined' && f.suggestingOtherTimes) return t('bdhNextChef_declined_suggest', { kitchen });
       if (f.cancelCause === 'declined' || f.cancelCause === 'expired' || f.cancelCause === 'withdrawn') return t(`bdhNextChef_${f.cancelCause}`, { kitchen });
       return t('bdhNextChefCancelled');
     case 'confirmed':

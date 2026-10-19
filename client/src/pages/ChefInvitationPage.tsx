@@ -175,8 +175,8 @@ export default function ChefInvitationPage() {
         {dated && <>
           <p className="text-xs text-muted-foreground">{t('invDiscountEquipmentHelp')}</p>
           {extraTimeRateCents != null && <p className="text-xs text-muted-foreground">{t('bpsExtraTimeRate', { amount: money(extraTimeRateCents) })}</p>}
-          <p className="text-xs text-muted-foreground">{t('invOneDeadline', { deadline: refundDeadline })}</p>
-          <p className="text-xs text-muted-foreground">{t('invChargedWhen')}</p>
+          {/* One deadline sentence, in the same words as a multi-day checkout; "pre-approved" is said once below. */}
+          {policy.data?.policy && <p className="text-xs text-muted-foreground">{t('mdCancellation', { deadline: refundDeadline, late: String(policy.data.policy.lateChargePercent) })}</p>}
         </>}
         {(dated ? datedQuote.isError : quote.isError) && <p role="alert" className="text-sm text-destructive">
           {((dated ? datedQuote.error : quote.error) as Error).message}</p>}
@@ -192,7 +192,7 @@ export default function ChefInvitationPage() {
       </section> : <section className="space-y-4">
         <div className="space-y-1.5 text-sm">
           <p>{t('invPreApproved')}</p>
-          {policy.data?.policy ? <div className="text-muted-foreground"><CancellationPolicySummary policy={policy.data.policy} timezone={policy.data.timezone} startAt={invitation.startAt} /></div>
+          {dated ? null : policy.data?.policy ? <div className="text-muted-foreground"><CancellationPolicySummary policy={policy.data.policy} timezone={policy.data.timezone} startAt={invitation.startAt} /></div>
             : policy.isError && <p className="text-muted-foreground">{t('cpError')}</p>}
           {policyOpen && <p className="text-muted-foreground">{t('cpNoShow')}</p>}
           <p className="text-muted-foreground">{t('invExpiresChef', { when: expires })}</p>
