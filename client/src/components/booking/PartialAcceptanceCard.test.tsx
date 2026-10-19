@@ -24,7 +24,8 @@ function renderCard(manager = false, extra: Partial<Parameters<typeof PartialAcc
 
 it('chef: plain-language offer with both totals, the exact deadline in the kitchen zone and what happens without an answer', () => {
   renderCard();
-  expect(screen.getByRole('heading', { name: 'Kitchen North can host you, but can’t provide Mixer' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Kitchen North can host you, with changes' })).toBeInTheDocument();
+  expect(screen.getByTestId('partial-acceptance-changes')).toHaveTextContent('Without Mixer');
   expect(screen.getByText('New total $146.40 (was $183.00). Accept or decline by Wed, Oct 21, 9:00 p.m. Newfoundland Time.')).toBeInTheDocument();
   expect(screen.getByText('Nothing is charged until you accept. If you don’t answer, the request closes and your card hold is released.')).toBeInTheDocument();
 });
@@ -61,11 +62,18 @@ it('shows the server’s reason when the answer is refused (e.g. the deadline pa
     description: 'The time to answer has passed, so this request is closed. You weren’t charged.' })));
 });
 
+it('days (Oct 19): the chef reads each day the kitchen can’t host, then the items on kept days', () => {
+  render(<PartialAcceptanceCard bookingId={5} manager={false} kitchenName="Kitchen North" chefName="Alex" timezone="America/St_Johns" onChanged={vi.fn()}
+    proposal={{ ...proposal, declinedVisitIds: [8], declinedDays: [{ visitId: 8, date: '2026-11-25', cents: 7500 }] }} />);
+  const lines = screen.getByTestId('partial-acceptance-changes');
+  expect(lines).toHaveTextContent('Not on Wed, Nov 25');
+  expect(lines).toHaveTextContent('Without Mixer');
+});
 it('kitchen: waiting for the chef, no accept/decline, and a withdraw that declines the request', () => {
   const onWithdraw = vi.fn();
   renderCard(true, { onWithdraw });
   expect(screen.getByRole('heading', { name: 'Waiting for Alex to accept the new total' })).toBeInTheDocument();
-  expect(screen.getByText('You accepted without Mixer. New total $146.40 (was $183.00). Alex has until Wed, Oct 21, 9:00 p.m. Newfoundland Time to answer.')).toBeInTheDocument();
+  expect(screen.getByText('You sent Alex your changes: without Mixer. New total $146.40 (was $183.00). Alex has until Wed, Oct 21, 9:00 p.m. Newfoundland Time to answer.')).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /Accept/ })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Withdraw and decline the request' }));
   expect(onWithdraw).toHaveBeenCalledOnce();

@@ -26,6 +26,9 @@ type Kitchen = { id: number; name: string };
 type Slot = { time: string; available: number; isFullyBooked: boolean };
 type EquipmentOption = { id: number; name: string; cents: number; included: boolean };
 type DayEdit = { pricingMode: 'hourly' | 'daily'; start: string; hours: number };
+type SourceRequest = { kitchenId: number; referenceCode?: string | null; scheduleRevision?: number; bookingDate: string; startTime: string; endTime: string;
+  pricingMode?: string; visits?: Array<{ id: number; visitDate?: string | null; startTime: string; endTime: string; pricingMode?: string | null; scheduleRevision?: number; scheduleState?: string }>;
+  equipmentBookings?: Array<{ equipmentListingId: number; kitchenBookingVisitId?: number | null }> };
 type KitchenRules = { allowMultiDayBookings: boolean; multidayCreationEnabled: boolean; maxBookingDays: number;
   minimumBookingWindowHours: number; timezone: string };
 const EXPIRY = [24, 48, 168] as const;
@@ -150,6 +153,37 @@ export default function ManagerInvitationNewPage() {
 
   useEffect(() => { if (!multiAllowed) { setSelectedDates([]); setDaySlots({}); setDayEquipment({}); setDayEquipmentOptions({}); } },
     [multiAllowed, kitchenId]);
+
+  // "Decline and suggest other times" (owner, Oct 19): start from the declined request's kitchen, days, hours and add-ons.
+  const fromBooking = Number(search.get('fromBooking')) || 0;
+  const source = useQuery({ queryKey: ['invitation-from-booking', fromBooking], enabled: fromBooking > 0, retry: false, queryFn: async () => {
+    const response = await fetch(`/api/manager/bookings/${fromBooking}/details`, { headers: await getAuthHeaders(), credentials: 'include' });
+    if (!response.ok) throw new Error(t('invLoadFailed'));
+    return (await response.json()) as SourceRequest;
+  } });
+  const [prefilled, setPrefilled] = useState(false);
+  useEffect(() => { if (source.data?.kitchenId && !prefilled) setKitchenId(source.data.kitchenId); }, [source.data?.kitchenId, prefilled]);
+  // Only once this kitchen's rules are known: the rule switch above would otherwise clear the days just filled in.
+  useEffect(() => {
+    const request = source.data;
+    if (!request || prefilled || kitchenId !== request.kitchenId || !rules.data) return;
+    const todayKey = localDateKey(new Date());
+    const visits = (request.visits || []).filter(visit => visit.visitDate && visit.scheduleRevision === request.scheduleRevision && visit.scheduleState !== 'superseded');
+    const days = (request.scheduleRevision ? visits.map(visit => ({ id: visit.id as number | null, date: String(visit.visitDate).slice(0, 10), start: visit.startTime, end: visit.endTime, daily: visit.pricingMode === 'daily' }))
+      : [{ id: null, date: String(request.bookingDate).slice(0, 10), start: request.startTime, end: request.endTime, daily: request.pricingMode === 'daily' }])
+      .filter(day => day.date >= todayKey).sort((a, b) => a.date.localeCompare(b.date)).slice(0, multiAllowed ? maxDays : 1);
+    const edit = (day: typeof days[number]): DayEdit => ({ pricingMode: day.daily ? 'daily' : 'hourly', start: day.start.slice(0, 5),
+      hours: Math.max(1, Math.round((Date.parse(`2000-01-01T${day.end}`) - Date.parse(`2000-01-01T${day.start}`)) / 3_600_000)) });
+    if (days.length) {
+      const first = edit(days[0]);
+      setShared(first);
+      setDayEdits(Object.fromEntries(days.slice(1).map(day => [day.date, edit(day)]).filter(([, value]) => JSON.stringify(value) !== JSON.stringify(first))));
+      setSelectedDates(days.map(day => day.date));
+      if (multiAllowed) setDayEquipment(Object.fromEntries(days.map(day => [day.date, (request.equipmentBookings || [])
+        .filter(item => request.scheduleRevision ? item.kitchenBookingVisitId === day.id : true).map(item => item.equipmentListingId)])));
+    }
+    setPrefilled(true);
+  }, [source.data, prefilled, kitchenId, rules.data, multiAllowed, maxDays]);
 
   const today = useMemo(() => { const value = new Date(); value.setHours(0, 0, 0, 0); return value; }, []);
   const blockedDateReason = (date: Date) => {
@@ -307,6 +341,8 @@ export default function ManagerInvitationNewPage() {
       <div className="space-y-1">
         <h1 className="text-2xl font-semibold">{t('invTitle')}</h1>
         <p className="text-sm text-muted-foreground">{t('invIntro')}</p>
+        {source.data && !sent && <p className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm text-sky-950" data-testid="invitation-from-request">
+          {t('invFromRequest', { reference: source.data.referenceCode || `#${fromBooking}` })}</p>}
       </div>
       {!locationId ? <p role="alert">{t('invNoLocation')}</p> : sent ? (
         <section className="space-y-4 rounded-2xl border bg-card p-6" data-testid="invitation-sent">

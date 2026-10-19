@@ -4598,16 +4598,16 @@ router.post(
   requireManager,
   async (req: Request, res: Response) => {
     const id = Number(req.params.id);
-    const ids = req.body?.equipmentBookingIds;
-    if (!Number.isSafeInteger(id) || id <= 0 || !Array.isArray(ids) || ids.length > 100 || ids.some((value: unknown) => !Number.isSafeInteger(value) || (value as number) <= 0))
-      return res.status(400).json({ error: 'Invalid booking items' });
+    const ids = req.body?.equipmentBookingIds, days = req.body?.declinedVisitIds ?? [];
+    const valid = (list: unknown) => Array.isArray(list) && list.length <= 100 && list.every(value => Number.isSafeInteger(value) && (value as number) > 0);
+    if (!Number.isSafeInteger(id) || id <= 0 || !valid(ids) || !valid(days)) return res.status(400).json({ error: 'Invalid booking items' });
     try {
       const booking = await bookingService.getBookingById(id);
       const kitchen = booking ? await kitchenService.getKitchenById(booking.kitchenId) : null;
       const location = kitchen ? await locationService.getLocationById(kitchen.locationId) : null;
       if (!booking || !location || location.managerId !== req.neonUser!.id) return res.status(404).json({ error: 'Booking not found' });
       const { previewPartialAcceptance } = await import('../services/booking-payment-decision');
-      res.json(await previewPartialAcceptance(id, ids));
+      res.json(await previewPartialAcceptance(id, ids, new Date(), days));
     } catch (e: any) {
       if (e instanceof BookingTermsReviewRequired) return res.status(e.status).json({ error: e.message, code: e.code });
       logger.error('Partial acceptance preview failed', { bookingId: id, error: e });
@@ -4626,6 +4626,10 @@ router.put(
       const user = req.neonUser!;
       const id = parseInt(req.params.id);
       const { status, storageActions, equipmentActions } = req.body;
+      // Multi-day (owner, Oct 19): days the kitchen can't host; validated against the request by the decision command.
+      const declinedVisitIds = req.body.declinedVisitIds ?? [];
+      if (!Array.isArray(declinedVisitIds) || declinedVisitIds.length > 100 || declinedVisitIds.some((value: unknown) => !Number.isSafeInteger(value) || (value as number) <= 0))
+        return res.status(400).json({ error: 'Invalid booking days' });
       // Optional note to the chef when declining (Airbnb-style reason); trimmed and capped.
       const declineMessage = typeof req.body.message === 'string' ? req.body.message.trim().slice(0, 500) : '';
       let checkoutTerms: ReturnType<typeof bookingCaptureTerms> | undefined;
@@ -4670,7 +4674,7 @@ router.put(
       const recordedDecision = (booking as any).paymentDecision;
       if (recordedDecision?.state === 'pending') {
         const { decideAuthorizedBooking } = await import('../services/booking-payment-decision');
-        const result = await decideAuthorizedBooking(id, status, storageActions, equipmentActions, user.id, undefined, { message: status === 'cancelled' ? declineMessage : undefined });
+        const result = await decideAuthorizedBooking(id, status, storageActions, equipmentActions, user.id, undefined, { message: status === 'cancelled' ? declineMessage : undefined, declinedVisitIds, suggestingOtherTimes: status === 'cancelled' && req.body.suggestOtherTimes === true });
         return res.json(result);
       }
 
@@ -4741,7 +4745,7 @@ router.put(
 
       if (booking.status === 'pending' && booking.paymentStatus === 'authorized' && ['confirmed', 'cancelled'].includes(status)) {
         const { decideAuthorizedBooking } = await import('../services/booking-payment-decision');
-        const result = await decideAuthorizedBooking(id, status, storageActions, equipmentActions, user.id, undefined, { message: status === 'cancelled' ? declineMessage : undefined });
+        const result = await decideAuthorizedBooking(id, status, storageActions, equipmentActions, user.id, undefined, { message: status === 'cancelled' ? declineMessage : undefined, declinedVisitIds, suggestingOtherTimes: status === 'cancelled' && req.body.suggestOtherTimes === true });
         const { deliverBookingLifecycleEvents } = await import('../services/booking-lifecycle-delivery');
         await deliverBookingLifecycleEvents(10, 20_000, id).catch(error => logger.warn('Booking email delivery pending retry', error));
         return res.json(result);

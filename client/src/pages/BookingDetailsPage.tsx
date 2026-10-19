@@ -1453,7 +1453,8 @@ export default function BookingDetailsPage() {
     : primary === 'answer_attendance' ? t('bnTheyCame') : '';
   const runPrimary = () => {
     if (!booking) return;
-    if (primary === 'review_request') openActionDialog();
+    // The request is answered on its own page (Airbnb / Peerspace request pages), not in a dialog.
+    if (primary === 'review_request') navigate(`/manager/booking/${booking.id}/review`);
     else if (primary === 'review_cancellation') openManagementDialog();
     else if (primary === 'review_checkout' || primary === 'inspect_visit') navigate(inspectionHref);
     else if (primary === 'open_visit') navigate(`/booking/${booking.id}/visit${headerDay ? `?visitId=${headerDay.id}` : ''}`);

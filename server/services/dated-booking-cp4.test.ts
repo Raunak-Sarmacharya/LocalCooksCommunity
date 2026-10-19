@@ -250,6 +250,65 @@ describe('Partial acceptance: the chef approves the new total before any capture
     expect(h.capture).toHaveBeenCalledOnce(); expect(await rows(s.kitchenBookingDayAllocations)).toHaveLength(4);
     await expect(answerPartialAcceptance(id, proposal.id, 'decline', 3)).rejects.toThrow('already answered');
   });
+  // Owner (Oct 19): a multi-day request can be accepted for some days; the chef approves exactly as for an add-on.
+  async function proposeDays(dates: string[]) {
+    const id = await fulfill();
+    const visits = await rows(s.kitchenBookingVisits);
+    const visitIds = visits.filter((row: any) => dates.includes(row.visitDate)).map((row: any) => row.id);
+    const preview = await previewPartialAcceptance(id, [], new Date(), visitIds);
+    const result: any = await decideAuthorizedBooking(id, 'confirmed', [], [], 2, undefined, { declinedVisitIds: visitIds });
+    return { id, visitIds, preview, proposal: result.proposal };
+  }
+  it('days: declining Wed (with its Mixer) proposes the Monday-only total, exactly as previewed; nothing is captured yet', async () => {
+    const { id, visitIds, preview, proposal } = await proposeDays(['2099-10-07']);
+    expect(h.capture).not.toHaveBeenCalled();
+    // Kept: Monday 2002 + its Mixer 101 + the included oven 0 = 2103 before tax and fee.
+    expect(preview).toMatchObject({ oldTotalCents: 11232, subtotalCents: 2103, allowed: true });
+    expect(proposal).toMatchObject({ oldTotalCents: 11232, newTotalCents: preview.newTotalCents, declinedVisitIds: visitIds,
+      declinedDays: [{ visitId: visitIds[0], date: '2099-10-07', cents: 7003 }], declined: [] });
+    expect(h.event).toHaveBeenCalledWith(expect.anything(), id, 'partial_acceptance_proposed', expect.any(String),
+      expect.stringContaining('but not on Wed, Oct 7'), 2, expect.anything());
+    const [booking] = await rows(s.kitchenBookings);
+    expect(booking).toMatchObject({ status: 'pending', paymentStatus: 'authorized', paymentDecision: null });
+    expect((await rows(s.kitchenBookingVisits)).every((row: any) => row.scheduleState === 'active')).toBe(true);
+  });
+  it('days: the chef accepts -> captures the new total; only Monday is booked, allocated and in the policy sessions', async () => {
+    const { id, visitIds, proposal } = await proposeDays(['2099-10-07']);
+    partialCharge(proposal.newTotalCents, 80);
+    await answerPartialAcceptance(id, proposal.id, 'accept', 3);
+    expect(h.capture).toHaveBeenCalledWith(h.intent.id, proposal.newTotalCents, undefined, expect.stringMatching(/^booking-decision:/));
+    const allocations = await rows(s.kitchenBookingDayAllocations);
+    expect(allocations.every((row: any) => row.visitId !== visitIds[0] && row.evidence.sessionIndex === 0)).toBe(true);
+    expect(allocations.reduce((sum: number, row: any) => sum + row.subtotalCents + row.taxCents + row.serviceFeeCents, 0)).toBe(proposal.newTotalCents);
+    expect(allocations.reduce((sum: number, row: any) => sum + row.stripeFeeCents, 0)).toBe(80);
+    const visits = await rows(s.kitchenBookingVisits), [booking] = await rows(s.kitchenBookings);
+    expect(visits.find((row: any) => row.id === visitIds[0])).toMatchObject({ scheduleState: 'cancelled', cancellationPlan: { mode: 'declined_at_acceptance' } });
+    expect(booking).toMatchObject({ status: 'confirmed', paymentStatus: 'paid', totalPrice: '2103', partialAcceptance: { state: 'accepted' } });
+    expect(booking.cancellationPolicySnapshot.sessions).toEqual([{ startAt: '2099-10-05T10:00:00.000Z' }]);
+    expect((booking.selectedSlots as any[]).every(slot => slot.date !== '2099-10-07')).toBe(true);
+    const wednesdayItems = (await rows(s.equipmentBookings)).filter((row: any) => row.kitchenBookingVisitId === visitIds[0]);
+    expect(wednesdayItems.every((row: any) => row.status === 'cancelled' && row.paymentStatus === 'failed')).toBe(true);
+    // Replays never capture again or shorten the sessions twice.
+    await recoverPendingBookingDecisions(); await syncDatedPayment(h.intent.id);
+    expect(h.capture).toHaveBeenCalledOnce();
+    expect((await rows(s.kitchenBookings))[0].cancellationPolicySnapshot.sessions).toHaveLength(1);
+  });
+  it('days: declining the first day moves the one refund deadline to the first day the chef keeps', async () => {
+    const { id, proposal } = await proposeDays(['2099-10-05']);
+    partialCharge(proposal.newTotalCents, 210);
+    await answerPartialAcceptance(id, proposal.id, 'accept', 3);
+    const [booking] = await rows(s.kitchenBookings), allocations = await rows(s.kitchenBookingDayAllocations);
+    expect(booking.cancellationPolicySnapshot.sessions).toEqual([{ startAt: '2099-10-07T08:00:00.000Z' }]);
+    expect(allocations.every((row: any) => row.evidence.sessionIndex === 0)).toBe(true);
+  });
+  it('days: at least one day must stay, and a day must belong to the request', async () => {
+    const id = await fulfill();
+    const visits = await rows(s.kitchenBookingVisits);
+    await expect(decideAuthorizedBooking(id, 'confirmed', [], [], 2, undefined, { declinedVisitIds: visits.map((row: any) => row.id) }))
+      .rejects.toThrow('Keep at least one day');
+    await expect(decideAuthorizedBooking(id, 'confirmed', [], [], 2, undefined, { declinedVisitIds: [999] })).rejects.toThrow('refresh');
+    expect(h.capture).not.toHaveBeenCalled();
+  });
   it('a declined included (free) item still asks the chef; accepting keeps the full total', async () => {
     const { id, proposal } = await propose(11, '2099-10-05');
     expect(proposal).toMatchObject({ oldTotalCents: 11232, newTotalCents: 11232 });

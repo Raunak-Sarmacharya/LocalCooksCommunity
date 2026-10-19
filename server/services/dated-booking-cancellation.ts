@@ -110,7 +110,9 @@ function schedule(ctx: Context, at: Date) {
   if (snapshot?.deadlineBasis !== 'booking_first_day' || !snapshot.sessions?.length) throw fail('This booking’s accepted terms need Local Cooks review before a refund can be quoted.');
   const firstStart = Math.min(...snapshot.sessions.map(session => Date.parse(session.startAt)));
   const deadlineAt = new Date(firstStart - snapshot.noticeHours * 3600_000);
-  const current = ctx.visits.filter(visit => visit.scheduleRevision === ctx.booking.scheduleRevision);
+  // A day the kitchen declined when it accepted was never booked or paid: it has no ledger and is not part of the booking.
+  const current = ctx.visits.filter(visit => visit.scheduleRevision === ctx.booking.scheduleRevision
+    && (visit.cancellationPlan as { mode?: string } | null)?.mode !== 'declined_at_acceptance');
   const days = current.map(visit => {
     const kitchen = ctx.dayRows.find(row => row.visitId === visit.id && row.componentKey === 'kitchen');
     const sessionIndex = Number(kitchen ? evidence(kitchen).sessionIndex : NaN), session = snapshot.sessions[sessionIndex];

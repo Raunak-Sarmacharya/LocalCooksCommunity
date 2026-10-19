@@ -2,15 +2,13 @@ import { fetchManagerBookings } from "@/lib/manager-bookings-query";
 import { CancellationRefundReview } from '@/components/booking/CancellationRefundReview';
 import { logger } from "@/lib/logger";
 import { useTranslation } from "react-i18next";
-import { tt } from "@/i18n/common-ns";
 import { mt } from "@/i18n/manager";
 import { useState, useMemo } from "react";
-import { ct } from "@/i18n/chef-ns";
+import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { ManagerShell } from "@/layouts/ManagerShell";
 import { PendingCancellationRequests } from "@/components/manager/PendingCancellationRequests";
-import { BookingActionDialog, type BookingForAction } from "@/components/manager/bookings/BookingActionDialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useManagerDashboard } from "@/hooks/use-manager-dashboard";
@@ -54,6 +52,7 @@ interface ManagerBookingsPanelProps {
 }
 
 export default function ManagerBookingsPanel({ embedded = false, onGoToKitchens }: ManagerBookingsPanelProps = {}) {
+  const [, navigate] = useLocation();
   const { t } = useTranslation("manager");
 
   const { toast } = useToast();
@@ -61,9 +60,6 @@ export default function ManagerBookingsPanel({ embedded = false, onGoToKitchens 
   const { locations, kitchens } = useManagerDashboard();
   const [refundReviewScope, setRefundReviewScope] = useState<{ kind: 'storage' | 'equipment'; id: number } | undefined>();
   const [refundReviewId, setRefundReviewId] = useState<number | null>(null);
-  const [actionDialogOpen, setActionDialogOpen] = useState(false);
-  const [bookingForAction, setBookingForAction] = useState<BookingForAction | null>(null);
-  const [isLoadingActionDetails, setIsLoadingActionDetails] = useState(false);
   // Check if any location has approved license
   const hasApprovedLicense = locations.some((loc: any) => loc.kitchenLicenseStatus === 'approved');
 
@@ -102,183 +98,6 @@ export default function ManagerBookingsPanel({ embedded = false, onGoToKitchens 
     staleTime: 0,
     gcTime: 10000,
   });
-
-  // Update booking status mutation
-  const updateStatusMutation = useMutation({
-    mutationFn: async ({ bookingId, status, storageActions, equipmentActions, message }: { bookingId: number; status: string; message?: string; storageActions?: Array<{ storageBookingId: number; action: string }>; equipmentActions?: Array<{ equipmentBookingId: number; action: string }> }) => {
-      const headers = await getAuthHeaders();
-      const response = await fetch(`/api/manager/bookings/${bookingId}/status`, {
-        method: 'PUT',
-        headers,
-        credentials: "include",
-        body: JSON.stringify({ status, storageActions, equipmentActions, message }),
-      });
-      if (!response.ok) {
-        let errorMessage = mt("failedToUpdateBookingStatus");
-        try {
-          const errorData = await response.json();
-          errorMessage = errorData.message || errorData.error || errorMessage;
-        } catch (jsonError) {
-          try {
-            const text = await response.text();
-            errorMessage = text || `Server returned ${response.status} ${response.statusText}`;
-          } catch (textError) {
-            errorMessage = `Server returned ${response.status} ${response.statusText}`;
-          }
-        }
-        throw new Error(errorMessage);
-      }
-      const contentType = response.headers.get('content-type');
-      if (contentType && contentType.includes('application/json')) {
-        return await response.json();
-      }
-      const text = await response.text();
-      return text ? JSON.parse(text) : {};
-    },
-    onSuccess: (data, { status }) => {
-      queryClient.invalidateQueries({ queryKey: ['managerBookings'] });
-      
-      // Handle different response scenarios
-      if (data?.proposal) {
-        // Accepted without some equipment: nothing is charged until the chef accepts the new total.
-        toast({ title: ct("paSentTitle"), description: ct("paSentBody") });
-      } else if (data?.requiresManualRefund) {
-        // Cancellation of confirmed booking - needs manual refund
-        toast({ title: t("bookingCancelled"),
-          description: mt("useIssueRefundFromMenu"),
-          variant: "default",
-        });
-      } else if (data?.refund && status === 'cancelled') {
-        // Cancel & Refund — booking cancelled with auto-refund
-        toast({ title: t("bookingCancelledRefunded"),
-          description: `Refund of $${(data.refund.amount / 100).toFixed(2)} processed successfully.`,
-        });
-      } else if (data?.refund) {
-        // Rejection with auto-refund (from pending)
-        toast({ title: t("bookingRejectedRefunded"),
-          description: `Refund of $${(data.refund.amount / 100).toFixed(2)} processed (customer absorbs Stripe fee).`,
-        });
-      } else if (data?.authorizationVoided) {
-        // Voided authorization — no money was captured
-        toast({ title: t("bookingRejected"),
-          description: t("paymentHoldReleasedNoChargeWasMadeToTheChef"),
-        });
-      } else {
-        toast({ title: t("success"),
-          description: status === 'confirmed' ? mt("bookingConfirmedToast") : mt("bookingCancelledToast"),
-        });
-      }
-    },
-    onError: (error: Error) => {
-      toast({ title: t("error"),
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
-
-  // ENTERPRISE STANDARD: Fetch full booking details before opening action dialog.
-  // The list endpoint returns JSONB snapshots (storageItems/equipmentItems) and raw
-  // kitchen_bookings.total_price which may be stale or include bundle pricing.
-  // The details endpoint recalculates kitchen-only price, fetches relational storage/equipment
-  // with original dates, and returns actual Stripe payment transaction data.
-  // This ensures the table "Take Action" shows identical data to the BookingDetailsPage.
-  const fetchBookingDetailsForAction = async (bookingId: number): Promise<BookingForAction | null> => {
-    const headers = await getAuthHeaders();
-    const response = await fetch(`/api/manager/bookings/${bookingId}/details`, {
-      headers,
-      credentials: "include",
-    });
-
-    if (!response.ok) {
-      throw new Error(mt("failedToFetchBookingDetails", { status: response.status }));
-    }
-
-    const details = await response.json();
-
-    return {
-      id: details.id,
-      scheduleRevision: details.scheduleRevision,
-      visits: details.visits,
-      kitchenName: details.kitchen?.name,
-      chefName: details.chef?.fullName || details.chef?.username,
-      locationName: details.location?.name,
-      bookingDate: details.bookingDate,
-      startTime: details.startTime,
-      endTime: details.endTime,
-      selectedSlots: details.selectedSlots,
-      operatingWindowStartTime: details.operatingWindowStartTime,
-      totalPrice: details.totalPrice,
-      pricingMode: details.pricingMode,
-      transactionAmount: details.paymentTransaction?.amount,
-      cardCountry: details.paymentTransaction?.cardCountry,
-      serviceFee: details.paymentTransaction?.serviceFee,
-      stripeProcessingFee: details.paymentTransaction?.stripeProcessingFee,
-      managerRevenue: details.paymentTransaction?.managerRevenue,
-      taxRatePercent: details.kitchen?.taxRatePercent ? Number(details.kitchen.taxRatePercent) : undefined,
-      // Include ALL items with rejected flag so action dialog shows full audit trail
-      // Rejected items appear as read-only, actionable items are toggleable
-      storageItems: details.storageBookings
-        ?.map((s: any) => ({
-          id: s.id,
-          storageBookingId: s.id,
-          name: s.storageListing?.name || `Storage #${s.storageListingId}`,
-          storageType: s.storageListing?.storageType || 'Storage',
-          totalPrice: s.totalPrice,
-          startDate: s.startDate,
-          endDate: s.endDate,
-          rejected: s.paymentStatus === 'failed' || s.status === 'cancelled',
-        })),
-      equipmentItems: details.equipmentBookings
-        ?.map((e: any) => ({
-          id: e.id,
-          equipmentBookingId: e.id,
-          name: e.equipmentListing?.equipmentType || `Equipment #${e.equipmentListingId}`,
-          totalPrice: e.totalPrice,
-          rejected: e.paymentStatus === 'failed' || e.status === 'cancelled',
-          visitDate: e.visitDate ?? null,
-        })),
-      paymentStatus: details.paymentStatus,
-      canAskChef: details.partialAcceptanceAvailable !== false,
-    };
-  };
-
-  // Single "Take Action" handler — fetches full details then opens the unified action dialog
-  const handleTakeAction = async (booking: Booking) => {
-    setIsLoadingActionDetails(true);
-    setActionDialogOpen(true);
-    try {
-      const actionData = await fetchBookingDetailsForAction(booking.id);
-      setBookingForAction(actionData);
-    } catch (error: any) {
-      logger.error('Error fetching booking details for action dialog:', error);
-      toast({ title: t("error"),
-        description: t("failedToLoadBookingDetailsPleaseTryAgain"),
-        variant: "destructive",
-      });
-      setActionDialogOpen(false);
-    } finally {
-      setIsLoadingActionDetails(false);
-    }
-  };
-
-  const handleActionSubmit = (params: {
-    bookingId: number;
-    status: 'confirmed' | 'cancelled';
-    storageActions?: Array<{ storageBookingId: number; action: string }>;
-    equipmentActions?: Array<{ equipmentBookingId: number; action: string }>;
-    message?: string;
-  }) => {
-    updateStatusMutation.mutate(
-      { bookingId: params.bookingId, status: params.status, storageActions: params.storageActions, equipmentActions: params.equipmentActions, message: params.message },
-      {
-        onSettled: () => {
-          setActionDialogOpen(false);
-          setBookingForAction(null);
-        },
-      }
-    );
-  };
 
   // ── Cancellation Request: Accept / Decline ──────────────────────────────
   const cancellationRequestMutation = useMutation({
@@ -407,7 +226,8 @@ export default function ManagerBookingsPanel({ embedded = false, onGoToKitchens 
               });
               return;
             }
-            void handleTakeAction(booking);
+            // Requests are answered on their own page.
+            navigate(`/manager/booking/${booking.id}/review`);
           }} />
         )}
 
@@ -427,17 +247,6 @@ export default function ManagerBookingsPanel({ embedded = false, onGoToKitchens 
         </div>
       </div>
 
-      {/* Unified Booking Action Dialog (for pending/authorized bookings) */}
-      <BookingActionDialog
-        open={actionDialogOpen}
-        onOpenChange={(open) => {
-          setActionDialogOpen(open);
-          if (!open) setBookingForAction(null);
-        }}
-        booking={bookingForAction}
-        isLoading={updateStatusMutation.isPending}
-        onSubmit={handleActionSubmit}
-      />
 
     </div>
   );

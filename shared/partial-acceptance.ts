@@ -16,8 +16,11 @@ export type PartialAcceptance = {
   deadlineAt: string;
   /** Every equipment row of the request and what the chef would get. */
   equipment: Array<{ id: number; status: 'confirmed' | 'cancelled' }>;
-  /** The declined items, with the day for a dated booking. */
+  /** The declined items, with the day for a dated booking (items on a declined day are not listed: they go with the day). */
   declined: Array<{ id: number; name: string; cents: number; date?: string }>;
+  /** Multi-day (owner, Oct 19): the days the kitchen can't host, with their kitchen-time price before tax and fees. */
+  declinedVisitIds?: number[];
+  declinedDays?: Array<{ visitId: number; date: string; cents: number }>;
   oldTotalCents: number;
   newTotalCents: number;
   answeredAt?: string;

@@ -111,7 +111,7 @@ describe('partial acceptance notices', () => {
   it('chef: names the kitchen, items, both totals, the exact deadline in the kitchen zone and what happens without an answer', async () => {
     const copy = await partialAcceptanceNotice('chef', 'en-CA', notice, names);
     expect(copy.title).toBe('Accept the new total?');
-    expect(copy.message).toBe('Harbour Kitchen can host you, but can’t provide Mixer and Oven (Thu, Oct 22). New total $111.09 (was $112.32). '
+    expect(copy.message).toBe('Harbour Kitchen can host you with changes: without Mixer and Oven (Thu, Oct 22). New total $111.09 (was $112.32). '
       + 'Accept or decline by Wed, Oct 21, 10:00 p.m. Newfoundland Time. Nothing is charged until you accept. '
       + 'If you don’t answer, the request closes and your card hold is released.');
     expect(copy.actionLabel).toBe('Review the new total');
@@ -131,7 +131,7 @@ describe('partial acceptance notices', () => {
   });
   it('kitchen: declined and expired say the request closed and the hold was released', async () => {
     expect((await partialAcceptanceNotice('manager', 'en-CA', { ...notice, variant: 'declined' }, names)).message)
-      .toBe('Sam Taylor chose not to book without Mixer and Oven (Thu, Oct 22). The request is closed and their card hold was released.');
+      .toBe('Sam Taylor chose not to book with your changes. The request is closed and their card hold was released.');
     expect((await partialAcceptanceNotice('manager', 'en-CA', { ...notice, variant: 'expired' }, names)).title).toBe('Sam Taylor didn’t answer the new total');
   });
   it('hold ended: says the card hold ended before confirmation and nothing was charged — never "didn’t answer"', async () => {

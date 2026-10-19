@@ -26,6 +26,13 @@ export function PartialAcceptanceCard({ bookingId, proposal, manager, kitchenNam
     items: new Intl.ListFormat(lng, { type: 'conjunction' }).format(proposal.declined.map(item => item.date ? `${item.name} (${day(item.date)})` : item.name)),
     deadline: partialAcceptanceDeadlineText(proposal.deadlineAt, lng, timezone),
   };
+  // Days first, then items on the kept days (owner, Oct 19).
+  const itemsText = values.items;
+  const changeLines = [...(proposal.declinedDays ?? []).map(entry => t('paChangeNotOnLine', { day: day(entry.date) })),
+    ...(proposal.declined.length ? [t('paChangeWithoutLine', { items: itemsText })] : [])];
+  const changes = [...(proposal.declinedDays ?? []).map(entry => t('paChangeNotOn', { day: day(entry.date) })),
+    ...(proposal.declined.length ? [t('paChangeWithout', { items: itemsText })] : [])].join('; ');
+  Object.assign(values, { changes });
 
   const answer = async (choice: 'accept' | 'decline') => {
     setBusy(choice);
@@ -52,6 +59,7 @@ export function PartialAcceptanceCard({ bookingId, proposal, manager, kitchenNam
         <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
         <div className="space-y-1 text-sm leading-relaxed">
           <h2 id="partial-acceptance-title" className="font-semibold">{t(manager ? 'paKitchenWaitingTitle' : 'paChefCardTitle', values)}</h2>
+          {!manager && <ul className="list-disc pl-5" data-testid="partial-acceptance-changes">{changeLines.map(line => <li key={line}>{line}</li>)}</ul>}
           <p>{t(manager ? 'paKitchenWaitingBody' : 'paChefCardBody', values)}</p>
           <p className="text-sky-900/80">{t(manager ? 'paKitchenWaitingNote' : 'paChefCardNote', values)}</p>
         </div>

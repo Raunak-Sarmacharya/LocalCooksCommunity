@@ -33,22 +33,29 @@ export async function verifiedDatedCaptureEvidence(intent: Stripe.PaymentIntent,
 /** Also checked before capture: saved equipment/visit identities must still match the entire frozen quote. */
 export async function datedSourceComponents(tx: Tx, source: typeof paymentTransactions.$inferSelect) {
   if (source?.payoutPartition !== 'per_day') throw Error('Dated source partition is required before capture');
-  const saved = source.metadata as { datedQuote?: unknown; dayComponents?: DayComponent[]; datedDeclinedEquipmentIds?: number[] };
+  const saved = source.metadata as { datedQuote?: unknown; dayComponents?: DayComponent[]; datedDeclinedEquipmentIds?: number[]; datedDeclinedVisitIds?: number[] };
   const quote = verifyDatedQuote(saved.datedQuote), m = quote.manifest;
-  // Equipment the kitchen declined and the chef agreed to go without: excluded from the capture and from every allocation.
-  const declined = new Set(saved.datedDeclinedEquipmentIds ?? []);
-  const components = saved.dayComponents?.filter(row => !(row.kind === 'equipment' && declined.has(row.bookingId)));
-  const captured = acceptedDatedTotals(m, components?.reduce((sum, row) => sum + row.subtotalCents, 0) ?? 0, declined.size > 0);
+  // Equipment and days the kitchen declined and the chef agreed to go without: excluded from the capture and from every allocation.
+  const declined = new Set(saved.datedDeclinedEquipmentIds ?? []), declinedVisits = new Set(saved.datedDeclinedVisitIds ?? []);
+  // The kept days are renumbered in order, matching the accepted policy's sessions once the declined days leave them.
+  const visitsOfBooking = await tx.select().from(kitchenBookingVisits).where(eq(kitchenBookingVisits.bookingId, source.bookingId));
+  const keptDates = m.days.map(day => day.date).filter(date => !visitsOfBooking.some(visit => declinedVisits.has(visit.id) && visit.visitDate === date));
+  const renumber = (index: number) => declinedVisits.size ? keptDates.indexOf(m.days[index].date) : index;
+  const components = saved.dayComponents?.filter(row => !(row.kind === 'equipment' && declined.has(row.bookingId)) && !declinedVisits.has(row.visitId))
+    .map(row => ({ ...row, sessionIndex: renumber(row.sessionIndex) }));
+  const captured = acceptedDatedTotals(m, components?.reduce((sum, row) => sum + row.subtotalCents, 0) ?? 0, declined.size + declinedVisits.size > 0);
   if (Number(source.amount) !== captured.totalCents || source.chefId !== m.chefId || source.managerId !== m.managerId
     || source.currency.toLowerCase() !== 'cad' || Number(source.baseAmount) !== captured.subtotalCents + captured.taxCents
     || Number(source.taxAmount) !== captured.taxCents || Number(source.serviceFee) !== captured.serviceFeeCents
     || source.payoutTiming !== 'after_closeout' || !components?.length) throw Error('Dated allocation source needs review');
-  const visits = await tx.select().from(kitchenBookingVisits).where(eq(kitchenBookingVisits.bookingId, source.bookingId));
+  const visits = visitsOfBooking;
   const equipment = await tx.select().from(equipmentBookings).where(eq(equipmentBookings.kitchenBookingId, source.bookingId));
   const expected: DayComponent[] = [];
-  for (const [sessionIndex, day] of Array.from(m.days.entries())) {
+  for (const [index, day] of Array.from(m.days.entries())) {
     const visit = visits.find(row => row.visitDate === day.date && row.scheduleRevision === 1);
     if (!visit) throw Error('Dated allocation visit is missing');
+    if (declinedVisits.has(visit.id)) continue;
+    const sessionIndex = renumber(index);
     expected.push({ visitId: visit.id, sessionIndex, componentKey: 'kitchen', kind: 'kitchen', bookingId: source.bookingId, subtotalCents: day.kitchenCents });
     for (const item of day.equipment) {
       const row = equipment.find(row => row.kitchenBookingVisitId === visit.id && row.equipmentListingId === item.listingId);
