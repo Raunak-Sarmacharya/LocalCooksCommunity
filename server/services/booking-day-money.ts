@@ -1,13 +1,14 @@
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db';
-import { kitchenBookingDayAllocations, paymentTransactions } from '@shared/schema';
+import { kitchenBookingDayAllocations, kitchenBookings, paymentTransactions } from '@shared/schema';
 import { bookingDayMoney } from '@shared/booking-day-money';
 
 /** Called only after the manager/support booking authorization has succeeded. */
-export async function readBookingDayMoney(bookingId: number) {
+export async function readBookingDayMoney(bookingId: number, options: { held?: boolean } = {}) {
   const rows = await db.select({ allocation: kitchenBookingDayAllocations, metadata: paymentTransactions.metadata }).from(kitchenBookingDayAllocations)
     .innerJoin(paymentTransactions, eq(paymentTransactions.id, kitchenBookingDayAllocations.sourceId))
     .where(eq(paymentTransactions.bookingId, bookingId));
+  if (!rows.length && options.held) return readHeldDayMoney(bookingId);
   const latest = new Map<number, number>();
   const completed = new Set<string>();
   for (const row of rows) {
@@ -17,6 +18,20 @@ export async function readBookingDayMoney(bookingId: number) {
   }
   for (const { allocation } of rows) latest.set(allocation.sourceId, Math.max(latest.get(allocation.sourceId) || 0, allocation.allocationRevision));
   return bookingDayMoney(rows.map(row => row.allocation).filter(row => row.allocationRevision === latest.get(row.sourceId)), completed);
+}
+
+/** A request not yet accepted: each day's share of the card hold, split exactly as the capture will freeze it (no card fee yet). */
+async function readHeldDayMoney(bookingId: number) {
+  const [booking] = await db.select({ intentId: kitchenBookings.paymentIntentId }).from(kitchenBookings).where(eq(kitchenBookings.id, bookingId));
+  const [source] = booking?.intentId ? await db.select().from(paymentTransactions)
+    .where(and(eq(paymentTransactions.bookingId, bookingId), eq(paymentTransactions.paymentIntentId, booking.intentId))) : [];
+  if (source?.payoutPartition !== 'per_day') return [];
+  try {
+    const { datedSourceComponents } = await import('./dated-booking-allocations'), { allocateDatedCapture } = await import('./dated-booking-quote');
+    const { quote, components, captured } = await datedSourceComponents(db as never, source);
+    return bookingDayMoney(allocateDatedCapture(components, { ...quote.manifest, ...captured }, null)
+      .map(part => ({ ...part, stripeFeeCents: null, evidence: null }) as never));
+  } catch { return []; }
 }
 
 /** Multi-day: what the booking's own charge paid for, kitchen vs equipment (pre-tax), from its current day allocations. */

@@ -21,6 +21,9 @@ describe('checkout return states', () => {
     await mount({ state: 'request_created', bookingId: 42 });
     expect(screen.getByRole('heading', { name: en.checkoutRequestCreated })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: en.checkoutViewRequest })).toHaveAttribute('href', '/booking/42');
+    // The chef sees that the amount is only held until the kitchen accepts.
+    expect(screen.getByText('$24.40 held on your card. You haven’t been charged.')).toBeInTheDocument();
+    expect(screen.getByText(en.checkoutRequestCreatedDetail)).toBeInTheDocument();
     await act(async () => { vi.advanceTimersByTime(60_000); });
     expect(fetcher).toHaveBeenCalledTimes(1); expect(window.location.pathname).toBe('/payment-success');
   });

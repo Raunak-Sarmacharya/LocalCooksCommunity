@@ -8,6 +8,8 @@
  * kitchen debit; a sent one is reversed by exactly that day's share (or recorded as kitchen debt). Never another day.
  * The decision commits first (inventory, ledger, reservation, notices); the provider refund runs after, under the
  * reservation's operation key, through the same retry/reconcile engine as single-day cancellations.
+ * A paid change (CP7) is its own card payment with its own day ledger: each payment ("charge") is priced on its own and a
+ * day's refund comes from every charge that paid for it, one reservation per charge under the same operation key.
  */
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import { db } from '../db';
@@ -63,23 +65,40 @@ async function load(tx: Tx, bookingId: number, lock: boolean) {
   const booking = lock ? (await tx.select().from(kitchenBookings).where(eq(kitchenBookings.id, bookingId)).for('update'))[0] : row.booking;
   const sources = await tx.select().from(paymentTransactions).where(and(inArray(paymentTransactions.bookingType, ['kitchen', 'bundle']),
     eq(paymentTransactions.bookingId, bookingId))).orderBy(asc(paymentTransactions.id));
-  const source = sources.find(item => item.payoutPartition === 'per_day' && !!item.paymentIntentId && item.paymentIntentId === booking.paymentIntentId);
+  const perDay = sources.filter(item => item.payoutPartition === 'per_day' && !!item.paymentIntentId);
+  const source = perDay.find(item => item.paymentIntentId === booking.paymentIntentId);
+  // Paid changes (a fully refunded one still holds its refund records); extra time is never refunded by a cancellation.
+  const changes = source ? perDay.filter(item => item.id !== source.id && metadata(item).kitchenChangeId && ['succeeded', 'partially_refunded', 'refunded'].includes(item.status)) : [];
   const visitQuery = tx.select().from(kitchenBookingVisits).where(eq(kitchenBookingVisits.bookingId, bookingId)).orderBy(asc(kitchenBookingVisits.id));
   const visits = lock ? await visitQuery.for('update') : await visitQuery;
-  const rows = source ? await tx.select().from(kitchenBookingDayAllocations).where(eq(kitchenBookingDayAllocations.sourceId, source.id)).orderBy(asc(kitchenBookingDayAllocations.id)) : [];
-  const installmentQuery = source ? tx.select().from(kitchenBookingDayPayouts).where(eq(kitchenBookingDayPayouts.sourceId, source.id)).orderBy(asc(kitchenBookingDayPayouts.id)) : undefined;
-  const installments = installmentQuery ? lock ? await installmentQuery.for('update') : await installmentQuery : [];
+  const charges: Charge[] = [];
+  for (const item of source ? [source, ...changes] : []) {
+    const allocations = await tx.select().from(kitchenBookingDayAllocations).where(eq(kitchenBookingDayAllocations.sourceId, item.id)).orderBy(asc(kitchenBookingDayAllocations.id));
+    const installmentQuery = tx.select().from(kitchenBookingDayPayouts).where(eq(kitchenBookingDayPayouts.sourceId, item.id)).orderBy(asc(kitchenBookingDayPayouts.id));
+    charges.push({ source: item, allocations, installments: lock ? await installmentQuery.for('update') : await installmentQuery });
+  }
   const equipment = await tx.select({ row: equipmentBookings, name: equipmentListings.equipmentType }).from(equipmentBookings)
     .innerJoin(equipmentListings, eq(equipmentListings.id, equipmentBookings.equipmentListingId)).where(eq(equipmentBookings.kitchenBookingId, bookingId));
   const openChanges = await tx.select({ id: kitchenBookingChanges.id }).from(kitchenBookingChanges).where(and(
     eq(kitchenBookingChanges.bookingId, bookingId), inArray(kitchenBookingChanges.state, OPEN_KITCHEN_CHANGE_STATES)));
   const unreconciledChangeRefund = sources.some(hasUnreconciledChangeRefund);
-  // shortcut: CP6 still reserves only the original source; keep the guard until multi-source recovery is implemented.
-  const supplemental = sources.filter(item => item.id !== source?.id && metadata(item).kitchenChangeId && ['succeeded', 'partially_refunded'].includes(item.status));
-  return { booking, managerId: row.managerId!, timezone: row.timezone || 'America/St_Johns', kitchenName: row.kitchenName, source, supplemental,
-    visits, allocations: rows, installments, equipment, openChanges, unreconciledChangeRefund };
+  // `source`/`allocations`/`installments` are the charge being priced (the booking's own charge unless `on` picks another);
+  // `dayRows` is always the booking's own ledger, which has a row for every part of every current day.
+  const own = charges[0] ?? { source: undefined, allocations: [], installments: [] };
+  return { booking, managerId: row.managerId!, timezone: row.timezone || 'America/St_Johns', kitchenName: row.kitchenName, source: own.source,
+    visits, allocations: own.allocations, installments: own.installments, dayRows: own.allocations, charges, equipment, openChanges, unreconciledChangeRefund };
 }
+type Charge = { source: typeof paymentTransactions.$inferSelect; allocations: Allocation[]; installments: Array<typeof kitchenBookingDayPayouts.$inferSelect> };
 type Context = Awaited<ReturnType<typeof load>>;
+/** A charge that can still give money back: the booking's own (it carries every reservation) or a change not fully refunded. */
+const refundable = (ctx: Context) => ctx.charges.filter((charge, index) => !index || charge.source.status !== 'refunded');
+const on = (ctx: Context, charge: Charge): Context => ({ ...ctx, source: charge.source, allocations: charge.allocations, installments: charge.installments });
+/** One provider read per charge. */
+async function chargeFacts(ctx: Context) {
+  const facts = new Map<number, Facts>();
+  for (const charge of ctx.charges) facts.set(charge.source.id, await getCancellationPaymentFacts(charge.source.paymentIntentId!));
+  return facts;
+}
 
 function assertActor(ctx: Context, actor: DayActor) {
   if ((actor.role === 'chef' ? ctx.booking.chefId : ctx.managerId) !== actor.id) throw fail('Booking not found or access denied', 404);
@@ -93,12 +112,12 @@ function schedule(ctx: Context, at: Date) {
   const deadlineAt = new Date(firstStart - snapshot.noticeHours * 3600_000);
   const current = ctx.visits.filter(visit => visit.scheduleRevision === ctx.booking.scheduleRevision);
   const days = current.map(visit => {
-    const kitchen = ctx.allocations.find(row => row.visitId === visit.id && row.componentKey === 'kitchen');
-    const session = kitchen ? snapshot.sessions[Number(evidence(kitchen).sessionIndex)] : undefined;
+    const kitchen = ctx.dayRows.find(row => row.visitId === visit.id && row.componentKey === 'kitchen');
+    const sessionIndex = Number(kitchen ? evidence(kitchen).sessionIndex : NaN), session = snapshot.sessions[sessionIndex];
     if (!session) throw fail('This booking’s day allocations need Local Cooks review before a refund can be quoted.');
     const startAt = new Date(session.startAt);
     const started = !!visit.checkedInAt || (visit.checkinStatus ?? 'not_checked_in') !== 'not_checked_in' || at >= startAt;
-    return { visit, startAt, active: visit.scheduleState === 'active', started };
+    return { visit, startAt, sessionIndex, active: visit.scheduleState === 'active', started };
   });
   return { snapshot, deadlineAt, days };
 }
@@ -132,7 +151,6 @@ function verifiedSource(ctx: Context, facts: Facts, statuses: string[]) {
   if (!source || !['succeeded', 'partially_refunded'].includes(source.status) || !source.paymentIntentId) throw fail('A verified captured payment is needed for a refund.');
   if (!statuses.includes(booking.status) || !['paid', 'partially_refunded', 'refunded'].includes(booking.paymentStatus || '')
     || (booking.paymentDecision as { state?: string } | null)?.state === 'pending') throw fail('This booking can’t be changed in its current state.');
-  if (ctx.supplemental.length) throw fail('This booking has a separate change payment. Contact Local Cooks to cancel days.');
   const { days } = schedule(ctx, new Date(0));
   // CP7: parts an approved change moved to new days are history; the live ledger is the current days plus settled parts of
   // earlier schedules (dropped days, a change's refunded part), which still count toward the source's captured cents.
@@ -201,7 +219,7 @@ function assertNoOpenChange(ctx: Context, requested: DayMode) {
     : "You have a change request waiting for the kitchen. Withdraw it first, or wait for the kitchen's answer.");
 }
 
-function price(ctx: Context, facts: Facts, target: DayTarget, requested: DayMode, at: Date) {
+function price(ctx: Context, facts: Facts, target: DayTarget, requested: DayMode, at: Date, change = false) {
   const { booking } = ctx;
   assertNoOpenChange(ctx, requested);
   const checked = verifiedSource(ctx, facts, ['confirmed']);
@@ -225,9 +243,12 @@ function price(ctx: Context, facts: Facts, target: DayTarget, requested: DayMode
     const item = ctx.equipment.find(entry => entry.row.id === id)?.row;
     const row = rows.find(entry => entry.componentKey === `equipment:${id}`);
     const day = item?.kitchenBookingVisitId ? dayOf(item.kitchenBookingVisitId) : undefined;
-    if (!item || item.status !== 'confirmed' || !row || row.visitId !== item.kitchenBookingVisitId || !open(row) || !day?.active) throw fail('This equipment is no longer booked.');
+    // A change charge pays only for what its change added; the booking's own ledger has a part for every item.
+    if (change) { if (row && row.visitId === item?.kitchenBookingVisitId && open(row)) selected.push(row); continue; }
+    // A part with nothing paid on this charge (an item a change added) comes off here with no money.
+    if (!item || item.status !== 'confirmed' || !row || row.visitId !== item.kitchenBookingVisitId || !open(row) && paidOf(row) > 0 || !day?.active) throw fail('This equipment is no longer booked.');
     if (day.started) throw fail('That day has already started, so its equipment can’t be removed now.');
-    selected.push(row);
+    if (open(row)) selected.push(row);
   }
   // #10: while the kitchen's offer is open, the chef drops its remaining days without the late charge.
   const offer = booking.kitchenDayCancellationOffer as DayCancellationOffer | null;
@@ -238,7 +259,7 @@ function price(ctx: Context, facts: Facts, target: DayTarget, requested: DayMode
   const engine = quoteCancellation(mode === 'chef_offer' ? { ...snapshot, tiers: [{ minHoursBeforeStart: 0, refundPercent: 100 }] } : snapshot, {
     cancelAt: at, confirmedAt: booking.createdAt || at, capturedCents: captured, processingFeeCents: fee, cause: 'chef',
     components: rows.map(row => ({ id: componentId(row), kind: row.componentKey === 'kitchen' ? 'kitchen' as const : 'equipment' as const,
-      sessionIndex: Number(evidence(row).sessionIndex), kitchenCents: row.subtotalCents + row.taxCents, platformCents: row.serviceFeeCents })),
+      sessionIndex: dayOf(row.visitId)!.sessionIndex, kitchenCents: row.subtotalCents + row.taxCents, platformCents: row.serviceFeeCents })),
     settledComponents: Object.fromEntries(rows.filter(row => !selected.includes(row)).map(row => [componentId(row), { refundCents: 0, kitchenRefundCents: 0 }])) });
   if (!engine.quoteReady) return { quoteReady: false as const, reasonCode: 'processing_fee_pending' as const, message: FEE_PENDING };
   // The engine's fee split must be the frozen actual fee share on each allocation; anything else is not that part's fee.
@@ -279,7 +300,7 @@ function price(ctx: Context, facts: Facts, target: DayTarget, requested: DayMode
         return t + line.grossCents - line.feeCents - settledOn(row).kitchen - line.kitchenCents - line.creditCents!.kitchen; }, 0),
       items: own.map(line => ({ componentKey: line.componentKey, refundCents: line.customerCents })) };
   });
-  return { quoteReady: true as const, bookingId: booking.id, mode: mode as DayMode | 'extra', cancelAt: at.toISOString(), deadlineAt: deadlineAt.toISOString(), beforeDeadline: at < deadlineAt,
+  return { quoteReady: true as const, bookingId: booking.id, sourceId: ctx.source!.id, mode: mode as DayMode | 'extra', cancelAt: at.toISOString(), deadlineAt: deadlineAt.toISOString(), beforeDeadline: at < deadlineAt,
     refundPercent: lines.length && lines.every(line => line.refundPercent === lines[0].refundPercent) ? lines[0].refundPercent : null,
     chefRefundCents: sum('customerCents'), feeRetainedCents: mode === 'kitchen' ? 0 : lines.reduce((t, l) => t + l.feeCents, 0),
     retainedCents: lines.reduce((t, l) => t + l.paidCents, 0) - sum('customerCents'), goodwillAppliedCents,
@@ -291,11 +312,51 @@ function price(ctx: Context, facts: Facts, target: DayTarget, requested: DayMode
 }
 type Quote = Extract<ReturnType<typeof price>, { quoteReady: true }>;
 
+/** A day's parts across charges, added up. */
+function mergeDays(list: Quote['days']) {
+  const days = new Map<number, Quote['days'][number]>();
+  for (const day of list) {
+    const seen = days.get(day.visitId);
+    if (!seen) { days.set(day.visitId, { ...day, items: day.items.map(item => ({ ...item })) }); continue; }
+    seen.refundCents += day.refundCents; seen.feeCents += day.feeCents; seen.kitchenKeepsCents += day.kitchenKeepsCents;
+    for (const item of day.items) {
+      const same = seen.items.find(entry => entry.componentKey === item.componentKey);
+      if (same) same.refundCents += item.refundCents; else seen.items.push({ ...item });
+    }
+  }
+  return Array.from(days.values()).sort((a, b) => a.startAt.localeCompare(b.startAt));
+}
+
+/** The booking's charges' quotes as one: what the chef and kitchen see; `charges` is what each payment reserves. */
+function combine(quotes: Quote[]) {
+  const [own] = quotes, lines = quotes.flatMap(quote => quote.lines);
+  const total = (key: 'chefRefundCents' | 'feeRetainedCents' | 'retainedCents' | 'goodwillAppliedCents' | 'kitchenShareRetainedCents' | 'kitchenPaysCents'
+    | 'localCooksPaysCents' | 'processingCostAbsorbedCents') => quotes.reduce((sum, quote) => sum + quote[key], 0);
+  return { ...own, refundPercent: lines.length && lines.every(line => line.refundPercent === lines[0].refundPercent) ? lines[0].refundPercent : null,
+    chefRefundCents: total('chefRefundCents'), feeRetainedCents: total('feeRetainedCents'), retainedCents: total('retainedCents'), goodwillAppliedCents: total('goodwillAppliedCents'),
+    kitchenShareRetainedCents: total('kitchenShareRetainedCents'), kitchenPaysCents: total('kitchenPaysCents'), localCooksPaysCents: total('localCooksPaysCents'),
+    processingCostAbsorbedCents: total('processingCostAbsorbedCents'), days: mergeDays(quotes.flatMap(quote => quote.days)), lines, charges: quotes };
+}
+
+/** Each charge priced on its own policy arithmetic, then added up. The booking's own charge always carries a reservation. */
+function priceAll(ctx: Context, facts: Map<number, Facts>, target: DayTarget, requested: DayMode, at: Date) {
+  const quotes: Quote[] = [];
+  for (const [index, charge] of Array.from(refundable(ctx).entries())) {
+    // A change charge not yet split over its days: its card fee isn't confirmed.
+    if (!charge.allocations.length) return { quoteReady: false as const, reasonCode: 'processing_fee_pending' as const, message: FEE_PENDING };
+    const quoted = price(on(ctx, charge), facts.get(charge.source.id)!, target, requested, at, index > 0);
+    if (!quoted.quoteReady) return quoted;
+    if (!index || quoted.lines.some(line => line.paidCents > 0)) quotes.push(quoted);
+  }
+  return combine(quotes);
+}
+type Priced = ReturnType<typeof priceAll>;
+
 /**
  * Spec row 7, "the kitchen may refund more": a kitchen-paid refund scoped to one day, as a one-day booking's kitchen refund
  * (no card fee or service fee comes back with it). Never more than that day's remaining kitchen share or the charge has left.
  */
-function priceExtra(ctx: Context, facts: Facts, visitId: number, amountCents: number, at: Date): Quote {
+function extraRoom(ctx: Context, facts: Facts, visitId: number, at: Date) {
   const checked = verifiedSource(ctx, facts, ['confirmed', 'completed', 'cancelled']);
   if (!checked) throw fail(FEE_PENDING);
   const { deadlineAt, days } = schedule(ctx, at);
@@ -303,18 +364,32 @@ function priceExtra(ctx: Context, facts: Facts, visitId: number, amountCents: nu
   if (!day) throw fail('That day is not part of this booking.', 404);
   const own = checked.rows.filter(row => row.visitId === visitId);
   const open = own.map(row => Math.max(0, row.subtotalCents + row.taxCents - row.stripeFeeCents! - settledOn(row).kitchen));
-  const cap = Math.min(open.reduce((t, n) => t + n, 0), facts.captured - facts.refunded);
+  return { checked, deadlineAt, days, day, own, open, cap: Math.min(open.reduce((t, n) => t + n, 0), facts.captured - facts.refunded) };
+}
+function priceExtra(ctx: Context, facts: Facts, visitId: number, amountCents: number, at: Date): Quote {
+  const { checked, deadlineAt, days, day, own, open, cap } = extraRoom(ctx, facts, visitId, at);
   if (!Number.isSafeInteger(amountCents) || amountCents <= 0) throw fail('Enter the amount to refund.', 400);
   if (amountCents > cap) throw fail(`The most the kitchen can refund for ${dayLabel(day.visit.visitDate)} is ${dollars(cap)}.`);
   const shares = allocateCents(amountCents, open);
   const drafts = own.map((row, i) => ({ row, kitchen: shares[i], platform: 0, absorbed: 0, percent: 0, credit: { platform: 0, absorbed: 0, kitchen: 0 } })).filter(d => d.kitchen > 0);
   const { lines, sum } = finish(ctx, checked, facts, drafts, 'extra', false);
-  return { quoteReady: true as const, bookingId: ctx.booking.id, mode: 'extra' as const, cancelAt: at.toISOString(), deadlineAt: deadlineAt.toISOString(), beforeDeadline: at < deadlineAt,
+  return { quoteReady: true as const, bookingId: ctx.booking.id, sourceId: ctx.source!.id, mode: 'extra' as const, cancelAt: at.toISOString(), deadlineAt: deadlineAt.toISOString(), beforeDeadline: at < deadlineAt,
     refundPercent: null, chefRefundCents: sum('customerCents'), feeRetainedCents: 0, retainedCents: 0, goodwillAppliedCents: 0, kitchenShareRetainedCents: 0,
     kitchenPaysCents: sum('kitchenCents'), localCooksPaysCents: 0, processingCostAbsorbedCents: 0,
     days: [{ visitId, date: day.visit.visitDate, startTime: day.visit.startTime, endTime: day.visit.endTime, startAt: day.startAt.toISOString(), refundCents: amountCents, feeCents: 0, refundPercent: 0,
       kitchenKeepsCents: open.reduce((t, n) => t + n, 0) - amountCents, items: lines.map(line => ({ componentKey: line.componentKey, refundCents: line.customerCents })) }],
     lines, visitIds: [], equipmentIds: [], cancelsBooking: false, remainingDays: days.filter(item => item.active).length, offer: null, receipts: checked.verified.receipts };
+}
+
+/** The kitchen's extra refund for a day, shared across the charges that paid for that day by what each can still give back. */
+function priceExtraAll(ctx: Context, facts: Map<number, Facts>, visitId: number, amountCents: number, at: Date) {
+  if (!Number.isSafeInteger(amountCents) || amountCents <= 0) throw fail('Enter the amount to refund.', 400);
+  const charges = refundable(ctx);
+  const rooms = charges.map((charge, index) => charge.allocations.length || !index ? extraRoom(on(ctx, charge), facts.get(charge.source.id)!, visitId, at).cap : 0);
+  const cap = rooms.reduce((sum, room) => sum + room, 0);
+  if (amountCents > cap) throw fail(`The most the kitchen can refund for ${dayLabel(ctx.visits.find(visit => visit.id === visitId)?.visitDate ?? null)} is ${dollars(cap)}.`);
+  const shares = allocateCents(amountCents, rooms);
+  return combine(charges.flatMap((charge, index) => shares[index] ? [priceExtra(on(ctx, charge), facts.get(charge.source.id)!, visitId, shares[index], at)] : []));
 }
 
 /** Every active day that has not started: what "cancel all" means once a day has been used. */
@@ -332,17 +407,20 @@ export async function readDatedCancellationQuote(bookingId: number, actor: DayAc
   const chosen = target.visitIds?.length || target.equipmentIds?.length ? target : { visitIds: schedule(ctx, at).days.filter(day => day.active && !day.started).map(day => day.visit.id) };
   if (!chosen.visitIds?.length && !chosen.equipmentIds?.length) throw fail('There are no upcoming days left to cancel.');
   try { await assertBookingMoneyWritable({ bookingId }); } catch { throw fail('Local Cooks is reviewing this booking’s payment. Contact Local Cooks to change it.'); }
-  return price(ctx, await getCancellationPaymentFacts(ctx.source.paymentIntentId), chosen, actor.role === 'manager' ? 'kitchen' : 'chef', at);
+  const quoted = priceAll(ctx, await chargeFacts(ctx), chosen, actor.role === 'manager' ? 'kitchen' : 'chef', at);
+  if (!quoted.quoteReady) return quoted;
+  const { charges: _charges, ...quote } = quoted;
+  return quote;
 }
 
 /** Support's preview: each remaining day (and all of them together) priced for the chef and for the kitchen, from one provider read. */
 export async function readDatedDayPreviews(bookingId: number, at = new Date()) {
   const ctx = await load(db as unknown as Tx, bookingId, false);
   if (!ctx.source?.paymentIntentId) throw fail('A verified captured payment is needed for a refund.');
-  const facts = await getCancellationPaymentFacts(ctx.source.paymentIntentId);
+  const facts = await chargeFacts(ctx);
   const remaining = schedule(ctx, at).days.filter(day => day.active && !day.started).map(day => day.visit.id);
   const both = (visitIds: number[]) => Object.fromEntries((['chef', 'kitchen'] as const).map(mode => {
-    const quoted = price(ctx, facts, { visitIds }, mode, at);
+    const quoted = priceAll(ctx, facts, { visitIds }, mode, at);
     return [mode === 'chef' ? 'forChef' : 'byKitchen', quoted.quoteReady ? { chefReceivesCents: quoted.chefRefundCents, feeRetainedCents: quoted.feeRetainedCents,
       managerPaysCents: quoted.kitchenPaysCents, localCooksPaysCents: quoted.localCooksPaysCents, kitchenKeepsCents: quoted.kitchenShareRetainedCents,
       refundPercent: quoted.refundPercent, mode: quoted.mode } : null];
@@ -366,7 +444,7 @@ export async function cancelDatedDays(bookingId: number, actor: DayActor, input:
     const target = input.target.visitIds?.length || input.target.equipmentIds?.length ? input.target
       : { visitIds: schedule(before, new Date()).days.filter(day => day.active && !day.started).map(day => day.visit.id) };
     if (!target.visitIds?.length && !target.equipmentIds?.length) throw fail('There are no upcoming days left to cancel.');
-    return (ctx, at) => price(ctx, facts, target, actor.role === 'manager' ? 'kitchen' : 'chef', at);
+    return (ctx, at) => priceAll(ctx, facts, target, actor.role === 'manager' ? 'kitchen' : 'chef', at);
   });
 }
 
@@ -378,57 +456,62 @@ export async function refundDatedDay(bookingId: number, managerId: number, input
   assertActor(before, actor);
   if (!before.source?.paymentIntentId) throw fail('A verified captured payment is needed for a refund.');
   return execute(bookingId, actor, before, { target: {}, operationKey: input.operationKey, reason: input.reason, supportActorId: input.supportActorId },
-    facts => (ctx, at) => priceExtra(ctx, facts, input.visitId, input.amountCents, at));
+    facts => (ctx, at) => priceExtraAll(ctx, facts, input.visitId, input.amountCents, at));
 }
 
+/** This operation's reservation on each charge it touched (the booking's own charge first). */
+const reservations = (ctx: Context, operationKey: string) => ctx.charges.flatMap(charge =>
+  operations(charge.source).filter(op => op.id === datedOperationId(ctx.booking.id, operationKey, charge.source.id)));
+
 async function execute(bookingId: number, actor: DayActor, before: Context, input: DayCancellationInput,
-  plan: (facts: Facts) => (ctx: Context, at: Date) => ReturnType<typeof price>) {
-  const operationId = datedOperationId(bookingId, input.operationKey, before.source!.id);
-  const prior = operations(before.source!).find(op => op.id === operationId);
+  plan: (facts: Map<number, Facts>) => (ctx: Context, at: Date) => Priced) {
+  const prior = reservations(before, input.operationKey).length > 0;
   if (!prior) {
-    const build = plan(await getCancellationPaymentFacts(before.source!.paymentIntentId!));
-    await db.transaction(tx => commit(tx, bookingId, actor, input, operationId, build));
+    const build = plan(await chargeFacts(before));
+    await db.transaction(tx => commit(tx, bookingId, actor, input, build));
   }
   const after = await load(db as unknown as Tx, bookingId, false);
-  const operation = operations(after.source!).find(op => op.id === operationId);
-  if (operation && operation.status !== 'succeeded') {
+  if (reservations(after, input.operationKey).some(op => op.status !== 'succeeded')) {
     try { await (await import('./booking-cancellation-refund')).retryCancellationRefund(bookingId, after.managerId); }
     catch (error) { logger.warn('[DayCancellation] Refund will be retried', { bookingId, error: error instanceof Error ? error.message : String(error) }); }
   }
-  return readDatedOperation(bookingId, operationId, prior ? true : undefined);
+  return readDatedOperation(bookingId, input.operationKey, prior ? true : undefined);
 }
 
-export async function readDatedOperation(bookingId: number, operationId: string, replayed?: boolean) {
+/** The result the chef or kitchen sees: every charge's reservation for this operation, added up. */
+export async function readDatedOperation(bookingId: number, operationKey: string, replayed?: boolean) {
   const ctx = await load(db as unknown as Tx, bookingId, false);
-  const operation = operations(ctx.source!).find(op => op.id === operationId);
-  if (!operation) throw fail('The cancellation was not saved. Refresh and try again.');
-  const state = operation.status === 'succeeded' ? 'refunded' : 'processing';
-  return { success: true, action: operation.mode === 'extra' ? 'refunded' : operation.cancelsBooking ? 'cancelled' : operation.equipmentIds?.length ? 'removed' : 'days_cancelled', state, operationId,
-    refundCents: operation.customerRefund, feeRetainedCents: operation.feeRetainedCents, kitchenShareRetainedCents: operation.kitchenShareRetainedCents,
-    managerPaysCents: operation.managerRefund, localCooksPaysCents: operation.platformRefund + operation.platformProcessingCost,
-    processingCostAbsorbedCents: operation.platformProcessingCost, amountCents: operation.customerRefund, paymentIntentId: operation.intentId,
-    refundId: operation.refundId ?? null, visitIds: operation.visitIds, equipmentIds: operation.equipmentIds, days: operation.days,
-    itemName: operation.itemName as string, refundPercent: operation.refundPercent as number | null,
-    paidCents: (operation.lines as DayRefundLine[]).reduce((total, line) => total + line.paidCents, 0),
+  const ops = reservations(ctx, operationKey);
+  if (!ops.length) throw fail('The cancellation was not saved. Refresh and try again.');
+  const [operation] = ops, total = (key: string) => ops.reduce((sum, op) => sum + Number(op[key] || 0), 0);
+  const state = ops.every(op => op.status === 'succeeded') ? 'refunded' : 'processing';
+  return { success: true, action: operation.mode === 'extra' ? 'refunded' : operation.cancelsBooking ? 'cancelled' : operation.equipmentIds?.length ? 'removed' : 'days_cancelled', state,
+    operationId: operation.id as string, refundCents: total('customerRefund'), feeRetainedCents: total('feeRetainedCents'), kitchenShareRetainedCents: total('kitchenShareRetainedCents'),
+    managerPaysCents: total('managerRefund'), localCooksPaysCents: total('platformRefund') + total('platformProcessingCost'),
+    processingCostAbsorbedCents: total('platformProcessingCost'), amountCents: total('customerRefund'), paymentIntentId: operation.intentId,
+    refundId: operation.refundId ?? null, visitIds: operation.visitIds, equipmentIds: operation.equipmentIds, days: mergeDays(ops.flatMap(op => op.days)),
+    itemName: operation.itemName as string, refundPercent: ops.every(op => op.refundPercent === operation.refundPercent) ? operation.refundPercent as number | null : null,
+    paidCents: ops.flatMap(op => op.lines as DayRefundLine[]).reduce((sum, line) => sum + line.paidCents, 0),
     offer: (ctx.booking.kitchenDayCancellationOffer as DayCancellationOffer | null) ?? null, ...(replayed ? { replayed } : {}) };
 }
 
-async function commit(tx: Tx, bookingId: number, actor: DayActor, input: DayCancellationInput, operationId: string,
-  build: (ctx: Context, at: Date) => ReturnType<typeof price>) {
+async function commit(tx: Tx, bookingId: number, actor: DayActor, input: DayCancellationInput, build: (ctx: Context, at: Date) => Priced) {
   const ctx = await load(tx, bookingId, true);
   assertActor(ctx, actor);
-  const source = ctx.source!;
-  if (operations(source).some(op => op.id === operationId)) return;
+  if (reservations(ctx, input.operationKey).length) return;
   // The caller's own support action key (if any) is exempt, as in every cancellation command.
   await assertBookingMoneyWritable({ bookingId, operationKey: input.operationKey }, tx);
-  const current = metadata(source).cancellationRefundOperation;
-  // One refund operation per booking charge at a time: a later drop waits for the earlier refund to finish.
-  if (current && current.status !== 'succeeded') throw fail('An earlier refund on this booking is still being processed. Try again in a few minutes.');
-  if (metadata(source).refundRecovery && metadata(source).refundRecovery.status !== 'succeeded' || metadata(source).fullRefundRequest?.status === 'pending')
-    throw fail('An earlier refund needs Local Cooks review first.');
+  for (const { source } of refundable(ctx)) {
+    const current = metadata(source).cancellationRefundOperation;
+    // One refund operation per booking charge at a time: a later drop waits for the earlier refund to finish.
+    if (current && current.status !== 'succeeded') throw fail('An earlier refund on this booking is still being processed. Try again in a few minutes.');
+    if (metadata(source).refundRecovery && metadata(source).refundRecovery.status !== 'succeeded' || metadata(source).fullRefundRequest?.status === 'pending')
+      throw fail('An earlier refund needs Local Cooks review first.');
+  }
   const at = new Date();
   const quoted = build(ctx, at);
   if (!quoted.quoteReady) throw fail(FEE_PENDING);
+  const operationId = datedOperationId(bookingId, input.operationKey, quoted.charges[0].sourceId);
   const extra = quoted.mode === 'extra';
   if (input.expectedRefundCents !== undefined && input.expectedRefundCents !== quoted.chefRefundCents)
     throw fail('The refund changed. Review the refreshed amount before cancelling.');
@@ -466,35 +549,40 @@ async function commit(tx: Tx, bookingId: number, actor: DayActor, input: DayCanc
     await tx.update(kitchenBookings).set({ selectedSlots, equipmentItems, kitchenDayCancellationOffer: offer, updatedAt: at }).where(eq(kitchenBookings.id, bookingId));
   }
 
-  // Ledger: each refunded allocation records its exact cents; an unsent day's payout drops by its kitchen debit.
-  for (const line of quoted.lines) {
-    const row = ctx.allocations.find(item => item.id === line.allocationId)!, saved = evidence(row);
-    const record: RefundRecord = { ...line.record, operationId, at: at.toISOString() };
-    await tx.update(kitchenBookingDayAllocations).set({ evidence: { ...saved, refunds: [...records(row), record],
-      ...(line.funding === 'entitlement' ? { managerDebitedCents: Number(saved.managerDebitedCents || 0) + line.kitchenCents } : {}) } })
-      .where(eq(kitchenBookingDayAllocations.id, row.id));
-  }
-  const reversals = Array.from(new Set(quoted.lines.filter(line => line.funding === 'reversal' && line.kitchenCents > 0).map(line => line.installmentId!)))
-    .map(installmentId => { const own = quoted.lines.filter(line => line.installmentId === installmentId);
-      return { installmentId, visitId: own[0].visitId, transferId: own[0].transferId!, amountCents: own.reduce((t, l) => t + l.kitchenCents, 0) }; });
   const names = Object.fromEntries(ctx.equipment.map(entry => [entry.row.id, entry.name || 'Equipment']));
   const itemName = extra ? `an extra refund for ${dayLabel(quoted.days[0].date)}` : quoted.equipmentIds.length ? quoted.equipmentIds.map(id => names[id]).join(', ')
     : quoted.days.map(day => dayLabel(day.date)).join(', ');
-  const saved = metadata(source);
-  const operation = { id: operationId, dated: true, policyEngine: true, intentId: source.paymentIntentId, bookingId, managerId: ctx.managerId, chefId: ctx.booking.chefId,
-    operationKey: input.operationKey, mode: quoted.mode, cause, reason, status: quoted.chefRefundCents ? 'pending' : 'succeeded', acceptedAt: at.toISOString(),
-    customerRefund: quoted.chefRefundCents, managerRefund: quoted.kitchenPaysCents, platformRefund: quoted.lines.reduce((t, l) => t + l.platformCents, 0),
-    platformProcessingCost: quoted.processingCostAbsorbedCents, feeRetainedCents: quoted.feeRetainedCents, kitchenShareRetainedCents: quoted.kitchenShareRetainedCents,
-    refundPercent: quoted.refundPercent, beforeDeadline: quoted.beforeDeadline, deadlineAt: quoted.deadlineAt, cancelsBooking: quoted.cancelsBooking,
-    goodwillAppliedCents: quoted.goodwillAppliedCents, ...(extra ? { extraVisitId: quoted.days[0].visitId } : {}),
-    visitIds, equipmentIds: quoted.equipmentIds, cancelledEquipmentIds: extra ? [] : equipmentIds, days: quoted.days, lines: quoted.lines.map(({ record, ...line }) => line), reversals, itemName,
-    cancellationNoticeIncludesRefund: true, ...(input.supportActorId ? { supportOperationKey: input.operationKey, supportActorId: input.supportActorId } : {}) };
-  await tx.update(paymentTransactions).set({ metadata: { ...saved, refunds: quoted.receipts,
-    cancellationRefundOperations: [...(saved.cancellationRefundOperations || []), ...(saved.cancellationRefundOperation ? [saved.cancellationRefundOperation] : [])],
-    cancellationRefundOperation: operation }, updatedAt: at }).where(eq(paymentTransactions.id, source.id));
-  await addPaymentHistory(source.id, { previousStatus: source.status, newStatus: source.status, eventType: 'dated_refund_reserved',
-    description: extra ? `Kitchen refunded ${itemName}; reserved before provider work` : `${cause === 'kitchen' ? 'Kitchen' : 'Chef'} cancelled ${itemName}; exact day refund reserved before provider work`,
-    createdBy: input.supportActorId ?? actor.id, metadata: operation }, tx);
+  // Each charge reserves its own part: its ledger lines, its day reversals and one refund on its own payment.
+  for (const part of quoted.charges) {
+    const charge = ctx.charges.find(item => item.source.id === part.sourceId)!, source = charge.source;
+    const partId = datedOperationId(bookingId, input.operationKey, source.id);
+    // Ledger: each refunded allocation records its exact cents; an unsent day's payout drops by its kitchen debit.
+    for (const line of part.lines) {
+      const row = charge.allocations.find(item => item.id === line.allocationId)!, saved = evidence(row);
+      const record: RefundRecord = { ...line.record, operationId: partId, at: at.toISOString() };
+      await tx.update(kitchenBookingDayAllocations).set({ evidence: { ...saved, refunds: [...records(row), record],
+        ...(line.funding === 'entitlement' ? { managerDebitedCents: Number(saved.managerDebitedCents || 0) + line.kitchenCents } : {}) } })
+        .where(eq(kitchenBookingDayAllocations.id, row.id));
+    }
+    const reversals = Array.from(new Set(part.lines.filter(line => line.funding === 'reversal' && line.kitchenCents > 0).map(line => line.installmentId!)))
+      .map(installmentId => { const own = part.lines.filter(line => line.installmentId === installmentId);
+        return { installmentId, visitId: own[0].visitId, transferId: own[0].transferId!, amountCents: own.reduce((t, l) => t + l.kitchenCents, 0) }; });
+    const saved = metadata(source);
+    const operation = { id: partId, dated: true, policyEngine: true, intentId: source.paymentIntentId, bookingId, managerId: ctx.managerId, chefId: ctx.booking.chefId,
+      operationKey: input.operationKey, mode: part.mode, cause, reason, status: part.chefRefundCents ? 'pending' : 'succeeded', acceptedAt: at.toISOString(),
+      customerRefund: part.chefRefundCents, managerRefund: part.kitchenPaysCents, platformRefund: part.lines.reduce((t, l) => t + l.platformCents, 0),
+      platformProcessingCost: part.processingCostAbsorbedCents, feeRetainedCents: part.feeRetainedCents, kitchenShareRetainedCents: part.kitchenShareRetainedCents,
+      refundPercent: part.refundPercent, beforeDeadline: part.beforeDeadline, deadlineAt: part.deadlineAt, cancelsBooking: quoted.cancelsBooking,
+      goodwillAppliedCents: part.goodwillAppliedCents, ...(extra ? { extraVisitId: quoted.days[0].visitId } : {}),
+      visitIds, equipmentIds: quoted.equipmentIds, cancelledEquipmentIds: extra ? [] : equipmentIds, days: part.days, lines: part.lines.map(({ record, ...line }) => line), reversals, itemName,
+      cancellationNoticeIncludesRefund: true, ...(input.supportActorId ? { supportOperationKey: input.operationKey, supportActorId: input.supportActorId } : {}) };
+    await tx.update(paymentTransactions).set({ metadata: { ...saved, refunds: part.receipts,
+      cancellationRefundOperations: [...(saved.cancellationRefundOperations || []), ...(saved.cancellationRefundOperation ? [saved.cancellationRefundOperation] : [])],
+      cancellationRefundOperation: operation }, updatedAt: at }).where(eq(paymentTransactions.id, source.id));
+    await addPaymentHistory(source.id, { previousStatus: source.status, newStatus: source.status, eventType: 'dated_refund_reserved',
+      description: extra ? `Kitchen refunded ${itemName}; reserved before provider work` : `${cause === 'kitchen' ? 'Kitchen' : 'Chef'} cancelled ${itemName}; exact day refund reserved before provider work`,
+      createdBy: input.supportActorId ?? actor.id, metadata: operation }, tx);
+  }
   await notify(tx, ctx, quoted, { cause, reason, itemName, offer: cause === 'kitchen' ? offer : null, actorId: input.supportActorId ?? actor.id, operationId });
 }
 
@@ -554,13 +642,18 @@ async function notify(tx: Tx, ctx: Context, quoted: Quote, facts: { cause: 'chef
 export async function assignOutsideRefund(bookingId: number, actorId: number, input: { refundId: string; visitId?: number; kitchenDebitCents?: number; note?: string }) {
   const before = await load(db as unknown as Tx, bookingId, false);
   if (!before.source?.paymentIntentId) throw fail('A verified captured payment is needed for a refund.');
-  const facts = await getCancellationPaymentFacts(before.source.paymentIntentId);
+  // The refund belongs to one of the booking's charges (its own payment or a paid change).
+  const all = await chargeFacts(before);
+  const charge = before.charges.find(item => all.get(item.source.id)!.refunds.some(row => row.id === input.refundId)) ?? before.charges[0];
+  const facts = all.get(charge.source.id)!;
   const provider = facts.refunds.find(row => row.id === input.refundId);
   if (provider?.status !== 'succeeded') throw fail('Choose a refund the payment provider shows as sent.');
-  if (operations(before.source).some(op => op.id === provider.metadata?.refund_operation_id || op.refundId === provider.id))
+  if (operations(charge.source).some(op => op.id === provider.metadata?.refund_operation_id || op.refundId === provider.id))
     throw fail('This refund belongs to a booking cancellation already.');
   return db.transaction(async tx => {
-    const ctx = await load(tx, bookingId, true), source = ctx.source!, saved = metadata(source);
+    const locked = await load(tx, bookingId, true), mine = locked.charges.find(item => item.source.id === charge.source.id);
+    if (!mine) throw fail('The booking payment changed or needs review. Refresh and try again.');
+    const ctx = on(locked, mine), source = ctx.source!, saved = metadata(source);
     if ((saved.outsideRefunds || []).some((row: any) => row.refundId === provider.id)) return { success: true, replayed: true, refundId: provider.id };
     if (saved.cancellationRefundOperation && saved.cancellationRefundOperation.status !== 'succeeded') throw fail('An earlier refund on this booking is still being processed.');
     const allocated = provider.metadata?.customer_receives !== undefined;

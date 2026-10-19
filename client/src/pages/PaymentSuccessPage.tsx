@@ -68,7 +68,8 @@ export default function PaymentSuccessPage() {
     <section className="w-full max-w-md space-y-5" aria-live="polite">
       <h1 className="text-xl font-semibold">{t(confirmed ? 'checkoutConfirmed' : state === 'request_created' ? 'checkoutRequestCreated' : state === 'slot_taken' ? 'checkoutSlotTaken' : state === 'verifying' ? 'checkoutVerifying' : 'checkoutNeedsSupport')}</h1>
       <p className="text-sm text-muted-foreground">{description}</p>
-      {amount && <p className="text-sm font-medium">{amount}</p>}
+      {/* A request is a card hold until the kitchen accepts (Airbnb: "You won't be charged until the host accepts"). */}
+      {amount && <p className="text-sm font-medium">{state === 'request_created' && !confirmed && !outcome?.invitation ? t('checkoutAmountHeld', { amount }) : amount}</p>}
       {outcome?.operatingDate && (() => {
         const day = (date: string) => new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium', timeZone: 'UTC' }).format(new Date(`${date}T12:00:00Z`));
         return outcome.dates && outcome.dates.length > 1

@@ -371,7 +371,11 @@ describe('Oct 18 live fixes: independent money proofs', () => {
     expect(quote.money.datedDays.slice(0, 3).map((day: any) => day.kitchenCents)).toEqual([18000, 18000, 18000]);
     const next = await detailedPreview(days(full(MON), full(WED, [7]), full(FRI), full(SAT), full('2099-11-08')));
     expect(next.money.datedDays.slice(0, 3).map((day: any) => day.kitchenCents)).toEqual([18000, 18000, 18000]);
-    await expect(readDatedCancellationQuote(1, chef, { visitIds: [8] }, NOW)).rejects.toThrow(/separate change payment|Local Cooks/);
+    // N1 (owner, Oct 19): Wednesday is refunded from every payment that paid for it, each minus its own card-fee share.
+    const wednesday = moved.filter((part: any) => part.visitId === 8);
+    expect(new Set(wednesday.map((part: any) => part.sourceId)).size).toBeGreaterThan(1);
+    await expect(readDatedCancellationQuote(1, chef, { visitIds: [8] }, NOW)).resolves.toMatchObject({ chefRefundCents:
+      wednesday.reduce((total: number, part: any) => total + part.subtotalCents + part.taxCents + part.serviceFeeCents - part.stripeFeeCents, 0) });
   });
 
   it('fills shared residual budgets exactly when two sources move to entirely different days', async () => {
@@ -675,6 +679,13 @@ describe('Oct 18 dated checkout customer: real fulfillment and invitation accept
     expect(await fulfillDatedKitchenBooking(session, h.intents.get(intent.id), provider)).toBe(id);
     expect((await get(s.paymentTransactions)).length).toBe(count);
     expect(h.captures).toBe(invited ? 1 : 0);
+    if (!invited) {
+      // A pending request: the chef sees each day's share of the hold (Oct 19), together exactly the held total; kitchens see nothing until capture.
+      const { readBookingDayMoney } = await import('./booking-day-money');
+      const held = await readBookingDayMoney(id, { held: true });
+      expect([held.length, held.reduce((total, day) => total + day.allocatedCents, 0), held.every(day => day.kitchenRemainingCents === null)]).toEqual([3, 75030, true]);
+      expect(await readBookingDayMoney(id)).toEqual([]);
+    }
     if (invited) {
       expect((await get(s.kitchenInvitations))[0]).toMatchObject({ status: 'accepted', bookingId: id });
       // The checkout's offered kitchen and equipment cents remain frozen after the listing rises.

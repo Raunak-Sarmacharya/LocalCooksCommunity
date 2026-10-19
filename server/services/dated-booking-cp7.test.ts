@@ -68,7 +68,8 @@ vi.mock('./stripe-service', () => ({
   reverseTransferAndRefund: async (intentId: string, amount: number, _reason: string, options: any) => {
     h.refundCalls.push({ intentId, amount, installmentReversals: options.installmentReversals, reverseTransferAmount: options.reverseTransferAmount, metadata: options.metadata });
     let refund = h.refunds.find(r => r.payment_intent === intentId && r.metadata.refund_operation_id === options.idempotencyKey);
-    if (!refund) { refund = { id: `re_${h.refunds.length + 1}`, amount, currency: 'cad', payment_intent: intentId, status: 'succeeded',
+    const [paid] = await h.db.select().from(s.paymentTransactions).where(eq(s.paymentTransactions.paymentIntentId, intentId));
+    if (!refund) { refund = { id: `re_${h.refunds.length + 1}`, amount, currency: 'cad', payment_intent: intentId, charge: paid.chargeId, status: 'succeeded',
       metadata: { ...options.metadata, refund_operation_id: options.idempotencyKey } }; h.refunds.push(refund); }
     return { refundId: refund.id, refundAmount: refund.amount, refundStatus: refund.status, chargeId: 'ch_days', transferReversalId: null };
   },
@@ -77,7 +78,7 @@ vi.mock('./stripe-service', () => ({
 }));
 
 import * as engine from './kitchen-booking-changes';
-import { readDatedCancellationQuote } from './dated-booking-cancellation';
+import { cancelDatedDays, readDatedCancellationQuote } from './dated-booking-cancellation';
 import { syncDayPayoutSource } from './kitchen-day-payout-sources';
 import { dayEntitlement, refundsAllocated, releaseDayPayout } from './kitchen-day-payouts';
 import { changeScheduleDays } from '@shared/kitchen-booking-change';
@@ -394,6 +395,37 @@ describe('CP7 dated changes: money and apply', () => {
     expect(original.every((r: any) => r.allocationRevision === 2 && visits.some((v: any) => v.id === r.visitId))).toBe(true);
     // Both sources together pay exactly the new booking total.
     expect(sum([...extra, ...original].map((r: any) => ({ v: r.subtotalCents + r.taxCents + r.serviceFeeCents })), 'v')).toBe(74420);
+  });
+
+  it('N1 (owner, Oct 19): after a paid change, a dropped day is refunded from both payments under the one policy; the kitchen refunds a day in full', async () => {
+    await request(days(full(MON), full(WED, [7]), hourly(FRI, 9, 11), full(SAT)));
+    await decide('approve');
+    await syncDayPayoutSource(2);
+    const [, wed, , sat] = (await get(s.kitchenBookingVisits)).filter((v: any) => v.scheduleRevision === 2).map((v: any) => v.id);
+    const rows = live(await get(s.kitchenBookingDayAllocations));
+    const paid = (visitId: number, sourceId: number) => rows.filter((r: any) => r.visitId === visitId && r.sourceId === sourceId)
+      .reduce((n: number, r: any) => n + r.subtotalCents + r.taxCents + r.serviceFeeCents, 0);
+    const fee = (visitId: number, sourceId: number) => sum(rows.filter((r: any) => r.visitId === visitId && r.sourceId === sourceId), 'stripeFeeCents');
+    // Saturday was paid by both: $180 moved from the original charge plus $61.46 + tax + fee from the change.
+    expect([paid(sat, 1) > 0, paid(sat, 2) > 0, paid(wed, 2) > 0]).toEqual([true, true, true]);
+    const own = paid(sat, 1) - fee(sat, 1), change = paid(sat, 2) - fee(sat, 2);
+    const quote: any = await readDatedCancellationQuote(1, chef, { visitIds: [sat] }, NOW);
+    expect(quote).toMatchObject({ chefRefundCents: own + change, feeRetainedCents: fee(sat, 1) + fee(sat, 2), beforeDeadline: true });
+    expect(quote.charges).toBeUndefined();
+    expect(quote.days).toEqual([expect.objectContaining({ visitId: sat, refundCents: own + change })]);
+    const done: any = await cancelDatedDays(1, chef as any, { target: { visitIds: [sat] }, operationKey: 'n1-chef-drop-saturday', expectedRefundCents: own + change });
+    expect(done).toMatchObject({ action: 'days_cancelled', state: 'refunded', refundCents: own + change });
+    expect(h.refundCalls.map((call: any) => [call.intentId, call.amount])).toEqual([['pi_days', own], ['pi_chg_1', change]]);
+    expect((await get(s.paymentTransactions)).map((p: any) => [p.metadata.cancellationRefundOperation.status, Number(p.refundAmount)]))
+      .toEqual([['succeeded', own], ['succeeded', change]]);
+    // A replay of the same request sends nothing more.
+    expect(await cancelDatedDays(1, chef as any, { target: { visitIds: [sat] }, operationKey: 'n1-chef-drop-saturday' })).toMatchObject({ replayed: true, refundCents: own + change });
+    expect(h.refundCalls).toHaveLength(2);
+    // The kitchen can't host Wednesday (its Mixer came with the change): everything paid for that day comes back, card fees included.
+    const kitchen: any = await cancelDatedDays(1, manager as any, { target: { visitIds: [wed] }, operationKey: 'n1-kitchen-wednesday', reason: 'Oven repair' });
+    expect(kitchen).toMatchObject({ state: 'refunded', refundCents: paid(wed, 1) + paid(wed, 2), feeRetainedCents: 0 });
+    expect(h.refundCalls.slice(2).map((call: any) => [call.intentId, call.amount])).toEqual([['pi_days', paid(wed, 1)], ['pi_chg_1', paid(wed, 2)]]);
+    expect((await get(s.kitchenBookingVisits)).filter((v: any) => [wed, sat].includes(v.id)).map((v: any) => v.scheduleState)).toEqual(['cancelled', 'cancelled']);
   });
 
   it('S3: a retained item matches by date and listing despite getting a new equipment booking ID', async () => {
