@@ -8,7 +8,8 @@ import { localCooksSupportHref } from "@/components/support/ContactLocalCooks";
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { LogOut, Mail, Phone } from "lucide-react"
+import { createPortal } from "react-dom"
+import { LogOut, Mail, Phone, MessageSquare } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { BookingProblemReport } from "./BookingProblemReport"
@@ -44,11 +45,12 @@ interface InSessionPanelProps {
   onRefresh?: () => void
   departureInstructions?: string
   requiredTaskCount?: number
+  helpContainer?: HTMLElement | null
 }
 
 export function InSessionPanel({
   bookingId, chefId, kitchenName, timezone, scheduledStartAt, scheduledEndAt, canCheckout, onStartCheckout, onRefresh,
-  departureInstructions, requiredTaskCount = 0, checkoutStarted = false,
+  departureInstructions, requiredTaskCount = 0, checkoutStarted = false, helpContainer,
 }: InSessionPanelProps) {
   const { t, i18n } = useTranslation("chef")
   const locale = i18n.resolvedLanguage || i18n.language || "en-CA"
@@ -109,12 +111,31 @@ export function InSessionPanel({
   // ── Report a problem (existing commitment-problems API) ──────────────────────
 
   const tap = "min-h-11 w-full whitespace-normal h-auto py-2 sm:w-auto"
-  const link = "min-h-11 px-1 text-sm underline-offset-4 hover:underline disabled:opacity-50"
+  const link = "inline-flex min-h-11 items-center rounded-md px-1 focus-visible:ring-2 focus-visible:ring-ring text-sm underline-offset-4 hover:underline disabled:opacity-50"
   const [earlyOpen, setEarlyOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
+  const help = <>
+      <div className="flex flex-wrap items-center gap-x-3 text-sm">
+        <button type="button" className={link} disabled={chatBusy} onClick={() => void openChat()}>
+          <MessageSquare className="mr-2 h-4 w-4" aria-hidden="true" />
+          {chatBusy ? t("kciIsOpeningMessage", { defaultValue: "Opening conversation…" }) : t("kciIsMessageKitchen", { defaultValue: "Message kitchen" })}
+        </button>
+        <BookingProblemReport bookingId={bookingId} />
+        <button type="button" className={link} aria-expanded={helpOpen} onClick={() => setHelpOpen(value => !value)}>{t("kvIsHelp", { defaultValue: "Get help" })}</button>
+      </div>
+      {chatError && <p role="alert" className="text-sm text-destructive">{chatError}</p>}
+
+      {helpOpen && <div className="space-y-1 rounded-lg bg-muted/40 p-3 text-sm motion-safe:animate-in motion-safe:fade-in motion-safe:duration-150">
+        <a className="flex min-h-11 items-center gap-2 underline-offset-4 hover:underline" href={localCooksSupportHref({ bookingId, role: "chef", situation: "Help during kitchen visit" })}><Mail className="h-4 w-4 shrink-0" />support@localcooks.ca</a>
+        <a className="flex min-h-11 items-center gap-2 underline-offset-4 hover:underline" href="tel:+17096318480"><Phone className="h-4 w-4 shrink-0" />+1 (709) 631-8480</a>
+        <p className="text-xs text-muted-foreground">{t("kciIsHelpHours", { defaultValue: "Mon–Fri, 9 AM–5 PM NL time. After hours, we reply within 24 hours." })}</p>
+      </div>}
+
+  </>
   return (
     <section className="rounded-2xl border bg-card p-4 sm:p-6 space-y-4" aria-label={t("kciInSessionTitle", { defaultValue: "Your visit" })} data-phase={phase}>
       <div className="space-y-2">
+        {phase !== "ended" && <h2 className="text-base font-semibold">{t("kciCookingEnds", { defaultValue: "Cooking now · ends {time}", time: endTime })}</h2>}
         {/* One countdown, announced politely: its text changes at most once a minute. The end time is its small label. */}
         <div>
           <p className="text-[22px] font-semibold leading-7 tabular-nums" role="status" aria-live="polite">{countdown}</p>
@@ -124,7 +145,7 @@ export function InSessionPanel({
         </div>
         <div role="progressbar" aria-label={t("kciIsProgressLabel", { defaultValue: "Booked time used" })} aria-valuemin={0} aria-valuemax={100}
           aria-valuenow={Math.round(progress)} className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-          <div className="h-full bg-foreground/50 transition-[width] motion-reduce:transition-none" style={{ width: `${progress}%` }} />
+          <div className="h-full rounded-full bg-primary motion-safe:transition-[width]" style={{ width: `${progress}%` }} />
         </div>
       </div>
 
@@ -141,22 +162,7 @@ export function InSessionPanel({
         </Button>}
       </div>
 
-      <div className="flex flex-wrap items-center gap-x-1 text-sm">
-        <button type="button" className={link} disabled={chatBusy} onClick={() => void openChat()}>
-          {chatBusy ? t("kciIsOpeningMessage", { defaultValue: "Opening conversation…" }) : t("kciIsMessageKitchen", { defaultValue: "Message kitchen" })}
-        </button>
-        <span aria-hidden className="text-muted-foreground">·</span>
-        <BookingProblemReport bookingId={bookingId} />
-        <span aria-hidden className="text-muted-foreground">·</span>
-        <button type="button" className={link} aria-expanded={helpOpen} onClick={() => setHelpOpen(value => !value)}>{t("kvIsHelp", { defaultValue: "Get help" })}</button>
-      </div>
-      {chatError && <p role="alert" className="text-sm text-destructive">{chatError}</p>}
-
-      {helpOpen && <div className="space-y-1 rounded-lg bg-muted/40 p-3 text-sm motion-safe:animate-in motion-safe:fade-in motion-safe:duration-150">
-        <a className="flex min-h-11 items-center gap-2 underline-offset-4 hover:underline" href={localCooksSupportHref({ bookingId, role: "chef", situation: "Help during kitchen visit" })}><Mail className="h-4 w-4 shrink-0" />support@localcooks.ca</a>
-        <a className="flex min-h-11 items-center gap-2 underline-offset-4 hover:underline" href="tel:+17096318480"><Phone className="h-4 w-4 shrink-0" />+1 (709) 631-8480</a>
-        <p className="text-xs text-muted-foreground">{t("kciIsHelpHours", { defaultValue: "Mon–Fri, 9 AM–5 PM NL time. After hours, we reply within 24 hours." })}</p>
-      </div>}
+      {helpContainer ? createPortal(help, helpContainer) : help}
 
       <Dialog open={earlyOpen} onOpenChange={setEarlyOpen}>
         <DialogContent showCloseButton>

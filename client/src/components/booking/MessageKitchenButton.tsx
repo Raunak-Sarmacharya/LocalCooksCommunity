@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
-import { Phone } from "lucide-react";
+import { MessageSquare, Phone } from "lucide-react";
 import { auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -29,10 +29,11 @@ export function MessageKitchenButton({ bookingId, phone, label, link = false }: 
   };
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <Button type="button" variant={link ? "link" : "outline"} size="sm" className={link ? "h-auto p-0" : undefined} onClick={() => void open()} disabled={opening}>
+      <Button type="button" variant={link ? "link" : "outline"} size="sm" className="min-h-11 h-auto whitespace-normal" onClick={() => void open()} disabled={opening}>
+        <MessageSquare className="mr-1.5 h-4 w-4 shrink-0" aria-hidden="true" />
         {opening ? t("kciMessageOpening", "Opening conversation…") : label ?? t("kciMessageKitchen", "Message kitchen")}
       </Button>
-      {phone ? <Button asChild variant="outline" size="sm"><a href={`tel:${phone}`}><Phone className="mr-1.5 h-3.5 w-3.5" aria-hidden />{t("kciCallKitchen", "Call kitchen")}</a></Button> : null}
+      {phone ? <Button asChild variant="outline" size="sm" className="min-h-11"><a href={`tel:${phone}`}><Phone className="mr-1.5 h-3.5 w-3.5" aria-hidden />{t("kciCallKitchen", "Call kitchen")}</a></Button> : null}
     </div>
   );
 }
