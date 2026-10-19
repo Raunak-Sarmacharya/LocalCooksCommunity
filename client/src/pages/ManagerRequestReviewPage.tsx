@@ -66,7 +66,8 @@ export default function ManagerRequestReviewPage() {
     if (!dated) {
       const items = equipment.map(item => ({ id: item.id, name: name(item), cents: Number(item.totalPrice) || 0 }));
       return [{ id: 0, date: String(booking.bookingDate).slice(0, 10), start: booking.startTime, end: booking.endTime, fullDay: booking.pricingMode === 'daily',
-        kitchenCents: Number(booking.totalPrice || 0) - items.reduce((sum, item) => sum + item.cents, 0), items }];
+        // A single-day booking's totalPrice is its kitchen time; add-ons are their own rows.
+        kitchenCents: Number(booking.totalPrice || 0), items }];
     }
     return (booking.visits || []).filter(visit => visit.visitDate && visit.scheduleRevision === booking.scheduleRevision && visit.scheduleState === 'active')
       .sort((a, b) => String(a.visitDate).localeCompare(String(b.visitDate)))
