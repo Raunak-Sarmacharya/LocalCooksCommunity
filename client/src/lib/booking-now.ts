@@ -206,7 +206,6 @@ function chefSecondary(phase: BookingHeaderPhase, f: BookingNowFacts): NowSecond
       // Said they're running late: "Arrived early?" would contradict it.
       if (!f.startPassed && f.canMessage && !f.runningLate) out.push('arrived_early');
       if (f.runningLateOpen) out.push('running_late');
-      if (phase === 'today') out.push('see_arrival_details');
       if (f.canAddToCalendar) out.push('add_to_calendar');
       break;
     case 'in_session': out.push('need_more_time'); break;

@@ -43,9 +43,9 @@ describe("bookingPrimaryAction", () => {
       expect(bookingPrimaryAction(phase, true)).toBeNull();
     }
   });
-  it("gives the chef Open your visit only in the check-in window or in session", () => {
-    for (const phase of ["checkin_open", "in_session", "time_ended_in_session"] as const) expect(bookingPrimaryAction(phase, false)).toBe("open_visit");
-    for (const phase of ["pending", "confirmed", "today", "checkout_review", "completed", "cancelled"] as const) expect(bookingPrimaryAction(phase, false)).toBeNull();
+  it("gives the chef Check in from the morning of the day through the session", () => {
+    for (const phase of ["today", "checkin_open", "in_session", "time_ended_in_session"] as const) expect(bookingPrimaryAction(phase, false)).toBe("open_visit");
+    for (const phase of ["pending", "confirmed", "checkout_review", "completed", "cancelled"] as const) expect(bookingPrimaryAction(phase, false)).toBeNull();
   });
 });
 

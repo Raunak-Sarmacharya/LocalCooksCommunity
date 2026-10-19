@@ -84,8 +84,8 @@ const cases: Case[] = [
     primary: { chef: null, manager: null }, message: true },
   { name: "today, in the check-in window", now: START - 5 * 60_000, booking: { status: "confirmed", paymentStatus: "paid", checkinStatus: "not_checked_in" },
     pill: { chef: "Today", manager: "Today" },
-    next: { chef: /^Check-in is open\. Open your visit when you arrive\.$/, manager: /^Ada Lovelace arrives today at 10:00 a\.m\.$/ },
-    primary: { chef: "Open your visit", manager: null }, message: true },
+    next: { chef: /^Check-in is open\. Check in when you get to the kitchen\.$/, manager: /^Ada Lovelace arrives today at 10:00 a\.m\.$/ },
+    primary: { chef: "Check in", manager: null }, message: true },
   { name: "in session", now: START + 30 * 60_000, booking: { status: "confirmed", paymentStatus: "paid", checkinStatus: "checked_in", checkedInAt: "2030-01-15T13:32:00Z" },
     pill: { chef: "In session", manager: "In session" },
     next: { chef: /^You’re checked in\. Check out by 12:00 p\.m\.$/, manager: /^Ada Lovelace is in the kitchen until 12:00 p\.m\. Checked in 10:02 a\.m\.$/ },
@@ -158,7 +158,7 @@ describe.each(["chef", "manager"] as const)("booking details header (%s)", role 
 
     // Role-scoped words (P3) and at most three visible secondary links (§7).
     if (role === "chef") expect(document.body.textContent).not.toMatch(/inspection|payout|Fix the visit record/i);
-    else expect(document.body.textContent).not.toMatch(/Open your visit/);
+    else expect(document.body.textContent).not.toMatch(/Check in when you get/);
     expect(screen.queryByTestId("now-secondary")?.querySelectorAll("a, button").length ?? 0).toBeLessThanOrEqual(3);
   });
 });
@@ -783,7 +783,7 @@ it('shows a dated chef booking as a span, day count and chronological day list w
   expect(await screen.findByTestId('booking-day-list')).toHaveTextContent('Jan 15, 2030');
   expect(screen.getByTestId('booking-header')).toHaveTextContent('3 days');
   expect(screen.getByTestId('booking-header')).toHaveTextContent(/January 15.*January 19/);
-  expect(screen.getByRole('link', { name: 'Open your visit' })).toHaveAttribute('href', '/booking/5/visit?visitId=11');
+  expect(screen.getByRole('link', { name: 'Check in' })).toHaveAttribute('href', '/booking/5/visit?visitId=11');
   expect(screen.getByTestId('payment-card')).toHaveTextContent('$300.00');
   // Day 3 of the stay: the one deadline (Jan 14) has passed, so the card says so instead of a past "Cancel by".
   expect(screen.getByTestId('cancellation-card')).toHaveTextContent(/refund deadline passed on Jan 14.*50%/);

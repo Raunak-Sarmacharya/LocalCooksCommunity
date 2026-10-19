@@ -133,7 +133,12 @@ export function VisitCodePanel({ bookingId, customerName, kitchenName, timezone,
     },
   })
 
-  const targets = query.data?.targets ?? []
+  const allTargets = query.data?.targets ?? []
+  // Several days: only the day whose check-in is open now (else the next one), never tomorrow's code today.
+  const openNow = allTargets.filter(target => target.visitId && windowOpen(target))
+  const upcoming = allTargets.find(target => !target.consumed && !target.revoked)
+  const multiDay = new Set(visits.map(visit => visit.visitDate?.slice(0, 10)).filter(Boolean)).size > 1
+  const targets = multiDay && allTargets.length > 1 ? (openNow.length ? openNow : upcoming ? [upcoming] : allTargets) : allTargets
   const zone = timezone || undefined
   const shownTargets = targets.filter(target => target.consumed || (!visitEnded && !target.revoked && bookingStatus !== "cancelled"))
   const arrivalShown = embedded && shownTargets.length > 0 && shownTargets.every(target => target.consumed)
@@ -236,7 +241,7 @@ export function VisitCodePanel({ bookingId, customerName, kitchenName, timezone,
     <span>{t("scpCodeCollapsed", { defaultValue: "Check-in code · shared in person when they arrive" })}</span>
     <Button variant="link" className="h-auto min-h-11 px-0 font-medium text-foreground underline underline-offset-4" onClick={() => setExpanded(true)}>{t("scpShowCode", { defaultValue: "Show code" })}</Button>
   </div>
-  const multiple = targets.filter(target => !target.consumed && !target.revoked).length > 1
+  const multiple = allTargets.filter(target => !target.consumed && !target.revoked).length > 1
   const dialogTitle = !action ? "" : action.kind === "issue" ? t("visitCodeIssueTitle", { defaultValue: "Get a new check-in code?" })
     : modeSelf ? t("scpSelfTitle", { chef: chefName })
       : t("visitCodeStaffedTitle", { defaultValue: "Switch back to staffed check-in?" })
@@ -326,7 +331,7 @@ export function VisitCodePanel({ bookingId, customerName, kitchenName, timezone,
           <form className="space-y-4" onSubmit={event => { event.preventDefault(); void confirm() }}>
             {action && action.kind !== 'issue' && <SettingChangePreview
               whatChanges={t(modeSelf ? 'scpSelfWhat' : 'scpStaffedWhat', { chef: chefName })}
-              appliesTo={t(modeSelf ? allVisits ? 'scpSelfAllWhen' : 'scpSelfWhen' : 'scpStaffedWhen', { n: targets.length })}
+              appliesTo={t(modeSelf ? allVisits ? 'scpSelfAllWhen' : 'scpSelfWhen' : 'scpStaffedWhen', { n: allTargets.length })}
               rightNow={t('scpSelfImpact', { chef: chefName })} undo={t(modeSelf ? 'scpSelfUndo' : 'scpStaffedUndo')} />}
             {modeSelf && (
               <>

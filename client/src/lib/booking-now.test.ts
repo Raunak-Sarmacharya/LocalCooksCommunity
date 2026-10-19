@@ -20,7 +20,7 @@ const facts: BookingNowFacts = {
 const phases: BookingHeaderPhase[] = ['pending', 'confirmed', 'today', 'checkin_open', 'in_session', 'time_ended_in_session',
   'checkout_review', 'visit_ended', 'completed', 'no_show', 'no_checkin', 'issue', 'cancellation_requested', 'cancelled'];
 const expectedPrimary: Record<NowRole, Partial<Record<BookingHeaderPhase, string>>> = {
-  chef: { checkin_open: 'open_visit', in_session: 'open_visit', time_ended_in_session: 'open_visit' },
+  chef: { today: 'open_visit', checkin_open: 'open_visit', in_session: 'open_visit', time_ended_in_session: 'open_visit' },
   manager: { pending: 'review_request', cancellation_requested: 'review_cancellation', checkout_review: 'review_checkout', visit_ended: 'inspect_visit', no_checkin: 'answer_attendance' },
 };
 const words = (text: string) => text.split(/\s+/).filter(Boolean).length;

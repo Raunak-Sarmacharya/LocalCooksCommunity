@@ -18,7 +18,10 @@ describe('chef booking days', () => {
     render(<BookingDayList bookingId={5} visits={days} timezone="America/St_Johns" status="confirmed" />);
     const rows = screen.getAllByRole('listitem'); expect(rows).toHaveLength(4);
     expect(rows[0]).toHaveTextContent('Done'); expect(rows[1]).toHaveTextContent('Today'); expect(rows[2]).toHaveTextContent('Upcoming'); expect(rows[2]).toHaveTextContent('Full day'); expect(rows[3]).toHaveTextContent('Cancelled');
-    expect(screen.getByRole('link', { name: 'Open your visit' })).toHaveAttribute('href', '/booking/5/visit?visitId=2');
+    expect(screen.getByRole('link', { name: 'Check in' })).toHaveAttribute('href', '/booking/5/visit?visitId=2');
+    cleanup();
+    render(<BookingDayList bookingId={5} visits={days.map(day => day.id === 2 ? { ...day, checkinStatus: 'checked_in' } : day)} timezone="America/St_Johns" status="confirmed" />);
+    expect(screen.getByRole('link', { name: 'Check out' })).toHaveAttribute('href', '/booking/5/visit?visitId=2');
     expect(within(rows[0]).queryByRole('link')).toBeNull(); expect(within(rows[3]).queryByRole('link')).toBeNull();
   });
   it('shows what each day cost and any refund on it', () => {

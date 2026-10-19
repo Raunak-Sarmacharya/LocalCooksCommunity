@@ -67,7 +67,7 @@ describe('chef My bookings', () => {
     mount();
     const live = card('Main Kitchen');
     expect(within(live).getByText('You’re checked in until 4:00 p.m.')).toBeInTheDocument();
-    expect(within(live).getByRole('link', { name: 'Open your visit' })).toHaveAttribute('href', '/booking/164/visit');
+    expect(within(live).getByRole('link', { name: 'Check in' })).toHaveAttribute('href', '/booking/164/visit');
     expect(within(card('Request Kitchen')).getByText('The kitchen replies by Oct 15, 9:30 a.m.')).toBeInTheDocument();
     // A partial refund on a booking that still goes ahead says what it is (no bare "Refund: $26.00 —").
     expect(within(card('Soon Kitchen')).getByText('$26.00 refunded to you')).toBeInTheDocument();
@@ -121,11 +121,11 @@ describe('chef My bookings', () => {
       startTime: '21:15', endTime: '22:15', status: 'completed', checkinStatus, closeout: { phase: 'ended', visits: [{ inspection: { canRespond: false } }] } });
     mount([closed(132, 'Stale In Kitchen', 'checked_in'), closed(151, 'Stale Out Kitchen', 'checkout_requested'), row({ id: 200, kitchenName: 'Later Kitchen', bookingDate: '2026-10-20T00:00:00.000Z' })]);
     expect(screen.queryByText('Stale In Kitchen')).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Open your visit' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Check in' })).not.toBeInTheDocument();
     openTab(/Past/);
     for (const name of ['Stale In Kitchen', 'Stale Out Kitchen']) {
       expect(within(card(name)).getByTestId('booking-status-pill')).toHaveTextContent('Completed');
-      expect(within(card(name)).queryByRole('link', { name: 'Open your visit' })).not.toBeInTheDocument();
+      expect(within(card(name)).queryByRole('link', { name: 'Check in' })).not.toBeInTheDocument();
     }
   });
 

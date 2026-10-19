@@ -96,7 +96,8 @@ export function bookingPrimaryAction(phase: BookingHeaderPhase, manager: boolean
     if (phase === 'no_checkin' && inspectionCanRespond) return 'answer_attendance';
     return null;
   }
-  return ['checkin_open', 'in_session', 'time_ended_in_session'].includes(phase) ? 'open_visit' : null;
+  // From the morning of the day (Turo/Airbnb): one obvious way in; the visit page says when check-in opens.
+  return ['today', 'checkin_open', 'in_session', 'time_ended_in_session'].includes(phase) ? 'open_visit' : null;
 }
 
 const BEFORE_ARRIVAL_PHASES: BookingHeaderPhase[] = ['pending', 'confirmed', 'today', 'checkin_open'];
