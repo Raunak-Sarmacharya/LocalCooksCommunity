@@ -1,3 +1,5 @@
+import { storageListingReadiness } from "@shared/storage-listing-readiness";
+import { storageInstructions } from "./storage-listing-readiness";
 /** Standalone storage. Lock order: rental -> listing -> term -> payment; provider I/O follows the committed decision. */
 import Stripe from 'stripe';
 import { and, asc, eq, inArray, isNotNull, lte, or, sql } from 'drizzle-orm';
@@ -46,13 +48,13 @@ type FrozenTerms = { version: string; dailyPriceCents: number; taxRatePercent: n
   removalReviewAfterDays: number; maxTermDays: number; cancellationPolicySnapshot: CancellationPolicySnapshot;
   acceptedAt: string; disclosureVersion: string };
 
-async function context(listingId: number, reader: Reader) {
+async function context(listingId: number, reader: Reader, existingRental = false) {
   const [listing] = await reader.select().from(storageListings).where(eq(storageListings.id, listingId));
-  // Same visibility rule as the chef listing pages: an approved or active listing is live.
-  if (!listing || !listing.isActive || !['approved', 'active'].includes(listing.status) || listing.pricingModel !== 'daily') fail('unavailable');
+  if (!listing || listing.pricingModel !== 'daily') fail('unavailable');
   const [place] = await reader.select({ kitchen: kitchens, location: locations }).from(kitchens)
     .innerJoin(locations, eq(locations.id, kitchens.locationId)).where(eq(kitchens.id, listing.kitchenId));
   if (!place?.location.managerId) fail('unavailable');
+  if (!existingRental && !storageListingReadiness(listing, await storageInstructions(place.location.id, reader)).visible) fail('unavailable');
   return { listing, ...place, timezone: place.location.timezone || 'America/St_Johns' };
 }
 async function eligible(chefId: number, ctx: Awaited<ReturnType<typeof context>>) {
@@ -262,7 +264,7 @@ export async function decideRental(id: number, target: DecisionTarget, actor?: R
     if (target === 'reserved' && (!rental.responseDeadline || now >= rental.responseDeadline)) fail('deadline_passed');
     let dates = { termStart: rental.termStart!, paidThrough: rental.paidThrough! }, unitIndex = rental.unitIndex!;
     if (target === 'reserved') {
-      const ctx = await context(rental.storageListingId, tx);
+      const ctx = await context(rental.storageListingId, tx, true);
       dates = approvedTermDates(rental.termStart!, term.days, localToday(now, rental.timezone!));
       unitIndex = await freeUnit(tx, ctx.listing.id, ctx.listing.unitCount, { ...dates, rentalState: 'reserved' }, localToday(now, rental.timezone!), id, options.unitIndex) ?? fail('full');
       // Reserve shifted inventory BEFORE capture, so a new checkout cannot take it during provider I/O.
@@ -415,7 +417,7 @@ export async function readRental(id: number, actor: RentalActor, now = new Date(
   }
   if (actor.role === 'chef' && rental.termStart! <= localToday(now, rental.timezone!) && !['requested', 'declined', 'expired', 'withdrawn'].includes(rental.rentalState!)) actions.push('report_problem');
   // The extend sheet quotes the exact limit (max term, reclaim, next renter); this only gates the button.
-  if (actor.role === 'chef' && !pending && ['reserved', 'active', 'removal_review'].includes(rental.rentalState!)
+  if (actor.role === 'chef' && !pending && ['reserved', 'active'].includes(rental.rentalState!)
     && daysBetween(localToday(now, rental.timezone!), rental.paidThrough!) <= EXTEND_WINDOW_DAYS) actions.push('extend');
   return { id, ref: rental.referenceCode, kitchen: { id: ctx.kitchen.id, name: ctx.kitchen.name },
     listing: { id: ctx.listing.id, name: ctx.listing.name }, chef: { id: rental.chefId ?? null, name: chefName },

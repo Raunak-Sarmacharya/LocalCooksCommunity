@@ -64,19 +64,11 @@ it('keeps missing, incomplete and paused tours out of the publishing requirement
   }
 });
 
-it('requires actual storage flags and notes only when this kitchen has storage listings', async () => {
-  mocks.checklist = { checkinEnabled: true, checkoutEnabled: true, checkinInstructions: 'Arrive.', checkoutInstructions: 'Leave.' };
-  const noStorage = await buildKitchenReadiness(7);
-  expect(noStorage?.checklist.requirements.some(row => row.id === 'storageVisitSetup')).toBe(false);
-  mocks.storage = [{ id: 9 }];
-  const missing = await buildKitchenReadiness(7);
-  expect(missing?.checklist.missingRequirementIds).toContain('storageVisitSetup');
-  expect(missing?.details.storageVisitSetup).toMatchObject({ listingCount: 1, checkinEnabled: false, checkoutEnabled: false });
-  Object.assign(mocks.checklist, { storageCheckinEnabled: true, storageCheckoutEnabled: true,
-    storageCheckinInstructions: 'Use shelf A.', storageCheckoutInstructions: 'Empty shelf A.', storageCheckinItems: [], storageCheckoutItems: [] });
-  expect((await buildKitchenReadiness(7))?.checklist.missingRequirementIds).not.toContain('storageVisitSetup');
-  mocks.checklist.storageCheckoutInstructions = '   ';
-  expect((await buildKitchenReadiness(7))?.checklist.missingRequirementIds).toContain('storageVisitSetup');
+it('keeps storage setup independent from kitchen listing requirements', async () => {
+  mocks.storage = [{ id: 1 }];
+  const review = await buildKitchenReadiness(7);
+  expect(review?.checklist.requirements.map(row => row.id)).not.toContain('storageVisitSetup');
+  expect(review?.details).not.toHaveProperty('storageVisitSetup');
 });
 
 describe('listing visit setup from saved configuration', () => {

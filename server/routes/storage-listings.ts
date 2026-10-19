@@ -1,3 +1,5 @@
+import { storageListingReadiness } from "@shared/storage-listing-readiness";
+import { storageInstructions } from "../services/storage-listing-readiness";
 import { logger } from "../logger";
 import { Router, Request, Response } from "express";
 
@@ -161,13 +163,15 @@ router.post("/manager/storage-listings", requireFirebaseAuthWithUser, requireMan
         const validated = validateStorageListingInput(listingData, platformMaxDays);
         if (validated.error) return res.status(400).json({ error: validated.error });
 
-        // Manager-created listings are auto-approved and active
-        // This enables immediate visibility to chefs without requiring separate admin approval
+        const readiness = storageListingReadiness(validated.value!, await storageInstructions(kitchen.locationId));
+        if (listingData.isActive === true && !readiness.ready) {
+            return res.status(409).json({ error: "Finish storage setup before listing", missing: readiness.missing });
+        }
         const created = await inventoryService.createStorageListing({
             kitchenId: parseInt(kitchenId),
             ...validated.value,
-            status: 'active', // Auto-activate manager-created listings
-            isActive: true,
+            status: listingData.isActive === true ? 'active' : 'draft',
+            isActive: listingData.isActive === true,
         });
 
         logger.info(`✅ Storage listing created by manager ${user.id}`);
@@ -209,7 +213,11 @@ router.put("/manager/storage-listings/:listingId", requireFirebaseAuthWithUser, 
         const { maxTermDays: platformMaxDays } = await storageSettings();
         const validated = validateStorageListingInput(req.body, platformMaxDays, true);
         if (validated.error) return res.status(400).json({ error: validated.error });
-        const updated = await inventoryService.updateStorageListing(listingId, validated.value);
+        const readiness = storageListingReadiness({ ...existingListing, ...validated.value }, await storageInstructions(kitchen.locationId));
+        if (req.body.isActive === true && !readiness.ready) {
+            return res.status(409).json({ error: "Finish storage setup before listing", missing: readiness.missing });
+        }
+        const updated = await inventoryService.updateStorageListing(listingId, { ...validated.value, ...(req.body.isActive === true ? { status: 'active' } : {}) });
 
         logger.info(`✅ Storage listing ${listingId} updated by manager ${user.id}`);
         res.json(updated);
@@ -278,11 +286,8 @@ router.get("/chef/kitchens/:kitchenId/storage-listings", requireChef, async (req
         // Get all storage listings for this kitchen
         const allListings = await inventoryService.getStorageListingsByKitchen(kitchenId);
 
-        // Visibility is status + active only. A full or removal-review listing stays visible and reads as unavailable.
-        const visibleListings = allListings.filter((listing: any) =>
-            (listing.status === 'approved' || listing.status === 'active') &&
-            listing.isActive === true
-        );
+        const instructions = await storageInstructions(kitchen.locationId);
+        const visibleListings = allListings.filter((listing: any) => storageListingReadiness(listing, instructions).visible);
 
         const settings = await storageSettings();
         const location = await locationService.getLocationById(kitchen.locationId);
@@ -319,9 +324,8 @@ router.get("/chef/kitchens/:kitchenId/storage-availability", requireChef, async 
         }
 
         const [allListings, settings] = await Promise.all([inventoryService.getStorageListingsByKitchen(kitchenId), storageSettings()]);
-        const visibleListings = allListings.filter((listing: any) =>
-            (listing.status === 'approved' || listing.status === 'active') && listing.isActive === true
-        );
+        const instructions = await storageInstructions(kitchen.locationId);
+        const visibleListings = allListings.filter((listing: any) => storageListingReadiness(listing, instructions).visible);
         const location = await locationService.getLocationById(kitchen.locationId);
         const today = availabilityToday(location?.timezone);
         const occupied = await occupancyByListing(visibleListings.map((listing: any) => listing.id), today);
@@ -368,10 +372,8 @@ router.get("/public/kitchens/:kitchenId/storage-listings", async (req: Request, 
         }
 
         const allListings = await inventoryService.getStorageListingsByKitchen(kitchenId);
-        const visibleListings = allListings.filter((listing: any) =>
-            (listing.status === "approved" || listing.status === "active") &&
-            listing.isActive === true
-        );
+        const instructions = await storageInstructions(kitchen.locationId);
+        const visibleListings = allListings.filter((listing: any) => storageListingReadiness(listing, instructions).visible);
 
         const settings = await storageSettings();
         const location = await locationService.getLocationById(kitchen.locationId);

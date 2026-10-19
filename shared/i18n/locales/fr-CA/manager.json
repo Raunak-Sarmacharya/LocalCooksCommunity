@@ -10,8 +10,6 @@
   "kitchenArrivalDepartureBack": "Retour à la cuisine",
   "kitchenArrivalDepartureScope": "L’arrivée et le départ sont toujours disponibles. Utilisez les valeurs par défaut de {location} ou personnalisez chaque section pour cette cuisine.",
   "tourActions": "Actions de la visite",
-  "listingReq_storageVisitSetup": "Configuration de l’arrivée et du départ de l’entreposage",
-  "listingReq_storageVisitSetupWhy": "Cette cuisine propose de l’entreposage. Activez l’arrivée et le départ ensemble et enregistrez les deux consignes. Les tâches et les photos sont facultatives.",
   "listingStorageCount": "{count} offre(s) d’entreposage",
   "overviewStorageBookingType": "Réservation d’entreposage",
   "overviewClaimComplete": "Compléter et soumettre la réclamation",

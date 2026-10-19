@@ -10,8 +10,6 @@
   "kitchenArrivalDepartureBack": "Back to kitchen",
   "kitchenArrivalDepartureScope": "Arrival and departure are always available. Use the {location} defaults or customize each section for this kitchen.",
   "tourActions": "Tour actions",
-  "listingReq_storageVisitSetup": "Storage arrival and departure setup",
-  "listingReq_storageVisitSetupWhy": "This kitchen has storage listings. Enable storage check-in and checkout together and save both notes. Duties and photos are optional.",
   "listingStorageCount": "{count} storage listing(s)",
   "overviewStorageBookingType": "Storage booking",
   "overviewClaimComplete": "Complete and submit the draft claim",

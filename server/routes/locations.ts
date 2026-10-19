@@ -1,3 +1,4 @@
+import { storageListingReadiness } from "@shared/storage-listing-readiness";
 import { bookingWindowCap } from '../services/booking-policy-settings';
 import { logger } from "../logger";
 
@@ -171,19 +172,15 @@ router.get('/public/kitchens', async (req: Request, res: Response) => {
         const geoByAddress = await geocodeAddresses(kitchenAddresses);
 
         // Fetch all active storage listings and group by kitchen
-        const { storageListings, equipmentListings } = await import('@shared/schema');
+        const { storageListings, equipmentListings, checkinCheckoutChecklists, kitchens } = await import('@shared/schema');
         const { db } = await import('../db');
         const { eq } = await import('drizzle-orm');
         
-        const allStorageListings = await db
-            .select({
-                kitchenId: storageListings.kitchenId,
-                storageType: storageListings.storageType,
-                name: storageListings.name,
-                isActive: storageListings.isActive,
-            })
-            .from(storageListings)
-            .where(eq(storageListings.isActive, true));
+        const storageRows = await db.select({ listing: storageListings, instructions: checkinCheckoutChecklists })
+            .from(storageListings).innerJoin(kitchens, eq(kitchens.id, storageListings.kitchenId))
+            .leftJoin(checkinCheckoutChecklists, eq(checkinCheckoutChecklists.locationId, kitchens.locationId));
+        const allStorageListings = storageRows.filter(row => storageListingReadiness(row.listing, row.instructions).visible)
+            .map(row => row.listing);
 
         // Fetch all active equipment listings and group by kitchen
         const allEquipmentListings = await db

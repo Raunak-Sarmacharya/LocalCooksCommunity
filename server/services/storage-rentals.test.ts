@@ -29,7 +29,7 @@ import { assertRentalAcceptance, createRentalCheckout, decideRental, expireRenta
 let pg: PGlite;
 const { kitchens, locations, storageListings, storageBookings, storageRentalTerms, paymentTransactions, platformSettings,
   kitchenCancellationPolicies, kitchenCheckoutIncidents, users } = schema;
-const tables = [kitchens, locations, storageListings, storageBookings, storageRentalTerms, paymentTransactions, platformSettings, kitchenCancellationPolicies, kitchenCheckoutIncidents, users];
+const tables = [schema.checkinCheckoutChecklists, kitchens, locations, storageListings, storageBookings, storageRentalTerms, paymentTransactions, platformSettings, kitchenCancellationPolicies, kitchenCheckoutIncidents, users];
 const dialect = new PgDialect();
 const now = new Date('2026-10-16T12:00:00Z');
 const input = { listingId: 1, startOn: '2026-10-17', days: 3, requestKey: 'fixture_request', expectedTotalCents: 3550,
@@ -73,9 +73,10 @@ beforeEach(async () => {
   vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(now);
   vi.clearAllMocks(); intents.clear(); h.canBook = true; h.claim = false; h.holdover = false;
   for (const table of tables) await h.db.delete(table);
+  await h.db.insert(schema.checkinCheckoutChecklists).values({ locationId: 1, storageCheckinInstructions: 'Use shelf', storageCheckoutInstructions: 'Clear shelf' });
   await h.db.insert(locations).values({ id: 1, managerId: 2, timezone: 'America/St_Johns' });
   await h.db.insert(kitchens).values({ id: 1, locationId: 1, name: 'Harbour', taxRatePercent: '15' });
-  await h.db.insert(storageListings).values({ id: 1, kitchenId: 1, name: 'Shelf', isActive: true, status: 'approved', pricingModel: 'daily', basePrice: '1000', unitCount: 1 });
+  await h.db.insert(storageListings).values({ id: 1, kitchenId: 1, name: 'Shelf', storageType: 'dry', isActive: true, status: 'approved', pricingModel: 'daily', basePrice: '1000', unitCount: 1 });
   await h.db.insert(kitchenCancellationPolicies).values({ id: 1, kitchenId: 1, version: 1, status: 'published', noticeHours: 48, lateChargePercent: 50 });
   stripe.checkout.sessions.create.mockImplementation(async (params: any) => ({ id: 'cs_test_fixture', livemode: false, url: 'https://checkout.stripe.test/fixture', ...params }));
 }, 30000);
@@ -101,7 +102,7 @@ describe('standalone storage request and Checkout', () => {
   it('a newly created (active) listing can be rented, like the chef listing pages show it; drafts cannot (live #53)', async () => {
     await h.db.update(storageListings).set({ status: 'active' });
     expect(await quoteRental(3, input, now)).toMatchObject({ totalCents: 3550 });
-    await h.db.update(storageListings).set({ status: 'draft' });
+    await h.db.update(storageListings).set({ isActive: false });
     await expect(quoteRental(3, input, now)).rejects.toMatchObject({ code: 'unavailable' });
   });
   it('enforces approved chef, claim/holdover holds, start window and kitchen/platform max', async () => {
@@ -260,4 +261,14 @@ describe('storage decisions and exact expiry', () => {
     vi.stubEnv('STRIPE_SECRET_KEY', 'sk_live_not_a_secret');
     expect(storageRentalStripe).toThrow('sandbox_only'); vi.unstubAllEnvs();
   });
+});
+
+it('uses location instructions for SQL-backed quote/checkout visibility and preserves an existing request', async () => {
+  const id = await rental();
+  await h.db.update(schema.checkinCheckoutChecklists).set({ storageCheckoutInstructions: '  ' });
+  await expect(quoteRental(3, input, now)).rejects.toMatchObject({ code: 'unavailable' });
+  await expect(createRentalCheckout(3, input, provider, now)).rejects.toMatchObject({ code: 'unavailable' });
+  expect(await readRental(id, { id: 3, role: 'chef' }, now)).toMatchObject({ id, state: 'requested' });
+  await decideRental(id, 'reserved', approveActor, { now }, provider);
+  expect(await one(storageBookings)).toMatchObject({ rentalState: 'reserved' });
 });

@@ -21,13 +21,12 @@ function show(notesSaved = true, storage = false) {
     checklist: buildListingChecklist({ hasDescription: true, hasRate: true, licenseApproved: true,
       hasAvailability: true, hasCoverPhoto: true, stripeConnected: true, hasApplicationRequirements: true,
       hasVisitSetup: notesSaved, hasBookingRules: true,
-      hasGalleryImages: true, hasTerms: true, toursEnabled: false, hasEquipment: true, hasStorage: storage, hasStorageVisitSetup: false }),
+      hasGalleryImages: true, hasTerms: true, toursEnabled: false, hasEquipment: true, hasStorage: storage }),
     details: { kitchenName: 'Test Kitchen', locationName: 'Test Location', description: 'A kitchen',
       hourlyRateCents: 2500, dailyRateCents: null, extraTimeRateCents: null, coverPhotoUrl: 'cover.jpg', galleryImageCount: 1,
       availabilityDayCount: 7, licenseStatus: 'approved', stripeAccountId: 'acct_test',
       hasApplicationRequirements: true, termsUploadedAt: null, toursEnabled: false,
       cancellationPolicyHours: 24, dailyBookingLimit: 2, minimumBookingWindowHours: 1, minimumBookingHours: 1,
-      storageVisitSetup: { listingCount: storage ? 1 : 0, checkinEnabled: false, checkoutEnabled: false, arrivalNotesSaved: false, departureNotesSaved: false },
       visitSetup: { checkinEnabled: true, checkoutEnabled: true, arrivalNotesSaved: notesSaved, departureNotesSaved: notesSaved, arrivalRequirementCount: 0,
         departureRequirementCount: 0, checkinWindowMinutesBefore: 15, checkoutReviewWindowMinutes: 60 } },
     listingStatus: 'draft', adminHidden: false,
@@ -61,10 +60,8 @@ describe('listing review arrival/departure responsibilities', () => {
   });
 });
 
-it('shows storage setup only with listed storage and links its Fix action to storage settings', () => {
-  const navigate = show(true, true);
-  expect(screen.getByText('Storage arrival and departure setup')).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'List this kitchen' })).toBeDisabled();
-  fireEvent.click(screen.getByRole('button', { name: 'Fix' }));
-  expect(navigate).toHaveBeenCalledWith('settings-storage-checkin-checkout', 7, undefined);
+it('can list a ready kitchen while its storage is not configured', () => {
+  show(true, true);
+  expect(screen.queryByText('Storage arrival and departure setup')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'List this kitchen' })).toBeEnabled();
 });

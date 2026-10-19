@@ -2,9 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   kitchen: vi.fn(), listings: vi.fn(), create: vi.fn(), update: vi.fn(), single: vi.fn(),
-  managerLocations: vi.fn(), location: vi.fn(), settings: vi.fn(), occupancy: vi.fn(),
+  managerLocations: vi.fn(), location: vi.fn(), settings: vi.fn(), instructions: vi.fn(), occupancy: vi.fn(),
 }));
 
+vi.mock('../services/storage-listing-readiness', () => ({ storageInstructions: mocks.instructions }));
 vi.mock('../domains/kitchens/kitchen.service', () => ({ kitchenService: { getKitchenById: mocks.kitchen } }));
 vi.mock('../domains/inventory/inventory.service', () => ({
   inventoryService: { getStorageListingsByKitchen: mocks.listings, createStorageListing: mocks.create, updateStorageListing: mocks.update, getStorageListingById: mocks.single },
@@ -22,6 +23,7 @@ const response = () => ({ status: vi.fn().mockReturnThis(), json: vi.fn() });
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.instructions.mockResolvedValue({ storageCheckinInstructions: "Arrive here", storageCheckoutInstructions: "Leave here" });
   mocks.settings.mockResolvedValue({ maxTermDays: 30, kitchenDisposalEnabled: false });
   mocks.occupancy.mockResolvedValue(new Map());
   mocks.kitchen.mockResolvedValue({ id: 1, isActive: true, listingStatus: 'active', locationId: 5 });
@@ -136,4 +138,38 @@ describe('storage listing routes', () => {
       unitCount: 2, sizeLabel: null, accessType: null, temperatureRange: null, notes: null, photos: [],
       kitchenName: undefined, locationId: 5, timezone: 'America/St_Johns' }]);
   });
+});
+
+for (const path of ['/chef/kitchens/:kitchenId/storage-listings', '/chef/kitchens/:kitchenId/storage-availability', '/public/kitchens/:kitchenId/storage-listings']) {
+  it(`hides unready listings at ${path}`, async () => {
+    mocks.instructions.mockResolvedValue({ storageCheckinInstructions: '  ', storageCheckoutInstructions: 'Leave here' });
+    mocks.listings.mockResolvedValue([{ id: 9, name: 'Shelf', storageType: 'dry', isActive: true, unitCount: 2, basePrice: 500 }]);
+    const res = response();
+    await handlerFor(path)({ params: { kitchenId: '1' } }, res);
+    expect(res.json).toHaveBeenCalledWith([]);
+  });
+}
+it('creates drafts by default and refuses an unready explicit listing with the missing items', async () => {
+  mocks.instructions.mockResolvedValue(null);
+  const req = { neonUser: { id: 1 }, body: { kitchenId: 1, name: 'Shelf', storageType: 'dry', dailyPriceCents: 500 } };
+  await handlerFor('/manager/storage-listings')(req, response());
+  expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ isActive: false, status: 'draft' }));
+  mocks.create.mockClear();
+  const res = response();
+  await handlerFor('/manager/storage-listings')({ ...req, body: { ...req.body, isActive: true } }, res);
+  expect(res.status).toHaveBeenCalledWith(409);
+  expect(res.json).toHaveBeenCalledWith({ error: expect.any(String), missing: ['moveIn', 'moveOut'] });
+  expect(mocks.create).not.toHaveBeenCalled();
+});
+it('refuses listing an unready saved draft, but allows pausing it', async () => {
+  mocks.single.mockResolvedValue({ id: 9, kitchenId: 1, name: 'Shelf', storageType: 'dry', basePrice: 500, unitCount: 1 });
+  mocks.instructions.mockResolvedValue(null);
+  const req = { neonUser: { id: 1 }, params: { listingId: '9' }, body: { isActive: true } };
+  const route = (router as any).stack.find((entry: any) => entry.route?.path === '/manager/storage-listings/:listingId' && entry.route.methods.put).route.stack.at(-1).handle;
+  const res = response();
+  await route(req, res);
+  expect(res.status).toHaveBeenCalledWith(409);
+  expect(mocks.update).not.toHaveBeenCalled();
+  await route({ ...req, body: { isActive: false } }, response());
+  expect(mocks.update).toHaveBeenCalledWith(9, expect.objectContaining({ isActive: false }));
 });
