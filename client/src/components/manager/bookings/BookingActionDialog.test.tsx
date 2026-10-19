@@ -29,7 +29,7 @@ afterEach(() => vi.unstubAllGlobals());
 const booking: BookingForAction = {
   id: 112, kitchenName: 'Kitchen North', chefName: 'Alex', locationName: 'Moonlight Kitchens',
   bookingDate: '2026-11-11', startTime: '09:00', endTime: '11:00', totalPrice: 10000,
-  paymentStatus: 'authorized', transactionAmount: 18300, serviceFee: 1050, taxRatePercent: 15,
+  paymentStatus: 'authorized', transactionAmount: 18300, serviceFee: 1050, cardFeeRate: { percent: 0.029, fixedCents: 30 }, taxRatePercent: 15,
   storageItems: [{ id: 1, storageBookingId: 21, name: 'Cold storage', storageType: 'cold', totalPrice: 2000 }],
   equipmentItems: [{ id: 2, equipmentBookingId: 31, name: 'Mixer', totalPrice: 3000 }],
 };

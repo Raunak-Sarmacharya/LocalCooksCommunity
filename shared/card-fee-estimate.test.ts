@@ -1,12 +1,20 @@
 import { describe, expect, it } from 'vitest';
-import { estimateCardFeeCents } from './card-fee-estimate';
+import { cardFeeForAmount, cardFeeRate, estimateCardFeeCents } from './card-fee-estimate';
 
-describe('estimateCardFeeCents', () => {
-  it('uses the held card: Canadian 2.9% + 30¢, international 3.7% + 30¢ (live #216: a US Visa on $183.00)', () => {
-    expect(estimateCardFeeCents(18300, 'CA')).toBe(561);
-    expect(estimateCardFeeCents(18300, 'US')).toBe(707);
-    // Unknown card: the domestic rate, as before.
-    expect(estimateCardFeeCents(18300, null)).toBe(561);
-    expect(estimateCardFeeCents(0, 'US')).toBe(0);
+const standard = { percent: 0.029, fixedCents: 30 };
+
+describe('card fee estimate before capture', () => {
+  it('uses the configured rate for a Canadian card and adds the international surcharge for others (live #216: US Visa, $91.50 -> Stripe charged $3.69)', () => {
+    expect(estimateCardFeeCents(18300, cardFeeRate(standard, 'CA'))).toBe(561);
+    expect(estimateCardFeeCents(9150, cardFeeRate(standard, 'US'))).toBe(369);
+    // Unknown card: the configured rate as is.
+    expect(estimateCardFeeCents(18300, cardFeeRate(standard, null))).toBe(561);
+    expect(estimateCardFeeCents(0, cardFeeRate(standard, 'US'))).toBe(0);
+  });
+  it('follows the admin setting (custom Stripe pricing), never a rate typed into the page', () => {
+    expect(estimateCardFeeCents(10000, cardFeeRate({ percent: 0.025, fixedCents: 25 }, 'CA'))).toBe(275);
+    // Without a rate, the server's own estimate scaled to the new amount.
+    expect(cardFeeForAmount(9150, null, { amountCents: 18300, feeCents: 707 })).toBe(354);
+    expect(cardFeeForAmount(9150, standard)).toBe(295);
   });
 });

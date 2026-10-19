@@ -211,6 +211,7 @@ interface BookingDetails {
     /** Pre-capture estimate from platform_settings (when stripeProcessingFee is 0) */
     estimatedStripeProcessingFee?: number;
     cardCountry?: string | null;
+    cardFeeRate?: import('@shared/card-fee-estimate').CardFeeRate | null;
     estimatedManagerPayout?: number;
     paidAt?: string;
     refundAmount?: number;
@@ -809,7 +810,8 @@ export default function BookingDetailsPage() {
     totalPrice: booking.totalPrice,
     pricingMode: booking.pricingMode,
     transactionAmount: booking.paymentTransaction?.amount,
-    cardCountry: booking.paymentTransaction?.cardCountry,
+    cardFeeRate: booking.paymentTransaction?.cardFeeRate,
+    estimatedCardFeeCents: booking.paymentTransaction?.estimatedStripeProcessingFee,
     serviceFee: totals.serviceFee || booking.paymentTransaction?.serviceFee || 0,
     stripeProcessingFee: booking.paymentTransaction?.stripeProcessingFee,
     managerRevenue: booking.paymentTransaction?.managerRevenue,
@@ -1982,11 +1984,6 @@ export default function BookingDetailsPage() {
         <span>{t("bdGoodwillLine", { amount: formatCurrency(goodwillRefund) })}</span>
       </div>
     )}
-    {Number(booking.extraTimeRateCents) > 0 && !bookingEnded ? (
-        <p className="pt-2 text-xs leading-relaxed text-muted-foreground" data-testid="booking-extra-time-rate">
-          {bt('bpsExtraTimeRate', { amount: formatCurrency(booking.extraTimeRateCents) })}
-        </p>
-      ) : null}
     {!statement && !isManagerView && refundAmount + extraRefundedCents - goodwillRefund > 0 && (
       <div className="flex items-center justify-between gap-2 text-sm">
         <span className="inline-flex items-center gap-1 text-warning">
@@ -2032,7 +2029,8 @@ export default function BookingDetailsPage() {
   const cancellationCard = booking && !isManagerView && (chefCanCancel || datedBooking) && ['pending', 'confirmed'].includes(booking.status) && (
     <BookingCancellationCard multiDay={datedBooking} frozenPolicy={booking.cancellationPolicySnapshot} createdAt={booking.createdAt} bookingId={booking.id} status={booking.status} canCancel={chefCanCancel} onCancel={() => setCancelOpen(true)}
       onChange={booking.status === 'confirmed' && !visitStarted ? () => setChangeOpen(true) : undefined}
-      deadlineText={cancellationDeadlineText} deadlinePassed={!paidCancellationAvailable} />
+      deadlineText={cancellationDeadlineText} deadlinePassed={!paidCancellationAvailable}
+      extraTimeNote={Number(booking.extraTimeRateCents) > 0 ? bt('bpsExtraTimeRate', { amount: formatCurrency(booking.extraTimeRateCents) }) : undefined} />
   );
 
   const history = booking && (

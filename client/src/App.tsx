@@ -69,6 +69,7 @@ const BookingDetailsPage = lazy(() => import("@/pages/BookingDetailsPage"));
 const ManagerInvitationNewPage = lazy(() => import("@/pages/ManagerInvitationNewPage"));
 const ChefInvitationPage = lazy(() => import("@/pages/ChefInvitationPage"));
 const KitchenVisitPage = lazy(() => import("@/pages/KitchenVisitPage"));
+const ChefOfferPage = lazy(() => import("@/pages/ChefOfferPage"));
 const ChefStoragePage = lazy(() => import("@/pages/ChefStoragePage"));
 const ChefStorageRequestPage = lazy(() => import("@/pages/ChefStorageRequestPage"));
 const ChefStorageRentalPage = lazy(() => import("@/pages/ChefStorageRentalPage"));
@@ -293,6 +294,9 @@ function Router() {
         <ProtectedRoute path="/storage/new" component={ChefStorageRequestPage} />
         <ProtectedRoute path="/storage/:id" component={ChefStorageRentalPage} />
         <ProtectedRoute path="/storage" component={ChefStoragePage} />
+        <SubdomainRoute path="/booking/:id/offer" subdomain={subdomain}>
+          <ProtectedRoute path="/booking/:id/offer" component={ChefOfferPage} />
+        </SubdomainRoute>
         <SubdomainRoute path="/booking/:id/visit" subdomain={subdomain}>
           <ProtectedRoute path="/booking/:id/visit" component={KitchenVisitPage} />
         </SubdomainRoute>

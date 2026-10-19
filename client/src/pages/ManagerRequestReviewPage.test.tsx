@@ -27,7 +27,7 @@ beforeEach(() => {
     chef: { username: 'chef', fullName: 'Alex' }, kitchen: { name: 'Main Kitchen' }, location: { id: 47, timezone: 'America/St_Johns' },
     visits: [{ id: 1, visitDate: '2026-11-23', startTime: '09:00', endTime: '12:00', scheduleRevision: 1, scheduleState: 'active', priceSnapshot: { kitchenCents: 7500 } },
       { id: 2, visitDate: '2026-11-25', startTime: '09:00', endTime: '12:00', scheduleRevision: 1, scheduleState: 'active', priceSnapshot: { kitchenCents: 7500 } }],
-    equipmentBookings: [], paymentTransaction: { amount: 18300, serviceFee: 1050, cardCountry: 'US' } };
+    equipmentBookings: [], paymentTransaction: { amount: 18300, serviceFee: 1050, cardFeeRate: { percent: 0.037, fixedCents: 30 }, estimatedStripeProcessingFee: 707 } };
   h.preview = { oldTotalCents: 18300, newTotalCents: 9150, serviceFeeCents: 525, allowed: true, deadlineAt: '2026-10-20T15:00:00Z' };
 });
 afterEach(() => cleanup());

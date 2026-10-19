@@ -30,36 +30,10 @@ it('chef: plain-language offer with both totals, the exact deadline in the kitch
   expect(screen.getByText('Nothing is charged until you accept. If you don’t answer, the request closes and your card hold is released.')).toBeInTheDocument();
 });
 
-it('chef accepts: posts the proposal id, refreshes the booking, and names the charged amount', async () => {
-  fetchMock.mockResolvedValue({ ok: true, json: async () => ({ success: true, status: 'confirmed' }) });
-  const { onChanged } = renderCard();
-  fireEvent.click(screen.getByRole('button', { name: 'Accept $146.40' }));
-  await waitFor(() => expect(onChanged).toHaveBeenCalled());
-  expect(fetchMock).toHaveBeenCalledWith('/api/chef/bookings/112/partial-acceptance', expect.objectContaining({ method: 'POST',
-    body: JSON.stringify({ proposalId: proposal.id, answer: 'accept' }) }));
-  expect(toast).toHaveBeenCalledWith({ title: 'Booking confirmed. You were charged $146.40.' });
-});
-
-it('chef declines only after confirming, refreshes, and confirms the hold was released', async () => {
-  fetchMock.mockResolvedValue({ ok: true, json: async () => ({ success: true, status: 'cancelled' }) });
-  const { onChanged } = renderCard();
-  fireEvent.click(screen.getByRole('button', { name: 'Decline' }));
-  expect(fetchMock).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'Back' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Decline' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Yes, decline' }));
-  await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
-  expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ proposalId: proposal.id, answer: 'decline' });
-  await waitFor(() => expect(onChanged).toHaveBeenCalled());
-  expect(toast).toHaveBeenCalledWith({ title: 'You declined the new total. Your card hold was released.' });
-});
-
-it('shows the server’s reason when the answer is refused (e.g. the deadline passed)', async () => {
-  fetchMock.mockResolvedValue({ ok: false, json: async () => ({ error: 'The time to answer has passed, so this request is closed. You weren’t charged.' }) });
+it('chef: the answer is given on the offer page (full page, like Airbnb’s offer page)', () => {
   renderCard();
-  fireEvent.click(screen.getByRole('button', { name: 'Accept $146.40' }));
-  await waitFor(() => expect(toast).toHaveBeenCalledWith(expect.objectContaining({ variant: 'destructive',
-    description: 'The time to answer has passed, so this request is closed. You weren’t charged.' })));
+  expect(screen.getByRole('link', { name: 'Review the changes' })).toHaveAttribute('href', '/booking/112/offer');
+  expect(screen.queryByRole('button', { name: 'Accept $146.40' })).not.toBeInTheDocument();
 });
 
 it('days (Oct 19): the chef reads each day the kitchen can’t host, then the items on kept days', () => {

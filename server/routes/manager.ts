@@ -6,7 +6,7 @@ import { revokeManagerLocationAccess, futureAccessBookings, deliverAccessNotice 
 import { projectBookingCloseout, projectBookingCloseouts } from '../services/clock-closeout';
 import { readKitchenPayout, attachKitchenPayouts, upcomingKitchenPayouts } from '../services/kitchen-payout-service';
 import { kitchenPayout, originalKitchenEntitlement } from '@shared/kitchen-payout';
-import { estimateCardFeeCents } from '@shared/card-fee-estimate';
+import { cardFeeRate, estimateCardFeeCents } from '@shared/card-fee-estimate';
 import { kitchenChecklistFields } from '@shared/kitchen-checklist';
 import { sendAdminNotificationEmail } from '../services/admin-email-preferences';
 import { Router, Request, Response } from "express";
@@ -4512,8 +4512,13 @@ router.get(
             const { heldCardCountry } = await import("../services/stripe-service");
             // The payment row here doesn't carry the intent id; the booking's own intent is the held charge.
             const cardCountry = booking.paymentIntentId ? await heldCardCountry(booking.paymentIntentId).catch(() => null) : null;
-            const cardFee = estimateCardFeeCents(Number(paymentTransaction.amount), cardCountry);
+            const { getFeeConfig } = await import("../services/stripe-checkout-fee-service");
+            const config = await getFeeConfig();
+            // The admin's card-fee setting plus Stripe's international surcharge for a card from outside Canada.
+            const rate = cardFeeRate({ percent: config.stripePercentageFee, fixedCents: config.stripeFlatFeeCents }, cardCountry);
+            const cardFee = estimateCardFeeCents(Number(paymentTransaction.amount), rate);
             paymentTransaction.cardCountry = cardCountry;
+            paymentTransaction.cardFeeRate = rate;
             paymentTransaction.estimatedStripeProcessingFee = cardFee;
             paymentTransaction.estimatedManagerPayout =
               feeCalc.managerReceivesInCents + feeCalc.stripeProcessingFeeInCents - cardFee;

@@ -1,4 +1,4 @@
-import { estimateCardFeeCents } from "@shared/card-fee-estimate";
+import { cardFeeForAmount, type CardFeeRate } from "@shared/card-fee-estimate";
 import { EquipmentIcon as Package, StorageIcon as Boxes } from "@/components/ui/inventory-icons";
 import { bookingStartDateKey } from '@/lib/calendar-date';
 import { RequestedBookingDays, type RequestedDay } from './RequestedBookingDays';
@@ -64,8 +64,9 @@ export interface BookingForAction {
   equipmentItems?: EquipmentItemForAction[];
   // Payment info for refund preview
   transactionAmount?: number; // total charged in cents
-  /** Country of the held card (sets the estimated card fee before capture). */
-  cardCountry?: string | null;
+  /** The held card's estimated fee rate (admin setting + international surcharge), and the server's own estimate. */
+  cardFeeRate?: CardFeeRate | null;
+  estimatedCardFeeCents?: number | null;
   serviceFee?: number; // Local Cooks fee included in the authorization
   stripeProcessingFee?: number; // Stripe fee in cents
   managerRevenue?: number; // manager received in cents
@@ -442,7 +443,8 @@ function BookingActionDialogContent({
     if (!figures) return null;
     const captureAmount = figures.amount;
     // Same estimate as the booking page: the held card's rate on what will be captured (actual once charged).
-    const estimatedStripeFee = estimateCardFeeCents(captureAmount, booking.cardCountry);
+    const estimatedStripeFee = cardFeeForAmount(captureAmount, booking.cardFeeRate,
+      booking.estimatedCardFeeCents != null ? { amountCents: transactionAmount, feeCents: booking.estimatedCardFeeCents } : null);
     return {
       approvedServiceFee: figures.fee,
       captureAmount,

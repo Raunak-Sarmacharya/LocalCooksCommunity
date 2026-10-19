@@ -11,7 +11,7 @@ import ManagerBookingLayout from '@/layouts/ManagerBookingLayout';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
-import { estimateCardFeeCents } from '@shared/card-fee-estimate';
+import { cardFeeForAmount, type CardFeeRate } from '@shared/card-fee-estimate';
 import { partialAcceptanceDeadlineText } from '@shared/partial-acceptance';
 
 type Visit = { id: number; visitDate?: string | null; startTime: string; endTime: string; pricingMode?: string | null; scheduleRevision?: number;
@@ -23,7 +23,7 @@ type Details = { id: number; referenceCode?: string | null; chefId: number; stat
   responseDeadlineAt?: string | null; partialAcceptanceAvailable?: boolean; partialAcceptance?: { state?: string } | null;
   chef?: { fullName?: string; username: string }; kitchen?: { name: string }; location?: { id: number; timezone?: string };
   visits?: Visit[]; equipmentBookings?: Equipment[];
-  paymentTransaction?: { amount: number; serviceFee?: number; cardCountry?: string | null } };
+  paymentTransaction?: { amount: number; serviceFee?: number; cardFeeRate?: CardFeeRate | null; estimatedStripeProcessingFee?: number | null } };
 type Preview = { oldTotalCents: number; newTotalCents: number; serviceFeeCents: number; allowed: boolean; deadlineAt: string };
 
 /**
@@ -97,7 +97,8 @@ export default function ManagerRequestReviewPage() {
   const timeForChanges = booking?.partialAcceptanceAvailable !== false && (!preview || preview.allowed);
   const chefPays = changed && preview ? preview.newTotalCents : txn?.amount ?? 0;
   const serviceFee = changed && preview ? preview.serviceFeeCents : txn?.serviceFee ?? 0;
-  const cardFee = estimateCardFeeCents(chefPays, txn?.cardCountry);
+  const cardFee = cardFeeForAmount(chefPays, txn?.cardFeeRate,
+    txn?.estimatedStripeProcessingFee != null ? { amountCents: txn.amount, feeCents: txn.estimatedStripeProcessingFee } : null);
   const deadline = booking?.responseDeadlineAt ? partialAcceptanceDeadlineText(booking.responseDeadlineAt, locale, booking.location?.timezone) : null;
   const toggle = (list: number[], set: (next: number[]) => void, id: number) => set(list.includes(id) ? list.filter(value => value !== id) : [...list, id]);
 
