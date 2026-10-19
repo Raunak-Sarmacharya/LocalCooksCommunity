@@ -257,9 +257,11 @@ function getBookingTypeIcon(type: string) {
 
 function getBookingTypeLabel(type: string, metadata: Record<string, unknown> | null): string {
   if (metadata) {
-    if (metadata.damage_claim_id) return "Damage Claim";
-    if (metadata.overstay_id) return "Overstay Penalty";
-    if (metadata.storage_extension_id) return "Storage Extension";
+    if (metadata.damage_claim_id || metadata.type === "damage_claim") return "Damage Claim";
+    if (metadata.overstay_id || metadata.type === "overstay_penalty") return "Storage Holdover Charge";
+    if (metadata.storage_extension_id || metadata.type === "storage_term") return "Storage Extension";
+    if (metadata.type === "kitchen_booking_change") return "Booking Change";
+    if (metadata.type === "session_extension" || metadata.sessionExtensionId) return "Extra Time";
   }
   switch (type) {
     case "kitchen": return "Kitchen Booking";
@@ -963,12 +965,14 @@ export function AdminTransactionHistory({ getFirebaseToken }: AdminTransactionHi
 
   // Summary totals
   const totals = useMemo(() => {
+    // Refunded payments were charged first; refunds are subtracted separately. Stripe keeps its fee on refunds.
+    const charged = (t: AdminTransaction) => ["succeeded", "partially_refunded", "refunded"].includes(t.status);
     const totalCharged = transactions
-      .filter((t) => t.status === "succeeded" || t.status === "partially_refunded")
+      .filter(charged)
       .reduce((sum, t) => sum + t.amount, 0);
     const totalRefunded = transactions.reduce((sum, t) => sum + t.refundAmount, 0);
     const totalStripeFees = transactions
-      .filter((t) => t.status === "succeeded" || t.status === "partially_refunded")
+      .filter(charged)
       .reduce((sum, t) => sum + t.stripeProcessingFee, 0);
     const totalManagerRevenue = transactions
       .filter((t) => t.status === "succeeded" || t.status === "partially_refunded")

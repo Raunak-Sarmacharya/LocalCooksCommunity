@@ -249,6 +249,18 @@ router.get("/users", requireFirebaseAuthWithUser, requireAdmin, async (req: Requ
 
 // Get all managers revenue overview
 // Uses payment_transactions table (source of truth) to match manager dashboard numbers
+// Kitchen earnings and booking counts come from the kitchen's own revenue ledger: the manager_revenue column is
+// not kept current through refunds and changes, and one booking can have several payments.
+async function kitchenLedger(managerId: number, startDate?: unknown, endDate?: unknown) {
+    const today = new Date().toISOString().slice(0, 10);
+    const end = typeof endDate === 'string' && endDate ? endDate : today;
+    const earliest = new Date(Date.parse(end) - 1095 * 86400000).toISOString().slice(0, 10);
+    // shortcut: "all time" is capped at the ledger's three-year window; widen the ledger if older history matters.
+    const start = typeof startDate === 'string' && startDate > earliest ? startDate : earliest;
+    const { readManagerRevenue } = await import('../services/manager-revenue-service');
+    return readManagerRevenue(managerId, { startDate: start, endDate: end });
+}
+
 router.get("/revenue/all-managers", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
     try {
         if (res.headersSent) {
@@ -276,7 +288,7 @@ router.get("/revenue/all-managers", requireFirebaseAuthWithUser, requireAdmin, a
           u.id as manager_id,
           u.username as manager_name,
           u.username as manager_email,
-          COALESCE(SUM(pt.amount::numeric), 0)::bigint as total_revenue,
+          COALESCE(SUM(pt.amount::numeric - pt.refund_amount::numeric), 0)::bigint as total_revenue,
           COALESCE(SUM(
             GREATEST(pt.amount::numeric - pt.base_amount::numeric, 0) - LEAST(
               GREATEST(pt.amount::numeric - pt.base_amount::numeric, 0),
@@ -300,16 +312,20 @@ router.get("/revenue/all-managers", requireFirebaseAuthWithUser, requireAdmin, a
       `);
 
         // Convert to response format (cents to dollars)
-        const managers = result.rows.map((row: any) => ({
-            managerId: parseInt(row.manager_id),
-            managerName: row.manager_name,
-            managerEmail: row.manager_email,
-            totalRevenue: (parseInt(row.total_revenue) || 0) / 100,
-            platformFee: (parseInt(row.platform_fee) || 0) / 100,
-            managerRevenue: (parseInt(row.manager_revenue) || 0) / 100,
-            bookingCount: parseInt(row.booking_count) || 0,
-            totalRefunds: (parseInt(row.total_refunds) || 0) / 100,
-        })).filter((m: any) => m.bookingCount > 0 || m.totalRevenue > 0);
+        const active = (result.rows as any[]).filter(row => (parseInt(row.booking_count) || 0) > 0);
+        const managers = await Promise.all(active.map(async (row: any) => {
+            const totals = (await kitchenLedger(parseInt(row.manager_id), startDate, endDate)).report.totals;
+            return {
+                managerId: parseInt(row.manager_id),
+                managerName: row.manager_name,
+                managerEmail: row.manager_email,
+                totalRevenue: (parseInt(row.total_revenue) || 0) / 100,
+                platformFee: (parseInt(row.platform_fee) || 0) / 100,
+                managerRevenue: totals.netPayout / 100,
+                bookingCount: totals.bookingsCount,
+                totalRefunds: (parseInt(row.total_refunds) || 0) / 100,
+            };
+        }));
 
         res.json({ managers, total: managers.length });
     } catch (error: any) {
@@ -363,8 +379,8 @@ router.get("/revenue/platform-overview", requireFirebaseAuthWithUser, requireAdm
               ), 0)
             )
           ), 0)::bigint as platform_fee,
-          COUNT(*)::int as booking_count,
-          COUNT(*)::int as paid_count,
+          COUNT(DISTINCT pt.booking_type || ':' || pt.booking_id)::int as booking_count,
+          COUNT(DISTINCT pt.booking_type || ':' || pt.booking_id)::int as paid_count,
           0::int as pending_count
         FROM payment_transactions pt
         WHERE ${transactionFilters}
@@ -404,22 +420,29 @@ router.get("/revenue/manager/:managerId", requireFirebaseAuthWithUser, requireAd
         }
 
         const { startDate, endDate } = req.query;
-        const { pool } = await import('../db');
-        const { getCompleteRevenueMetrics, getRevenueByLocation } = await import('../services/revenue-service');
-
-        const metrics = await getCompleteRevenueMetrics(
-            managerId,
-            db,
-            startDate ? new Date(startDate as string) : undefined,
-            endDate ? new Date(endDate as string) : undefined
-        );
-
-        const revenueByLocation = await getRevenueByLocation(
-            managerId,
-            db,
-            startDate ? new Date(startDate as string) : undefined,
-            endDate ? new Date(endDate as string) : undefined
-        );
+        const ledger = await kitchenLedger(managerId, startDate, endDate);
+        const paidByLocation = await db.execute(sql`
+            SELECT l.id as location_id, COALESCE(SUM(pt.amount::numeric - pt.refund_amount::numeric), 0)::bigint as total_revenue
+            FROM payment_transactions pt
+            LEFT JOIN kitchen_bookings kb ON pt.booking_type IN ('kitchen', 'bundle') AND kb.id = pt.booking_id
+            LEFT JOIN storage_bookings sb ON pt.booking_type = 'storage' AND sb.id = pt.booking_id
+            LEFT JOIN storage_listings sl ON sl.id = sb.storage_listing_id
+            LEFT JOIN equipment_bookings eb ON pt.booking_type = 'equipment' AND eb.id = pt.booking_id
+            LEFT JOIN equipment_listings el ON el.id = eb.equipment_listing_id
+            JOIN kitchens k ON k.id = COALESCE(kb.kitchen_id, sl.kitchen_id, el.kitchen_id)
+            JOIN locations l ON l.id = k.location_id
+            WHERE l.manager_id = ${managerId} AND pt.status IN ('succeeded', 'partially_refunded')
+              ${startDate ? sql`AND DATE(pt.paid_at) >= ${startDate}::date` : sql``}
+              ${endDate ? sql`AND DATE(pt.paid_at) <= ${endDate}::date` : sql``}
+            GROUP BY l.id`);
+        const locations = ledger.filters.locations.map(loc => {
+            const rows = ledger.report.rows.filter(r => r.locationId === loc.id);
+            const paid = (paidByLocation.rows as any[]).find(r => Number(r.location_id) === loc.id);
+            return { locationId: loc.id, locationName: loc.name,
+                bookingCount: rows.reduce((sum, r) => sum + r.bookingsCount, 0),
+                managerRevenue: rows.reduce((sum, r) => sum + r.netPayout, 0) / 100,
+                totalRevenue: (parseInt(paid?.total_revenue) || 0) / 100 };
+        }).filter(loc => loc.bookingCount > 0 || loc.totalRevenue > 0 || loc.managerRevenue !== 0);
 
         // Get manager info using Drizzle
         const [managerRecord] = await db
@@ -430,22 +453,7 @@ router.get("/revenue/manager/:managerId", requireFirebaseAuthWithUser, requireAd
 
         res.json({
             manager: managerRecord || null,
-            metrics: {
-                ...metrics,
-                totalRevenue: metrics.totalRevenue / 100,
-                platformFee: metrics.platformFee / 100,
-                managerRevenue: metrics.managerRevenue / 100,
-                pendingPayments: metrics.pendingPayments / 100,
-                completedPayments: metrics.completedPayments / 100,
-                averageBookingValue: metrics.averageBookingValue / 100,
-                refundedAmount: metrics.refundedAmount / 100,
-            },
-            revenueByLocation: revenueByLocation.map(loc => ({
-                ...loc,
-                totalRevenue: loc.totalRevenue / 100,
-                platformFee: loc.platformFee / 100,
-                managerRevenue: loc.managerRevenue / 100,
-            })),
+            locations,
         });
     } catch (error: any) {
         logger.error('Error getting manager revenue details:', error);
