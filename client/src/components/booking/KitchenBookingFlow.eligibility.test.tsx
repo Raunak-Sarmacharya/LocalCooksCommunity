@@ -44,17 +44,17 @@ async function open() {
   render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
     <KitchenBookingFlow locationId={1} locationName="Harbour Kitchens" initialDateIso="2099-10-04" initialSlots={['09:00']} onCancel={() => {}} onComplete={() => {}} />
   </QueryClientProvider>);
-  await screen.findByText(/Choose consecutive hours for your visit/);
-  await waitFor(() => expect(screen.getByRole('button', { name: /9:00.*10:00/ })).toBeEnabled());
+  // The restored 9:00 hour shows in the Start picker once the day's hours load.
+  await waitFor(() => expect(screen.getByRole('combobox', { name: 'bkStart' })).toHaveTextContent(/9:00/));
 }
 const toConfirm = async () => {
   await waitFor(() => expect(screen.getByRole('button', { name: /^Continue$/ })).toBeEnabled());
   fireEvent.click(screen.getByRole('button', { name: /^Continue$/ }));
   expect(screen.getByText(/Confirm/, { selector: 'p[aria-live="polite"]' })).toBeInTheDocument();
   // #52: no acceptance checkbox; Checkout enables once the published policy has loaded.
-  await waitFor(() => expect(screen.getByRole('button', { name: /^(Checkout|Confirm Booking)$/ })).toBeEnabled());
+  await waitFor(() => expect(screen.getByRole('button', { name: /^(Continue to payment|Confirm Booking)$/ })).toBeEnabled());
 };
-const submit = () => screen.getByRole('button', { name: /^(Checkout|Confirm Booking)$/ });
+const submit = () => screen.getByRole('button', { name: /^(Continue to payment|Confirm Booking)$/ });
 
 describe('booking is explained before it is attempted', () => {
   it('tier 2 (documents sent, awaiting final approval) shows the waiting banner and cannot continue or check out', async () => {

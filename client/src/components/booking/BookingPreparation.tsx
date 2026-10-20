@@ -5,10 +5,12 @@ import { friendlyTimezoneName } from "@shared/timezone-utils";
 export type ArrivalMode = 'staffed' | 'self' | 'mixed' | 'legacy';
 
 /** One-line "how arrival works" for the visit. Never shows or hints at a code value. */
-export function ArrivalModeLine({ mode }: { mode?: ArrivalMode | null }) {
+export function ArrivalModeLine({ mode, dailyCode = false }: { mode?: ArrivalMode | null; dailyCode?: boolean }) {
   const { t } = useTranslation("chef");
   const text = mode === 'staffed'
-    ? t("kciAcStaffed", { defaultValue: "When you arrive, ask kitchen staff for your 6-digit check-in code and enter it in Local Cooks. It's for checking in only; it doesn't open the door." })
+    ? dailyCode
+      ? t("kciAcStaffedDaily", { defaultValue: "When you arrive, ask kitchen staff for your 6-digit check-in code and enter it in Local Cooks. Each day has its own code, so a code from another day won't work. It's for checking in only; it doesn't open the door." })
+      : t("kciAcStaffed", { defaultValue: "When you arrive, ask kitchen staff for your 6-digit check-in code and enter it in Local Cooks. It's for checking in only; it doesn't open the door." })
     : mode === 'self'
       ? t("kciAcSelf", { defaultValue: "Self check-in is on for this visit. Follow the kitchen's instructions to get in, then confirm arrival in Local Cooks. No check-in code needed." })
       : mode === 'mixed'

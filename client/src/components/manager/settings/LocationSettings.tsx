@@ -1,21 +1,24 @@
 /**
- * Location Settings Component
- * Manages timezone and location-specific settings
+ * Location details: name, address, logo. The same fields and controls as onboarding's location step (settings rows, the
+ * service-area address search, the logo field), so a location reads the same wherever it is edited.
+ *
+ * On the Location page the page frame owns saving (header "Save changes" + the unsaved-changes guard): pass
+ * `onDirtyChange` and `saveRef`. Standalone, the form shows its own Save once something changed.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useImperativeHandle, useState, type Ref } from "react";
 import { mt } from "@/i18n/manager";
-import { Globe, Image as ImageIcon } from "@/components/ui/manager-icons";
 import { StatusButton } from "@/components/ui/status-button";
 import { useStatusButton } from "@/hooks/use-status-button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { DEFAULT_TIMEZONE } from "@/utils/timezone-utils";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import AddressAutocomplete from "@/components/ui/address-autocomplete";
+import { SERVICE_PROVINCE } from "@shared/service-area";
+import { SettingsRow } from "./SettingsRow";
+import { LogoPhotoField } from "@/components/manager/kitchen/KitchenPhotoFields";
 import { useSessionFileUpload } from "@/hooks/useSessionFileUpload";
-import { getR2ProxyUrl } from "@/utils/r2-url-helper";
-import { SmartImage } from "@/components/ui/smart-image";
-import { SettingsFileUpload } from "./SettingsFileUpload";
+import { useToast } from "@/hooks/use-toast";
 import { ChefPageHeader } from "@/components/chef/ui";
 
 interface Location {
@@ -26,91 +29,78 @@ interface Location {
   timezone?: string;
 }
 
+export type LocationDetailsHandle = { save: () => Promise<boolean> };
+
 interface LocationSettingsProps {
   location: Location;
   onSave: (updates: any) => Promise<unknown>;
   embedded?: boolean;
+  onDirtyChange?: (dirty: boolean) => void;
+  saveRef?: Ref<LocationDetailsHandle>;
 }
 
-export default function LocationSettings({ location, onSave, embedded = false }: LocationSettingsProps) {
+const ACCEPTED_LOGO_TYPES = ["image/jpeg", "image/png", "image/webp"];
+
+export default function LocationSettings({ location, onSave, embedded = false, onDirtyChange, saveRef }: LocationSettingsProps) {
+  const { toast } = useToast();
   const [name, setName] = useState(location.name);
-  const [address, setAddress] = useState(location.address || '');
-  const [logoUrl, setLogoUrl] = useState(location.logoUrl || '');
-  const [logoFile, setLogoFile] = useState<File | null>(null);
-  const timezone = DEFAULT_TIMEZONE;
+  const [address, setAddress] = useState(location.address || "");
+  const [logoUrl, setLogoUrl] = useState(location.logoUrl || "");
   const { uploadFile, isUploading } = useSessionFileUpload({
-    allowedTypes: ['image/jpeg', 'image/png', 'image/webp'],
+    allowedTypes: ACCEPTED_LOGO_TYPES,
+    onError: (message) => toast({ title: mt("uploadFailed2"), description: message, variant: "destructive" }),
   });
-  const isDirty = name.trim() !== location.name || address.trim() !== (location.address || '') || !!logoFile;
+  const isDirty = name.trim() !== location.name || address.trim() !== (location.address || "") || logoUrl !== (location.logoUrl || "");
+  const valid = !!name.trim() && !!address.trim();
 
   useEffect(() => {
     setName(location.name);
-    setAddress(location.address || '');
-    setLogoUrl(location.logoUrl || '');
-    setLogoFile(null);
+    setAddress(location.address || "");
+    setLogoUrl(location.logoUrl || "");
   }, [location.id, location.name, location.address, location.logoUrl]);
 
-  const saveAction = useStatusButton(
-    useCallback(async () => {
-      const uploaded = logoFile ? await uploadFile(logoFile, 'location-logos') : null;
-      if (logoFile && !uploaded) throw new Error('Logo upload failed');
-      await onSave({
-        locationId: location.id,
-        name: name.trim(),
-        address: address.trim(),
-        logoUrl: uploaded?.url || logoUrl || undefined,
-        timezone: DEFAULT_TIMEZONE,
-      });
-      if (uploaded) {
-        setLogoUrl(uploaded.url);
-        setLogoFile(null);
-      }
-    }, [onSave, location.id, name, address, logoFile, logoUrl, uploadFile]),
-  );
+  useEffect(() => { onDirtyChange?.(isDirty); }, [isDirty, onDirtyChange]);
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
+
+  const save = useCallback(async () => {
+    await onSave({ locationId: location.id, name: name.trim(), address: address.trim(), logoUrl: logoUrl || undefined, timezone: DEFAULT_TIMEZONE });
+  }, [onSave, location.id, name, address, logoUrl]);
+  const saveAction = useStatusButton(save);
+
+  useImperativeHandle(saveRef, () => ({
+    save: async () => {
+      if (!isDirty) return true;
+      if (!valid) { toast({ title: mt("error"), description: mt("locationNameAddressRequired"), variant: "destructive" }); return false; }
+      try { await save(); return true; } catch { return false; }
+    },
+  }), [isDirty, valid, save, toast]);
+
+  const uploadLogo = async (file: File) => {
+    const result = await uploadFile(file, "location-logos");
+    if (result?.url) setLogoUrl(result.url);
+  };
 
   return (
     <div className="space-y-4">
-      {!embedded && <ChefPageHeader title={mt("locationSettings")} description={`Configure location-specific settings for ${location.name}.`} />}
-
-      {/* Location Info */}
+      {!embedded && <ChefPageHeader title={mt("locationSettings")} description={mt("locationDetailsDescription", { location: location.name })} />}
       <Card>
-        <CardHeader className="p-4 pb-3">
-          <CardTitle className="text-lg">{mt("locationDetails")}</CardTitle>
-          <CardDescription>{mt("basicInformationAboutThisLocation")}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4 p-4 pt-0">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="location-name">{mt("locationName")}</Label>
-              <Input id="location-name" value={name} onChange={(event) => setName(event.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="location-address">{mt("address")}</Label>
-              <Input id="location-address" value={address} onChange={(event) => setAddress(event.target.value)} placeholder="Street, city, province, postal code" />
-            </div>
-            <div className="space-y-1.5 md:col-span-2">
-              <Label htmlFor="location-logo">Business logo</Label>
-              <div className="flex items-center gap-3 rounded-lg border p-3">
-                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted">
-                  {logoUrl && !logoFile ? <SmartImage src={getR2ProxyUrl(logoUrl)} alt={`${location.name} logo`} className="h-full w-full object-cover" /> : <ImageIcon className="h-5 w-5 text-muted-foreground" />}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <SettingsFileUpload id="location-logo" accept="image/jpeg,image/png,image/webp" file={logoFile} label="Choose logo" hint="JPG, PNG or WebP · max 4.5 MB" disabled={isUploading} onChange={setLogoFile} />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {(isDirty || saveAction.status !== 'idle') && <div className="pt-4 flex justify-end">
-            <StatusButton
-              status={saveAction.status}
-              onClick={saveAction.execute}
-              disabled={!isDirty || !name.trim() || !address.trim() || isUploading}
-              labels={{ idle: mt("saveSettings"), loading: mt("savingShort"), success: mt("saved") }}
-            />
-          </div>}
+        <CardContent className="divide-y divide-border p-0">
+          <SettingsRow id="location-name" label={mt("businessName")} required hint={mt("thisNameWillBeDisplayedToChefsBrowsingYourKitchen")}>
+            <Input id="location-name" value={name} onChange={(event) => setName(event.target.value)} className="w-64" />
+          </SettingsRow>
+          <SettingsRow id="location-address" label={mt("businessAddress")} required hint={mt("businessAddressHint")}>
+            <AddressAutocomplete value={address} onChange={(value) => setAddress(value)} placeholder={mt("startTypingYourAddress")}
+              className="w-80" province={SERVICE_PROVINCE} />
+          </SettingsRow>
+          <SettingsRow id="location-logo" label={mt("locationLogo")} layout="stacked" hint={mt("locationLogoHint")}>
+            <LogoPhotoField value={logoUrl} onSelectFile={(file) => void uploadLogo(file)} onRemove={() => setLogoUrl("")} disabled={isUploading} className="max-w-lg" />
+          </SettingsRow>
         </CardContent>
       </Card>
+      {!saveRef && (isDirty || saveAction.status !== "idle") && <div className="flex justify-end">
+        <StatusButton status={saveAction.status} onClick={saveAction.execute} disabled={!isDirty || !valid || isUploading}
+          labels={{ idle: mt("saveSettings"), loading: mt("savingShort"), success: mt("saved") }} />
+      </div>}
     </div>
   );
 }

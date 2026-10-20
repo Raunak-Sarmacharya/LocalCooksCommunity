@@ -37,25 +37,35 @@ async function open(slots: string[] = []) {
   render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
     <KitchenBookingFlow locationId={1} locationName="Test Location" initialDateIso="2099-10-04" initialSlots={slots} onCancel={() => {}} onComplete={() => {}} />
   </QueryClientProvider>);
-  const first = Number(fixture.times[0].slice(0, 2));
-  await waitFor(() => expect(screen.getByRole('button', { name: new RegExp(`${first % 12 || 12}:00.*${(first + 1) % 12 || 12}:00`) })).toBeEnabled(), { timeout: 3000 });
+  // Hours loaded: the Start picker (by the hour) or the day's cost (full day) is showing.
+  await waitFor(() => expect(screen.queryByRole('combobox', { name: 'bkStart' }) ?? screen.queryByTestId('day-cost')).toBeInTheDocument(), { timeout: 3000 });
 }
-const hour = (start: number) => screen.getByRole('button', { name: new RegExp(`${start}:00.*${start === 12 ? 1 : start + 1}:00`) });
-const selected = (start: number) => expect(hour(start).className).toContain('bg-[#E10939]');
+const time = (value: string) => new Date(`2099-10-04T${value}:00`).toLocaleTimeString('en-CA', { hour: 'numeric', minute: '2-digit' });
+const options = (label: 'bkStart' | 'bkEnd') => {
+  fireEvent.click(screen.getByRole('combobox', { name: label }));
+  return screen.getAllByRole('option');
+};
+const choose = (label: 'bkStart' | 'bkEnd', name: RegExp) => {
+  fireEvent.click(screen.getByRole('combobox', { name: label }));
+  fireEvent.click(screen.getByRole('option', { name }));
+};
+const startsWith = (value: string) => new RegExp(`^${time(value).replace(/\./g, '\\.')}`);
 
+// The hours step offers only valid ranges (Start, then End), so consecutive / minimum / maximum / booked-hour rules are
+// enforced by what can be picked rather than by error toasts after a tap.
 describe('actual kitchen picker consecutive selection', () => {
   it('adds and removes an optional rental inline without opening a dialog', async () => {
     fixture.rental = [{ id: 17, equipmentType: 'mixer', sessionRate: 2500 }];
     await open(['09:00']);
     fireEvent.click(screen.getByRole('button', { name: /^Continue$/ }));
-    const add = await screen.findByRole('button', { name: 'wfbAdd Mixer' });
+    const add = await screen.findByRole('button', { name: 'bkEqAddNamed' });
     expect(add).toHaveAttribute('aria-pressed', 'false');
     fireEvent.click(add);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    const remove = screen.getByRole('button', { name: 'wfbRemove Mixer' });
+    const remove = screen.getByRole('button', { name: 'bkEqRemoveNamed' });
     expect(remove).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(remove);
-    expect(screen.getByRole('button', { name: 'wfbAdd Mixer' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: 'bkEqAddNamed' })).toHaveAttribute('aria-pressed', 'false');
   });
   it('shows the configured preparation lead and a friendly kitchen-zone response deadline', async () => {
     await open(['09:00']);
@@ -66,59 +76,66 @@ describe('actual kitchen picker consecutive selection', () => {
     expect(next.textContent).not.toContain('America/St_Johns');
     expect(next.textContent).not.toContain('48 hours');
   });
-  it('adds adjacent hours, rejects a distant click and middle deselection, allows end removal', async () => {
+  it('offers only free, back-to-back end times up to the chef maximum, and booked hours cannot start a range', async () => {
+    fixture.times = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00']; fixture.full = ['10:00'];
     await open();
-    fireEvent.click(hour(9)); fireEvent.click(hour(11));
-    selected(9); expect(hour(11).className).not.toContain('bg-[#E10939]');
-    fireEvent.click(hour(10)); fireEvent.click(hour(11)); fireEvent.click(hour(10));
-    selected(10); expect(fixture.toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Choose consecutive hours' }));
-    fireEvent.click(hour(11)); expect(hour(11).className).not.toContain('bg-[#E10939]');
+    const starts = options('bkStart');
+    expect(starts.find(option => option.textContent?.startsWith(time('10:00')))).toHaveAttribute('aria-disabled', 'true');
+    expect(starts.find(option => option.textContent?.startsWith(time('10:00')))?.textContent).toContain('wfbBooked');
+    fireEvent.keyDown(document.activeElement || document.body, { key: 'Escape' });
+    choose('bkStart', startsWith('09:00'));
+    // 10:00 is booked, so a 9:00 start can only run one hour.
+    expect(options('bkEnd').map(option => option.textContent)).toEqual([`${time('10:00')} · bkHours`]);
+    fireEvent.keyDown(document.activeElement || document.body, { key: 'Escape' });
+    choose('bkStart', startsWith('11:00'));
+    // Four hours free from 11:00, capped at the chef maximum of 4.
+    expect(options('bkEnd')).toHaveLength(4);
+    fireEvent.keyDown(document.activeElement || document.body, { key: 'Escape' });
+    choose('bkEnd', new RegExp(`^${time('14:00').replace(/\./g, '\\.')}`));
+    expect(screen.getByTestId('day-cost')).toHaveTextContent('bkHoursCost');
     fireEvent.click(screen.getByRole('button', { name: /^Continue$/ }));
     expect(screen.getByText(/Confirm/, { selector: 'p[aria-live="polite"]' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /^Edit$/ }));
-    fireEvent.click(hour(12));
-    expect(hour(12).className).not.toContain('bg-[#E10939]');
-    fireEvent.click(hour(11)); selected(11);
-    fireEvent.click(hour(10)); selected(10);
-    fireEvent.click(screen.getByRole('button', { name: /Save visit time/ }));
-    expect(screen.queryByRole('dialog')).toBeNull();
   });
-  it('clears a restored gap and blocks advancing below the minimum duration', async () => {
+  it('never offers a range shorter than the minimum', async () => {
+    fixture.minimum = 2;
+    await open();
+    const starts = options('bkStart');
+    // 12:00 is the last hour: only one hour is left, under the two-hour minimum.
+    expect(starts.find(option => option.textContent?.startsWith(time('12:00')))).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.keyDown(document.activeElement || document.body, { key: 'Escape' });
+    choose('bkStart', startsWith('09:00'));
+    expect(options('bkEnd').map(option => option.textContent)).toEqual([`${time('11:00')} · bkHours`, `${time('12:00')} · bkHours`, `${time('13:00')} · bkHours`]);
+    expect(fixture.mutate).not.toHaveBeenCalled();
+  });
+  it('clears a restored gap rather than buying around it', async () => {
     fixture.minimum = 2;
     await open(['09:00', '11:00']);
     await waitFor(() => expect(fixture.toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Choose your visit hours' })));
-    expect(hour(9).className).not.toContain('bg-[#E10939]');
-    fireEvent.click(hour(9)); fireEvent.click(screen.getByRole('button', { name: /^Continue$/ }));
-    expect(fixture.toast).toHaveBeenCalledWith(expect.objectContaining({ description: expect.stringContaining('at least 2') }));
-    expect(fixture.mutate).not.toHaveBeenCalled();
+    expect(screen.getByRole('combobox', { name: 'bkStart' })).toHaveTextContent('bkChooseStart');
   });
-  it('clears a restored selection with a held middle hour rather than buying around it', async () => {
+  it('clears a restored selection with a held middle hour', async () => {
     fixture.full = ['10:00']; await open(['09:00', '10:00', '11:00']);
     await waitFor(() => expect(fixture.toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Choose your visit hours' })));
-    expect(hour(10)).toBeDisabled();
-    expect(hour(10)).toHaveTextContent('wfbBooked');
-    fireEvent.click(hour(9)); fireEvent.click(hour(11));
-    expect(hour(11).className).not.toContain('bg-[#E10939]');
+    expect(screen.getByRole('combobox', { name: 'bkStart' })).toHaveTextContent('bkChooseStart');
   });
   it('renders and continues an overnight adjacent restored selection in operating order', async () => {
     fixture.times = ['22:00', '23:00', '00:00'];
     await open(['23:00', '00:00']);
-    expect(screen.getByRole('button', { name: /11:00.*12:00/ }).className).toContain('bg-[#E10939]');
-    expect(screen.getByRole('button', { name: /12:00.*1:00/ }).className).toContain('bg-[#E10939]');
+    expect(screen.getByRole('combobox', { name: 'bkStart' })).toHaveTextContent(time('23:00'));
+    expect(screen.getByRole('combobox', { name: 'bkEnd' })).toHaveTextContent(`${time('01:00')} · bkHours`);
     fireEvent.click(screen.getByRole('button', { name: /^Continue$/ }));
     expect(screen.getByText(/Confirm/, { selector: 'p[aria-live="polite"]' })).toBeInTheDocument();
   });
-  it('keeps full-day selection intact and rejects malformed restored hours without crashing', async () => {
+  it('keeps a full-day selection intact and rejects malformed restored hours without crashing', async () => {
     fixture.rateMode = 'daily'; await open();
-    await waitFor(() => selected(9)); selected(10); selected(11);
+    await waitFor(() => expect(screen.getByRole('radio', { name: 'bkFullDayRate' })).toHaveAttribute('aria-checked', 'true'));
+    expect(screen.getByTestId('day-cost')).toHaveTextContent('bkFullDayCost');
+    expect(screen.queryByRole('combobox', { name: 'bkStart' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: /^Continue$/ }));
-    fireEvent.click(screen.getByRole('button', { name: /^Edit$/ }));
-    fireEvent.click(hour(12));
-    expect(screen.getByRole('button', { name: /Save visit time/ })).toBeDisabled();
-    expect(screen.getByText('A daily booking must include the full available operating day.')).toBeVisible();
+    expect(screen.getByText(/Confirm/, { selector: 'p[aria-live="polite"]' })).toBeInTheDocument();
     cleanup(); fixture.rateMode = 'hourly'; fixture.toast.mockClear();
     await open(['25:00']);
     expect(fixture.toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Choose your visit hours' }));
-    expect(hour(9).className).not.toContain('bg-[#E10939]');
+    expect(screen.getByRole('combobox', { name: 'bkStart' })).toHaveTextContent('bkChooseStart');
   });
 });

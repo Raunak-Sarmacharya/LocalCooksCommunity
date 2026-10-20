@@ -1,14 +1,21 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 import { PgDialect } from 'drizzle-orm/pg-core';
-const state = vi.hoisted(() => ({ logoUrl: '', termsUrl: '', applications: [] as any[], termsConditions: [] as any[] }));
+const state = vi.hoisted(() => ({ logoUrl: '', termsUrl: '', applications: [] as any[], termsConditions: [] as any[], storagePhotos: [] as string[] }));
 vi.mock('../db', () => ({ db: { select: (fields: any) => {
   const chain: any = { from: () => chain, innerJoin: () => chain, where: (condition: any) => { if (fields?.termsUrl) state.termsConditions.push(condition); return chain; }, limit: () => chain,
-    then: (resolve: any) => resolve(fields?.logoUrl ? [{ logoUrl: state.logoUrl }] : fields?.termsUrl ? [{ termsUrl: state.termsUrl }] : fields?.application ? state.applications : []) };
+    then: (resolve: any) => resolve(fields?.photos ? [{ photos: state.storagePhotos }] : fields?.logoUrl ? [{ logoUrl: state.logoUrl }] : fields?.termsUrl ? [{ termsUrl: state.termsUrl }] : fields?.application ? state.applications : []) };
   return chain;
 } } }));
 import { canReadPrivateFile } from './private-file-access';
 const logo = 'https://files.localcooks.ca/location-logos/353_file_1790536347939_LoCo_Red.png';
-beforeEach(() => { state.logoUrl = logo; state.termsUrl = ''; state.applications = []; state.termsConditions = []; });
+beforeEach(() => { state.logoUrl = logo; state.termsUrl = ''; state.applications = []; state.termsConditions = []; state.storagePhotos = []; });
+
+it('serves a storage listing photo like other listing images, and nothing else from that folder', async () => {
+  const photo = 'https://files.localcooks.ca/storage-photos/379_file_1792445963015_walk-in-cooler.jpg';
+  state.storagePhotos = [photo];
+  expect(await canReadPrivateFile(undefined, photo)).toBe(true);
+  expect(await canReadPrivateFile(undefined, photo.replace('walk-in-cooler', 'other'))).toBe(false);
+});
 it('allows stored location branding without authentication but denies arbitrary files', async () => {
   expect(await canReadPrivateFile(undefined, logo)).toBe(true);
   expect(await canReadPrivateFile(undefined, logo.replace('LoCo_Red', 'other'))).toBe(false);

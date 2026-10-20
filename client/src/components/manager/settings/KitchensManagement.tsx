@@ -1,5 +1,7 @@
 import { StorageIcon as Package, EquipmentIcon as Wrench } from "@/components/ui/inventory-icons";
 import { mt } from "@/i18n/manager";
+import { navigateNotificationHref } from "@/lib/navigate-notification-href";
+import type { StorageInstructionsHandle } from "@/components/manager/settings/StorageTrackingSetup";
 import i18n from "@/i18n";
 import { tt } from "@/i18n/common-ns";
 /**
@@ -151,6 +153,8 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
   const [detailsDirty, setDetailsDirty] = useState(false);
   const arrivalRef = useRef<CheckinCheckoutHandle>(null);
   const [arrivalDirty, setArrivalDirty] = useState(false);
+  const [storageDirty, setStorageDirty] = useState(false);
+  const storageRef = useRef<StorageInstructionsHandle>(null);
   /** In-page navigation held back until the unsaved-changes question is answered. */
   const [pendingNav, setPendingNav] = useState<(() => void) | null>(null);
 
@@ -393,7 +397,8 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
       || (activeSection === "availability" && availabilityDirty)
       || (activeSection === "tours" && toursDirty)
       || (activeSection === "policies" && policiesDirty)
-      || (activeSection === "arrival-departure" && arrivalDirty));
+      || (activeSection === "arrival-departure" && arrivalDirty)
+      || (activeSection === "storage" && storageDirty));
 
   useEffect(() => {
     setSelectedKitchenId((current) => {
@@ -450,7 +455,7 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
       : activeSection === "policies"
       ? await requestPolicySave()
       : activeSection === "storage"
-      ? true
+      ? (await storageRef.current?.save()) ?? true
       : activeSection === "arrival-departure"
       ? (await arrivalRef.current?.save()) ?? true
       : (await detailsRef.current?.saveAllChanges()) ?? true;
@@ -747,7 +752,8 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
             </TabsContent>
 
             <TabsContent value="storage" className="mt-0">
-              <StorageListingContent key={`${location.id}-${activeKitchenId}`} selectedLocationId={location.id} selectedKitchenId={activeKitchenId} onConfigureInspections={() => onNavigate("settings-storage-checkin-checkout", activeKitchenId ?? undefined)} onListingsChanged={() => void queryClient.invalidateQueries({ queryKey: ["managerWorkspaceNavigation"] })} />
+              <StorageListingContent key={`${location.id}-${activeKitchenId}`} selectedLocationId={location.id} selectedKitchenId={activeKitchenId} onConfigureInspections={() => onNavigate("settings-storage-checkin-checkout", activeKitchenId ?? undefined)} onListingsChanged={() => void queryClient.invalidateQueries({ queryKey: ["managerWorkspaceNavigation"] })}
+                onInstructionsDirtyChange={setStorageDirty} instructionsSaveRef={storageRef} />
             </TabsContent>
 
             <TabsContent value="availability" className="mt-0 space-y-4">
@@ -788,7 +794,7 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
               {activeKitchenId && <KitchenWorkspaceControls key={activeKitchenId} kitchenId={activeKitchenId} location={location}
                 mode="policies" showTerms onDirtyChange={setPoliciesDirty} saveRef={policiesRef}
                 kitchenCount={kitchens.length}
-                onEditLocation={() => onNavigate("settings-booking-rules")}
+                onEditLocation={() => navigateNotificationHref(`/manager/dashboard?view=settings&tab=booking&locationId=${location.id}`)}
                 onRequestSave={() => { if (!policyScopeSaving && !policyScopeOpen) void requestPolicySave(); }} />}
             </TabsContent>
 

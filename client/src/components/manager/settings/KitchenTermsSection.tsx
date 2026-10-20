@@ -10,6 +10,7 @@ import { auth } from "@/lib/firebase";
 import { getDocumentFilename } from "@/lib/formatters";
 import { tt } from "@/i18n/common-ns";
 import { mt } from "@/i18n/manager";
+import { useTranslation } from "react-i18next";
 import { SettingsFileUpload } from "./SettingsFileUpload";
 import { AuthenticatedDocumentLink } from "./AuthenticatedDocumentLink";
 import { PolicySection } from "./PolicySection";
@@ -26,6 +27,7 @@ export function KitchenTermsSection({ location, note, readOnly = false, location
   onEditLocation?: () => void;
 }) {
   const { toast } = useToast();
+  const { i18n } = useTranslation();
   const queryClient = useQueryClient();
   const [termsFile, setTermsFile] = useState<File | null>(null);
   const [isReplacing, setIsReplacing] = useState(false);
@@ -90,7 +92,7 @@ export function KitchenTermsSection({ location, note, readOnly = false, location
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium">{getDocumentFilename(location.kitchenTermsUrl) || mt("bpTermsTitle")}</p>
             {location.kitchenTermsUploadedAt && (
-              <p className="text-xs text-muted-foreground">{mt("bpUploadedOn", { date: new Date(location.kitchenTermsUploadedAt).toLocaleDateString() })}</p>
+              <p className="text-xs text-muted-foreground">{mt("bpUploadedOn", { date: new Intl.DateTimeFormat(i18n?.language, { dateStyle: "medium" }).format(new Date(location.kitchenTermsUploadedAt)) })}</p>
             )}
           </div>
           <div className="flex shrink-0 items-center gap-1">

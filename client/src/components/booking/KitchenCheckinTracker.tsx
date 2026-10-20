@@ -12,7 +12,7 @@ import { previousVisitTaskAnswers, VisitDutyValidationError, type DutyFieldError
 import { useState, useEffect, useRef, type ReactNode } from "react"
 import { Link } from "wouter"
 import { useTranslation } from "react-i18next"
-import { Camera, Clock, CheckCircle2, Loader2, FileWarning, LogIn, LogOut, XCircle, Info, Ban, MapPin, ArrowUpRight, Phone } from "lucide-react"
+import { Camera, ChevronDown, Lock, Clock, CheckCircle2, Loader2, FileWarning, LogIn, LogOut, XCircle, Info, Ban, MapPin, ArrowUpRight, Phone } from "lucide-react"
 import type { InfoChipVariant } from "@/components/chef/info-chip"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -24,7 +24,7 @@ import { lateCheckoutOpen } from "@shared/clock-closeout"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { useKitchenCheckin, VisitCodeError, type KitchenCheckinStatus } from "@/hooks/use-kitchen-checkin"
-import { VisitCodeField, visitCodeGate, type VisitCodeProblem } from "./VisitCodeField"
+import { VisitCodeField, VisitCodeLabel, visitCodeGate, type VisitCodeProblem } from "./VisitCodeField"
 import { useLocationChecklist, type ChecklistItem, type PhotoRequirement } from "@/hooks/use-location-checklist"
 import { Checkbox } from "@/components/ui/checkbox"
 import { bt } from "@/i18n/booking-ns";
@@ -40,11 +40,14 @@ import { visitStatusSentence } from "@/lib/visit-status-sentence"
 import { SmartImage } from "@/components/ui/smart-image"
 import { getR2ProxyUrl } from "@/utils/r2-url-helper"
 import { StatusPill } from "./BookingNowCard"
+import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp"
 import type { BookingPillTone } from "@/lib/booking-header-state"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface KitchenCheckinTrackerProps {
+  /** Rendered at the start of the day-switcher row (the page\'s back button). */
+  leading?: ReactNode
   onSuccess: (kind: "checkin" | "checkout") => void
   /** Kitchen phone, when the booking has one; shown beside "Message kitchen". */
   kitchenPhone?: string | null
@@ -96,6 +99,7 @@ export function KitchenCheckinTracker({
   bookingDate,
   startTime,
   endTime,
+  leading,
 }: KitchenCheckinTrackerProps) {
   const { t: tStrict, i18n } = useTranslation("chef");
   const t: Translate = (key, defaultText, vars) => {
@@ -354,6 +358,8 @@ export function KitchenCheckinTracker({
   const beforeCheckinOpens = !!checkinOpensAt && Date.now() < checkinOpensAt.getTime()
   const todayKey = new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date())
   const visitIsToday = visitDate === todayKey
+  // Each day of a multi-day booking has its own code; say so wherever the code is asked for.
+  const multiDayCodes = (data?.visits?.filter(visit => !!visit.visitDate).length ?? 0) > 1
   // A later day says which day ("Tue, Oct 20, 4:45 p.m."); today says only the time.
   const opensText = checkinOpensAt ? visitIsToday ? formatTime(checkinOpensAt.toISOString())
     : new Intl.DateTimeFormat(locale, { timeZone: timezone, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(checkinOpensAt) : null
@@ -426,13 +432,14 @@ export function KitchenCheckinTracker({
   const bookingEndsText = visitEndAt
     ? `${new Intl.DateTimeFormat(locale, { timeZone: timezone, hour: "numeric", minute: "2-digit", hour12: true }).format(visitEndAt)} ${friendlyTimezoneName(timezone, locale)}` : ""
   const statusLabel = !clockEnded && data?.status === "confirmed" && checkinStatus === "not_checked_in"
-    ? beforeCheckinOpens && checkinOpensAt ? t("kciOpensAt", "Check-in opens at {time}", { time: opensText })
+    ? beforeCheckinOpens && checkinOpensAt ? t("kciPillUpcoming", "Upcoming")
       : canCheckin ? t("kciCheckinOpen", "Check-in open") : chip.label
     : checkinStatus === "checked_in" && !clockEnded && visitEndAt
       ? t("kciCheckedInEnds", "Checked in · ends {time}", { time: clockTime(clockVisit?.scheduledEndAt || visitEndAt.toISOString()) })
-      : checkinStatus === "checkout_requested" ? t("kciStageReview", "Checking out")
-      : checkinStatus === "checked_out" ? t("kciStageComplete", "Visit complete") : chip.label
-  const currentStep = checkoutOpen || isDeparture && !showInSessionEarly || checkinStatus === "checkout_requested" || visitFinished && checkinStatus !== "no_show" ? 3
+      // The title already says "Checking out"; the pill says where the chef stands.
+      : checkinStatus === "checkout_requested" || checkinStatus === "checked_out" ? t("visitStatus_checked_out", "Checked out") : chip.label
+  // A closed visit has every step done (no current step).
+  const currentStep = checkinStatus === "checked_out" ? 4 : checkoutOpen || isDeparture && !showInSessionEarly || checkinStatus === "checkout_requested" || visitFinished && checkinStatus !== "no_show" ? 3
     : checkinStatus === "checked_in" ? 2 : canCheckin ? 1 : 0
   const steps = [t("kciStepArrive", "Arrive"), t("kciCheckInHeading", "Check in"), t("kciStepCook", "Cook"), t("kciCheckOutHeading", "Check out")]
   const dayLabel = (date: string) => {
@@ -450,7 +457,8 @@ export function KitchenCheckinTracker({
     checkedInTime: clockTime(checkedInStamp), checkoutTime: clockTime(data.checkoutRequestedAt),
     bookingEnds: lateCheckout ? overstayEnd : bookingEndsText,
   }, t) : { text: "", coversCheckin: false, coversCheckout: false }
-  const nextStep = sentence.text
+  const nextStep = beforeCheckinOpens && opensText && !clockEnded && data?.status === "confirmed" && checkinStatus === "not_checked_in"
+    ? t("kciOpensSentence", "Check-in opens {time}. Come back then to check in.", { time: opensText }) : sentence.text
   // Kitchen-local times that matter for this visit, in the order they happen. A time the sentence already
   // states is not repeated, and the kitchen's review deadline is never shown to the chef.
   const times: Array<{ label: string; value: string }> = []
@@ -476,13 +484,13 @@ export function KitchenCheckinTracker({
   }
   // Only the step the chef is on: arrival before check-in, departure once checked in.
   const beforeArrival = checkinStatus === "not_checked_in" && !isDeparture
-  const instructions = showInSession ? [departureInstructions] : isDeparture ? [departureInstructions, arrivalInstructions] : beforeArrival ? [arrivalInstructions] : [arrivalInstructions, departureInstructions]
+  const instructions = showInSession ? [departureInstructions] : isDeparture ? [departureInstructions] : beforeArrival ? [arrivalInstructions] : [arrivalInstructions, departureInstructions]
   const instructionsShown = liveBooking && !visitFinished && instructionsReleased
   // The saved copy is history: while the visit is live the current instructions above are what matters.
   const recordedLines = instructionsShown ? [] : [
-    data?.checkedInAt ? duties?.arrival.instructions : null,
-    data?.checkoutRequestedAt ? duties?.departure.instructions : null,
-  ].filter((line): line is string => !!line)
+    data?.checkedInAt && duties?.arrival.instructions ? { label: t("kciArrival", "Arrival"), body: duties.arrival.instructions } : null,
+    data?.checkoutRequestedAt && duties?.departure.instructions ? { label: t("kciDeparture", "Departure"), body: duties.departure.instructions } : null,
+  ].filter((line): line is { label: string; body: string } => !!line)
 
   const renderChecklist = (items: ChecklistItem[], label: string) => (
     <div className="space-y-2">
@@ -561,13 +569,42 @@ export function KitchenCheckinTracker({
 
   return (
     <section className={cn("mx-auto max-w-2xl space-y-5 pb-6", canCheckin && dutiesReady && "pb-32 sm:pb-6")} aria-labelledby="kitchen-visit-title">
+        {/* The page's back control and the day switcher share one row (Shopify-style icon back button). */}
+        <div className="flex items-end gap-3">
+          {leading}
+          {data?.visits && (data.visits.length > 1 || data.visitUnavailable) && (
+            <div className="space-y-2" role="group" aria-labelledby="kitchen-visit-choice">
+              <p id="kitchen-visit-choice" className="text-[13px] font-medium leading-[18px] text-muted-foreground">{t("kciChooseVisit", "Choose a visit")}</p>
+              <div className="inline-flex max-w-full flex-wrap gap-1 rounded-xl bg-muted p-1">
+                {data.visits.map((visit, ordinal) => {
+                  const status = t(`visitStatus_${visit.checkinStatus}`, visit.checkinStatus.replaceAll("_", " "))
+                  const label = visit.visitDate ? dayLabel(visit.visitDate) : `${t("kciVisitNumber", "Visit {number}", { number: visit.blockIndex + 1 })}: ${formatVisit(visit.startTime, visit.endTime)}`
+                  const day = t("mdDayOf", "Day {number} of {total}", { number: ordinal + 1, total: data.visits!.length })
+                  return <Button key={visit.id} type="button" variant="ghost"
+                    className={cn("min-h-11 h-auto max-w-full gap-2 whitespace-normal rounded-lg border border-transparent px-3.5 py-2 text-left text-sm font-medium text-muted-foreground hover:bg-background/50 hover:text-foreground",
+                      data.visitId === visit.id && "border-border bg-background font-semibold text-foreground shadow-[0_1px_2px_rgba(0,0,0,0.08),0_1px_3px_rgba(0,0,0,0.06)] hover:bg-background")}
+                    aria-label={`${visit.visitDate ? `${day} · ` : ""}${label} · ${status}`} title={status}
+                    aria-pressed={data.visitId === visit.id} disabled={isPending}
+                    onClick={() => { setSelectedVisitId(visit.id); onVisitChange?.(visit.id) }}>
+                    <span aria-hidden="true" className={cn("h-2 w-2 shrink-0 rounded-full", visit.visitDate?.slice(0, 10) === todayKey ? "bg-primary" : visit.checkinStatus === "checked_out" ? "bg-foreground/50" : "bg-muted-foreground/40")} />
+                    {label}
+                  </Button>
+                })}
+              </div>
+            </div>
+          )}
+
+        </div>
         <header className="overflow-hidden rounded-2xl border border-border/70 bg-card">
           {coverUrl && <SmartImage src={coverUrl} alt="" hideOnError className="aspect-[16/9] max-h-52 w-full object-cover sm:hidden" />}
           <div className="space-y-4 p-4 sm:p-6">
             <div className="flex min-w-0 items-start gap-4">
               {coverUrl && <SmartImage src={coverUrl} alt="" hideOnError className="hidden aspect-[16/9] w-36 shrink-0 rounded-xl object-cover sm:block" />}
               <div className="min-w-0 space-y-1">
-                <h1 id="kitchen-visit-title" tabIndex={-1} className="break-words rounded-md text-[22px] font-semibold leading-7 tracking-tight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{title}</h1>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                  <h1 id="kitchen-visit-title" tabIndex={-1} className="break-words rounded-md text-[22px] font-semibold leading-7 tracking-tight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{title}</h1>
+                  {!isLoading && data && <StatusPill tone={pillTone}>{statusLabel}</StatusPill>}
+                </div>
                 {!isArrival && <p className="text-[13px] leading-[18px] text-muted-foreground">{kitchenLabel}</p>}
                 {kitchenAddress && <p className="flex flex-wrap items-center gap-x-3 text-[13px] leading-[18px] text-muted-foreground">
                   <span className="inline-flex min-w-0 items-center gap-1"><MapPin className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />{kitchenAddress}</span>
@@ -582,7 +619,6 @@ export function KitchenCheckinTracker({
 
             {!isLoading && data && (
               <section aria-label={t("kciVisitStatus", "Visit status")} className="flex flex-col items-start gap-2 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200">
-                <StatusPill tone={pillTone}>{statusLabel}</StatusPill>
                 <p className={cn("text-[15px] leading-[22px] text-foreground/90", lateCheckout && "font-medium")} data-testid="visit-next-step" role={lateCheckout ? "alert" : undefined}>{nextStep}</p>
                 {times.length > 0 && (
                   <dl className="grid w-full grid-cols-1 gap-x-6 gap-y-3 pt-1 sm:grid-cols-2">
@@ -612,28 +648,6 @@ export function KitchenCheckinTracker({
             </ol>}
           </div>
         </header>
-        {data?.visits && (data.visits.length > 1 || data.visitUnavailable) && (
-          <div className="space-y-2" role="group" aria-labelledby="kitchen-visit-choice">
-            <p id="kitchen-visit-choice" className="text-[13px] font-medium leading-[18px] text-muted-foreground">{t("kciChooseVisit", "Choose a visit")}</p>
-            <div className="inline-flex max-w-full flex-wrap gap-1 rounded-lg bg-muted/60 p-1">
-              {data.visits.map((visit, ordinal) => {
-                const status = t(`visitStatus_${visit.checkinStatus}`, visit.checkinStatus.replaceAll("_", " "))
-                const label = visit.visitDate ? dayLabel(visit.visitDate) : `${t("kciVisitNumber", "Visit {number}", { number: visit.blockIndex + 1 })}: ${formatVisit(visit.startTime, visit.endTime)}`
-                const day = t("mdDayOf", "Day {number} of {total}", { number: ordinal + 1, total: data.visits!.length })
-                return <Button key={visit.id} type="button" variant="ghost"
-                  className={cn("min-h-11 h-auto max-w-full gap-2 whitespace-normal rounded-md px-3 py-2 text-left text-sm font-medium text-muted-foreground hover:bg-background/60 hover:text-foreground",
-                    data.visitId === visit.id && "bg-background text-foreground shadow-sm hover:bg-background")}
-                  aria-label={`${visit.visitDate ? `${day} · ` : ""}${label} · ${status}`} title={status}
-                  aria-pressed={data.visitId === visit.id} disabled={isPending}
-                  onClick={() => { setSelectedVisitId(visit.id); onVisitChange?.(visit.id) }}>
-                  <span aria-hidden="true" className={cn("h-2 w-2 shrink-0 rounded-full", visit.checkinStatus === "checked_in" ? "bg-emerald-500" : visit.checkinStatus === "checked_out" ? "bg-foreground/60" : "bg-muted-foreground/40")} />
-                  {label}
-                </Button>
-              })}
-            </div>
-          </div>
-        )}
-
         {data && checkinStatus !== "not_checked_in" && <SessionExtensionsCard bookingId={bookingId} manager={false} chefName=""
           refreshKey={`${checkinStatus}:${data.visitId ?? ""}`} onChanged={() => void refetch()} />}
         {showInSession && clockVisit && data && (
@@ -657,17 +671,18 @@ export function KitchenCheckinTracker({
           <InstructionsOverview mode={arrivalMode} releaseAt={data?.instructionsReleaseAt} timezone={timezone}
             visitStartAt={visitStartAt} requiredTasks={overviewTasks} />
         </section>}
-        {!isLoading && liveBooking && !visitFinished && instructionsReleased && !showInSession && <details role="region" open className="rounded-2xl border border-border/70 bg-card p-4 sm:p-6" aria-label={t(beforeArrival ? "kciArrivalInstructions" : "kciRequiredInstructions")} >
-          <summary className="min-h-11 cursor-pointer rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><h2 id="visit-instructions-title" className="inline text-base font-semibold leading-6">{beforeArrival ? t("kciGetInside", "Get inside") : t("kciRequiredInstructions", "Visit instructions")}</h2></summary>
+        {!isLoading && liveBooking && !visitFinished && instructionsReleased && !showInSession && <details role="region" open className="group rounded-2xl border border-border/70 bg-card p-4 sm:p-6" aria-label={t(beforeArrival ? "kciArrivalInstructions" : "kciRequiredInstructions")} >
+          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden"><h2 id="visit-instructions-title" className="inline text-base font-semibold leading-6">{beforeArrival ? t("kciArrivalInstructions", "Arrival instructions") : isDeparture ? t("kciDepartureInstructions", "Departure instructions") : t("kciRequiredInstructions", "Visit instructions")}</h2>
+            <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180 motion-reduce:transition-none" aria-hidden="true" /></summary>
           <div className="space-y-4 pt-3">
           {updatedSinceBooking && <p className="text-xs text-muted-foreground">{t("kciInstructionsUpdated", "Updated by the kitchen since you booked")}</p>}
           {instructions.map(item => (
             <div key={item.key}>
-              <h3 className="text-sm font-medium">{item.title}</h3>
+              {instructions.length > 1 && <h3 className="text-sm font-medium">{item.title}</h3>}
               <p className="mt-1 text-sm whitespace-pre-line">{item.body}</p>
             </div>
           ))}
-          {checkinStatus === "not_checked_in" && !codeState?.consumed && <ArrivalModeLine mode={arrivalMode} />}
+          {checkinStatus === "not_checked_in" && !codeState?.consumed && <ArrivalModeLine mode={arrivalMode} dailyCode={multiDayCodes} />}
           {canCheckin && dutiesReady && arrivalRequirements}
           {beforeArrival && <p className="text-xs text-muted-foreground" data-testid="departure-after-checkin">{t("kciDepartureAfterCheckin", "Departure instructions appear here after you check in.")}</p>}
           </div>
@@ -681,9 +696,21 @@ export function KitchenCheckinTracker({
         </div>}
 
         {!isLoading && isArrival && liveBooking && beforeCheckinOpens && checkinOpensAt && <section aria-label={t("kciCheckInHeading", "Check in")} className="rounded-2xl border border-border/70 bg-card p-4 sm:p-6">
-          <Clock className="mb-2 h-5 w-5 text-muted-foreground" aria-hidden="true" />
-          <h2 className="text-base font-semibold leading-6">{t("kciOpensAt", "Check-in opens at {time}", { time: opensText })}</h2>
-          <p className="mt-2 text-sm text-muted-foreground">{t("kciBeforeWindowHint", "You can read the instructions while you wait.")}</p>
+          <h2 className="text-base font-semibold leading-6">{t("kciCheckInHeading", "Check in")}</h2>
+          {/* The real step, shown locked ahead of time: where the code goes, and when it opens. */}
+          <div className="mt-3 space-y-2">
+            <VisitCodeLabel htmlFor="visit-code-preview" dailyCode={multiDayCodes} muted />
+            <InputOTP id="visit-code-preview" maxLength={VISIT_CODE_LENGTH} value="" disabled containerClassName="w-full has-[:disabled]:opacity-100" aria-describedby="visit-code-preview-hint">
+              <InputOTPGroup className="w-full max-w-sm gap-2" aria-hidden="true">
+                {Array.from({ length: VISIT_CODE_LENGTH }, (_, index) => <InputOTPSlot key={index} index={index}
+                  className="h-14 min-w-0 flex-1 cursor-not-allowed rounded-xl border border-border bg-muted first:rounded-l-xl last:rounded-r-xl" />)}
+              </InputOTPGroup>
+            </InputOTP>
+            <p id="visit-code-preview-hint" className="flex items-start gap-1.5 text-sm text-muted-foreground">
+              <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              {t("kciCodeOpens", "Opens {time}", { time: opensText })}
+            </p>
+          </div>
         </section>}
         {isLoading ? (
           <div className="space-y-4 py-3" role="status" aria-label={t("kciLoadingVisit", "Loading visit")}>
@@ -699,7 +726,7 @@ export function KitchenCheckinTracker({
                 {codeGate !== "none" && codeState && data && (
                   <VisitCodeField gate={codeGate} state={codeState} value={visitCodeInput} onChange={changeVisitCode}
                     helpContainer={helpContainer} canReportProblem={!beforeCheckinOpens && !!checkinOpensAt} problem={codeProblem} disabled={isCheckingIn} bookingId={bookingId} chefId={data.chefId}
-                    kitchenName={kitchenName || t("kitchenDefault", "Kitchen")} />
+                    kitchenName={kitchenName || t("kitchenDefault", "Kitchen")} dailyCode={multiDayCodes} />
                 )}
                 {(codeGate === "none" || codeGate === "self") && !beforeCheckinOpens && !!checkinOpensAt && <p className="text-sm text-muted-foreground">{t("kciAcNoAccess", "Can’t get inside or find staff? Contact the kitchen. Don’t confirm arrival until you’re at the kitchen.")}</p>}
                 <div className="fixed inset-x-0 bottom-0 z-20 border-t bg-card/95 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur sm:static sm:border-0 sm:bg-transparent sm:px-0">
@@ -808,10 +835,16 @@ export function KitchenCheckinTracker({
               </section>
             )}
 
-            {duties && recordedLines.length > 0 && <section className="rounded-xl border p-4 space-y-2" aria-label={t("kciRecordedInstructions", "Instructions saved with your booking")}>
-              <h2 className="text-sm font-medium">{t("kciRecordedInstructions", "Instructions saved with your booking")}</h2>
-              {recordedLines.map(line => <p key={line} className="text-sm whitespace-pre-line">{line}</p>)}
-            </section>}
+            {duties && recordedLines.length > 0 && <details className="group rounded-2xl border border-border/70 bg-card p-4 sm:px-6" aria-label={t("kciRecordedInstructions", "Instructions you were given")}>
+              <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-md text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+                {t("kciRecordedInstructions", "Instructions you were given")}
+                <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180 motion-reduce:transition-none" aria-hidden="true" />
+              </summary>
+              <dl className="space-y-3 pt-2">{recordedLines.map(line => <div key={line.label}>
+                <dt className="text-[13px] leading-[18px] text-muted-foreground">{line.label}</dt>
+                <dd className="mt-0.5 whitespace-pre-line text-sm">{line.body}</dd>
+              </div>)}</dl>
+            </details>}
             {/* Recorded checklists stay visible as history after each step. */}
             {data?.checkinChecklistItems && Array.isArray(data.checkinChecklistItems) && data.checkinChecklistItems.length > 0 &&
               renderRecordedChecklist(data.checkinChecklistItems, t("kciCheckInChecklist"))}

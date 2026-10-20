@@ -22,11 +22,11 @@ export const BOOKING_CALENDAR_CLASS_NAMES = {
   row: "mt-0.5",
   cell: cn(
     "relative z-0 h-8 p-0 text-center text-sm",
-    "[&:has([aria-selected])]:before:absolute [&:has([aria-selected])]:before:left-1/2 [&:has([aria-selected])]:before:top-1/2 [&:has([aria-selected])]:before:h-8 [&:has([aria-selected])]:before:w-8 [&:has([aria-selected])]:before:-translate-x-1/2 [&:has([aria-selected])]:before:-translate-y-1/2 [&:has([aria-selected])]:before:-z-10 [&:has([aria-selected])]:before:rounded-full [&:has([aria-selected])]:before:border-2 [&:has([aria-selected])]:before:border-[#E10939]"
+    "[&:has([aria-selected])]:before:absolute [&:has([aria-selected])]:before:left-1/2 [&:has([aria-selected])]:before:top-1/2 [&:has([aria-selected])]:before:h-8 [&:has([aria-selected])]:before:w-8 [&:has([aria-selected])]:before:-translate-x-1/2 [&:has([aria-selected])]:before:-translate-y-1/2 [&:has([aria-selected])]:before:-z-10 [&:has([aria-selected])]:before:rounded-full [&:has([aria-selected])]:before:bg-[#E10939]"
   ),
   day: "mx-auto flex h-8 w-8 max-w-[32px] items-center justify-center rounded-full bg-transparent p-0 text-sm font-normal text-gray-900 transition-colors hover:bg-gray-100 aria-selected:opacity-100",
   day_selected:
-    "bg-transparent text-gray-900 hover:bg-transparent focus:bg-transparent",
+    "bg-transparent font-semibold text-white hover:bg-transparent hover:text-white focus:bg-transparent",
   day_disabled:
     "pointer-events-none text-gray-300 opacity-40 line-through decoration-gray-300/80",
 };

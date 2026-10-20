@@ -84,14 +84,15 @@ describe("full-page kitchen visit", () => {
     ['check-in', {}, 'Check in'],
     ['cooking', { checkinStatus: 'checked_in', chefId: 3, visitCloseout: { phase: 'in_booked_time', scheduledStartAt: new Date(Date.now() - 3_600_000).toISOString(), scheduledEndAt: new Date(Date.now() + 3_600_000).toISOString() } }, 'Cook'],
     ['checkout', { checkinStatus: 'checkout_requested' }, 'Check out'],
-    ['complete', { checkinStatus: 'checked_out' }, 'Check out'],
+    // A closed visit has every step done, so no step is current.
+    ['complete', { checkinStatus: 'checked_out' }, null],
   ])('marks only the current progress step during %s', async (_state, overrides, step) => {
     status = visit(overrides as Record<string, unknown>);
     setup();
     const progress = await screen.findByRole('list', { name: 'Visit progress' });
     const current = progress.querySelectorAll('[aria-current="step"]');
-    expect(current).toHaveLength(1);
-    expect(current[0]).toHaveTextContent(step as string);
+    expect(current).toHaveLength(step ? 1 : 0);
+    if (step) expect(current[0]).toHaveTextContent(step as string);
     expect(within(progress).getAllByRole('listitem')).toHaveLength(4);
   });
 
@@ -99,7 +100,7 @@ describe("full-page kitchen visit", () => {
     status = visit({ bookingDate: '2099-01-15' });
     setup();
     let help = await screen.findByRole('region', { name: 'Visit help' });
-    await screen.findByRole('heading', { name: /Check-in opens at/ });
+    await screen.findByText(/^Opens /);
     expect(within(help).getByRole('button', { name: 'Message kitchen' })).toBeVisible();
     expect(within(help).queryByRole('button', { name: 'Running late?' })).not.toBeInTheDocument();
     expect(within(help).queryByRole('button', { name: 'Report a problem' })).not.toBeInTheDocument();
@@ -208,8 +209,8 @@ describe("full-page kitchen visit", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Visit complete" })).toBeInTheDocument();
     await waitFor(() => expect(client.getQueryData(["kitchen-checkin-status", 901])).toBeDefined());
     const summary = screen.getByRole("region", { name: "Visit status" });
-    expect(within(summary).getByText("Visit complete")).toBeInTheDocument();
-    expect(within(summary).getByText(/Visit complete\. See your booking/)).toBeInTheDocument();
+    expect(screen.getByText("Checked out")).toBeInTheDocument();
+    expect(within(summary).getByText(/^See your booking/)).toBeInTheDocument();
     expect(within(summary).queryByText(/manager.*review.*finished/i)).not.toBeInTheDocument();
     for (const label of ["Check-in time", "Checkout time", "Kitchen closed the visit"]) {
       // The header carries the visit date; times never repeat the year.
@@ -219,7 +220,8 @@ describe("full-page kitchen visit", () => {
     expect(screen.getByText("Your Check-In Checklist")).toBeInTheDocument();
     expect(screen.getByText("Check the floor")).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Visit instructions" })).not.toBeInTheDocument();
-    expect(within(screen.getByRole('region', { name: 'Instructions saved with your booking' })).getByText('Use the side entrance.')).toBeInTheDocument();
+    // Collapsed by default; the text is kept for the record.
+    expect(within(screen.getByText('Instructions you were given').closest('details')!).getByText('Use the side entrance.')).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Check out" })).not.toBeInTheDocument();
     expect(screen.getAllByRole("link", { name: "Back to booking" })).toHaveLength(2);
   });
@@ -274,7 +276,7 @@ describe("full-page kitchen visit", () => {
     expect(screen.getByText('Updated by the kitchen since you booked')).toBeInTheDocument();
     expect(screen.getByText('Original submitted task')).toBeInTheDocument();
     // The recorded text equals the arrival instructions still shown above, so it is not repeated.
-    expect(screen.queryByRole('region', { name: 'Instructions saved with your booking' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Instructions you were given')).not.toBeInTheDocument();
     const submit = screen.getByRole('button', { name: 'Check out' });
     expect(submit).toBeDisabled();
     fireEvent.click(screen.getByRole('checkbox', { name: /Check the new exit/ }));
@@ -477,9 +479,9 @@ describe("full-page kitchen visit", () => {
     status = visit({ bookingDate: "2099-01-15", startTime: "09:00", endTime: "12:00", timezone: "America/St_Johns", checkinWindowMinutesBefore: 15 });
     setup();
     const summary = await screen.findByRole("region", { name: "Visit status" });
-    expect(within(summary).getByText(/isn’t open yet/)).toBeInTheDocument();
-    // A later day names the day, once in the chip and once on the card, never as a bare time.
-    expect(screen.getByRole("heading", { name: /Check-in opens at .*Jan 15.*8:45/ })).toBeVisible();
+    expect(within(summary).getByText(/^Check-in opens .*Jan 15.*8:45/)).toBeInTheDocument();
+    // A later day names the day, in the sentence and on the locked code card, never as a bare time.
+    expect(screen.getByText(/^Opens .*Jan 15.*8:45/)).toBeVisible();
     expect(screen.queryByText("Check-in opens")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Check in" })).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Arrival instructions" })).toHaveAttribute("open");
@@ -494,7 +496,7 @@ describe("full-page kitchen visit", () => {
     setup();
     expect(await screen.findByRole("heading", { level: 1, name: "You’re checked in" })).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "Message kitchen" })).toHaveLength(1);
-    expect(screen.queryByRole("region", { name: "Instructions saved with your booking" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Instructions you were given")).not.toBeInTheDocument();
     expect(screen.queryByText("Use the side entrance.")).not.toBeInTheDocument();
   });
 
@@ -530,7 +532,7 @@ describe("full-page kitchen visit", () => {
       status = ended({ status: "completed", checkinStatus: "checked_out", checkoutRequestedAt: new Date(Date.now() - 3_000_000).toISOString() }, "manager_cleared");
       setup();
       expect(await screen.findByRole("heading", { name: "Visit complete" })).toBeInTheDocument();
-      expect(within(screen.getByRole("region", { name: "Visit status" })).getByText("Visit complete")).toBeInTheDocument();
+      expect(screen.getByText("Checked out")).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /Check out now|Check out/ })).not.toBeInTheDocument();
     });
     it("once the inspection window has closed there is no checkout, and it says what to do", async () => {
@@ -562,7 +564,8 @@ describe("full-page kitchen visit", () => {
     status = visit({ checkinStatus: "checkout_requested", checkedInAt: "2026-10-12T14:05:00Z", checkoutRequestedAt: "2026-10-12T17:10:00Z", checkoutReviewDeadline: "2026-10-12T18:10:00Z" });
     setup();
     const summary = await screen.findByRole("region", { name: "Visit status" });
-    expect(within(summary).getByText("Checking out")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Checking out" })).toBeInTheDocument();
+    expect(screen.getByText("Checked out")).toBeInTheDocument();
     expect(within(summary).getByText(/^You checked out at \d{1,2}:\d{2}\s[ap]\.m\. You’re all set\.$/)).toBeInTheDocument();
     // The review deadline is the kitchen's business, not the chef's.
     expect(summary).not.toHaveTextContent(/Review due by|inspection|paid|payout|refund|complete/i);
@@ -576,7 +579,7 @@ describe("full-page kitchen visit", () => {
     status = visit({ status: bookingStatus });
     setup();
     const summary = await screen.findByRole("region", { name: "Visit status" });
-    expect(within(summary).getByText(chipLabel)).toBeInTheDocument();
+    expect(screen.getByText(chipLabel)).toBeInTheDocument();
     expect(within(summary).getByText(message)).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 1, name: "Kitchen visit" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Visit instructions" })).not.toBeInTheDocument();
@@ -619,7 +622,7 @@ describe("full-page kitchen visit", () => {
     try {
       status = visit({ bookingDate: "2026-10-20", startTime: "10:00", endTime: "14:00", timezone: "America/St_Johns", checkinWindowMinutesBefore: 15 });
       setup(true);
-      expect(await screen.findByRole("heading", { name: /^Check-in opens at 9:45\s*a\.m\.$/ })).toBeInTheDocument();
+      expect(await screen.findByText(/^Opens 9:45\s*a\.m\.$/)).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Arrived early? Message the kitchen" })).toBeInTheDocument();
     } finally { vi.useRealTimers(); }
   });
@@ -628,7 +631,7 @@ describe("full-page kitchen visit", () => {
     const tomorrow = new Date(Date.now() + 36 * 3600_000).toISOString().split("T")[0];
     status = visit({ bookingDate: tomorrow, startTime: "10:00", endTime: "14:00" });
     setup(true);
-    expect(await screen.findByRole("heading", { name: /Check-in opens at \w{3}, / })).toBeInTheDocument();
+    expect(await screen.findByText(/^Opens \w{3}, /)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Arrived early? Message the kitchen" })).not.toBeInTheDocument();
     expect(screen.queryByTestId("booking-still-ends")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Running late?" })).not.toBeInTheDocument();

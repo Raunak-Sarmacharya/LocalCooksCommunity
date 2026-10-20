@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { truncateFilename } from "./formatters";
+import { getDocumentFilename, truncateFilename } from "./formatters";
 
 describe("truncateFilename", () => {
     it("leaves a name that already fits alone", () => {
@@ -31,4 +31,12 @@ describe("truncateFilename", () => {
     it("passes an empty name straight through", () => {
         expect(truncateFilename("")).toBe("");
     });
+});
+
+describe('getDocumentFilename', () => {
+  it('shows the name the user uploaded, without the storage prefix', () => {
+    expect(getDocumentFilename('https://files.localcooks.ca/documents/379_file_1792444457787_phase0-kitchen-terms.pdf')).toBe('phase0-kitchen-terms.pdf');
+    expect(getDocumentFilename('https://files.localcooks.ca/documents/221_1768267179125_House%20rules.pdf')).toBe('House rules.pdf');
+    expect(getDocumentFilename('https://files.localcooks.ca/documents/terms_2024.pdf')).toBe('terms_2024.pdf');
+  });
 });

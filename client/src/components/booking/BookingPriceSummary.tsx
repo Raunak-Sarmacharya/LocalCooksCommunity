@@ -8,6 +8,8 @@ interface BookingPriceSummaryProps {
   equipmentSubtotal: number;
   /** Kitchen sessions no longer sell storage; kept optional for callers that have none. */
   storageSubtotal?: number;
+  /** Itemised kitchen time (per day / hours × rate); replaces the single "Kitchen time" line. */
+  kitchenItems?: BookingPriceItem[];
   equipmentItems?: BookingPriceItem[];
   storageItems?: BookingPriceItem[];
   taxRatePercent: number;
@@ -22,7 +24,7 @@ interface BookingPriceSummaryProps {
 
 /** Cents and rounding match the wizard estimate; presentation never changes the quote. */
 export function BookingPriceSummary({ kitchenSubtotal, equipmentSubtotal, storageSubtotal = 0,
-  equipmentItems, storageItems, taxRatePercent, taxLabel, serviceFeeRate, currency = "CAD", days,
+  kitchenItems, equipmentItems, storageItems, taxRatePercent, taxLabel, serviceFeeRate, currency = "CAD", days,
   extraTimeRateCents,
 }: BookingPriceSummaryProps) {
   const { t } = useTranslation("booking");
@@ -30,7 +32,7 @@ export function BookingPriceSummary({ kitchenSubtotal, equipmentSubtotal, storag
   const tax = computeKitchenHstAmountCents(subtotal, taxRatePercent);
   const serviceFee = computePlatformFeeAmountCents(subtotal, serviceFeeRate);
   const items = [
-    ...(!days ? [{ name: t("bpsKitchenTime"), priceCents: kitchenSubtotal },
+    ...(!days ? [...(kitchenItems ?? [{ name: t("bpsKitchenTime"), priceCents: kitchenSubtotal }]),
     ...(equipmentItems ?? [{ name: t("bpsEquipment"), priceCents: equipmentSubtotal }])] : []),
     ...(storageItems ?? [{ name: t("bpsStorage"), priceCents: storageSubtotal }]),
     { name: `${taxLabel || t("wfbTaxName")} (${taxRatePercent}%)`, priceCents: tax },

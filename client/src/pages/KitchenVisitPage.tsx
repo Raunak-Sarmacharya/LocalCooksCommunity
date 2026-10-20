@@ -10,6 +10,7 @@ import { useChefShellChrome } from "@/layouts/chef-shell-context";
 import { KitchenCheckinTracker } from "@/components/booking/KitchenCheckinTracker";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 export default function KitchenVisitPage() {
   const [, params] = useRoute("/booking/:id/visit");
@@ -32,10 +33,14 @@ export default function KitchenVisitPage() {
     { label: t("kciVisitActions", "Visit actions") },
   ], [t, navigate, bookingId]);
   const inShell = useChefShellChrome({ activeView: "bookings", onViewChange, breadcrumbs });
+  // A compact icon back button (Shopify admin / Linear); the breadcrumbs above carry the full path.
+  const back = <TooltipProvider><Tooltip><TooltipTrigger asChild>
+    <Button asChild variant="outline" size="icon" className="h-11 w-11 shrink-0 rounded-lg">
+      <Link href={validId ? `/booking/${bookingId}` : "/dashboard?view=bookings"} aria-label={t("kciBackToBooking", "Back to booking")}><ArrowLeft className="h-4 w-4" aria-hidden="true" /></Link>
+    </Button>
+  </TooltipTrigger><TooltipContent>{t("kciBackToBooking", "Back to booking")}</TooltipContent></Tooltip></TooltipProvider>;
   const body = <div className="max-w-2xl mx-auto space-y-5 pb-8">
-    <Link href={validId ? `/booking/${bookingId}` : "/dashboard?view=bookings"} className="inline-flex min-h-11 items-center gap-2 rounded-md text-sm font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-      <ArrowLeft className="h-4 w-4" />{t("kciBackToBooking", "Back to booking")}
-    </Link>
+    {(!validId || !booking.data) && back}
     {booking.isRefetchError && booking.data && <div role="alert" className="rounded-xl border p-5 space-y-3">
       <p>{booking.error instanceof Error ? booking.error.message : t("bdErrNotFound")}</p>
       <Button variant="outline" onClick={() => void booking.refetch()}>{t("kciRetryVisit", "Retry visit details")}</Button>
@@ -44,7 +49,7 @@ export default function KitchenVisitPage() {
       <p>{booking.error instanceof Error ? booking.error.message : t("bdErrNotFound")}</p>
       {validId && <Button variant="outline" onClick={() => void booking.refetch()}>{t("kciRetryVisit", "Retry visit details")}</Button>}
     </div> : authLoading || !booking.data ? <Skeleton className="h-40 rounded-2xl" aria-label={t("kciLoadingVisit", "Loading visit")} /> :
-      <KitchenCheckinTracker key={bookingId} bookingId={bookingId} kitchenName={booking.data.kitchen?.name}
+      <KitchenCheckinTracker key={bookingId} bookingId={bookingId} kitchenName={booking.data.kitchen?.name} leading={back}
         kitchenAddress={booking.data.location?.address}
         kitchenImageUrl={booking.data.kitchen?.imageUrl || booking.data.kitchen?.galleryImages?.[0] || booking.data.kitchen?.photos?.[0] || null}
         bookingDate={booking.data.bookingDate} startTime={booking.data.startTime} endTime={booking.data.endTime}

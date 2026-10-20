@@ -1,6 +1,6 @@
 import { StorageIcon } from "@/components/ui/inventory-icons";
 import { ChefApplicationIcon } from "@/components/ui/application-icons";
-import { CalendarDays, ClipboardCheck, DollarSign, KitchenTour, FileText, LayoutDashboard, MessageSquare, Shield, Users } from "@/components/ui/manager-icons";
+import { CalendarDays, ClipboardCheck, DollarSign, KitchenTour, FileText, LayoutDashboard, MessageSquare, Shield, Users, MapPin } from "@/components/ui/manager-icons";
 import { SiStripe } from "react-icons/si";
 import { KitchenIcon } from "@/components/ui/kitchen-icon";
 
@@ -23,4 +23,5 @@ export const managerNavIcons = {
   messages: MessageSquare,
   "settings-facility-docs": FileText,
   "settings-license": Shield,
+  location: MapPin,
 } as const;

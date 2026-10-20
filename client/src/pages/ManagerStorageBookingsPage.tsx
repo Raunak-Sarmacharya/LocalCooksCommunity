@@ -9,7 +9,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import { formatCurrency } from "@/lib/formatters";
 import { StoragePhoto } from "@/components/storage/StoragePhoto";
 import { navigateNotificationHref } from "@/lib/navigate-notification-href";
@@ -31,7 +31,9 @@ export default function ManagerStorageBookingsPage() {
   const { t, i18n } = useTranslation("storage");
   const { kitchens } = useManagerDashboard();
   const kitchenIds = useMemo(() => kitchens.map((kitchen) => kitchen.id), [kitchens]);
-  const listingId = Number(new URLSearchParams(window.location.search).get("listingId")) || null;
+  // Reactive: "View units" (Storage tab) narrows to one listing; "Show all storage" clears it without a reload.
+  const search = useSearch();
+  const listingId = Number(new URLSearchParams(search).get("listingId")) || null;
   const [filter, setFilter] = useState<BoardFilter>("all");
 
   const rentalsQuery = useQuery<StorageRental[]>({
@@ -88,8 +90,16 @@ export default function ManagerStorageBookingsPage() {
     ["past", t("stPastRentals"), pastRentals.length],
   ];
 
+  const filteredName = listingId ? listingsQuery.data?.find(listing => listing.id === listingId)?.name : null;
   return (
     <div className="space-y-6">
+      {listingId && filteredName && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border bg-muted/30 px-4 py-2.5 text-sm" role="status">
+          <span>{t("stShowingListing", { name: filteredName })}</span>
+          <button type="button" className="inline-flex min-h-11 items-center font-medium underline underline-offset-4 hover:text-foreground/80"
+            onClick={() => navigateNotificationHref("/manager/dashboard?view=storage-bookings")}>{t("stShowAllStorage")}</button>
+        </div>
+      )}
       <div className="flex flex-wrap gap-x-10 gap-y-5 border-b pb-5">
         {[
           [t('stStatInUse'), t('stInUseValue', { occupied: summary.occupied, units: summary.units }), true],

@@ -8,11 +8,12 @@ import { apiGet } from '@/lib/api';
 import { Card } from '@/components/ui/card';
 import { collapseDoublePeriods } from '@shared/i18n/sentence';
 import { friendlyDateTime } from '@/lib/friendly-date';
+import { usePresignedDocumentUrl } from '@/hooks/use-presigned-document-url';
 import type { CancellationPolicySnapshot } from '@shared/cancellation-policy';
 
 type Quote = { quoteReady: boolean; chefRefundCents: number; alreadyRefundedCents?: number; feeRetainedCents: number; snapshot?: CancellationPolicySnapshot };
 
-export function BookingCancellationCard({ bookingId, status, canCancel, onCancel, onChange, deadlineText, deadlinePassed, createdAt, multiDay, frozenPolicy, extraTimeNote }: {
+export function BookingCancellationCard({ bookingId, status, canCancel, onCancel, onChange, deadlineText, deadlinePassed, createdAt, multiDay, frozenPolicy, extraTimeNote, kitchenTerms }: {
   bookingId: number; status: string; canCancel: boolean; onCancel: () => void;
   /** Confirmed, not started: "Change date or time" sits next to "Cancel booking" (separate actions, like Airbnb). */
   onChange?: () => void;
@@ -21,11 +22,15 @@ export function BookingCancellationCard({ bookingId, status, canCancel, onCancel
   multiDay?: boolean; frozenPolicy?: CancellationPolicySnapshot | null;
   /** The booking's extra-time rate: a term of the booking, kept with the policies rather than in the payment receipt. */
   extraTimeNote?: string;
+  /** The kitchen's terms & policies document; `updatedOn` when it changed after this booking. */
+  kitchenTerms?: { url: string; updatedOn?: string | null };
 }) {
   const { t: tbStrict, i18n } = useTranslation('booking');
   const tb = tbStrict as unknown as (key: string, options?: Record<string, unknown>) => string;
   const { t } = useTranslation('chef');
   const confirmed = status === 'confirmed';
+  // A private document: open it through a short-lived signed link fetched with the chef's sign-in (a plain proxy link has no token).
+  const { url: termsHref } = usePresignedDocumentUrl(kitchenTerms?.url);
   const { data } = useQuery<Quote>({ queryKey: ['chef-cancellation-quote', bookingId], queryFn: () => apiGet(`/bookings/${bookingId}/cancellation-quote`), staleTime: 0, enabled: confirmed });
   const snapshot = frozenPolicy ?? data?.snapshot;
   const sentence = status === 'pending' ? <p className="text-sm leading-relaxed">{tb('cpHold')}</p>
@@ -43,9 +48,13 @@ export function BookingCancellationCard({ bookingId, status, canCancel, onCancel
     : <p className="text-sm leading-relaxed">{deadlineText && !deadlinePassed ? t('bdhCancelUntil', { time: deadlineText }) : t('bdhCancelPassed')}</p>;
   return <section aria-labelledby="booking-cancellation-title" data-testid="cancellation-card">
     <Card className="rounded-2xl border-border/70 p-4 shadow-none sm:p-6">
-      <h2 id="booking-cancellation-title" className="mb-2 text-base font-semibold leading-6">{t(extraTimeNote ? 'bdhPoliciesTitle' : 'bdhCancellationTitle')}</h2>
+      <h2 id="booking-cancellation-title" className="mb-2 text-base font-semibold leading-6">{t(extraTimeNote || kitchenTerms ? 'bdhPoliciesTitle' : 'bdhCancellationTitle')}</h2>
       <div className="text-muted-foreground [&_p]:text-sm">{sentence}{confirmed && <p className="mt-1" data-testid="cancel-no-show">{tb('cpNoShow')}</p>}
-        {extraTimeNote && <p className="mt-1" data-testid="booking-extra-time-rate">{extraTimeNote}</p>}</div>
+        {extraTimeNote && <p className="mt-1" data-testid="booking-extra-time-rate">{extraTimeNote}</p>}
+        {kitchenTerms && <p className="mt-1" data-testid="booking-kitchen-terms">
+          <a href={termsHref || undefined} aria-disabled={!termsHref} target="_blank" rel="noopener noreferrer" className="font-medium text-foreground underline underline-offset-4 hover:text-foreground/80">{t('bdhKitchenTerms')}</a>
+          {kitchenTerms.updatedOn && <span className="block text-xs">{t('bdhKitchenTermsUpdated', { date: kitchenTerms.updatedOn })}</span>}
+        </p>}</div>
       {canCancel && status !== 'pending' && <div className="mt-1 flex flex-wrap gap-x-5">
         {onChange && <button type="button" className="min-h-11 text-[13px] font-medium underline underline-offset-4" onClick={onChange} data-testid="change-booking">{tb('chgDialogTitle')}</button>}
         <button type="button" className="min-h-11 text-[13px] font-medium underline underline-offset-4" onClick={onCancel}>{tb('chgCancelBooking')}</button>

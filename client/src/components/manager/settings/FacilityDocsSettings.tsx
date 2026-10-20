@@ -37,6 +37,8 @@ interface LocationRequirements {
 
 interface FacilityDocsSettingsProps {
   location: Location;
+  /** Inside the Location page: its tab says what this is, so no page header. */
+  embedded?: boolean;
 }
 
 async function getAuthHeaders(): Promise<HeadersInit> {
@@ -51,7 +53,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
   };
 }
 
-export default function FacilityDocsSettings({ location }: FacilityDocsSettingsProps) {
+export default function FacilityDocsSettings({ location, embedded = false }: FacilityDocsSettingsProps) {
   
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -177,7 +179,7 @@ export default function FacilityDocsSettings({ location }: FacilityDocsSettingsP
 
   return (
     <div className="space-y-4">
-      <ChefPageHeader title={mt("facilityDocuments")} description={`Manage floor plans and ventilation specifications for ${location.name}. These documents are automatically shared with approved chefs.`} />
+      {!embedded && <ChefPageHeader title={mt("facilityDocuments")} description={`Manage floor plans and ventilation specifications for ${location.name}. These documents are automatically shared with approved chefs.`} />}
       <div className="space-y-4">
       {/* Floor Plans */}
       <Card>

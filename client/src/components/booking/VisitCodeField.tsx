@@ -10,7 +10,8 @@ import { BookingProblemReport } from "./BookingProblemReport"
 import { useId, useState } from "react"
 import { createPortal } from "react-dom"
 import { useTranslation } from "react-i18next"
-import { KeyRound, MessageSquare } from "lucide-react"
+import { Info, KeyRound, MessageSquare } from "lucide-react"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Button } from "@/components/ui/button"
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
@@ -43,9 +44,25 @@ interface VisitCodeFieldProps {
   chefId: number
   kitchenName: string
   helpContainer?: HTMLElement | null
+  /** A multi-day booking: each day has its own code. */
+  dailyCode?: boolean
 }
 
-export function VisitCodeField({ gate, state, value, onChange, problem, disabled, canReportProblem, bookingId, chefId, kitchenName, helpContainer }: VisitCodeFieldProps) {
+export function VisitCodeLabel({ htmlFor, dailyCode = false, muted = false }: { htmlFor: string; dailyCode?: boolean; muted?: boolean }) {
+  const { t } = useTranslation("chef")
+  return <div className="flex items-center gap-1.5">
+    <label htmlFor={htmlFor} className={muted ? "text-sm font-medium text-muted-foreground" : "text-sm font-medium"}>{t("kciVcLabel", { defaultValue: "Check-in code" })}</label>
+    <Popover><PopoverTrigger asChild>
+      <button type="button" className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        aria-label={t("kciVcInfoLabel", { defaultValue: "About the check-in code" })}><Info className="h-3.5 w-3.5" aria-hidden="true" /></button>
+    </PopoverTrigger><PopoverContent className="max-w-xs p-3 text-sm" align="start" side="top">
+      {dailyCode ? t("kciVcInfoDaily", { defaultValue: "Each day has its own 6-digit code. Kitchen staff give it to you when you arrive; a code from another day won’t work. It records your arrival in Local Cooks; it doesn’t open the door." })
+        : t("kciVcInfo", { defaultValue: "Kitchen staff give you a 6-digit code when you arrive. It records your arrival in Local Cooks; it doesn’t open the door." })}
+    </PopoverContent></Popover>
+  </div>
+}
+
+export function VisitCodeField({ gate, state, value, onChange, problem, disabled, canReportProblem, bookingId, chefId, kitchenName, helpContainer, dailyCode = false }: VisitCodeFieldProps) {
   const { t } = useTranslation("chef")
   const id = useId()
   const [chat, setChat] = useState<{ conversationId: string; draft: string } | null>(null)
@@ -134,7 +151,7 @@ export function VisitCodeField({ gate, state, value, onChange, problem, disabled
   const showAttempts = problem?.code === "VISIT_CODE_WRONG" || attemptsLeft < VISIT_CODE_MAX_ATTEMPTS
   return (
     <div className="space-y-2">
-      <label htmlFor={id} className="block text-sm font-medium">{t("kciVcLabel", { defaultValue: "Check-in code" })}</label>
+      <VisitCodeLabel htmlFor={id} dailyCode={dailyCode} />
       <InputOTP
         id={id}
         name="visit-code"

@@ -22,3 +22,39 @@ export function PublishedCancellationPolicySummary({ kitchenId }: { kitchenId: n
   const { data } = useQuery<PolicyResponse>({ queryKey: ['cancellation-policy', kitchenId], queryFn: () => apiGet(`/kitchens/${kitchenId}/cancellation-policy`, false) });
   return data?.policy ? <CancellationPolicySummary policy={data.policy} /> : <p className="text-sm text-muted-foreground">{t('cpError')}</p>;
 }
+
+/**
+ * The whole policy as a timeline (Airbnb's cancellation modal): what happens before the kitchen accepts, up to the
+ * deadline, and after it, then the no-show, kitchen-cancels and multi-day rules. Built from the kitchen's own policy.
+ */
+export function CancellationPolicyTimeline({ policy, startAt, timezone }: { policy: Pick<PublishedPolicy, 'noticeHours' | 'lateChargePercent'>; startAt?: string; timezone?: string }) {
+  const { t, i18n } = useTranslation('booking');
+  // Once the start is known, real deadlines (Airbnb shows dates once you've picked them).
+  const deadline = startAt && timezone ? cancellationDeadlineLabel(startAt, policy.noticeHours, timezone, i18n.language) : null;
+  const steps = [
+    { when: t('cptUntilAccepted'), what: t('cptUntilAcceptedBody'), tone: 'bg-emerald-500' },
+    { when: deadline ? t('cptUntilDate', { deadline }) : t('cptBeforeDeadline', { hours: policy.noticeHours }), what: t('cptBeforeDeadlineBody'), tone: 'bg-emerald-500' },
+    { when: deadline ? t('cptAfterDate', { deadline }) : t('cptAfterDeadline', { hours: policy.noticeHours }), what: t(policy.lateChargePercent === 50 ? 'cptAfterDeadlineHalf' : 'cptAfterDeadlineNone'),
+      tone: policy.lateChargePercent === 50 ? 'bg-amber-500' : 'bg-gray-400' },
+  ];
+  return <div className="space-y-4 text-left">
+    <ol className="relative space-y-4 border-l border-gray-200 pl-5">
+      {steps.map(step => <li key={step.when} className="relative">
+        <span aria-hidden="true" className={`absolute -left-[25px] top-1.5 h-2.5 w-2.5 rounded-full ring-4 ring-white ${step.tone}`} />
+        <p className="text-sm font-semibold text-gray-900">{step.when}</p>
+        <p className="mt-0.5 text-sm leading-relaxed text-gray-600">{step.what}</p>
+      </li>)}
+    </ol>
+    <ul className="space-y-1.5 border-t border-gray-100 pt-3 text-sm text-gray-600">
+      <li>{t('cpNoShow')}</li>
+      <li>{t('cptKitchenCancels')}</li>
+      <li>{t('cptMultiDay', { hours: policy.noticeHours })}</li>
+    </ul>
+  </div>;
+}
+
+export function PublishedCancellationPolicyTimeline({ kitchenId }: { kitchenId: number }) {
+  const { t } = useTranslation('booking');
+  const { data } = useQuery<PolicyResponse>({ queryKey: ['cancellation-policy', kitchenId], queryFn: () => apiGet(`/kitchens/${kitchenId}/cancellation-policy`, false) });
+  return data?.policy ? <CancellationPolicyTimeline policy={data.policy} /> : <p className="text-sm text-muted-foreground">{t('cpError')}</p>;
+}

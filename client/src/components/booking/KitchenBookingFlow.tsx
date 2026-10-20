@@ -1,12 +1,14 @@
 import { ct } from '@/i18n/chef-ns';
-import { EQUIPMENT_ICON_NAME } from "@/components/ui/inventory-icons";
 import { logger } from "@/lib/logger";
 import { useState, useEffect, useMemo, useRef, useCallback, type Dispatch, type SetStateAction } from "react";
 import { useTranslation } from "react-i18next";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiGet } from '@/lib/api';
-import { CancellationPolicySummary, type PolicyResponse } from './CancellationPolicySummary';
+import { BookingDayHoursRow } from "./BookingDayHoursRow";
+import { BookingEquipmentStep } from "./BookingEquipmentStep";
+import { StorageBookingNote } from "@/components/storage/StorageRentCta";
+import { CancellationPolicyTimeline, type PolicyResponse } from './CancellationPolicySummary';
 import { CheckoutCancellationDisclosure, CheckoutConsentNotice } from './CheckoutCancellationDisclosure';
 import { ChangeRequestBanner, ChangeRequestConsentLine, useReplacedRequest } from './ChangeRequestNotice';
 import { CANCELLATION_DISCLOSURE_VERSION, DATED_DISCLOSURE_VERSION } from '@shared/cancellation-policy';
@@ -31,7 +33,6 @@ import { Calendar as UICalendar } from "@/components/ui/calendar";
 import { SmartImage } from "@/components/ui/smart-image";
 import { Stepper, StepperDescription, StepperIndicator, StepperItem, StepperNav, StepperSeparator, StepperTitle, StepperTrigger } from "@/components/reui/stepper";
 import { findPersistedBookingForKitchens, notifyBookingPrefsChanged } from "@/lib/persisted-booking-prefs";
-import { resolveEquipmentIcon } from "@/lib/kitchen-inventory-icons";
 import { chefOutlineCtaClass, chefPrimaryCtaClass } from "@/lib/chef-cta";
 import { Icon } from "@iconify/react";
 import { InfoChip } from "@/components/chef/info-chip";
@@ -41,7 +42,7 @@ import { calculateKitchenBasePrice, type KitchenBookingRateMode } from "@shared/
 import { addHour, calendarDateForOperatingTime, sortTimesInOperatingWindow } from "@shared/operating-hours";
 import { matchingLocalInstants } from '@shared/booking-dst';
 import { bookingVisitBlocks } from '@shared/booking-visit-blocks';
-import { validateKitchenSlotSelection, CONSECUTIVE_SLOTS_MESSAGE } from '@shared/consecutive-booking-slots';
+import { validateKitchenSlotSelection } from '@shared/consecutive-booking-slots';
 import { DEFAULT_TIMEZONE } from '@/utils/timezone-utils';
 import { firstBookingVisitStart, responseDeadlineForBooking } from '@shared/booking-response-deadline';
 import { formatResponseDeadline } from '@/lib/booking-response-deadline';
@@ -101,68 +102,6 @@ function equipmentName(equipment: any) {
     .replace(/[_-]+/g, " ")
     .replace(/\b\w/g, (char) => char.toUpperCase())
     .trim();
-}
-
-function InventoryPreviewList({
-  title,
-  subtitle,
-  items,
-  rental,
-  columns = 2,
-  selectedIds = [],
-  onToggle,
-}: {
-  title: string;
-  subtitle: string;
-  items: any[];
-  rental: boolean;
-  /** Item grid columns within this list (default 2 for modals). */
-  columns?: 1 | 2;
-  selectedIds?: number[];
-  onToggle?: (id: number) => void;
-}) {
-  const { t } = useTranslation("booking");
-  return (
-    <section className="min-w-0">
-      <div className="mb-1">
-        <h4 className="text-base font-semibold text-gray-900">{title}</h4>
-        <p className="text-sm text-muted-foreground">{subtitle}</p>
-      </div>
-      <ul
-        className={cn(
-          "grid min-w-0 gap-x-6",
-          columns === 1 ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-2"
-        )}
-      >
-        {items.map((equipment) => (
-          <li key={equipment.id} className="flex min-w-0 items-center gap-2.5 border-b border-gray-100 py-3">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#FFF3F5] text-[#E10939]">
-              <Icon
-                icon={resolveEquipmentIcon(equipment.equipmentType, equipment.category)}
-                width={18}
-                height={18}
-                aria-hidden
-              />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-sm font-medium text-gray-900">
-                {equipmentName(equipment)}
-              </span>
-              <span className="block truncate text-sm text-muted-foreground">
-                {rental ? `${formatCurrency(equipment.sessionRate || 0)} per session` : "Included"}
-              </span>
-            </span>
-            {rental && onToggle && <Button type="button" variant="outline" className="min-h-11 shrink-0"
-              aria-pressed={selectedIds.includes(equipment.id)}
-              aria-label={`${t(selectedIds.includes(equipment.id) ? "wfbRemove" : "wfbAdd")} ${equipmentName(equipment)}`}
-              onClick={() => onToggle(equipment.id)}>
-              {t(selectedIds.includes(equipment.id) ? "wfbRemove" : "wfbAdd")}
-            </Button>}
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
 }
 
 /** Persistent place context carried from preview through every booking step. */
@@ -271,7 +210,7 @@ function BookingPlaceContext({
               {t("sheetCancellationPolicyTitle", "Cancellation policy")}
             </p>
             <p className="mt-0.5 text-sm leading-relaxed text-muted-foreground">
-              {policySummary || t("preConfirmationRefundTitle", "Free to cancel until the kitchen confirms your request — your card is only on hold.")}
+              {policySummary || t("preConfirmationRefundTitle", "Free to cancel until the kitchen accepts. Until then, your card is only on hold.")}
             </p>
           </div>
           <Icon icon="mdi:chevron-right" className="h-4 w-4 shrink-0 text-gray-400" aria-hidden />
@@ -419,7 +358,6 @@ export default function KitchenBookingFlow({
   const [dayResources, setDayResources] = useState<Record<string, DayResources>>({});
   const [daysLoading, setDaysLoading] = useState(false);
   const isMultiDay = multipleAllowed && selectedDates.length > 1;
-  const pickerDate = isMultiDay && editingDay ? new Date(`${editingDay}T12:00:00`) : selectedDate;
   const [dateAvailability, setDateAvailability] = useState<Record<string, boolean>>({});
   /** Bumped after returning from Stripe releases the chef's own checkout hold, so availability reloads. */
   const [holdReleases, setHoldReleases] = useState(0);
@@ -445,8 +383,6 @@ export default function KitchenBookingFlow({
   const selectedSlotsRef = useRef(selectedSlots);
   selectedSlotsRef.current = selectedSlots;
   const [singleFullDayBookable, setFullDayBookable] = useState(false);
-  const [pendingTimeSlots, setPendingTimeSlots] = useState<string[]>([]);
-  const [timeModalOpen, setTimeModalOpen] = useState(false);
   const [isLoadingSlots, setIsLoadingSlots] = useState(false);
   /** Null = no longest-booking hours cap (opening hours only). */
   const [maxSlotsPerChef, setMaxSlotsPerChef] = useState<number | null>(null);
@@ -488,12 +424,7 @@ export default function KitchenBookingFlow({
   const [isLoadingAddons, setIsLoadingAddons] = useState(false);
   const [selectedEquipmentIds, setSelectedEquipmentIds] = useState<number[]>([]);
   const [notes, setNotes] = useState<string>(initialNotes ?? "");
-  const [equipmentModalOpen, setEquipmentModalOpen] = useState(false);
-  const [equipmentInventoryModal, setEquipmentInventoryModal] = useState<"included" | "rental" | null>(null);
   const [cancellationPolicyOpen, setCancellationPolicyOpen] = useState(false);
-  const [pendingEquipmentIds, setPendingEquipmentIds] = useState<number[]>([]);
-  const [discardModal, setDiscardModal] = useState<"equipment" | "time" | null>(null);
-  const [confirmDatePopoverOpen, setConfirmDatePopoverOpen] = useState(false);
   const pendingLeaveRef = useRef<(() => void) | null>(null);
   const restoredDaysFor = useRef<number | null>(null);
   const restoredReplacement = useRef<number | null>(null);
@@ -597,14 +528,6 @@ export default function KitchenBookingFlow({
     return { items, subtotal: items.reduce((sum, item) => sum + item.rate, 0) };
   }, [selectedEquipmentIds, equipmentListings.rental]);
 
-  const pendingEquipmentSubtotal = useMemo(
-    () => pendingEquipmentIds.reduce((sum, id) => {
-      const equipment = equipmentListings.rental.find((item: any) => item.id === id);
-      const days = isMultiDay ? selectedDates.filter(date => dayResources[date]?.equipmentIds.includes(id) && !dayEquipmentExcluded[date]?.includes(id)).length : 1;
-      return sum + (equipment?.sessionRate || 0) * days;
-    }, 0),
-    [pendingEquipmentIds, equipmentListings.rental, isMultiDay, selectedDates, dayResources, dayEquipmentExcluded]
-  );
 
   // Combined pricing
   const combinedSubtotal = useMemo(() => {
@@ -718,12 +641,7 @@ export default function KitchenBookingFlow({
       ]);
       return;
     }
-    if (confirmDatePopoverOpen) {
-      void loadMonthsAvailability(selectedKitchen.id, [
-        { year: currentYear, month: currentMonth },
-      ]);
-    }
-  }, [selectedKitchen, currentYear, currentMonth, currentStep, confirmDatePopoverOpen, multipleAllowed, holdReleases]);
+  }, [selectedKitchen, currentYear, currentMonth, currentStep, multipleAllowed, holdReleases]);
 
   const loadMonthsAvailability = async (
     kitchenId: number,
@@ -1154,41 +1072,6 @@ export default function KitchenBookingFlow({
     return windowStart ? sortTimesInOperatingWindow(slots, windowStart) : [...slots];
   };
 
-  const updateSlotSelection = (
-    setter: Dispatch<SetStateAction<string[]>>,
-    slot: { time: string; available: number; capacity: number; isFullyBooked: boolean }
-  ) => {
-    if (slot.isFullyBooked) {
-      toast({
-        title: t("toastSlotFullyBookedTitle", "Slot Fully Booked"),
-        description: t("toastSlotFullyBookedDesc", "This time slot is already at maximum capacity."),
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setter(prev => {
-      const next = prev.includes(slot.time) ? prev.filter(s => s !== slot.time) : [...prev, slot.time];
-      if (maxSlotsPerChef != null && next.length > maxSlotsPerChef) {
-        toast({
-          title: t("toastLimitReachedTitle", "Limit reached"),
-          description: t("toastLimitReachedDesc", { count: maxSlotsPerChef, defaultValue: `You can select up to ${maxSlotsPerChef} hour slot${maxSlotsPerChef > 1 ? 's' : ''} for this day.` }),
-          variant: "destructive",
-        });
-        return prev;
-      }
-      if (next.length && validateKitchenSlotSelection(next, allSlots)) {
-        toast({ title: ct('sweepText20'), description: CONSECUTIVE_SLOTS_MESSAGE, variant: 'destructive' });
-        return prev;
-      }
-      return sortSelectedSlots(next);
-    });
-  };
-
-  const handleSlotClick = (slot: { time: string; available: number; capacity: number; isFullyBooked: boolean }) => {
-    updateSlotSelection(setSelectedSlots, slot);
-  };
-
   // Same locale-aware formatter as the slot buttons, so the summary reads "10:00 a.m." not "10:00 AM".
   const formatTime = (timeString: string) => formatClockTime(timeString, i18n.language);
 
@@ -1304,7 +1187,8 @@ export default function KitchenBookingFlow({
     date: formatDate(new Date(`${day.date}T12:00:00`)),
     hours: day.pricingMode === 'daily' ? t('sheetDailyRate') : day.slots.length
       ? `${formatTime(day.slots[0].startTime)} – ${formatTime(day.slots[day.slots.length - 1].endTime)}` : t('sheetSelectTimeSlotsToContinueButton'),
-    equipment: day.equipmentIds.map(id => equipmentName(equipmentListings.all.find(item => item.id === id) ?? {})).join(', '),
+    // Paid rentals only: included equipment comes with every day and would bury the line.
+    equipment: day.equipmentIds.flatMap(id => { const item = equipmentListings.rental.find(rental => rental.id === id); return item ? [equipmentName(item)] : []; }).join(', '),
     subtotal: day.kitchenSubtotal + day.equipmentSubtotal,
   })) : undefined;
 
@@ -1567,14 +1451,16 @@ export default function KitchenBookingFlow({
               </div>
             )}
             {bookableThrough && <p className="text-sm text-muted-foreground">{t("bookingBookableThrough", { defaultValue: "Bookable up to {date}", date: new Intl.DateTimeFormat(i18n.resolvedLanguage || i18n.language || "en-CA", { dateStyle: "medium" }).format(new Date(`${bookableThrough}T12:00:00`)) })}</p>}
-            {multipleAllowed ? <DatedCalendarContext.Provider value={{ reason: blockedDateReason, announce: setDateAnnouncement, locale: i18n.language }}>
+            {multipleAllowed ? <DatedCalendarContext.Provider value={{ reason: blockedDateReason, announce: setDateAnnouncement, locale: i18n.language,
+              partial: date => { const status = dateStatuses[localDateKey(date)]; return !!status?.hourly && !status.fullDay; }, partialLabel: t("bkDayLimited") }}>
               <p className="mb-2 text-sm text-muted-foreground">{t('mdSelectHelp', { count: Math.min(dayRules.maxBookingDays ?? 7, 14) })}</p>
               <UICalendar mode="multiple" numberOfMonths={2} pagedNavigation showOutsideDays={false}
                 selected={selectedDates.map(date => new Date(`${date}T12:00:00`))} onSelect={selectMultipleDates}
                 month={calendarMonth} onMonthChange={setCalendarMonth} disabled={date => !!blockedDateReason(date)}
                 components={{ Day: DatedCalendarDay }}
                 className="w-full bg-transparent p-1" classNames={{ ...BOOKING_CALENDAR_TWO_MONTH_CLASS_NAMES, day: `${BOOKING_CALENDAR_CLASS_NAMES.day} h-11 w-11 max-w-[44px]`, cell: 'relative h-11 p-0 text-center text-sm' }} />
-              <p role="status" aria-live="polite" className="mt-2 text-sm">{dateAnnouncement || t('mdSelectedDays', { count: selectedDates.length })}</p>
+              <p className="mt-2 flex items-center gap-1.5 px-1 text-xs text-muted-foreground"><span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-amber-500" />{t("bkDayLimited")}</p>
+              <p role="status" aria-live="polite" className="sr-only">{dateAnnouncement || t('mdSelectedDays', { count: selectedDates.length })}</p>
               {dateSetError && <p role="alert" className="text-sm">{dateSetError}</p>}
             </DatedCalendarContext.Provider> : <UICalendar
               mode="single"
@@ -1594,58 +1480,73 @@ export default function KitchenBookingFlow({
             />}
           </div>
 
-          {selectedDate && (
-            <div className="mx-auto w-full max-w-[640px] rounded-[1.35rem] border border-[#E10939]/20 bg-[#E10939]/5 px-3 py-2.5">
-              <p className="text-sm font-semibold text-gray-900">
-                {isMultiDay ? selectedDates.map(date => formatDate(new Date(`${date}T12:00:00`))).join(' · ') : formatDate(selectedDate)}
-              </p>
-              <p className="text-sm text-muted-foreground mt-0.5">
-                {isLoadingSlots
-                  ? t("sheetLoadingSlotsText", "Loading time slots…")
-                  : t("sheetSlotsAvailable", {
-                      count: allSlots.length,
-                      defaultValue: `${allSlots.length} time slot${allSlots.length !== 1 ? "s" : ""} available`,
-                    })}
-              </p>
-            </div>
-          )}
+          {selectedDate && (() => {
+            // One row per chosen day, each with its own availability (the old line counted one day's slots under all of them).
+            const days = isMultiDay ? selectedDates : [localDateKey(selectedDate)];
+            const dayLine = (date: string) => {
+              const slots = isMultiDay ? dayResources[date]?.slots : singleSlots;
+              if (!slots || (isMultiDay ? daysLoading : isLoadingSlots)) return { text: t("sheetLoadingSlotsText", "Loading time slots…"), tone: "muted" as const };
+              const free = slots.filter(slot => !slot.isFullyBooked).length;
+              const status = dateStatuses[date];
+              const whole = isMultiDay ? !!dayResources[date]?.fullDay : free === slots.length && free > 0;
+              if (!free) return { text: t("bkDayNoHours"), tone: "bad" as const };
+              if (whole) return { text: t("bkDayOpenAllDay", { count: free }), tone: "good" as const };
+              const why = status?.fullDayReason === "weekly_limit" ? "bkDayWeeklyLimit" : status?.fullDayReason === "notice" ? "bkDayTooSoon" : "bkDayPartlyBooked";
+              return { text: t(why, { count: free }), tone: "limited" as const };
+            };
+            return <section aria-label={t("bkYourDays")} className="mx-auto w-full max-w-[640px] rounded-2xl border border-gray-200 bg-white">
+              <h4 className="border-b border-gray-100 px-4 py-2.5 text-sm font-semibold text-gray-900">{t("bkYourDays")}</h4>
+              <ul className="divide-y divide-gray-100">{days.map(date => {
+                const line = dayLine(date);
+                return <li key={date} className="flex min-h-12 items-center justify-between gap-3 px-4 py-2">
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium text-gray-900">{new Date(`${date}T12:00:00`).toLocaleDateString(i18n.language, { weekday: "short", month: "short", day: "numeric" })}</span>
+                    <span className={cn("flex items-center gap-1.5 text-xs", line.tone === "good" ? "text-emerald-700" : line.tone === "limited" ? "text-amber-700" : line.tone === "bad" ? "text-destructive" : "text-muted-foreground")}>
+                      {line.tone !== "muted" && <span aria-hidden="true" className={cn("h-1.5 w-1.5 rounded-full", line.tone === "good" ? "bg-emerald-500" : line.tone === "limited" ? "bg-amber-500" : "bg-destructive")} />}
+                      {line.text}
+                    </span>
+                  </span>
+                  <button type="button" aria-label={t("bkRemoveDay", { date: new Date(`${date}T12:00:00`).toLocaleDateString(i18n.language, { month: "short", day: "numeric" }) })}
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-gray-100 hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E10939]"
+                    onClick={() => multipleAllowed ? selectMultipleDates(selectedDates.filter(day => day !== date).map(day => new Date(`${day}T12:00:00`))) : (setSelectedDate(null), setSelectedDates([]), setSelectedSlots([]))}>
+                    <Icon icon="mdi:close" className="h-4 w-4" aria-hidden />
+                  </button>
+                </li>;
+              })}</ul>
+            </section>;
+          })()}
         </div>
       );
     }
 
-    // Step: Time Slots
+    // Step: Time — one row per day (a single day is one row): rate, start and end, and the day drawn as a strip.
     if (currentStep === 'slots' && selectedKitchen && selectedDate) {
-      const hasHourlyRate = Number(kitchenPricing?.hourlyRate || 0) > 0;
-      const hasDailyRate = Number(kitchenPricing?.dailyRate || 0) > 0;
-      const isFullDayAvailable = fullDayBookable;
+      const minHours = kitchenPricing?.minimumBookingHours ?? 0;
+      const days = isMultiDay ? selectedDates : [localDateKey(selectedDate)];
+      const dayTitle = (date: string) => new Date(`${date}T12:00:00`).toLocaleDateString(i18n.language, { weekday: "long", month: "long", day: "numeric" });
+      const rowValue = (date: string) => isMultiDay ? dayHours[date] ?? { pricingMode: templateRateMode, times: templateSlots } : { pricingMode: templateRateMode, times: templateSlots };
+      const setRow = (date: string, value: DayHours) => {
+        setCheckoutError(null);
+        if (isMultiDay) setDayHours(current => ({ ...current, [date]: value }));
+        else { setTemplateRateMode(value.pricingMode); setTemplateSlots(value.times); }
+      };
+      // Only a choice that no longer fits (copied hours booked that day, full day gone) is an error; an empty row isn't.
+      const rowError = (date: string) => {
+        const day = isMultiDay ? datedDays.find(item => item.date === date) : undefined;
+        if (!day || (day.pricingMode === 'hourly' && !day.slots.length)) return null;
+        const error = datedDayError(day, dayResources[date], minHours, maxSlotsPerChef);
+        return !error || error === 'loading' ? null : error === 'fullDay' ? t('bkRowFullDayGone') : t('bkRowHoursNotFree');
+      };
+      const first = rowValue(days[0]);
+      const canCopy = isMultiDay && (first.pricingMode === 'daily' || first.times.length > 0);
       return (
         <div className="flex h-full min-h-[16rem] flex-col gap-4">
-          {isMultiDay && <div className="space-y-2 rounded-xl border p-3">
-            <Button variant="outline" aria-pressed={!editingDay} className="min-h-11" onClick={() => setEditingDay(null)}>{t('mdSameHours')}</Button>
-            <label className="block text-sm font-medium" htmlFor="change-booking-day">{t('mdChangeOneDay')}</label>
-            <select id="change-booking-day" className="min-h-11 w-full rounded-lg border bg-white px-3" value={editingDay ?? ''}
-              onChange={event => setEditingDay(event.target.value || null)}>
-              <option value="">{t('mdSameHours')}</option>
-              {selectedDates.map(date => <option key={date} value={date}>{formatDate(new Date(`${date}T12:00:00`))}</option>)}
-            </select>
-            {editingDay && dayHours[editingDay] && <Button variant="ghost" onClick={() => setDayHours(current => { const next = { ...current }; delete next[editingDay]; return next; })}>{t('mdUseSameHours')}</Button>}
-            {daysLoading && <p role="status">{t('sheetLoadingSlotsText')}</p>}
-            {invalidDay && <p className="text-sm" role="status">{t('mdReviewDay', { date: formatDate(new Date(`${invalidDay.date}T12:00:00`)) })}</p>}
-          </div>}
           <div className="flex shrink-0 items-start justify-between gap-3">
             <div className="min-w-0">
-              <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
-                <Icon icon="mdi:clock-outline" className="h-4 w-4 text-[#E10939]" aria-hidden />
-                {t("sheetSelectTimeTitle", "Select Time")}
-              </h3>
+              <h3 className="text-base font-semibold text-gray-900">{isMultiDay ? t("bkChooseHoursEachDay") : t("sheetSelectTimeTitle", "Select Time")}</h3>
               <p className="text-sm text-muted-foreground mt-1">
-                {formatDate(pickerDate ?? selectedDate)}
-                {bookingRateMode === "hourly" && kitchenPricing?.minimumBookingHours && kitchenPricing.minimumBookingHours > 0
-                  ? ` · ${t("sheetMinHourBadge", { minHours: kitchenPricing.minimumBookingHours, defaultValue: `Min ${kitchenPricing.minimumBookingHours}hr` })}`
-                  : ""}
-                {bookingRateMode === "hourly" && maxSlotsPerChef != null
-                  ? ` · ${t("sheetMaxHoursBadge", { maxHours: maxSlotsPerChef, defaultValue: `Max ${maxSlotsPerChef} hours` })}`
-                  : ""}
+                {isMultiDay ? t('mdSelectedDays', { count: selectedDates.length }) : formatDate(selectedDate)}
+                {maxSlotsPerChef != null ? ` · ${t("sheetMaxHoursBadge", { maxHours: maxSlotsPerChef, defaultValue: `Max ${maxSlotsPerChef} hours` })}` : ""}
               </p>
               <p className="text-xs text-muted-foreground mt-1" data-testid="setup-cleanup-hint">{t("sxbSetupCleanupHint", "Include setup and cleanup in your booking time.")}</p>
             </div>
@@ -1660,413 +1561,163 @@ export default function KitchenBookingFlow({
               {t("sheetChangeDate", "Change date")}
             </button>
           </div>
-
-          {hasHourlyRate && hasDailyRate ? (
-            <div className="grid grid-cols-2 gap-2" role="group" aria-label={t("sheetRateTypeLabel", "Booking rate")}>
-              {(["hourly", "daily"] as const).map((mode) => {
-                const selected = bookingRateMode === mode;
-                const rate = mode === "hourly" ? kitchenPricing?.hourlyRate : kitchenPricing?.dailyRate;
-                const disabled = mode === "daily" && !isFullDayAvailable;
-                return (
-                  <button
-                    key={mode}
-                    type="button"
-                    aria-pressed={selected}
-                    disabled={disabled}
-                    onClick={() => {
-                      setBookingRateMode(mode);
-                      setSelectedSlots(mode === "daily"
-                        ? allSlots.map((slot) => slot.time)
-                        : []);
-                    }}
-                    className={cn(
-                      "rounded-xl border px-3 py-2.5 text-left transition-colors",
-                      selected
-                        ? "border-[#E10939] bg-[#FFF3F5] text-[#E10939]"
-                        : "border-gray-200 bg-white text-gray-700 hover:border-[#E10939]/40",
-                      disabled && "cursor-not-allowed opacity-50"
-                    )}
-                  >
-                    <span className="block text-sm font-semibold">
-                      {mode === "hourly" ? t("sheetHourlyRate", "Hourly") : t("sheetDailyRate", "Full day")}
-                    </span>
-                    <span className="block text-xs text-muted-foreground">
-                      {formatCurrency(rate || 0)}{mode === "hourly" ? t("sheetPerHour", "/hour") : t("sheetPerDay", "/day")}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          ) : null}
-          {isMultiDay && hasDailyRate && !isFullDayAvailable && <p className="text-sm text-muted-foreground">{t('mdFullDayUnavailable', {
-            reason: t(dateReasonKey(dateStatuses[editingDay ?? selectedDates[0]]?.fullDayReason)),
-          })}</p>}
-
-          {bookingRateMode === "daily" ? (
-            <div className="rounded-xl border border-[#E10939]/20 bg-[#FFF8F9] px-3 py-3">
-              <p className="text-sm font-semibold text-gray-900">{t("sheetFullDaySelected", "Full-day booking")}</p>
-              <p className="mt-0.5 text-sm text-muted-foreground">
-                {t("sheetFullDaySelectedDesc", "All available operating hours for this date are included.")}
-              </p>
-            </div>
-          ) : null}
-
-          {isLoadingSlots ? (
-            <div
-              className="grid flex-1 content-center grid-cols-2 gap-2.5 sm:grid-cols-3"
-              role="status"
-              aria-label={t("sheetLoadingSlotsAria", "Loading available time slots")}
-            >
-              {Array.from({ length: 9 }).map((_, idx) => (
-                <Skeleton key={idx} className="h-11 rounded-xl bg-muted/70" />
-              ))}
-            </div>
-          ) : allSlots.length === 0 ? (
-            <div className="flex flex-1 items-center justify-center rounded-[1.35rem] border border-dashed py-10 text-center">
-              <div>
-                <Icon icon="mdi:clock-outline" className="h-7 w-7 text-muted-foreground/40 mx-auto mb-2" aria-hidden />
-                <p className="text-sm text-muted-foreground">{t("sheetNoAvailableHours", "No available hours on this day")}</p>
-              </div>
-            </div>
-          ) : (
-            <div className="flex min-h-0 flex-1 flex-col gap-3">
-              {bookingRateMode === "hourly" && <p className="text-sm text-muted-foreground">{ct('sweepLabel20')}</p>}
-              {kitchenPricing?.minimumBookingHours && kitchenPricing.minimumBookingHours > 1 && selectedSlots.length === 0 && (
-                <div className="shrink-0 rounded-lg border bg-muted/30 px-3 py-2 flex items-start gap-2">
-                  <Icon icon="mdi:clock-outline" className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" aria-hidden />
-                  <p className="text-sm text-muted-foreground leading-relaxed">
-                    <strong>{t("sheetMinBookingNoticeBold", { minHours: kitchenPricing.minimumBookingHours, defaultValue: `Minimum ${kitchenPricing.minimumBookingHours}-hour booking.` })}</strong>{" "}
-                    {t("sheetMinBookingNoticeSelect", { minHours: kitchenPricing.minimumBookingHours })}
-                  </p>
-                </div>
-              )}
-              <div className={cn("grid flex-1 content-center grid-cols-2 gap-2.5 sm:grid-cols-3", bookingRateMode === "daily" && "pointer-events-none opacity-70")}>
-                {allSlots.map((slot) => {
-                  const isSelected = isMultiDay && bookingRateMode === 'daily' ? fullDayBookable : selectedSlots.includes(slot.time);
-                  const isFullyBooked = slot.isFullyBooked;
-                  return (
-                    <button
-                      key={slot.time}
-                      type="button"
-                      onClick={() => handleSlotClick(slot)}
-                      disabled={isFullyBooked}
-                      className={cn(
-                        "flex min-h-[44px] w-full items-center justify-center rounded-xl border px-3 py-2.5 text-center text-sm font-medium transition-colors",
-                        isSelected && "bg-[#E10939] text-white border-[#E10939]",
-                        !isSelected && !isFullyBooked && "bg-white text-gray-700 border-gray-200 hover:border-[#E10939]/40",
-                        isFullyBooked && "bg-muted/50 text-muted-foreground cursor-not-allowed border-transparent"
-                      )}
-                    >
-                      <span>
-                        {formatSlotRange(slot.time)}{slot.isFullyBooked && <span className="ml-1 text-xs no-underline"> · {t("wfbBooked")}</span>}
-                        {slot.capacity > 1 && !isFullyBooked ? (
-                          <span className={cn("ml-1.5", isSelected ? "text-white/80" : "text-muted-foreground")}>
-                            · {t("sheetSlotsLeft", { count: slot.available, defaultValue: `${slot.available} left` })}
-                          </span>
-                        ) : null}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+          {days.map((date, index) => {
+            const resource = isMultiDay ? dayResources[date] : undefined;
+            const fullDayAllowed = isMultiDay ? !!resource?.fullDay : singleFullDayBookable;
+            const reason = dateStatuses[date]?.fullDayReason;
+            return <BookingDayHoursRow key={date} title={dayTitle(date)} slots={isMultiDay ? resource?.slots ?? [] : singleSlots}
+              value={rowValue(date)} onChange={value => setRow(date, value)}
+              hourlyRate={Number(kitchenPricing?.hourlyRate || 0)} dailyRate={Number(kitchenPricing?.dailyRate || 0)}
+              fullDayAllowed={fullDayAllowed} fullDayReason={!fullDayAllowed && reason ? t(dateReasonKey(reason)) : undefined}
+              minHours={minHours} maxHours={maxSlotsPerChef} error={rowError(date)}
+              loading={isMultiDay ? daysLoading || !resource : isLoadingSlots}
+              footer={index === 0 && canCopy ? <button type="button" className="text-sm font-medium text-[#E10939] hover:underline"
+                onClick={() => { setTemplateRateMode(first.pricingMode); setTemplateSlots(first.times); setDayHours({}); setCheckoutError(null); }}>
+                {t("bkUseForAllDays")}</button> : undefined} />;
+          })}
         </div>
       );
     }
 
-    // Step: Equipment
+    // Step: Equipment — optional rentals as add-on cards; storage is said here but rented separately.
     if (currentStep === "equipment" && selectedKitchen) {
-      const EQUIPMENT_PREVIEW = 5;
-      const includedPreview = equipmentListings.included.slice(0, EQUIPMENT_PREVIEW);
-      const rentalPreview = equipmentListings.rental.slice(0, EQUIPMENT_PREVIEW);
-      const includedRemaining = Math.max(0, equipmentListings.included.length - includedPreview.length);
-      const rentalRemaining = Math.max(0, equipmentListings.rental.length - rentalPreview.length);
-      const showIncluded = equipmentListings.included.length > 0;
-      const showRental = equipmentListings.rental.length > 0;
-
-      return (
-        <div className="space-y-4">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h3 className="text-base font-semibold text-gray-900">{t("sheetEquipmentTitle", "Equipment")}</h3>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {t("sheetEquipmentBrowseDesc", "See what is included, then add any optional rentals you need.")}
-              </p>
-            </div>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className={chefOutlineCtaClass("min-h-11 shrink-0")}
-              onClick={() => {
-                setEquipmentInventoryModal(null);
-                setPendingEquipmentIds(selectedEquipmentIds);
-                setEquipmentModalOpen(true);
-              }}
-              disabled={equipmentListings.rental.length === 0}
-            >
-              <Icon icon={EQUIPMENT_ICON_NAME} width={17} height={17} className="mr-1.5" aria-hidden />
-              {selectedEquipmentIds.length > 0 ? `Edit (${selectedEquipmentIds.length})` : t("sheetSelectEquipment", "Select equipment")}
-            </Button>
-          </div>
-
-          {isLoadingAddons ? (
-            <div className="flex justify-center py-12">
-              <Icon icon="mdi:loading" className="h-5 w-5 animate-spin text-[#E10939]" aria-hidden />
-            </div>
-          ) : (
-            <div
-              className={cn(
-                "grid gap-6",
-                showIncluded && showRental ? "sm:grid-cols-2" : "grid-cols-1"
-              )}
-            >
-              {showIncluded ? (
-                <div className="min-w-0">
-                  <InventoryPreviewList
-                    title={t("sheetIncludedLabel", "Included")}
-                    subtitle={t("sheetIncludedEquipmentDesc", "Included at no extra charge.")}
-                    items={includedPreview}
-                    rental={false}
-                    columns={1}
-                  />
-                  {includedRemaining > 0 ? (
-                    <button
-                      type="button"
-                      className="mt-1 inline-flex items-center pb-1 text-sm font-semibold text-[#E10939] hover:text-[#D40E38]"
-                      onClick={() => {
-                        setEquipmentModalOpen(false);
-                        setEquipmentInventoryModal("included");
-                      }}
-                    >
-                      {t("sheetShowAllButton", { defaultValue: "Show all" })}{" "}
-                      <span className="ml-1">+{includedRemaining}</span>
-                      <Icon icon="mdi:chevron-right" className="ml-1 h-4 w-4" aria-hidden />
-                    </button>
-                  ) : null}
-                </div>
-              ) : null}
-              {showRental ? (
-                <div className="min-w-0">
-                  <InventoryPreviewList
-                    title={t("sheetOptionalRentalsLabel", "Optional rentals")}
-                    subtitle={t("sheetRentalEquipmentDesc", "Optional rentals for this kitchen session.")}
-                    items={rentalPreview}
-                    selectedIds={selectedEquipmentIds}
-                    onToggle={(id) => setSelectedEquipmentIds(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id])}
-                    rental
-                    columns={1}
-                  />
-                  {rentalRemaining > 0 ? (
-                    <button
-                      type="button"
-                      className="mt-1 inline-flex items-center pb-1 text-sm font-semibold text-[#E10939] hover:text-[#D40E38]"
-                      onClick={() => {
-                        setEquipmentModalOpen(false);
-                        setEquipmentInventoryModal("rental");
-                      }}
-                    >
-                      {t("sheetShowAllButton", { defaultValue: "Show all" })}{" "}
-                      <span className="ml-1">+{rentalRemaining}</span>
-                      <Icon icon="mdi:chevron-right" className="ml-1 h-4 w-4" aria-hidden />
-                    </button>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-          )}
-          {isMultiDay && <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">{t('mdEquipmentHelp')}</p>
-            {datedDays.map(day => <fieldset key={day.date} className="space-y-2 rounded-xl border p-3">
-              <legend className="px-1 text-sm font-semibold">{formatDate(new Date(`${day.date}T12:00:00`))}</legend>
-              {equipmentListings.all.filter(item => dayResources[day.date]?.equipmentIds.includes(item.id)).map(item => {
-                const chosen = selectedEquipmentIds.includes(item.id) || equipmentListings.included.some(included => included.id === item.id);
-                return <label key={item.id} className="flex min-h-11 items-center gap-3 text-sm">
-                  <input type="checkbox" checked={day.equipmentIds.includes(item.id)} onChange={event => {
-                    if (!chosen) setSelectedEquipmentIds(current => [...current, item.id]);
-                    setDayEquipmentExcluded(current => ({ ...current, [day.date]: event.target.checked
-                      ? (current[day.date] ?? []).filter(id => id !== item.id) : [...(current[day.date] ?? []), item.id] }));
-                  }} />
-                  {equipmentName(item)} · {formatCurrency(item.sessionRate || 0)}
-                </label>;
-              })}
-            </fieldset>)}
-          </div>}
-        </div>
-      );
+      return <BookingEquipmentStep included={equipmentListings.included} rental={equipmentListings.rental}
+        selectedIds={selectedEquipmentIds} loading={isLoadingAddons}
+        onToggle={id => {
+          const removing = selectedEquipmentIds.includes(id);
+          setSelectedEquipmentIds(current => removing ? current.filter(value => value !== id) : [...current, id]);
+          // Re-adding starts on every free day again.
+          if (removing) setDayEquipmentExcluded(current => Object.fromEntries(Object.entries(current).map(([date, ids]) => [date, ids.filter(value => value !== id)])));
+        }}
+        daysFor={isMultiDay ? id => datedDays.map(day => ({ date: day.date, chosen: day.equipmentIds.includes(id), free: !!dayResources[day.date]?.equipmentIds.includes(id),
+          label: new Date(`${day.date}T12:00:00`).toLocaleDateString(i18n.language, { weekday: "short", month: "short", day: "numeric" }) })) : undefined}
+        onToggleDay={(id, date) => setDayEquipmentExcluded(current => {
+          const ids = current[date] ?? [];
+          return { ...current, [date]: ids.includes(id) ? ids.filter(value => value !== id) : [...ids, id] };
+        })}
+        footer={<StorageBookingNote kitchenId={selectedKitchen.id} />} />;
     }
 
-    // Step: Confirm — editable choices only (kitchen + price live in the left rail)
+    // Step: Confirm — "Request to book" (Airbnb / Peerspace): what you're booking with one Edit per part, a message to
+    // the kitchen, then what happens after you pay. Price lives in the rail (and above the button on mobile).
     if (currentStep === 'confirm' && selectedKitchen && selectedDate && (isMultiDay || selectedSlots.length > 0)) {
-      const editLinkClass =
-        "inline-flex items-center gap-1 text-sm font-medium text-[#E10939] hover:text-[#c90832] shrink-0";
+      const dayLabel = (date: string) => new Date(`${date}T12:00:00`).toLocaleDateString(i18n.language, { weekday: "short", month: "short", day: "numeric" });
+      // One entry per day (The Food Corridor lists each session with its own add-ons): when, how long, which rentals.
+      const range = (times: { startTime: string; endTime: string }[]) => times.length ? `${formatTime(times[0].startTime)} – ${formatTime(times[times.length - 1].endTime)}` : "";
+      const itinerary = isMultiDay ? datedDays.map(day => ({ date: day.date,
+        when: new Date(`${day.date}T12:00:00`).toLocaleDateString(i18n.language, { weekday: "long", month: "long", day: "numeric" }),
+        hours: day.pricingMode === "daily" ? `${t("sheetDailyRate")} · ${range(day.slots)}` : `${range(day.slots)} · ${t("sheetHoursCount", { count: day.slots.length })}`,
+        rentals: equipmentListings.rental.filter(item => day.equipmentIds.includes(item.id)).map(equipmentName) }))
+        : [{ date: localDateKey(selectedDate), when: selectedDate.toLocaleDateString(i18n.language, { weekday: "long", month: "long", day: "numeric", year: "numeric" }),
+          hours: templateRateMode === "daily" ? `${t("sheetDailyRate")} · ${bookingTimeBlocks.join(", ")}` : `${bookingTimeBlocks.join(", ")} · ${t("sheetHoursCount", { count: selectedSlots.length })}`,
+          rentals: equipmentPricing.items.map(item => item.name) }];
+      const editLink = "inline-flex min-h-9 items-center rounded-full border border-gray-200 px-3 text-xs font-medium text-gray-700 hover:border-gray-900 hover:text-gray-900";
+      // Every line itemised (Airbnb's price details): each day's kitchen time, each rental with its days.
+      const hourly = Number(kitchenPricing?.hourlyRate || 0), daily = Number(kitchenPricing?.dailyRate || 0);
+      const kitchenLine = (pricingMode: string, hours: number, prefix?: string) => ({
+        name: [prefix, pricingMode === "daily" ? t("sheetDailyRate") : t("rvHoursTimesRate", { count: hours, rate: formatCurrency(hourly) })].filter(Boolean).join(" · "),
+        priceCents: pricingMode === "daily" ? daily : hours * hourly });
+      const priceLines = isMultiDay ? {
+        kitchen: datedDays.map(day => kitchenLine(day.pricingMode, day.slots.length, dayLabel(day.date))),
+        equipment: equipmentListings.rental.flatMap(item => {
+          const days = datedDays.filter(day => day.equipmentIds.includes(item.id)).length;
+          return days ? [{ name: t("rvItemTimesDays", { name: equipmentName(item), count: days }), priceCents: (item.sessionRate || 0) * days }] : [];
+        }),
+      } : {
+        kitchen: [kitchenLine(templateRateMode, selectedSlots.length)],
+        equipment: equipmentPricing.items.map(item => ({ name: item.name, priceCents: item.rate })),
+      };
+      const steps = [
+        { title: t("rvStepSend"), body: isMultiDay ? t("mdCardHold") : t("sheetWhatNextCharge", "You are charged only if they accept. Until then your card is just on hold.") },
+        { title: t("rvStepRespond"), body: checkoutResponseDeadline ? t("sheetResponseDeadline", { deadline: checkoutResponseDeadline, defaultValue: "The kitchen has until {deadline} to respond." })
+          : t("sheetResponseDeadlineOnPage", "Your booking page will show when the kitchen needs to respond.") },
+        { title: t("rvStepArrive"), body: hoursUntilVisit !== null && hoursUntilVisit <= preparationLeadHours
+          ? t("sheetPreparationLeadLate", "Arrival details are shared as soon as the kitchen accepts.")
+          : t("sheetPreparationLead", { hours: preparationLeadHours, defaultValue: "Arrival details are shared {hours} hours before your visit, once the kitchen accepts." }) },
+      ];
 
       return (
-        <div className="space-y-5">
+        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
+        <div className="min-w-0 space-y-5">
           <div>
-            <h3 className="text-base font-semibold text-gray-900">
-              {t("sheetStepConfirm", "Confirm")}
-            </h3>
-            <p className="text-sm text-muted-foreground mt-1">
-              {t("sheetStepConfirmSubtext", "Review and pay")}
-            </p>
+            <h3 className="text-base font-semibold text-gray-900">{t("rvTitle")}</h3>
+            <p className="mt-1 text-sm text-muted-foreground">{t("rvIntro", { kitchen: selectedKitchen.name })}</p>
           </div>
 
-          {isMultiDay && <div className="space-y-3 rounded-[1.35rem] border bg-white p-4">
-            <div className="flex flex-wrap gap-2">
-              <Button variant="outline" onClick={() => { setHideDateStep(false); setCurrentStep('calendar'); }}>{t('sheetChangeDate')}</Button>
-              <Button variant="outline" onClick={() => { setEditingDay(null); setCurrentStep('slots'); }}>{t('mdChangeHours')}</Button>
-              {hasEquipment && <Button variant="outline" onClick={() => setCurrentStep('equipment')}>{t('sheetEquipmentTitle')}</Button>}
+          <section aria-labelledby="rv-booking" className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
+            <div className="flex items-baseline justify-between gap-3 border-b border-gray-100 px-4 py-3">
+              <h4 id="rv-booking" className="text-sm font-semibold text-gray-900">{t("rvYourBooking")}</h4>
+              {isMultiDay && <span className="text-xs text-muted-foreground">{t("mdSelectedDays", { count: selectedDates.length })}</span>}
             </div>
-            <BookingPriceSummary days={datedSummaryRows} kitchenSubtotal={datedKitchenSubtotal} equipmentSubtotal={datedEquipmentSubtotal}
-              taxRatePercent={selectedKitchen?.taxRatePercent || 0} taxLabel={selectedKitchen?.taxLabel}
-              serviceFeeRate={kitchenPricing?.platformCommissionRate ?? 0} currency={kitchenPricing?.currency || 'CAD'}
-              extraTimeRateCents={kitchenPricing?.extraTimeRateCents} />
-          </div>}
-          {!isMultiDay && <div className="overflow-hidden rounded-[1.35rem] border divide-y bg-white">
-            <div className="flex items-start justify-between gap-3 px-4 py-3.5">
-              <div className="flex min-w-0 items-start gap-2.5">
-                <Icon icon="mdi:calendar-month-outline" className="mt-0.5 h-4 w-4 shrink-0 text-[#E10939]" aria-hidden />
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-muted-foreground">
-                    {t("sheetDateLabel", "Date")}
-                  </p>
-                  <p className="text-sm font-semibold text-gray-900">{formatDate(selectedDate)}</p>
+            <ol className="divide-y divide-gray-100">
+              {itinerary.map(day => <li key={day.date} className="flex gap-3 px-4 py-3.5">
+                <span className="flex h-11 w-11 shrink-0 flex-col items-center justify-center rounded-xl bg-[#FFF3F5] leading-none text-[#E10939]" aria-hidden="true">
+                  <span className="text-[10px] font-semibold uppercase">{new Date(`${day.date}T12:00:00`).toLocaleDateString(i18n.language, { month: "short" })}</span>
+                  <span className="text-base font-bold">{new Date(`${day.date}T12:00:00`).getDate()}</span>
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-gray-900">{day.when}</p>
+                  <p className="text-sm text-gray-700">{day.hours}</p>
+                  {hasEquipment && <p className="mt-1 flex items-start gap-1.5 text-xs text-muted-foreground">
+                    <Icon icon="mdi:silverware-fork-knife" className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden />
+                    <span>{day.rentals.length ? day.rentals.join(", ") : equipmentListings.included.length ? t("rvIncludedOnly", { count: equipmentListings.included.length }) : t("sheetNoRentalsSelected")}</span>
+                  </p>}
                 </div>
-              </div>
-              <Popover
-                open={confirmDatePopoverOpen}
-                onOpenChange={(open) => {
-                  setConfirmDatePopoverOpen(open);
-                  if (open && selectedDate) {
-                    setCalendarMonth(
-                      new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1)
-                    );
-                  }
-                }}
-              >
-                <PopoverTrigger asChild>
-                  <button type="button" className={editLinkClass} aria-label={t("sheetEditDate", "Edit date")}>
-                    <Icon icon="mdi:pencil-outline" className="h-3 w-3" aria-hidden />
-                    {t("sheetEdit", "Edit")}
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="end" sideOffset={8}>
-                  <div className="relative w-[300px] p-2">
-                    {isLoadingAvailability && (
-                      <div className="absolute inset-0 z-10 flex items-center justify-center rounded-md bg-white/60">
-                        <Icon icon="mdi:loading" className="h-5 w-5 animate-spin text-[#E10939]" aria-hidden />
-                      </div>
-                    )}
-                    {bookableThrough && <p className="text-sm text-muted-foreground">{t("bookingBookableThrough", { defaultValue: "Bookable up to {date}", date: new Intl.DateTimeFormat(i18n.resolvedLanguage || i18n.language || "en-CA", { dateStyle: "medium" }).format(new Date(`${bookableThrough}T12:00:00`)) })}</p>}
-            <UICalendar
-                      mode="single"
-                      selected={selectedDate}
-                      onSelect={(date) => {
-                        if (!date) return;
-                        const normalized = new Date(date);
-                        normalized.setHours(0, 0, 0, 0);
-                        if (!isDayAvailable(normalized)) return;
-                        setConfirmDatePopoverOpen(false);
-                        if (selectedDate && selectedDate.getTime() === normalized.getTime()) return;
-                        setSelectedDate(normalized);
-                        setSelectedDates([localDateKey(normalized)]);
-                        setSelectedSlots([]);
-                        setCalendarMonth(new Date(normalized.getFullYear(), normalized.getMonth(), 1));
-                        // New day needs new times — skip calendar step, go straight to slots
-                        setCurrentStep("slots");
-                      }}
-                      month={calendarMonth}
-                      onMonthChange={(month) => {
-                        setCalendarMonth(new Date(month.getFullYear(), month.getMonth(), 1));
-                      }}
-                      disabled={(date) => !isDayAvailable(date)}
-                      className="w-full bg-transparent p-1"
-                      classNames={BOOKING_CALENDAR_CLASS_NAMES}
-                    />
-                  </div>
-                </PopoverContent>
-              </Popover>
-            </div>
-
-            <div className="flex items-start justify-between gap-3 px-4 py-3.5">
-              <div className="flex min-w-0 items-start gap-2.5">
-                <Icon icon="mdi:clock-outline" className="mt-0.5 h-4 w-4 shrink-0 text-[#E10939]" aria-hidden />
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-muted-foreground">
-                    {t("sheetBookingTimeLabel", "Booking Time")}
-                  </p>
-                  <p className="text-sm font-semibold text-gray-900">{bookingTimeBlocks.join(', ')}</p>
-                  <p className="mt-0.5 text-sm text-muted-foreground">
-                    {t("sheetHoursCount", { count: selectedSlots.length, defaultValue: `${selectedSlots.length} hours` })}
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                className={editLinkClass}
-                onClick={() => {
-                  setPendingTimeSlots(selectedSlots);
-                  setTimeModalOpen(true);
-                }}
-              >
-                <Icon icon="mdi:pencil-outline" className="h-3 w-3" aria-hidden />
-                {t("sheetEdit", "Edit")}
-              </button>
-            </div>
-
-            {hasEquipment && selectedEquipmentIds.length > 0 ? (
-              <div className="flex items-start justify-between gap-3 px-4 py-3.5">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-gray-900">{t("sheetEquipmentTitle", "Equipment")}</p>
-                  <div className="mt-1 space-y-1 text-sm text-muted-foreground">
-                    {equipmentPricing.items.length ? equipmentPricing.items.map((item, index) => <div key={index} className="flex justify-between gap-4">
-                      <span>{item.name}</span><span className="shrink-0 tabular-nums">{formatCurrency(item.rate)}</span>
-                    </div>) : t("sheetNoRentalsSelected")}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  className={editLinkClass}
-                  onClick={() => {
-                    setEquipmentInventoryModal(null);
-                    setPendingEquipmentIds(selectedEquipmentIds);
-                    setEquipmentModalOpen(true);
-                  }}
-                >
-                  <Icon icon="mdi:pencil-outline" className="h-3 w-3" aria-hidden />
-                  {t("sheetEdit", "Edit")}
-                </button>
-              </div>
-            ) : null}
-          </div>}
-
-          <div>
-            <label className="mb-2 block text-sm font-medium">
-              {t("sheetSpecialNotesLabel", "Special Notes (Optional)")}
-            </label>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              rows={3}
-              maxLength={500}
-              placeholder={t("sheetSpecialNotesPlaceholder", "Any special requirements...")}
-              className="w-full resize-none rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm focus:border-[#E10939] focus:ring-2 focus:ring-[#E10939]/30"
-            />
-          </div>
-
-          <section className="rounded-[1.35rem] border bg-muted/30 p-4" data-testid="what-happens-next">
-            <h4 className="text-sm font-semibold text-gray-900">{t("sheetWhatNextTitle", "What happens next")}</h4>
-            <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
-              <li>{checkoutResponseDeadline ? t("sheetResponseDeadline", { deadline: checkoutResponseDeadline, defaultValue: "The kitchen has until {deadline} to respond." }) : t("sheetResponseDeadlineOnPage", "Your booking page will show when the kitchen needs to respond.")}</li>
-              <li>{isMultiDay ? t('mdCardHold') : t("sheetWhatNextCharge", "You are charged only if they accept. Until then your card is just on hold.")}</li>
-              <li>{hoursUntilVisit !== null && hoursUntilVisit <= preparationLeadHours
-                ? t("sheetPreparationLeadLate", "Arrival details are shared as soon as the kitchen accepts.")
-                : t("sheetPreparationLead", { hours: preparationLeadHours, defaultValue: "Arrival details are shared {hours} hours before your visit, once the kitchen accepts." })}</li>
+              </li>)}
             </ol>
-
+            <div className="flex flex-wrap gap-2 border-t border-gray-100 bg-gray-50/60 px-4 py-3">
+              <button type="button" className={editLink} onClick={() => { setHideDateStep(false); setCurrentStep("calendar"); }}>{t(isMultiDay ? "rvChangeDates" : "rvChangeDate")}</button>
+              <button type="button" className={editLink} onClick={() => { setEditingDay(null); setCurrentStep("slots"); }}>{t("rvChangeHours")}</button>
+              {hasEquipment && <button type="button" className={editLink} onClick={() => setCurrentStep("equipment")}>{t("rvChangeEquipment")}</button>}
+            </div>
           </section>
+
+          <div>
+            <label htmlFor="booking-notes" className="block text-sm font-semibold text-gray-900">{t("rvMessageLabel")}</label>
+            <p className="mb-2 mt-0.5 text-xs text-muted-foreground">{t("rvMessageHelp")}</p>
+            <textarea id="booking-notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} maxLength={500}
+              placeholder={t("rvMessagePlaceholder")}
+              className="w-full resize-none rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm focus:border-[#E10939] focus:ring-2 focus:ring-[#E10939]/30" />
+          </div>
+
+          <section aria-labelledby="rv-next" className="rounded-2xl border border-gray-200 bg-white p-4" data-testid="what-happens-next">
+            <h4 id="rv-next" className="text-sm font-semibold text-gray-900">{t("sheetWhatNextTitle", "What happens next")}</h4>
+            <ol className="mt-3 space-y-3">
+              {steps.map((step, index) => <li key={step.title} className="flex gap-3">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-900 text-xs font-semibold text-white" aria-hidden="true">{index + 1}</span>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-gray-900">{step.title}</p>
+                  <p className="text-sm leading-relaxed text-muted-foreground">{step.body}</p>
+                </div>
+              </li>)}
+            </ol>
+          </section>
+        </div>
+        {/* The listing card beside the review (Airbnb's "Confirm and pay"): what you're booking and what it costs. */}
+        <aside className="lg:sticky lg:top-4" aria-label={t("rvPriceDetails")}>
+          <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
+            <div className="hidden gap-3 border-b border-gray-100 p-4 lg:flex">
+              <div className="relative h-20 w-24 shrink-0 overflow-hidden rounded-xl bg-[#E10939]/5">
+                <Icon icon="mdi:chef-hat" className="absolute inset-0 m-auto h-7 w-7 text-[#E10939]" aria-hidden />
+                <SmartImage src={kitchenCoverUrl(selectedKitchen) || ""} alt="" className="absolute inset-0 h-full w-full object-cover" hideOnError />
+              </div>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-gray-900">{selectedKitchen.name}</p>
+                <p className="truncate text-sm text-muted-foreground">{locationName}</p>
+                {locationAddress && <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{locationAddress}</p>}
+              </div>
+            </div>
+            <div className="space-y-3 p-4">
+              <h4 className="text-sm font-semibold text-gray-900">{t("rvPriceDetails")}</h4>
+              <BookingPriceSummary kitchenSubtotal={isMultiDay ? datedKitchenSubtotal : estimatedPrice?.basePrice || 0}
+                equipmentSubtotal={isMultiDay ? datedEquipmentSubtotal : equipmentPricing.subtotal}
+                kitchenItems={priceLines.kitchen} equipmentItems={priceLines.equipment}
+                taxRatePercent={selectedKitchen?.taxRatePercent || 0} taxLabel={selectedKitchen?.taxLabel}
+                serviceFeeRate={kitchenPricing?.platformCommissionRate ?? 0} currency={kitchenPricing?.currency || "CAD"} />
+            </div>
+            <div className="border-t border-gray-100 p-4">{renderStepActions()}</div>
+          </div>
+        </aside>
         </div>
       );
     }
@@ -2099,8 +1750,7 @@ export default function KitchenBookingFlow({
           <BookingPriceSummary days={datedSummaryRows} kitchenSubtotal={isMultiDay ? datedKitchenSubtotal : estimatedPrice?.basePrice || 0} equipmentSubtotal={isMultiDay ? datedEquipmentSubtotal : equipmentPricing.subtotal}
             taxRatePercent={selectedKitchen?.taxRatePercent || 0} taxLabel={selectedKitchen?.taxLabel}
             serviceFeeRate={kitchenPricing?.platformCommissionRate ?? 0} currency={kitchenPricing?.currency || "CAD"}
-            equipmentItems={equipmentPricing.items.map(item => ({ name: item.name, priceCents: item.rate }))}
-            extraTimeRateCents={kitchenPricing?.extraTimeRateCents} />
+            equipmentItems={equipmentPricing.items.map(item => ({ name: item.name, priceCents: item.rate }))} />
         </details>
       );
     }
@@ -2183,7 +1833,6 @@ export default function KitchenBookingFlow({
               taxLabel={selectedKitchen?.taxLabel}
               serviceFeeRate={kitchenPricing?.platformCommissionRate ?? 0}
               currency={kitchenPricing?.currency || "CAD"}
-              extraTimeRateCents={kitchenPricing?.extraTimeRateCents}
             />
           </div>
         )}
@@ -2225,16 +1874,6 @@ export default function KitchenBookingFlow({
     return () => registerLeaveGuard?.(null);
   }, [registerLeaveGuard, requestLeave]);
 
-  const confirmDiscardModalChanges = () => {
-    if (discardModal === "equipment") {
-      setPendingEquipmentIds(selectedEquipmentIds);
-      setEquipmentModalOpen(false);
-    } else if (discardModal === "time") {
-      setPendingTimeSlots(selectedSlots);
-      setTimeModalOpen(false);
-    }
-    setDiscardModal(null);
-  };
 
   const goToPreviousStep = () => {
     const prev = goToStepRelative(currentStep, -1);
@@ -2306,14 +1945,14 @@ export default function KitchenBookingFlow({
 
     if (currentStep === "confirm") {
       return (
-        <div className="space-y-3">
-          {!isMultiDay && <div className="lg:hidden">{renderPriceBreakdown("mobile")}</div>}
-          {(grandTotal > 0 || isMultiDay) && <CheckoutCancellationDisclosure multiDay={isMultiDay} policy={acceptedPolicy} startAt={policyStartAt} detailsOpen={policyDetailsOpen} onDetailsOpenChange={setPolicyDetailsOpen} detailsId="checkout-cancellation-details" />}
-          <div className="grid grid-cols-2 gap-3 sm:flex [&>button:first-child]:col-span-2 [&>button:first-child]:sm:col-auto">
-            {cancelButton}
-            {previousButton}
+        <div className="space-y-4">
+          {(grandTotal > 0 || isMultiDay) && <CheckoutCancellationDisclosure bare policy={acceptedPolicy} startAt={policyStartAt} detailsOpen={policyDetailsOpen} onDetailsOpenChange={setPolicyDetailsOpen} detailsId="checkout-cancellation-details" />}
+          {/* The overtime rate once, at checkout, next to the policy (kept out of the running summary). */}
+          {Number(kitchenPricing?.extraTimeRateCents) > 0 && <p className="text-xs text-muted-foreground" data-testid="extra-time-rate-note">{t("bpsExtraTimeRate", { amount: formatCurrency(Number(kitchenPricing?.extraTimeRateCents)) })}</p>}
+          {checkoutError ? <p role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">{checkoutError}</p> : null}
+          <div>
             <Button
-              className={chefPrimaryCtaClass("min-w-0 flex-1 min-h-[44px] px-3 sm:px-5")}
+              className={chefPrimaryCtaClass("min-h-11 w-full px-5")}
               // Guarded rather than disabled: an unverified chef gets the gate with
               // a way forward instead of a dead button.
               onClick={() =>
@@ -2328,10 +1967,10 @@ export default function KitchenBookingFlow({
                   <Icon icon="mdi:loading" className="mr-1.5 sm:mr-2 h-4 w-4 animate-spin flex-shrink-0" aria-hidden />
                   <span className="truncate">{isRedirectingToCheckout ? t("sheetRedirectingButton", "Redirecting...") : t("sheetBookingEllipsisButton", "Booking...")}</span>
                 </>
-              ) : grandTotal > 0 ? (
+              ) : grandTotal > 0 || isMultiDay ? (
                 <>
-                  <Icon icon="mdi:credit-card-outline" className="mr-1.5 sm:mr-2 h-4 w-4 flex-shrink-0" aria-hidden />
-                  <span className="truncate">{t("sheetCheckoutButton", "Checkout")}</span>
+                  <Icon icon="mdi:lock-outline" className="mr-1.5 sm:mr-2 h-4 w-4 flex-shrink-0" aria-hidden />
+                  <span className="truncate">{t("rvPayButton", "Continue to payment")}</span>
                 </>
               ) : (
                 <>
@@ -2342,7 +1981,14 @@ export default function KitchenBookingFlow({
             </Button>
           </div>
           {replacesBookingId && replacedRequest ? <ChangeRequestConsentLine request={replacedRequest} /> : null}
-          {grandTotal > 0 && acceptedPolicy && <CheckoutConsentNotice buttonLabel={t("sheetCheckoutButton", "Checkout")} onShowPolicy={showPolicyDetails} />}
+          {/* Airbnb's "You won't be charged yet": the card is only held until the kitchen accepts. */}
+          {(grandTotal > 0 || isMultiDay) && <p className="text-center text-xs text-gray-600" data-testid="not-charged-yet">{t("rvNotChargedYet")}</p>}
+          {(grandTotal > 0 || isMultiDay) && acceptedPolicy && <CheckoutConsentNotice buttonLabel={t("rvPayButton", "Continue to payment")} onShowPolicy={showPolicyDetails} />}
+          <div className="flex justify-center gap-1 border-t border-gray-100 pt-2">
+            {[{ label: t("sheetPreviousButton", "Previous"), onClick: goToPreviousStep }, { label: t("sheetCancelButton", "Cancel"), onClick: () => requestLeave() }].map(action =>
+              <Button key={action.label} type="button" variant="ghost" size="sm" className="min-h-10 text-muted-foreground" onClick={action.onClick}
+                disabled={isRedirectingToCheckout || isProcessingBooking || createBooking.isPending}>{action.label}</Button>)}
+          </div>
         </div>
       );
     }
@@ -2376,7 +2022,8 @@ export default function KitchenBookingFlow({
 
   return (
     <>
-      <div className="space-y-4 lg:flex lg:h-[calc(100dvh-9rem)] lg:flex-col lg:space-y-0 lg:gap-4 lg:overflow-hidden">
+      {/* Confirm is a normal page that scrolls as a whole (nothing hidden in an inner scroll area); the other steps fit the screen. */}
+      <div className={cn("space-y-4 lg:flex lg:flex-col lg:space-y-0 lg:gap-4", currentStep !== "confirm" && "lg:h-[calc(100dvh-9rem)] lg:overflow-hidden")}>
         <BookingEligibilityBanner eligibility={eligibility} locationName={locationName} />
         {replacesBookingId && replacedRequest ? <ChangeRequestBanner request={replacedRequest} /> : null}
         {/* ReUI c-stepper-10 — equal columns, title + description, line separators */}
@@ -2429,7 +2076,8 @@ export default function KitchenBookingFlow({
 
         <div className="flex flex-col gap-0 lg:min-h-0 lg:flex-1 lg:flex-row lg:items-stretch lg:gap-6">
           {/* Left rail: kitchen details + sticky price (desktop) */}
-          <aside className={cn("hidden w-[340px] shrink-0 flex-col lg:flex lg:h-full", isMultiDay && "overflow-y-auto [&>div]:shrink-0")}>
+          {/* Confirm takes the full width: its own card carries the kitchen and the price (Airbnb), so the rail would repeat it. */}
+          <aside className={cn("hidden w-[340px] shrink-0 flex-col lg:flex lg:h-full", isMultiDay && "overflow-y-auto [&>div]:shrink-0", currentStep === "confirm" && "lg:hidden")}>
             <div className="mb-4">
               {selectedKitchen ? (
                 <BookingPlaceContext
@@ -2447,7 +2095,7 @@ export default function KitchenBookingFlow({
           </aside>
 
           {/* Main column */}
-          <div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-[1.35rem] border bg-white shadow-sm lg:h-full lg:min-h-0">
+          <div className={cn("flex min-w-0 flex-1 flex-col rounded-[1.35rem] border bg-white shadow-sm", currentStep !== "confirm" && "overflow-hidden lg:h-full lg:min-h-0")}>
             {/* Mobile kitchen context */}
             <div className="flex-shrink-0 border-b bg-gray-50/50 px-4 py-3 lg:hidden">
               {selectedKitchen ? (
@@ -2464,223 +2112,21 @@ export default function KitchenBookingFlow({
               )}
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6 lg:px-8 lg:py-6">
+            <div className={cn("px-4 py-5 sm:px-6 lg:px-8 lg:py-6", currentStep !== "confirm" && "min-h-0 flex-1 overflow-y-auto")}>
               {loadError ? <p role="alert" className="mb-4 rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">{loadError}</p> : null}
               {/* Blocked chefs can still read the page; the steps are inert so nothing can be submitted. */}
-              <div className={cn("mx-auto h-full w-full max-w-3xl lg:mx-0", bookingBlocked && "pointer-events-none opacity-60")} aria-disabled={bookingBlocked || undefined} {...(bookingBlocked ? { inert: "" } : {})}>{renderStepContent()}</div>
+              <div className={cn("mx-auto h-full w-full lg:mx-0", currentStep === "confirm" ? "max-w-5xl" : "max-w-3xl", bookingBlocked && "pointer-events-none opacity-60")} aria-disabled={bookingBlocked || undefined} {...(bookingBlocked ? { inert: "" } : {})}>{renderStepContent()}</div>
             </div>
 
-            <div className="sticky bottom-0 flex-shrink-0 border-t bg-white px-4 py-4 sm:px-6 lg:px-8">
+            {currentStep !== "confirm" && <div className="sticky bottom-0 flex-shrink-0 border-t bg-white px-4 py-4 sm:px-6 lg:px-8">
               {checkoutError ? (
                 <p role="alert" className="mx-auto mb-3 w-full max-w-3xl rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive lg:mx-0">{checkoutError}</p>
               ) : null}
               <div className="mx-auto w-full max-w-3xl lg:mx-0">{renderStepActions()}</div>
-            </div>
+            </div>}
           </div>
         </div>
       </div>
-
-      <Dialog open={timeModalOpen} onOpenChange={(open) => { if (open) setTimeModalOpen(true); }}>
-        <DialogContent
-          showCloseButton={false}
-          onPointerDownOutside={(event) => event.preventDefault()}
-          onEscapeKeyDown={(event) => event.preventDefault()}
-          className="flex max-h-[85vh] w-[min(100vw-1.5rem,42rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl"
-        >
-          <DialogHeader className="border-b border-gray-100 px-5 pb-4 pt-5 text-left">
-            <DialogTitle>{t("sheetSelectTimeTitle", "Select time")}</DialogTitle>
-            <DialogDescription>
-              {selectedDate ? formatDate(selectedDate) : ""}{bookingRateMode === "hourly" && maxSlotsPerChef != null
-                ? ` · ${t("sheetMaxHoursBadge", { maxHours: maxSlotsPerChef, defaultValue: `Max ${maxSlotsPerChef} hours` })}`
-                : ""}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
-            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
-              {allSlots.map((slot) => {
-                const selected = pendingTimeSlots.includes(slot.time);
-                return (
-                  <button
-                    key={slot.time}
-                    type="button"
-                    disabled={slot.isFullyBooked}
-                    onClick={() => updateSlotSelection(setPendingTimeSlots, slot)}
-                    className={cn(
-                      "flex min-h-[44px] w-full items-center justify-center rounded-xl border px-3 py-2.5 text-center text-sm font-medium transition-colors",
-                      selected && "border-[#E10939] bg-[#E10939] text-white",
-                      !selected && !slot.isFullyBooked && "border-gray-200 bg-white text-gray-700 hover:border-[#E10939]/40",
-                      slot.isFullyBooked && "cursor-not-allowed border-transparent bg-muted/50 text-muted-foreground"
-                    )}
-                  >
-                    {formatSlotRange(slot.time)}{slot.isFullyBooked && <span className="ml-1 text-xs no-underline"> · {t("wfbBooked")}</span>}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          <div className="flex items-center justify-between gap-3 border-t bg-white px-5 py-4">
-            <Button variant="ghost" className="rounded-xl" onClick={() => setDiscardModal("time")}>{t("sheetCancelButton")}</Button>
-            <p className="text-sm text-muted-foreground">{selectionError(pendingTimeSlots) || `${pendingTimeSlots.length} hours selected`}</p>
-            <Button
-              disabled={!!selectionError(pendingTimeSlots)}
-              className={chefPrimaryCtaClass()}
-              onClick={() => {
-                if (selectionError(pendingTimeSlots)) return;
-                setSelectedSlots(sortSelectedSlots(pendingTimeSlots));
-                setTimeModalOpen(false);
-              }}
-            >
-              <Icon icon="mdi:check" className="mr-2 h-4 w-4" aria-hidden />{ct('sweepLabel22')}</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={equipmentInventoryModal !== null}
-        onOpenChange={(open) => {
-          if (!open) setEquipmentInventoryModal(null);
-        }}
-      >
-        <DialogContent
-          showCloseButton={false}
-          className="flex max-h-[85vh] w-[min(100vw-1.5rem,48rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl"
-        >
-          <DialogHeader className="border-b border-gray-100 px-5 pb-4 pt-5 text-left">
-            <DialogTitle>
-              {equipmentInventoryModal === "included"
-                ? t("sheetIncludedEquipmentTitle", "Included equipment")
-                : t("sheetOptionalRentalsLabel", "Optional rentals")}
-            </DialogTitle>
-            <DialogDescription>
-              {equipmentInventoryModal === "included"
-                ? t("sheetIncludedEquipmentDesc", "Included at no extra charge.")
-                : t("sheetRentalEquipmentDesc", "Optional rentals for this kitchen session.")}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-            <InventoryPreviewList
-              title={equipmentInventoryModal === "included"
-                ? t("sheetIncludedLabel", "Included")
-                : t("sheetOptionalRentalsLabel", "Optional rentals")}
-              subtitle={equipmentInventoryModal === "included"
-                ? t("sheetIncludedEquipmentDesc", "Included at no extra charge.")
-                : t("sheetRentalEquipmentDesc", "Optional rentals for this session.")}
-              items={equipmentInventoryModal === "included"
-                ? equipmentListings.included
-                : equipmentListings.rental}
-              selectedIds={selectedEquipmentIds}
-                    onToggle={(id) => setSelectedEquipmentIds(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id])}
-              rental={equipmentInventoryModal === "rental"}
-            />
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={equipmentModalOpen}
-        onOpenChange={(open) => {
-          if (open) {
-            setEquipmentModalOpen(true);
-            setEquipmentInventoryModal(null);
-          }
-        }}
-      >
-        <DialogContent
-          showCloseButton={false}
-          onPointerDownOutside={(event) => event.preventDefault()}
-          onEscapeKeyDown={(event) => event.preventDefault()}
-          className="flex max-h-[85vh] w-[min(100vw-1.5rem,48rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl"
-        >
-          <DialogHeader className="border-b border-gray-100 px-5 pb-4 pt-5 text-left">
-            <DialogTitle>{t("sheetSelectEquipment", "Select equipment")}</DialogTitle>
-            <DialogDescription>
-              {t(
-                "sheetSelectEquipmentDesc",
-                "Choose any optional rental equipment you need for this session."
-              )}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-            <section>
-              <div className="mb-3">
-                <h4 className="text-base font-semibold text-gray-900">{t("sheetOptionalRentalsLabel", "Optional rentals")}</h4>
-                <p className="text-sm text-muted-foreground">{t("kbfSelectAsMany")}</p>
-              </div>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {equipmentListings.rental.map((equipment: any) => {
-                  const selected = pendingEquipmentIds.includes(equipment.id);
-                  return (
-                    <button
-                      key={equipment.id}
-                      type="button"
-                      aria-pressed={selected}
-                      onClick={() => setPendingEquipmentIds((current) =>
-                        selected
-                          ? current.filter((id) => id !== equipment.id)
-                          : [...current, equipment.id]
-                      )}
-                      className={cn(
-                        "flex items-center gap-3 rounded-[1.35rem] border p-3 text-left transition-all",
-                        selected
-                          ? "border-[#E10939] bg-[#E10939]/[0.04] ring-1 ring-[#E10939]/20"
-                          : "border-gray-200 hover:border-[#E10939]/40"
-                      )}
-                    >
-                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#FFF3F5] text-[#E10939]">
-                        <Icon icon={resolveEquipmentIcon(equipment.equipmentType, equipment.category)} width={20} height={20} aria-hidden />
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-semibold text-gray-900">{equipmentName(equipment)}</span>
-                        <span className="block text-sm text-muted-foreground">{formatCurrency(equipment.sessionRate || 0)}{' '}{ct('sweepLabel23')}</span>
-                      </span>
-                      <span className={cn(
-                        "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border",
-                        selected ? "border-[#E10939] bg-[#E10939] text-white" : "border-gray-300"
-                      )}>
-                        {selected ? <Icon icon="mdi:check" className="h-3 w-3" aria-hidden /> : null}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
-          </div>
-          <div className="space-y-3 border-t bg-white px-5 py-3">
-            <BookingPriceSummary
-              kitchenSubtotal={isMultiDay ? datedKitchenSubtotal : estimatedPrice?.basePrice || 0}
-              equipmentSubtotal={pendingEquipmentSubtotal}
-              taxRatePercent={selectedKitchen?.taxRatePercent || 0}
-              serviceFeeRate={kitchenPricing?.platformCommissionRate ?? 0}
-              currency={kitchenPricing?.currency || "CAD"}
-              equipmentItems={pendingEquipmentIds.flatMap(id => {
-                const item = equipmentListings.rental.find((equipment: any) => equipment.id === id);
-                const days = isMultiDay ? selectedDates.filter(date => dayResources[date]?.equipmentIds.includes(id) && !dayEquipmentExcluded[date]?.includes(id)).length : 1;
-                return item ? [{ name: equipmentName(item), priceCents: (item.sessionRate || 0) * days }] : [];
-              })}
-              taxLabel={selectedKitchen?.taxLabel}
-              focusAddon="equipment"
-              extraTimeRateCents={kitchenPricing?.extraTimeRateCents}
-            />
-            <div className="flex items-center justify-between gap-3 border-t pt-3">
-              <Button variant="ghost" className="rounded-xl" onClick={() => setDiscardModal("equipment")}>{t("sheetCancelButton")}</Button>
-              <p className="text-sm text-muted-foreground">
-                {pendingEquipmentIds.length
-                  ? `${pendingEquipmentIds.length} rental${pendingEquipmentIds.length === 1 ? "" : "s"} selected`
-                  : t("sheetNoRentalsSelected", "No rentals selected")}
-              </p>
-              <Button
-                className={chefPrimaryCtaClass()}
-                onClick={() => {
-                  setSelectedEquipmentIds(pendingEquipmentIds);
-                  setEquipmentModalOpen(false);
-                }}
-              >
-                <Icon icon="mdi:check" className="mr-2 h-4 w-4" aria-hidden /> {t("sheetSaveSelection", "Save selection")}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={cancellationPolicyOpen} onOpenChange={setCancellationPolicyOpen}>
         <DialogContent
@@ -2696,30 +2142,17 @@ export default function KitchenBookingFlow({
               />
               {t("sheetCancellationPolicyTitle", "Cancellation policy")}
             </DialogTitle>
-            <DialogDescription className="pt-2 text-sm leading-relaxed text-muted-foreground">
-              {acceptedPolicy ? <CancellationPolicySummary policy={acceptedPolicy.policy} timezone={acceptedPolicy.timezone} startAt={policyStartAt} /> : policyT('cpError')}
-            </DialogDescription>
+            <DialogDescription className="sr-only">{t("sheetCancellationPolicyTitle", "Cancellation policy")}</DialogDescription>
           </DialogHeader>
+          {/* The same timeline as the kitchen page, with real deadlines once the start is chosen. */}
+          <div className="pt-1">{acceptedPolicy ? <CancellationPolicyTimeline policy={acceptedPolicy.policy} timezone={acceptedPolicy.timezone} startAt={policyStartAt} />
+            : <p className="text-sm text-muted-foreground">{policyT('cpError')}</p>}</div>
           <Button className="mt-2 w-full" variant="outline" onClick={() => setCancellationPolicyOpen(false)}>
             {t("sheetClosePolicy", "Got it")}
           </Button>
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={discardModal !== null} onOpenChange={(open) => { if (!open) setDiscardModal(null); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("kbfDiscardUnsavedTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("kbfDiscardUnsavedDesc")}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t("kbfKeepEditing")}</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDiscardModalChanges}>{t("kbfDiscardChanges")}</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       <AlertDialog
         open={cancelConfirmOpen}

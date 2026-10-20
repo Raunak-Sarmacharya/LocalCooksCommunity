@@ -60,6 +60,8 @@ import { ChefPageHeader } from "@/components/chef/ui";
 import { Tab, TabGroup, TabList, TabPanel, TabPanels } from "@tremor/react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { UnsavedChangesDialog } from "@/components/manager/UnsavedChangesDialog";
+import LocationWorkspace, { type LocationWorkspaceHandle } from "@/components/manager/settings/LocationWorkspace";
+import { legacyLocationSection } from "@/lib/manager-location-navigation";
 import { DateField } from "@/components/ui/date-field";
 import { SessionExtensionRequests } from "@/components/manager/SessionExtensionRequests";
 
@@ -168,7 +170,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
 
 type KitchenNavigationDestination = { view: ViewType; kitchenId?: number; section?: KitchenSection; focus?: "tracking" | "tour-notes"; returnTourId?: number; historyUrl?: string };
 
-type ViewType = 'my-locations' | 'overview' | 'bookings' | 'storage-bookings' | 'viewings' | 'availability' | 'tour-availability' | 'settings' | 'applications' | 'customers' | 'pricing' | 'storage-listings' | 'equipment-listings' | 'payments' | 'security' | 'revenue' | 'messages' | 'profile' | 'kitchens' | 'listing-review' | 'settings-license' | 'settings-booking-rules' | 'settings-facility-docs' | 'settings-location' | 'settings-checkin-checkout' | 'settings-storage-checkin-checkout' | 'application-requirements' | 'notifications' | 'notification-settings' | 'damage-claims' | 'support';
+type ViewType = 'my-locations' | 'overview' | 'bookings' | 'storage-bookings' | 'viewings' | 'availability' | 'tour-availability' | 'settings' | 'applications' | 'customers' | 'pricing' | 'storage-listings' | 'equipment-listings' | 'payments' | 'security' | 'revenue' | 'messages' | 'profile' | 'kitchens' | 'listing-review' | 'settings-license' | 'settings-booking-rules' | 'settings-facility-docs' | 'settings-location' | 'settings-checkin-checkout' | 'settings-storage-checkin-checkout' | 'application-requirements' | 'notifications' | 'notification-settings' | 'damage-claims' | 'support' | 'location';
 
 
 export default function ManagerBookingDashboard() {
@@ -191,7 +193,10 @@ export default function ManagerBookingDashboard() {
     if (routeTourId) return 'viewings';
     const params = new URLSearchParams(window.location.search);
     const view = params.get('view');
-    const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'storage-bookings', 'viewings', 'availability', 'tour-availability', 'settings', 'applications', 'customers', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile', 'kitchens', 'listing-review', 'settings-license', 'settings-booking-rules', 'settings-facility-docs', 'settings-location', 'settings-checkin-checkout', 'settings-storage-checkin-checkout', 'application-requirements', 'notifications', 'notification-settings', 'damage-claims', 'support'];
+    const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'storage-bookings', 'viewings', 'availability', 'tour-availability', 'settings', 'applications', 'customers', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile', 'kitchens', 'listing-review', 'settings-license', 'settings-booking-rules', 'settings-facility-docs', 'settings-location', 'settings-checkin-checkout', 'settings-storage-checkin-checkout', 'application-requirements', 'notifications', 'notification-settings', 'damage-claims', 'support', 'location'];
+    // Older location views (Kitchen License, Facility documents, the old Settings page, Profile › Location) open Location.
+    if (legacyLocationSection(view, params.get('tab'))) return 'location';
+    if (view === 'settings' && params.get('tab') === 'requirements') return 'application-requirements';
     // Back-compat: redirect legacy 'settings-storage-checkout' URLs to the new combined page.
     if (view === 'my-locations') return 'profile';
     if (view === 'settings-storage-checkout') {
@@ -235,6 +240,12 @@ export default function ManagerBookingDashboard() {
   const [bookingPoliciesDirty, setBookingPoliciesDirty] = useState(false);
   const [pendingBookingPoliciesView, setPendingBookingPoliciesView] = useState<ViewType | null>(null);
   const kitchensSaveRef = useRef<KitchensHandle>(null);
+  // Location page: the same unsaved-changes guard as My Kitchens.
+  const locationSaveRef = useRef<LocationWorkspaceHandle | null>(null);
+  const bypassLocationGuard = useRef(false);
+  const [locationDirty, setLocationDirty] = useState(false);
+  const [pendingLocationView, setPendingLocationView] = useState<ViewType | null>(null);
+  const [pendingLocationHistory, setPendingLocationHistory] = useState<string | null>(null);
   const bypassKitchensGuard = useRef(false);
   const [kitchensDirty, setKitchensDirty] = useState(false);
   const [pendingKitchensView, setPendingKitchensView] = useState<KitchenNavigationDestination | null>(null);
@@ -374,6 +385,8 @@ export default function ManagerBookingDashboard() {
       setPendingKitchensView(destination);
     } else if (activeView === 'settings-checkin-checkout' && checkinCheckoutDirty && !bypassCheckinCheckoutGuard.current) {
       setPendingCheckinCheckoutView(destination);
+    } else if (activeView === 'location' && locationDirty && !bypassLocationGuard.current) {
+      setPendingLocationHistory(destination.historyUrl);
     } else return true;
     // Keep the draft's URL/context while the existing leave confirmation is open.
     window.history.replaceState(window.history.state, '', acceptedHistoryUrl.current);
@@ -392,7 +405,23 @@ export default function ManagerBookingDashboard() {
       if (location) setSelectedLocation(location);
       setDeepLinkConversationId(params.get("conversation"));
       setDeepLinkTourId(params.get("tour"));
-      const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'storage-bookings', 'viewings', 'availability', 'tour-availability', 'settings', 'applications', 'customers', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile', 'kitchens', 'listing-review', 'settings-license', 'settings-booking-rules', 'settings-facility-docs', 'settings-location', 'settings-checkin-checkout', 'settings-storage-checkin-checkout', 'application-requirements', 'notifications', 'notification-settings', 'damage-claims', 'support'];
+      const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'storage-bookings', 'viewings', 'availability', 'tour-availability', 'settings', 'applications', 'customers', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile', 'kitchens', 'listing-review', 'settings-license', 'settings-booking-rules', 'settings-facility-docs', 'settings-location', 'settings-checkin-checkout', 'settings-storage-checkin-checkout', 'application-requirements', 'notifications', 'notification-settings', 'damage-claims', 'support', 'location'];
+      const locationSection = legacyLocationSection(view, params.get('tab'));
+      if (locationSection) {
+        params.set('view', 'location');
+        params.set('section', locationSection);
+        params.delete('tab');
+        window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
+        setActiveView('location');
+        return;
+      }
+      if (view === 'settings' && params.get('tab') === 'requirements') {
+        params.set('view', 'application-requirements');
+        params.delete('tab');
+        window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
+        setActiveView('application-requirements');
+        return;
+      }
       // Back-compat: redirect legacy URL to the new combined page.
       if (view === 'my-locations') {
         params.set('view', 'profile');
@@ -446,9 +475,9 @@ export default function ManagerBookingDashboard() {
      * that names only `"kitchens"` resolves to no section, i.e. "whatever tab the URL already held".
      */
     const targetSection = resolveDestination(view, section).section;
+    const locationSection = view === 'location' ? null : legacyLocationSection(view, null);
     const profileTab =
-      view === 'my-locations' ? 'location'
-      : view === 'payments' ? 'payments'
+      view === 'payments' ? 'payments'
       : view === 'notification-settings' ? 'notifications'
       // "Sign-in & security" — where Google, phone and password are rows, and the only page that
       // can complete the Getting Started backup-sign-in row.
@@ -477,6 +506,10 @@ export default function ManagerBookingDashboard() {
       setPendingKitchensView({ view, kitchenId, section, focus, returnTourId });
       return;
     }
+    if (activeView === 'location' && locationDirty && !bypassLocationGuard.current) {
+      setPendingLocationView(view);
+      return;
+    }
     if ((activeView === 'settings-checkin-checkout' || activeView === 'settings-storage-checkin-checkout') && checkinCheckoutDirty && !bypassCheckinCheckoutGuard.current) {
       setPendingCheckinCheckoutView({ view, kitchenId, section, focus, returnTourId });
       return;
@@ -485,6 +518,8 @@ export default function ManagerBookingDashboard() {
       setPendingRequirementsView(view);
       return;
     }
+    // After every guard: an older location view name opens its Location section.
+    if (locationSection) { navigateToLocation(locationSection); return; }
     // A manager completes onboarding steps from the pages the sidebar links to — upload the
     // license, add a kitchen, set availability, connect Stripe — and none of that remounts
     // `useOnboardingStatus`, so `refetchOnMount` alone would never notice. Re-reading here
@@ -527,12 +562,15 @@ export default function ManagerBookingDashboard() {
       url.searchParams.delete('tab');
     } else if (nextView === 'overview') {
       url.searchParams.delete('view');
+      url.searchParams.delete('section');
     } else {
       url.searchParams.set('view', nextView);
       if (profileTab) url.searchParams.set('tab', profileTab);
       else if (availabilityTab) url.searchParams.set('tab', availabilityTab);
       else if (nextView !== 'profile') url.searchParams.delete('tab');
-      if (nextView !== 'kitchens') url.searchParams.delete('section');
+      if (nextView !== 'kitchens' && nextView !== 'location') url.searchParams.delete('section');
+      // Opening Location from elsewhere starts on Details; a section only carries over within Location.
+      if (nextView === 'location' && activeView !== 'location') url.searchParams.delete('section');
     }
     const nextUrl = url.toString();
     if (nextUrl !== window.location.href) {
@@ -616,6 +654,36 @@ export default function ManagerBookingDashboard() {
     const saved = await bookingPoliciesRef.current?.saveAllChanges();
     setIsSavingBeforeLeave(false);
     if (saved) continueFromBookingPolicies(pendingBookingPoliciesView);
+  };
+
+  /** Open a Location section (pushes history like other views; children re-read ?section on popstate). */
+  const navigateToLocation = (locationSection: string) => {
+    const url = new URL(window.location.href);
+    url.searchParams.set('view', 'location');
+    url.searchParams.set('section', locationSection);
+    for (const key of ['tab', 'kit', 'focus', 'returnTour', 'application', 'claim', 'storageBooking', 'viewing']) url.searchParams.delete(key);
+    if (url.toString() !== window.location.href) window.history.pushState({}, '', url.toString());
+    acceptedHistoryUrl.current = window.location.href;
+    setActiveView('location');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  };
+
+  const continueFromLocation = () => {
+    const view = pendingLocationView, historyUrl = pendingLocationHistory;
+    bypassLocationGuard.current = true;
+    setLocationDirty(false);
+    setPendingLocationView(null);
+    setPendingLocationHistory(null);
+    if (view) handleViewChange(view);
+    else if (historyUrl) { window.history.pushState({}, '', historyUrl); window.dispatchEvent(new PopStateEvent('popstate')); }
+    bypassLocationGuard.current = false;
+  };
+
+  const saveAndLeaveLocation = async () => {
+    setIsSavingBeforeLeave(true);
+    const saved = await locationSaveRef.current?.saveAllChanges();
+    setIsSavingBeforeLeave(false);
+    if (saved) continueFromLocation();
   };
 
   const continueFromKitchens = (destination: KitchenNavigationDestination) => {
@@ -712,9 +780,7 @@ export default function ManagerBookingDashboard() {
   const applicationChildLabel: Partial<Record<ViewType, string>> = {
     "application-requirements": mt("navApplicationRequirements"),
   };
-  const messageChildLabel: Partial<Record<ViewType, string>> = {
-    "settings-facility-docs": mt("facilityDocuments"),
-  };
+  const messageChildLabel: Partial<Record<ViewType, string>> = {};
   const storageChildLabel: Partial<Record<ViewType, string>> = {
   };
   const isKitchenChild = Boolean(kitchenChildLabel[activeView]);
@@ -734,7 +800,7 @@ export default function ManagerBookingDashboard() {
     'settings-location': 'navPropertySettings', 'settings-checkin-checkout': 'setupUx.tasksStep',
     'settings-storage-checkin-checkout': 'navStorageCheckinCheckout', 'application-requirements': 'navApplicationRequirements',
     notifications: 'navNotifications', 'notification-settings': 'navNotificationSettings',
-    'damage-claims': 'navDamageClaims', support: 'navSupport',
+    'damage-claims': 'navDamageClaims', support: 'navSupport', location: 'navLocation',
   };
   const breadcrumbs: ManagerBreadcrumb[] = activeView === 'viewings' && detailTourId
     ? [{ label: mt('kitchenTours'), navId: 'viewings', onClick: () => handleViewChange('viewings') }, { label: `TOUR-${detailTourId}` }]
@@ -1464,39 +1530,25 @@ export default function ManagerBookingDashboard() {
         />
       )}
 
-      {activeView === 'settings-license' && selectedLocation && (
-        <LicenseSettings
+
+
+
+
+      {activeView === 'location' && selectedLocation && (
+        <LocationWorkspace
           location={locationDetails || selectedLocation}
+          onSaveLocation={(updates) => updateLocationSettings.mutateAsync(updates)}
           onRefresh={() => {
             queryClient.invalidateQueries({ queryKey: ['locationDetails', selectedLocation.id] });
             queryClient.invalidateQueries({ queryKey: ['/api/manager/locations'] });
           }}
+          onOpenRequirements={() => handleViewChange('application-requirements')}
+          onDirtyChange={setLocationDirty}
+          saveRef={locationSaveRef}
         />
       )}
 
-      {activeView === 'settings-license' && !selectedLocation && (
-        <NeedsLocation />
-      )}
-
-
-      {activeView === 'settings-facility-docs' && selectedLocation && (
-        <FacilityDocsSettings
-          location={locationDetails || selectedLocation}
-        />
-      )}
-
-      {activeView === 'settings-facility-docs' && !selectedLocation && (
-        <NeedsLocation />
-      )}
-
-      {activeView === 'settings-location' && selectedLocation && (
-        <LocationSettings
-          location={locationDetails || selectedLocation}
-          onSave={(updates) => updateLocationSettings.mutateAsync(updates)}
-        />
-      )}
-
-      {activeView === 'settings-location' && !selectedLocation && (
+      {activeView === 'location' && !selectedLocation && (
         <NeedsLocation />
       )}
 
@@ -1576,6 +1628,15 @@ export default function ManagerBookingDashboard() {
         isSaving={isSavingBeforeLeave}
         onDiscard={() => pendingBookingPoliciesView && continueFromBookingPolicies(pendingBookingPoliciesView)}
         onSave={saveAndLeaveBookingPolicies}
+      />
+
+      <UnsavedChangesDialog
+        open={pendingLocationView !== null || pendingLocationHistory !== null}
+        onOpenChange={(open) => { if (!open) { setPendingLocationView(null); setPendingLocationHistory(null); } }}
+        description={mt("locationUnsavedChangesDescription")}
+        isSaving={isSavingBeforeLeave}
+        onDiscard={continueFromLocation}
+        onSave={saveAndLeaveLocation}
       />
 
       <UnsavedChangesDialog

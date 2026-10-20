@@ -2,9 +2,9 @@ import { Icon } from "@iconify/react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { getR2ProxyUrl } from "@/utils/r2-url-helper";
+import { usePresignedDocumentUrl } from "@/hooks/use-presigned-document-url";
 import { PRE_CONFIRMATION_REFUND_POLICY, CONFIRMED_BOOKING_REFUND_POLICY } from '@shared/kitchen-booking-policies';
-import { PublishedCancellationPolicySummary } from './CancellationPolicySummary';
+import { PublishedCancellationPolicyTimeline } from './CancellationPolicySummary';
 
 /** Full cancellation + refund copy (same text as /book/ policy modal). */
 export function buildCancellationPolicyText(
@@ -25,7 +25,7 @@ export function cancellationPolicyFirstLine(
   customMessage: string | null | undefined,
   t: (key: string, options?: Record<string, unknown>) => string
 ): string {
-  return t('preConfirmationRefundTitle', { defaultValue: 'Free to cancel until the kitchen confirms your request — your card is only on hold.' });
+  return t('preConfirmationRefundTitle', { defaultValue: 'Free to cancel until the kitchen accepts. Until then, your card is only on hold.' });
 }
 
 export function CancellationPolicyDialog({
@@ -64,10 +64,12 @@ export function CancellationPolicyDialog({
             />
             {t("sheetCancellationPolicyTitle", "Cancellation policy")}
           </DialogTitle>
-          <DialogDescription className="pt-2 text-sm leading-relaxed text-muted-foreground">
-            {kitchenId ? <PublishedCancellationPolicySummary kitchenId={kitchenId} /> : full}
+          <DialogDescription className={kitchenId ? "sr-only" : "pt-2 text-sm leading-relaxed text-muted-foreground"}>
+            {kitchenId ? t("sheetCancellationPolicyTitle", "Cancellation policy") : full}
           </DialogDescription>
         </DialogHeader>
+        {/* The kitchen's own policy as a timeline: before it accepts, up to the deadline, after it. */}
+        {kitchenId && <div className="pt-1"><PublishedCancellationPolicyTimeline kitchenId={kitchenId} /></div>}
         <Button className="mt-2 w-full" variant="outline" onClick={() => onOpenChange(false)}>
           {t("sheetClosePolicy", "Got it")}
         </Button>
@@ -89,8 +91,10 @@ export function KitchenTermsDialog({
   ns?: "kitchen" | "booking";
 }) {
   const { t } = useTranslation(ns);
-  const termsHref = kitchenTermsUrl ? getR2ProxyUrl(kitchenTermsUrl) : "/terms";
+  // Private document: a short-lived signed link fetched with the viewer's sign-in (a bare proxy link carries no token).
+  const { url: signedTermsUrl } = usePresignedDocumentUrl(open ? kitchenTermsUrl : null);
   const hasUpload = !!kitchenTermsUrl;
+  const termsHref = hasUpload ? signedTermsUrl : "/terms";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -118,7 +122,8 @@ export function KitchenTermsDialog({
                   "Kitchen usage policies and food safety standards apply to every booking."
                 )}{" "}
             <a
-              href={termsHref || "/terms"}
+              href={termsHref || undefined}
+              aria-disabled={!termsHref}
               {...(hasUpload ? { target: "_blank", rel: "noopener noreferrer" } : {})}
               className="font-medium text-foreground underline underline-offset-2 hover:text-[#E10939]"
             >

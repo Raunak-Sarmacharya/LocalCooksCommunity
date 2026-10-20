@@ -59,15 +59,9 @@ const navData: { navMain: NavGroup[] } = {
                     ],
                 },
                 { labelKey: "navRevenue", url: "revenue", icon: managerNavIcons.revenue },
-                {
-                    labelKey: "navMessages",
-                    url: "messages",
-                    icon: managerNavIcons.messages,
-                    children: [
-                        { labelKey: "facilityDocuments", url: "settings-facility-docs", icon: managerNavIcons["settings-facility-docs"] },
-                    ],
-                },
-                { labelKey: "kitchenLicense", url: "settings-license", icon: managerNavIcons["settings-license"] },
+                { labelKey: "navMessages", url: "messages", icon: managerNavIcons.messages },
+                // Location: details, license, booking defaults, documents and payments in one page.
+                { labelKey: "navLocation", url: "location", icon: managerNavIcons.location },
             ],
         },
     ],

@@ -75,6 +75,8 @@ interface Location extends KitchenLicenseFields {
 interface LicenseSettingsProps {
   location: Location;
   onRefresh: () => void;
+  /** Inside the Location page: its tab says what this is, so no page header. */
+  embedded?: boolean;
 }
 
 /** States where there is nothing usable on file, so the form opens itself. */
@@ -90,7 +92,7 @@ const TONE = {
 
 type Tone = keyof typeof TONE;
 
-export default function LicenseSettings({ location, onRefresh }: LicenseSettingsProps) {
+export default function LicenseSettings({ location, onRefresh, embedded = false }: LicenseSettingsProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -344,10 +346,10 @@ export default function LicenseSettings({ location, onRefresh }: LicenseSettings
 
   return (
     <div className="space-y-6">
-      <ChefPageHeader
+      {!embedded && <ChefPageHeader
         title={mt("kitchenLicense")}
         description={mt("uploadAndManageYourKitchenLicenseDocumentAValidLicenseIsRequ")}
-      />
+      />}
 
       <Card>
         <CardHeader className="pb-4">

@@ -160,6 +160,9 @@ interface BookingDetails {
     /** Missing = released (older server). Instruction text is null before release. */
     instructionsReleased?: boolean;
     instructionsReleaseAt?: string;
+    /** The kitchen's own terms & policies document (uploaded in its booking rules), when it has one. */
+    kitchenTermsUrl?: string | null;
+    kitchenTermsUploadedAt?: string | null;
     timezone?: string;
     cancellationPolicyHours?: number;
     /** Present when the server sends them; the chef's map preview needs both. */
@@ -2037,7 +2040,11 @@ export default function BookingDetailsPage() {
     <BookingCancellationCard multiDay={datedBooking} frozenPolicy={booking.cancellationPolicySnapshot} createdAt={booking.createdAt} bookingId={booking.id} status={booking.status} canCancel={chefCanCancel} onCancel={() => setCancelOpen(true)}
       onChange={booking.status === 'confirmed' && !visitStarted ? () => setChangeOpen(true) : undefined}
       deadlineText={cancellationDeadlineText} deadlinePassed={!paidCancellationAvailable}
-      extraTimeNote={Number(booking.extraTimeRateCents) > 0 ? bt('bpsExtraTimeRate', { amount: formatCurrency(booking.extraTimeRateCents) }) : undefined} />
+      extraTimeNote={Number(booking.extraTimeRateCents) > 0 ? bt('bpsExtraTimeRate', { amount: formatCurrency(booking.extraTimeRateCents) }) : undefined}
+      kitchenTerms={booking.location?.kitchenTermsUrl ? { url: booking.location.kitchenTermsUrl,
+        // A link, not a frozen copy (as Airbnb's house rules): say so when the kitchen replaced it after this booking.
+        updatedOn: booking.location.kitchenTermsUploadedAt && booking.createdAt && Date.parse(booking.location.kitchenTermsUploadedAt) > Date.parse(String(booking.createdAt))
+          ? formatShortDate(booking.location.kitchenTermsUploadedAt) : null } : undefined} />
   );
 
   const history = booking && (

@@ -45,15 +45,15 @@ async function open(replacesBookingId?: number) {
   render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
     <KitchenBookingFlow locationId={1} locationName="Harbour Kitchens" initialDateIso="2099-10-04" initialSlots={['09:00', '10:00']} replacesBookingId={replacesBookingId} onCancel={() => {}} onComplete={() => {}} />
   </QueryClientProvider>);
-  await screen.findByText(/Choose consecutive hours for your visit/);
-  await waitFor(() => expect(screen.getByRole('button', { name: /9:00.*10:00/ })).toBeEnabled());
+  // The restored hours show in the Start picker once the day's hours load.
+  await waitFor(() => expect(screen.getByRole('combobox', { name: 'Start' })).toHaveTextContent(/9:00/));
 }
 const toConfirm = async () => {
   await waitFor(() => expect(screen.getByRole('button', { name: /^Continue$/ })).toBeEnabled());
   fireEvent.click(screen.getByRole('button', { name: /^Continue$/ }));
-  await waitFor(() => expect(screen.getByRole('button', { name: /^(Checkout|Confirm Booking)$/ })).toBeEnabled());
+  await waitFor(() => expect(screen.getByRole('button', { name: /^(Continue to payment|Confirm Booking)$/ })).toBeEnabled());
 };
-const submit = () => screen.getByRole('button', { name: /^(Checkout|Confirm Booking)$/ });
+const submit = () => screen.getByRole('button', { name: /^(Continue to payment|Confirm Booking)$/ });
 
 describe('changing a pending request (rebook first)', () => {
   it('says which request is being changed and that it stays until this one is sent', async () => {

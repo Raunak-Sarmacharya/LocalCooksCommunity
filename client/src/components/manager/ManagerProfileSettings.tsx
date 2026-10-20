@@ -34,7 +34,6 @@ import { LanguageSwitcher } from "@/components/i18n/LanguageSwitcher";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import StripeConnectSetup from "@/components/manager/StripeConnectSetup";
 import NotificationsSettings from "@/components/manager/settings/NotificationsSettings";
-import LocationSettings from "@/components/manager/settings/LocationSettings";
 import { NeedsLocation } from "@/components/manager/locations/NeedsPrerequisite";
 
 interface ManagerProfileSettingsProps {
@@ -62,7 +61,7 @@ interface ManagerProfileSettingsProps {
  * `email-verification-nav.test.ts` asserts that string. It is the tab that holds
  * the email card, so the value stays even though the label is now "Sign-in & security".
  */
-const KNOWN_TABS = ["profile", "account", "location", "payments", "notifications", "teams"] as const;
+const KNOWN_TABS = ["profile", "account", "payments", "notifications", "teams"] as const;
 
 const CARD = "overflow-hidden rounded-[1.35rem] border bg-card";
 
@@ -326,7 +325,6 @@ export default function ManagerProfileSettings({
                     {[
                         ["profile", mt("shellProfile")],
                         ["account", mt("tabSignInSecurity")],
-                        ["location", mt("navLocation")],
                         ["payments", mt("paymentsPayouts")],
                         ["notifications", mt("notificationSettings")],
                         ["teams", mt("navTeams")],
@@ -484,13 +482,6 @@ export default function ManagerProfileSettings({
                 </TabsContent>
 
                 {/* ── Location ─────────────────────────────────────────────────── */}
-                <TabsContent value="location" className="mt-6 focus-visible:ring-0">
-                    {location && onSaveLocationSettings ? (
-                        <LocationSettings location={location} onSave={onSaveLocationSettings} embedded />
-                    ) : (
-                        <NeedsLocation />
-                    )}
-                </TabsContent>
 
                 {/* ── Payments ─────────────────────────────────────────────────── */}
                 <TabsContent value="payments" className="mt-6 focus-visible:ring-0">

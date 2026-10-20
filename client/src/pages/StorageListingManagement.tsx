@@ -4,12 +4,13 @@ import { unitRows, type StorageRental } from "@/lib/storage-board";
 import { StoragePhoto } from "@/components/storage/StoragePhoto";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { StorageIcon as Package } from "@/components/ui/inventory-icons";
-import { StorageTrackingSetup } from "@/components/manager/settings/StorageTrackingSetup";
+import { navigateNotificationHref } from "@/lib/navigate-notification-href";
+import { StorageTrackingSetup, type StorageInstructionsHandle } from "@/components/manager/settings/StorageTrackingSetup";
 import { mt } from "@/i18n/manager";
 import { useSessionFileUpload } from "@/hooks/useSessionFileUpload";
 import { ACCEPTED_IMAGE_TYPES, GalleryPhotoField } from "@/components/manager/kitchen/KitchenPhotoFields";
 import { Plus, Pencil, Trash2, ChevronLeft } from "@/components/ui/manager-icons";
-import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef, type Ref } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import { NeedsKitchen } from "@/components/manager/locations/NeedsPrerequisite";
@@ -308,7 +309,9 @@ export function StorageListingContent({
   selectedKitchenId,
   embedded = false,
   onConfigureInspections,
-  onListingsChanged
+  onListingsChanged,
+  onInstructionsDirtyChange,
+  instructionsSaveRef,
 }: {
   selectedLocationId: number | null,
   selectedKitchenId: number | null,
@@ -321,6 +324,9 @@ export function StorageListingContent({
    */
   embedded?: boolean,
   onConfigureInspections?: () => void,
+  /** My Kitchens owns saving for the instructions (header save + leave guard). */
+  onInstructionsDirtyChange?: (dirty: boolean) => void,
+  instructionsSaveRef?: Ref<StorageInstructionsHandle>,
   /**
    * Called after this page's own list has been re-read following a successful write.
    *
@@ -1110,7 +1116,8 @@ export function StorageListingContent({
   return (
     <div className="space-y-4">
       <div className="mt-0 space-y-4">
-      {selectedLocationId && <StorageTrackingSetup locationId={selectedLocationId} onConfigure={onConfigureInspections ?? (() => navigate("/manager/dashboard?view=settings-storage-checkin-checkout"))} />}
+      {selectedLocationId && <StorageTrackingSetup locationId={selectedLocationId} onConfigure={onConfigureInspections ?? (() => navigate("/manager/dashboard?view=settings-storage-checkin-checkout"))}
+        onDirtyChange={onInstructionsDirtyChange} saveRef={instructionsSaveRef} />}
       <div className="rounded-lg border bg-card">
         <div className="flex flex-wrap items-start justify-between gap-4 border-b p-4">
           <div className="flex min-w-0 items-center gap-3">
@@ -1217,7 +1224,7 @@ export function StorageListingContent({
                             : <div className="flex items-center gap-2"><span className="text-xs">{mt(listing.isActive ? "slListed" : "slPaused")}</span><Switch
                               aria-label={mt("slListed")}
                               checked={readiness.visible} onCheckedChange={() => void handleToggleActive(listing)} disabled={isToggling || instructionsQuery.isFetching} /></div>}
-                          <Button size="sm" variant="outline" onClick={() => navigate(`/manager/dashboard?view=storage-bookings&listingId=${listing.id}`)}>{mt("slViewUnits")}</Button>
+                          <Button size="sm" variant="outline" onClick={() => navigateNotificationHref(`/manager/dashboard?view=storage-bookings&listingId=${listing.id}`)}>{mt("slViewUnits")}</Button>
                           <Button
                             variant="ghost"
                             size="sm"

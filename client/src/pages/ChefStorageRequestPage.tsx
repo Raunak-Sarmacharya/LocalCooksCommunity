@@ -13,6 +13,8 @@ import { StoragePageShell } from "@/components/storage/StoragePageShell"
 import { CheckoutCancellationDisclosure, CheckoutConsentNotice } from "@/components/booking/CheckoutCancellationDisclosure"
 import { PublishedCancellationPolicySummary, type PolicyResponse } from "@/components/booking/CancellationPolicySummary"
 import { StorageListingDetails } from "@/components/storage/StorageRentCta"
+import { SmartImage } from "@/components/ui/smart-image"
+import { getR2ProxyUrl } from "@/utils/r2-url-helper"
 import { apiGet } from "@/lib/api"
 import { newRequestKey } from "@/lib/session-extensions"
 import { cad, quoteRental, requestRental, storageAvailability, storageDay, type StorageQuote } from "@/lib/storage-rentals"
@@ -26,6 +28,7 @@ export default function ChefStorageRequestPage() {
   const { t: tt, i18n } = useTranslation("storage")
   const t = tt as unknown as (key: string, options?: Record<string, unknown>) => string
   const locale = i18n.language
+  const { t: tc } = useTranslation("chef")
   const [, navigate] = useLocation()
   const params = new URLSearchParams(window.location.search)
   const kitchenId = Number(params.get("kitchenId")), listingId = Number(params.get("listingId"))
@@ -84,7 +87,12 @@ export default function ChefStorageRequestPage() {
     <dt className="border-t pt-2 font-semibold">{t("stcTotal")}</dt><dd className="border-t pt-2 text-right font-semibold tabular-nums">{cad(q.totalCents, locale)}</dd>
   </dl>
 
-  return <StoragePageShell crumb={t("stcRequestTitle")}>
+  // Renting starts on a kitchen's page: keep that place in the nav and breadcrumbs, not "My storage".
+  const parent = useMemo(() => ({ activeView: "discover-kitchens", trail: [
+    { label: tc("shellDiscoverKitchens"), navId: "discover-kitchens", onClick: () => navigate("/dashboard?view=discover-kitchens") },
+    ...(listing?.locationId ? [{ label: kitchen, onClick: () => navigate(`/kitchen-preview/${listing.locationId}?kitchenId=${kitchenId}`) }] : []),
+  ] }), [tc, navigate, listing?.locationId, kitchen, kitchenId])
+  return <StoragePageShell crumb={t("stcRequestTitle")} parent={parent}>
     {!valid || listings.error || (listings.data && !listing) ? <div role="alert" className="space-y-3 rounded-2xl border p-5">
       <p className="text-sm">{t("stcNoListing")}</p>
       <Button asChild variant="outline" className="min-h-11"><Link href="/storage">{t("stcBackToStorage")}</Link></Button>
@@ -94,7 +102,11 @@ export default function ChefStorageRequestPage() {
         <h1 className="text-2xl font-semibold tracking-tight">{listing.name}</h1>
         <p className="text-sm text-muted-foreground">{t("stcAtKitchenPrice", { kitchen, amount: cad(listing.dailyPriceCents, locale) })}</p>
       </header>
-      <section className="rounded-2xl border p-4 sm:p-5" aria-label={t("stcAboutListing")}><StorageListingDetails row={listing} showName={false} /></section>
+      {/* The space itself first, as listing request pages do: the kitchen's photo across the top of the card. */}
+      <section className="overflow-hidden rounded-2xl border" aria-label={t("stcAboutListing")}>
+        {listing.photos?.[0] && <SmartImage src={getR2ProxyUrl(listing.photos[0])} alt={listing.name} hideOnError className="aspect-[16/9] max-h-72 w-full object-cover" />}
+        <div className="p-4 sm:p-5"><StorageListingDetails row={listing} showName={false} showPhoto={!listing.photos?.[0]} /></div>
+      </section>
 
       {approvalNeeded ? <section className="space-y-3 rounded-2xl border p-5" data-testid="storage-apply-first">
         <h2 className="text-base font-semibold">{t("stcApplyTitle")}</h2>

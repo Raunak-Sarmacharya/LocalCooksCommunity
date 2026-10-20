@@ -7,7 +7,7 @@ import i18n from "@/i18n"
 const state = vi.hoisted(() => ({ signedIn: true }))
 vi.mock("@/lib/api", () => ({ getAuthHeaders: async () => ({}) }))
 vi.mock("@/lib/session-extensions", () => ({ completeCardAction: vi.fn(), newRequestKey: () => "key-12345678" }))
-vi.mock("wouter", () => ({ Link: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) => <a href={href} {...rest}>{children}</a> }))
+vi.mock("wouter", () => ({ useLocation: () => ["/", vi.fn()], Link: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) => <a href={href} {...rest}>{children}</a> }))
 vi.mock("@/components/booking/CancellationPolicySummary", () => ({ PublishedCancellationPolicySummary: () => <p>Cancellation policy line</p> }))
 
 import { StorageRentCta } from "./StorageRentCta"
@@ -63,6 +63,7 @@ it("shows three compact listings, expands the rest and uses public rows without 
   expect(screen.queryByText("Shelf 4")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Show all storage (5)" }));
   expect(screen.getAllByRole("link", { name: /Rent storage/ })).toHaveLength(5);
-  expect(screen.getAllByRole("img", { name: "Cold storage" })).toHaveLength(5);
+  // The tile is decorative now; each row still names its kind in text.
+  expect(screen.getAllByText(/Cooler/)).toHaveLength(5);
   expect(fetchMock).not.toHaveBeenCalled();
 });

@@ -150,13 +150,15 @@ export function generateInvoiceNumber(bookingId: number, date?: Date): string {
  */
 export function getDocumentFilename(url?: string | null): string {
     if (!url) return '';
+    let filename: string;
     try {
-        const filename = new URL(url).pathname.split('/').pop();
-        return filename ? decodeURIComponent(filename) : '';
+        filename = decodeURIComponent(new URL(url).pathname.split('/').pop() || '');
     } catch {
         const parts = url.split('/');
-        return decodeURIComponent(parts[parts.length - 1] || '');
+        filename = decodeURIComponent(parts[parts.length - 1] || '');
     }
+    // Upload keys are "{userId}_{timestamp}_{name}" or "{userId}_file_{timestamp}_{name}": show the name the user chose.
+    return filename.replace(/^\d+_(?:file_)?\d{10,}_/, '');
 }
 
 /**

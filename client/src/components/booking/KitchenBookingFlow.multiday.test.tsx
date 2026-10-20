@@ -51,11 +51,16 @@ async function open() {
 function day(number: number) {
   return Array.from(document.querySelectorAll('button')).find(button => button.textContent === String(number) && button.getAttribute('aria-label')?.includes('October'))!;
 }
-const hour = (n: number) => screen.getByRole('button', { name: new RegExp(`${n}:00.*${n + 1}:00`) });
+// One row per booked day, named by its date (Oct 7, 9 and 11, 2030 are a Monday, Wednesday and Friday).
+const row = (date: number) => screen.getByRole('region', { name: new RegExp(`, October ${date}$`) });
+const pick = (date: number, label: 'Start' | 'End', name: RegExp) => {
+  fireEvent.click(within(row(date)).getByRole('combobox', { name: label }));
+  fireEvent.click(screen.getByRole('option', { name }));
+};
 async function chooseDays(...numbers: number[]) {
   for (const number of numbers) fireEvent.click(day(number));
   fireEvent.click(screen.getByRole('button', { name: 'Choose hours' }));
-  await waitFor(() => expect(hour(9)).toBeEnabled());
+  await waitFor(() => numbers.forEach(number => expect(within(row(number)).getByRole('radio', { name: /By the hour/ })).toBeInTheDocument()));
 }
 
 describe('the existing flow with more days', () => {
@@ -78,35 +83,34 @@ describe('the existing flow with more days', () => {
       fireEvent.click(button); expect(button).not.toHaveAttribute('aria-selected', 'true');
     }
   });
-  it('defaults to shared hours, retains a per-day full day, prices each day and sends the dated disclosure and payload', async () => {
+  it('copies one day’s hours to the others, keeps a per-day full day, prices each day and sends the dated disclosure and payload', async () => {
     await open(); await chooseDays(7, 9, 11);
-    expect(screen.getByRole('button', { name: 'Same hours every day' })).toHaveAttribute('aria-pressed', 'true');
-    fireEvent.click(hour(9));
-    fireEvent.change(screen.getByLabelText('Change one day'), { target: { value: '2030-10-11' } });
-    fireEvent.click(screen.getByRole('button', { name: /Full day/ }));
-    fireEvent.change(screen.getByLabelText('Change one day'), { target: { value: '2030-10-09' } });
-    expect(screen.getByRole('button', { name: /Full day/ })).toBeDisabled(); // partially booked: hourly still allowed
-    fireEvent.click(hour(10));
+    pick(7, 'Start', /^9:00/);
+    fireEvent.click(screen.getByRole('button', { name: 'Use these hours for all days' }));
+    expect(within(row(11)).getByRole('combobox', { name: 'Start' })).toHaveTextContent(/9:00/);
+    fireEvent.click(within(row(11)).getByRole('radio', { name: /Full day/ }));
+    expect(within(row(9)).getByRole('radio', { name: /Full day/ })).toBeDisabled(); // partly booked: hourly still allowed
+    pick(9, 'End', /^11:00/);
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
-    await screen.findByText(/Your choices apply to all days/);
-    fireEvent.click(screen.getByRole('button', { name: 'Add Mixer' }));
-    const fields = screen.getAllByRole('group').filter(group => group.tagName === 'FIELDSET');
-    fireEvent.click(within(fields[1]).getByRole('checkbox'));
-    expect(within(fields[2]).queryByRole('checkbox')).toBeNull();
+    fireEvent.click(await screen.findByRole('button', { name: 'Add Mixer' }));
+    // The mixer isn't free on Oct 11, so that day can't be chosen; drop it from Oct 9.
+    expect(screen.getByRole('button', { name: 'Fri, Oct 11' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Wed, Oct 9' }));
     fireEvent.click(screen.getByRole('button', { name: 'Continue to confirm' }));
     expect(await screen.findByText(/Your card is held for the whole booking/)).toBeInTheDocument();
     expect(screen.getAllByTestId('cancel-headline')).toHaveLength(1);
-    expect(screen.getByTestId('cancel-headline')).toHaveTextContent(/Cancel by.*Oct 6.*you get half back for each day you cancel/);
+    expect(screen.getByTestId('cancel-headline')).toHaveTextContent(/^Free to cancel until the kitchen accepts\. After that, cancel by .*Oct 6/);
     const summaries = screen.getAllByTestId('booking-price-summary');
     const confirm = summaries[summaries.length - 1];
-    expect(within(confirm).getAllByTestId('booking-day-price')).toHaveLength(3);
-    expect(confirm).toHaveTextContent('$12.50');
-    expect(confirm).toHaveTextContent('$20.00');
-    expect(confirm).toHaveTextContent('$40.00');
+    // Every line itemised: each day's kitchen time, each rental with its days, then tax, fee and total.
+    expect(confirm).toHaveTextContent(/Mon, Oct 7 · 1 hour × \$10\.00\s*\$10\.00/);
+    expect(confirm).toHaveTextContent(/Wed, Oct 9 · 2 hours × \$10\.00\s*\$20\.00/);
+    expect(confirm).toHaveTextContent(/Fri, Oct 11 · Full day\s*\$40\.00/);
+    expect(confirm).toHaveTextContent(/Mixer × 1 day\s*\$2\.50/);
     expect(confirm).toHaveTextContent('$10.88'); // HST rounded once
     expect(confirm).toHaveTextContent('$5.08'); // service fee rounded once
     expect(confirm).toHaveTextContent('$88.46');
-    fireEvent.click(screen.getByRole('button', { name: 'Checkout' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to payment' }));
     await waitFor(() => expect(f.payload).not.toBeNull());
     expect(f.payload.cancellationDisclosureVersion).toBe('food-corridor-booking-first-day-v1');
     expect(f.payload).not.toHaveProperty('bookingDate');
@@ -117,37 +121,36 @@ describe('the existing flow with more days', () => {
     ]);
   });
   it('keeps a single selected day on the original steps and scalar checkout even when multi-day is enabled', async () => {
-    await open(); await chooseDays(7); fireEvent.click(hour(9));
-    expect(screen.queryByText('Same hours every day')).toBeNull();
+    await open(); await chooseDays(7); pick(7, 'Start', /^9:00/);
+    expect(screen.queryByRole('button', { name: 'Use these hours for all days' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Continue to confirm' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Checkout' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue to payment' }));
     await waitFor(() => expect(f.payload).not.toBeNull());
     expect(f.payload).not.toHaveProperty('days');
     expect(f.payload.cancellationDisclosureVersion).toBe('food-corridor-v3');
     expect(f.payload.selectedSlots).toEqual([{ startTime: '09:00', endTime: '10:00' }]);
   });
   it('retains the last remaining day’s own full-day choice when returning to a single date', async () => {
-    await open(); await chooseDays(7, 11); fireEvent.click(hour(9));
-    fireEvent.change(screen.getByLabelText('Change one day'), { target: { value: '2030-10-11' } });
-    fireEvent.click(screen.getByRole('button', { name: /Full day/ }));
+    await open(); await chooseDays(7, 11); pick(7, 'Start', /^9:00/);
+    fireEvent.click(within(row(11)).getByRole('radio', { name: /Full day/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Change date' })); fireEvent.click(day(7));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Choose hours' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: 'Choose hours' }));
-    expect(screen.queryByText('Same hours every day')).toBeNull();
-    await waitFor(() => expect(screen.getByRole('button', { name: /Full day/ })).toHaveAttribute('aria-pressed', 'true'));
+    expect(screen.queryByRole('button', { name: 'Use these hours for all days' })).toBeNull();
+    await waitFor(() => expect(within(row(11)).getByRole('radio', { name: /Full day/ })).toHaveAttribute('aria-checked', 'true'));
   });
   it.each(['enabled', 'allowed'] as const)('keeps the legacy calendar when %s is off', async rule => {
     f[rule] = false; await open(); expect(screen.queryByText(/Choose up to/)).toBeNull();
     expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('date-status'))).toBe(false);
   });
   it('restores all selected days and individual edits after refreshing the flow', async () => {
-    await open(); await chooseDays(7, 9); fireEvent.click(hour(9));
-    fireEvent.change(screen.getByLabelText('Change one day'), { target: { value: '2030-10-09' } }); fireEvent.click(hour(10));
+    await open(); await chooseDays(7, 9); pick(7, 'Start', /^9:00/);
+    pick(9, 'Start', /^9:00/); pick(9, 'End', /^11:00/);
     cleanup(); await open(); expect(day(7)).toHaveAttribute('aria-selected', 'true'); expect(day(9)).toHaveAttribute('aria-selected', 'true');
     fireEvent.click(screen.getByRole('button', { name: 'Choose hours' }));
-    fireEvent.change(screen.getByLabelText('Change one day'), { target: { value: '2030-10-09' } });
-    await waitFor(() => expect(hour(10).className).toContain('bg-[#E10939]'));
+    await waitFor(() => expect(within(row(9)).getByRole('combobox', { name: 'End' })).toHaveTextContent(/11:00.*2 hours/));
+    expect(within(row(7)).getByRole('combobox', { name: 'End' })).toHaveTextContent(/10:00.*1 hour/);
   });
   it('applies the kitchen hourly cap to a restored multi-day draft before checkout', async () => {
     sessionStorage.setItem('kitchen_booking_days_4', JSON.stringify({ version: 1, dates: ['2030-10-07', '2030-10-11'],
@@ -155,11 +158,11 @@ describe('the existing flow with more days', () => {
     await open();
     await waitFor(() => expect(screen.getByRole('button', { name: 'Choose hours' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: 'Choose hours' }));
-    await waitFor(() => expect(hour(9)).toBeEnabled());
+    // Four restored hours exceed the three-hour cap: each day says so, and the flow won't move on.
+    await waitFor(() => expect(within(row(7)).getByRole('alert')).toHaveTextContent('These hours don’t work for this day.'));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Choose your hours' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: 'Choose your hours' }));
-    expect(screen.getByText(/Check your hours for Oct 7/, { selector: 'p[role="status"]' })).toBeInTheDocument();
-    expect(screen.getByLabelText('Change one day')).toHaveValue('2030-10-07');
+    expect(screen.getByText(/Check your hours for Oct 7/)).toBeInTheDocument();
     expect(f.payload).toBeNull();
   });
 });

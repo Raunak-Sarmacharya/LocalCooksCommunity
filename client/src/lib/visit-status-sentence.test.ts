@@ -37,8 +37,8 @@ describe("visitStatusSentence", () => {
   });
   it("uses the kitchen's all-good outcome only in chef-safe wording", () => {
     const cleared = say({ checkinStatus: "checked_out", inspectionOutcome: "manager_cleared" }).text;
-    expect(cleared).toBe("Visit complete. Main Kitchen checked the space and it’s all good.");
-    expect(say({ checkinStatus: "checked_out", inspectionOutcome: "due" }).text).toBe("Visit complete. See your booking for the record.");
+    expect(cleared).toBe("Main Kitchen checked the space and it’s all good.");
+    expect(say({ checkinStatus: "checked_out", inspectionOutcome: "due" }).text).toBe("See your booking for the record.");
   });
   it("opens check-in, and notes the unchanged end once the start has passed", () => {
     expect(say({ canCheckin: true }).text).toBe("Check-in is open. Follow the arrival instructions, then confirm below.");

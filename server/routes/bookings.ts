@@ -749,6 +749,7 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
                     address: locations.address,
                     timezone: locations.timezone,
                     kitchenTermsUrl: locations.kitchenTermsUrl,
+                    kitchenTermsUploadedAt: locations.kitchenTermsUploadedAt,
                     checkinInstructions: checkinCheckoutChecklists.checkinInstructions,
                     checkoutInstructions: checkinCheckoutChecklists.checkoutInstructions,
                     checkinEnabled: checkinCheckoutChecklists.checkinEnabled,

@@ -49,8 +49,9 @@ export function resolveStorageIcon(storageType: string, name?: string | null): s
   if (/freez/.test(type)) return "mdi:snowflake";
   if (/cold|cool|refrigerat/.test(type)) return "mdi:fridge-outline";
   const label = (name || "").toLowerCase();
-  if (/shel|rack/.test(label)) return "mdi:bookshelf";
+  if (/walk-?in/.test(label)) return "mdi:warehouse";
   if (/cabinet|locker/.test(label)) return "mdi:locker";
-  if (/dry/.test(type)) return "mdi:warehouse";
+  // A pantry cupboard reads as food storage (the old bookshelf read as books).
+  if (/shel|rack|pantry/.test(label) || /dry/.test(type)) return "mdi:cupboard-outline";
   return STORAGE_ICON_NAME;
 }

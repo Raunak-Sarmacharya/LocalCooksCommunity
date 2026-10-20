@@ -22,7 +22,8 @@ it('uses item-specific offline icons for equipment and storage', () => {
   expect(resolveEquipmentIcon('commercial_oven', 'cooking')).toBe('mdi:stove');
   expect(resolveEquipmentIcon('wok-station', 'cooking')).toBe('mdi:gas-burner');
   expect(resolveEquipmentIcon('commercial blender')).toBe('mdi:blender-outline');
-  expect(resolveStorageIcon('dry', 'Dry shelving unit')).toBe('mdi:bookshelf');
+  expect(resolveStorageIcon('dry', 'Dry shelving unit')).toBe('mdi:cupboard-outline');
+  expect(resolveStorageIcon('dry', 'Walk-in Dry Storage')).toBe('mdi:warehouse');
   expect(resolveStorageIcon('cold')).toBe('mdi:fridge-outline');
   expect(resolveStorageIcon('freezer')).toBe('mdi:snowflake');
 });

@@ -1,5 +1,5 @@
 import { and, eq, or, like, sql } from 'drizzle-orm';
-import { chefKitchenApplications, locations, locationRequirements, kitchens } from '@shared/schema';
+import { chefKitchenApplications, locations, locationRequirements, kitchens, storageListings } from '@shared/schema';
 import { db } from '../db';
 import { storedFileUrl } from './chat-file-access';
 import type { ChatActor } from './participant-chat';
@@ -20,6 +20,10 @@ export async function canReadPrivateFile(actor: ChatActor | undefined, url: stri
   const logos = await db.select({ logoUrl: locations.logoUrl }).from(locations)
     .where(eq(locations.logoUrl, url)).limit(1);
   if (logos.some(row => row.logoUrl === url)) return true;
+  // Storage listing photos are listing images too (the kitchen page and the rent dialog show them to chefs).
+  const storagePhotos = await db.select({ photos: storageListings.photos }).from(storageListings)
+    .where(sql`${storageListings.photos} @> ${JSON.stringify([url])}::jsonb`).limit(1);
+  if (storagePhotos.some(row => Array.isArray(row.photos) && (row.photos as string[]).includes(url))) return true;
   if (!actor) return false;
   if (actor.role === 'admin') return true;
   if (filename.startsWith(`${actor.id}_`)) return true;

@@ -8,7 +8,7 @@ import { afterEach, expect, it, vi } from "vitest";
 
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string, values?: any) => values?.total ? `${key}: ${values.total} · ${values.payout}` : values?.amount ? `${key}: ${values.amount}` : key, i18n: { language: "en-CA" } }) }));
 
-vi.mock("wouter", () => ({ Link: ({ href, children }: any) => <a href={href}>{children}</a> }));
+vi.mock("wouter", () => ({ useSearch: () => window.location.search.slice(1), Link: ({ href, children }: any) => <a href={href}>{children}</a> }));
 
 vi.mock("@/lib/api", () => ({ getAuthHeaders: async () => ({ Authorization: "Bearer fixture" }) }));
 
