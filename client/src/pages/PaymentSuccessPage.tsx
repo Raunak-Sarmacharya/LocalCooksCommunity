@@ -144,12 +144,13 @@ export default function PaymentSuccessPage() {
           <h1 className="text-2xl font-semibold tracking-tight">{heading}</h1>
           {deadlineText && kitchenName
             ? <p className="text-[15px] leading-[22px] font-medium" data-testid="reply-deadline">{t('checkoutReplyBy', { kitchen: kitchenName, deadline: deadlineText })}</p>
-            : <p className="text-[15px] leading-[22px] text-muted-foreground">{description}</p>}
+            : <p className="text-[15px] leading-[22px] text-foreground/90">{description}</p>}
         </div>
 
+        {state === 'request_created' && outcome?.replacement && <ReplacementResult replacement={outcome.replacement} t={t} />}
         {state === 'request_created' ? <>
           <Card className="overflow-hidden rounded-2xl border-border/70 shadow-none" data-testid="request-summary">
-            {photo && <SmartImage src={getR2ProxyUrl(photo) || photo} alt="" className="aspect-[16/9] max-h-56 w-full object-cover sm:hidden" />}
+            {photo && <SmartImage src={getR2ProxyUrl(photo) || photo} alt="" className="aspect-[16/9] max-h-48 w-full object-cover sm:hidden" />}
             <div className="space-y-4 p-4 sm:p-6">
               {booking && <div className="flex items-start gap-4">
                 {photo && <SmartImage src={getR2ProxyUrl(photo) || photo} alt="" className="hidden aspect-[4/3] w-32 shrink-0 rounded-xl object-cover sm:block" />}
@@ -179,8 +180,6 @@ export default function PaymentSuccessPage() {
             </div>
           </Card>
 
-          {outcome?.replacement && <ReplacementResult replacement={outcome.replacement} t={t} />}
-
           {request && <section className="space-y-3" aria-labelledby="next-steps">
             <h2 id="next-steps" className="text-base font-semibold">{t('checkoutNextTitle')}</h2>
             <ol className="space-y-3">
@@ -197,11 +196,11 @@ export default function PaymentSuccessPage() {
             {outcome?.bookingId && <Button asChild className="min-h-11"><Link href={`/booking/${outcome.bookingId}`}>{t(confirmed ? 'checkoutViewBooking' : 'checkoutViewRequest')}</Link></Button>}
             <Button asChild variant="outline" className="min-h-11"><Link href="/dashboard">{t('checkoutDashboard')}</Link></Button>
           </div>
-        </> : <>
-          {amount && !calm && <p className="text-sm font-medium tabular-nums">{amount}</p>}
-          {outcomeDates && !calm && <p className="text-sm">{outcomeDates}</p>}
-          {state === 'slot_taken' && <p className="text-sm">{t('checkoutOthersUnchanged')}</p>}
-        </>}
+        </> : !calm && (amount || outcomeDates || state === 'slot_taken') && <div className="space-y-1 rounded-xl bg-muted/50 px-4 py-3 text-sm" data-testid="checkout-facts">
+          {amount && <p className="font-medium tabular-nums">{amount}</p>}
+          {outcomeDates && <p>{outcomeDates}</p>}
+          {state === 'slot_taken' && <p className="text-muted-foreground">{t('checkoutOthersUnchanged')}</p>}
+        </div>}
 
         {!calm && (state !== 'request_created' || outcome?.replacement && ['pending', 'releasing', 'needs_support'].includes(outcome.replacement.outcome)) && <div className="flex flex-wrap items-center gap-4">
           <Button variant="outline" className="min-h-11" onClick={() => setRefresh(value => value + 1)}>{t('checkoutCheckAgain')}</Button>
