@@ -125,7 +125,7 @@ const RULES = [
   {
     icon: "mdi:account-check-outline",
     key: "welcomeCap4",
-    label: "Every chef vetted",
+    label: "Every customer vetted",
     valueKey: "welcomeCap4Value",
     value: "Approved by you",
   },
@@ -269,7 +269,7 @@ export default function ManagerWelcomeScreen({ onContinue }: ManagerWelcomeScree
           <p className="mx-auto mt-2.5 max-w-2xl text-balance text-[15px] leading-[1.6] text-slate-600 sm:text-base">
             {t(
               "welcomeValueDetail",
-              "Chefs book it by the hour or by the day. You approve every booking, and payouts arrive automatically.",
+              "Customers book it by the hour or by the day. You approve every booking, and payouts arrive automatically.",
             )}
           </p>
         </motion.div>

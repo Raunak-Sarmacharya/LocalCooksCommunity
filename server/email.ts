@@ -3874,8 +3874,9 @@ type KitchenManagerApplicationEmailDetails = KitchenApplicationEmailDetails & {
 const kitchenApplicationReference = (data: KitchenApplicationEmailDetails) => data.applicationId ? ' · APPLICATION-' + data.applicationId : '';
 const kitchenApplicationEmailUrl = (data: KitchenApplicationEmailDetails, role: 'chef' | 'kitchen' | 'admin' = 'chef') =>
   getSubdomainUrl(role) + (role === 'admin' ? '/admin?section=kitchen-applications-step1' : role === 'kitchen' ? '/manager/dashboard?view=applications' : '/dashboard?view=kitchen-requests') + (data.applicationId ? '&application=' + data.applicationId : '');
-const kitchenApplicationFacts = (data: KitchenApplicationEmailDetails, includeChef = false) => [
-  ...(includeChef ? [{ label: 'Chef', value: data.chefName }, { label: 'Chef email', value: data.chefEmail }] : []),
+// The kitchen calls the person booking its "customer" (owner, Oct 21); Local Cooks staff keep "Chef".
+const kitchenApplicationFacts = (data: KitchenApplicationEmailDetails, includeChef: false | 'admin' | 'kitchen' = false) => [
+  ...(includeChef ? [{ label: includeChef === 'kitchen' ? 'Customer' : 'Chef', value: data.chefName }, { label: includeChef === 'kitchen' ? 'Customer email' : 'Chef email', value: data.chefEmail }] : []),
   { label: 'Kitchen location', value: data.locationName },
   ...(data.locationAddress ? [{ label: 'Address', value: data.locationAddress, url: 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(data.locationAddress) }] : []),
   ...(data.applicationId ? [{ label: 'Reference', value: 'APPLICATION-' + data.applicationId }] : []),
@@ -3889,14 +3890,14 @@ export const generateKitchenApplicationAdminEmail = (data: KitchenApplicationEma
     subject: (data.documentsSubmitted ? 'Kitchen documents submitted — ' : 'Request to apply received — ') + data.locationName + kitchenApplicationReference(data),
     heading: data.documentsSubmitted ? 'Kitchen documents are ready' : 'A kitchen access request is ready',
     message: data.documentsSubmitted ? data.chefName + ' submitted kitchen documents. Open the application to check the documents and current access status.' : data.chefName + ' requested access to ' + data.locationName + '. Review the request and approve it to continue kitchen coordination, or decline it with helpful feedback.',
-    facts: kitchenApplicationFacts(data, true), actionLabel: data.documentsSubmitted ? 'View kitchen documents' : 'Review request', actionUrl: kitchenApplicationEmailUrl(data, 'admin') });
+    facts: kitchenApplicationFacts(data, 'admin'), actionLabel: data.documentsSubmitted ? 'View kitchen documents' : 'Review request', actionUrl: kitchenApplicationEmailUrl(data, 'admin') });
 
 // Retained for callers outside this flow; new admin requests use the admin renderer above.
 export const generateNewKitchenApplicationManagerEmail = (data: KitchenManagerApplicationEmailDetails): EmailContent =>
   renderTransactionalEmail({ to: data.managerEmail, recipientName: data.managerName || 'Kitchen manager',
     subject: 'Kitchen access request — ' + data.chefName + kitchenApplicationReference(data),
     message: data.chefName + ' requested access to ' + data.locationName + '. Open the application to see its current status and available actions.',
-    facts: kitchenApplicationFacts(data, true), actionLabel: 'View application', actionUrl: kitchenApplicationEmailUrl(data, 'kitchen') });
+    facts: kitchenApplicationFacts(data, 'kitchen'), actionLabel: 'View application', actionUrl: kitchenApplicationEmailUrl(data, 'kitchen') });
 
 export const generateKitchenApplicationClearedManagerEmail = (data: Omit<KitchenManagerApplicationEmailDetails, 'chefEmail'> & { chefEmail?: string }): EmailContent => {
   const details = { ...data, chefEmail: data.chefEmail || '' };
@@ -3905,8 +3906,8 @@ export const generateKitchenApplicationClearedManagerEmail = (data: Omit<Kitchen
   return renderTransactionalEmail({ to: data.managerEmail, recipientName: data.managerName || 'Kitchen manager',
     subject: 'Connect with ' + data.chefName + ' — ' + data.locationName + kitchenApplicationReference(details),
     heading: 'You can now message ' + data.chefName,
-    message: data.chefName + ' can now continue their application for ' + data.locationName + '. No application review is needed from you. Please contact the chef through Local Cooks in-app messaging to introduce yourself and coordinate kitchen access, their Food Establishment Licence, or any kitchen-specific questions. You can also open their application and use the messaging option there.',
-    facts: kitchenApplicationFacts(details, true), actionLabel: messageChef?.label || viewApplication.label,
+    message: data.chefName + ' can now continue their application for ' + data.locationName + '. No application review is needed from you. Please contact the customer through Local Cooks in-app messaging to introduce yourself and coordinate kitchen access, their Food Establishment Licence, or any kitchen-specific questions. You can also open their application and use the messaging option there.',
+    facts: kitchenApplicationFacts(details, 'kitchen'), actionLabel: messageChef?.label || viewApplication.label,
     actionUrl: messageChef?.url || viewApplication.url, secondaryLink: messageChef ? viewApplication : undefined,
     note: LOCAL_COOKS_COMMUNICATION_NOTE });
 };
@@ -3915,14 +3916,14 @@ export const generateKitchenCoordinationSubmittedManagerEmail = (data: KitchenMa
   renderTransactionalEmail({ to: data.managerEmail, recipientName: data.managerName || 'Kitchen manager',
     subject: 'Kitchen documents submitted — ' + data.chefName + kitchenApplicationReference(data),
     heading: 'Kitchen documents are ready',
-    message: data.chefName + ' submitted the required documents for ' + data.locationName + '. Open the application to check the documents and available actions. Message the chef if you need clarification.',
-    facts: kitchenApplicationFacts(data, true), actionLabel: 'View kitchen documents', actionUrl: kitchenApplicationEmailUrl(data, 'kitchen'), secondaryButton: kitchenApplicationMessageLink(data, 'kitchen') });
+    message: data.chefName + ' submitted the required documents for ' + data.locationName + '. Open the application to check the documents and available actions. Message the customer if you need clarification.',
+    facts: kitchenApplicationFacts(data, 'kitchen'), actionLabel: 'View kitchen documents', actionUrl: kitchenApplicationEmailUrl(data, 'kitchen'), secondaryButton: kitchenApplicationMessageLink(data, 'kitchen') });
 
 export const generateKitchenAccessConfirmedManagerEmail = (data: KitchenManagerApplicationEmailDetails): EmailContent =>
   renderTransactionalEmail({ to: data.managerEmail, recipientName: data.managerName || 'Kitchen manager',
     subject: 'Kitchen access approved — ' + data.chefName + kitchenApplicationReference(data),
     message: data.chefName + ' now has approved access to ' + data.locationName + '. They can book available kitchen time when bookings are open. A booking is confirmed separately; this approval does not reserve dates or hours.',
-    facts: kitchenApplicationFacts(data, true), actionLabel: 'View application', actionUrl: kitchenApplicationEmailUrl(data, 'kitchen'), secondaryButton: kitchenApplicationMessageLink(data, 'kitchen') });
+    facts: kitchenApplicationFacts(data, 'kitchen'), actionLabel: 'View application', actionUrl: kitchenApplicationEmailUrl(data, 'kitchen'), secondaryButton: kitchenApplicationMessageLink(data, 'kitchen') });
 
 export const generateKitchenApplicationReceivedChefEmail = (data: KitchenApplicationEmailDetails): EmailContent =>
   renderTransactionalEmail({ to: data.chefEmail, recipientName: data.chefName,
@@ -4482,10 +4483,10 @@ export const generateTourConfirmedEmail = (data: { tourId: number; durationMinut
         { label: 'Address', value: data.locationAddress, url: data.locationAddress ? 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(data.locationAddress) : undefined },
         ...(data.arrivalNotes?.trim() ? [{ label: 'Arrival instructions', value: data.arrivalNotes.trim() }] : []),
         ...(data.departureNotes?.trim() ? [{ label: 'Departure instructions', value: data.departureNotes.trim() }] : []),
-        { label: data.contactEmail ? data.isManager ? 'Chef contact' : 'Arrival contact' : 'Tour assistance', value: data.contactEmail || getSupportEmail() }] },
+        { label: data.contactEmail ? data.isManager ? 'Customer contact' : 'Arrival contact' : 'Tour assistance', value: data.contactEmail || getSupportEmail() }] },
         { title: 'Meeting notes', facts: [
         ...(data.sharedManagerNotes?.trim() ? [{ label: 'Manager notes', value: data.sharedManagerNotes.trim() }] : []),
-        ...(data.notes ? [{ label: data.isManager ? 'Notes from the chef' : 'Your notes', value: data.notes }] : [])] }],
+        ...(data.notes ? [{ label: data.isManager ? 'Notes from the customer' : 'Your notes', value: data.notes }] : [])] }],
       heading: data.isManager ? `${data.otherPartyName}’s kitchen tour is ${data.previousTourDate ? 'rescheduled' : 'confirmed'}`
         : data.previousTourDate ? 'Your tour has been rescheduled' : 'Your kitchen tour is confirmed',
       actionLabel: 'View details', actionUrl,

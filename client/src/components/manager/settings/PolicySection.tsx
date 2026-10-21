@@ -51,8 +51,8 @@ export function ManagerDamagePolicySection() {
             </button>
           </CollapsibleTrigger>
           <CollapsibleContent className="space-y-2 px-4 pb-4 text-sm leading-6 text-muted-foreground">
-            <p>{t("dcV2ManagerPolicySummary")}</p>
-            <p>{t("dcV2ManagerPolicyDetails")}</p>
+            <p>{t("dcV2ManagerPolicySummaryKitchen")}</p>
+            <p>{t("dcV2ManagerPolicyDetailsKitchen")}</p>
           </CollapsibleContent>
         </Collapsible>
       </PolicySection>

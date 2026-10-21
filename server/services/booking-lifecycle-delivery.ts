@@ -211,7 +211,7 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
       timezone: row.location.timezone || DEFAULT_TIMEZONE, chefEmail: '', chefName: '', bookingId,
       durationHours: row.booking.durationHours == null ? undefined : Number(row.booking.durationHours),
       kitchenName: row.kitchen.name, locationName: row.location.name, locationAddress: row.location.address || '',
-      referenceCode: row.booking.referenceCode, reservationChefName: nameOf(context.chefId) || 'the chef',
+      referenceCode: row.booking.referenceCode, reservationChefName: nameOf(context.chefId) || 'the customer',
       payoutAfterCloseout: payment.payoutTiming === 'after_closeout', totalCents: Number(payment.amount), payoutCents: payment.payout == null ? undefined : Number(payment.payout), processingFeeCents: Number(payment.processingFee ?? 0) > 0 ? Number(payment.processingFee)
         // Stripe reports the actual fee after capture; until then use the same display estimate the kitchen sees.
         : await (async () => { const fees = await (await import('./stripe-checkout-fee-service')).getFeeConfig();
@@ -240,7 +240,7 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
       selectedSlots: row.booking.selectedSlots, operatingWindowStartTime: row.booking.operatingWindowStartTime,
       timezone: row.location.timezone || DEFAULT_TIMEZONE, kitchenName: row.kitchen.name, locationName: row.location.name,
       locationAddress: row.location.address || undefined, referenceCode: row.booking.referenceCode, bookingId,
-      specialNotes: row.booking.specialNotes || undefined, chefName: nameOf(context.chefId) || 'the chef',
+      specialNotes: row.booking.specialNotes || undefined, chefName: nameOf(context.chefId) || 'the customer',
       responseDeadline: await (await import('./booking-response-deadline')).getBookingResponseDeadline(row.booking, tx, row.location.timezone), totalCents: payment ? Number(payment.amount) : undefined,
       paymentState: payment?.status === 'authorized' ? 'held' : payment?.status === 'succeeded' ? 'paid' : 'pending' };
   }

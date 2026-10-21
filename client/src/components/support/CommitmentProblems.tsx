@@ -60,17 +60,17 @@ function ProblemCard({ problem, staff, role, actorId, here }: { problem: Problem
   return <article className="space-y-3 rounded-lg border p-4" aria-label={t('problemRequest', { id: problem.id })}>
     {/* On its own booking page the card doesn't repeat the booking or link back to it. */}
     <p className="font-medium">{!here && <>{commitmentLabel} · </>}{t('problemRequest', { id: problem.id })} · {t(`problemStatus_${problem.status}`, { defaultValue: t('problemStatus_reported') })}</p>
-    {!staff && reporter && <p className="text-xs text-muted-foreground">{reporter.actorId === actorId ? t('problemReportedByYou') : reporter.actorRole === 'manager' ? t('problemReportedByKitchen') : t('problemReportedByChef')}</p>}
+    {!staff && reporter && <p className="text-xs text-muted-foreground">{reporter.actorId === actorId ? t('problemReportedByYou') : reporter.actorRole === 'manager' ? t('problemReportedByKitchen') : t(role === 'manager' ? 'problemReportedByCustomer' : 'problemReportedByChef')}</p>}
     {problem.category && <p className={problem.category === 'safety' ? 'text-sm font-semibold text-destructive' : 'text-sm'}>{problem.category === 'safety' ? t('problemCopy03') : t(`problemCategory_${problem.category}`, { defaultValue: t('problemCategory_other') })}</p>}
     {staff && <p className="text-sm">{problem.claimedBy ? t('problemAssigned', { id: problem.claimedBy }) : t('problemCopy04')}</p>}
     <p className="whitespace-pre-wrap text-sm">{problem.description}</p>
     {latestUpdate && <p className="whitespace-pre-wrap rounded-md bg-muted p-3 text-sm">{t('problemLatest', { note: latestUpdate.note })}</p>}
     {!here && <a className="text-sm underline" href={problemDestination(kind, id, role)}>{t(kind === 'booking' ? 'problemOpenBooking' : kind === 'storage' ? 'problemOpenStorage' : 'problemOpenTour')}</a>}
-    <details><summary className="cursor-pointer text-sm">{t('problemCopy05')}</summary>{history.map(entry => <p key={entry.revision} className="whitespace-pre-wrap border-t py-2 text-sm">{formatVisitTime(entry.at, Intl.DateTimeFormat().resolvedOptions().timeZone, i18n.resolvedLanguage)} {friendlyTimezoneName(Intl.DateTimeFormat().resolvedOptions().timeZone, i18n.resolvedLanguage)} · {entry.actorId === actorId ? t('problemCopy06') : entry.actorRole === 'admin' ? t('problemCopy07') : entry.actorRole === 'manager' ? t('problemCopy08') : entry.actorRole === 'chef' ? t('problemCopy09') : t('problemCopy10')}: {entry.action === 'report' ? t('problemCopy11') : entry.note}</p>)}</details>
+    <details><summary className="cursor-pointer text-sm">{t('problemCopy05')}</summary>{history.map(entry => <p key={entry.revision} className="whitespace-pre-wrap border-t py-2 text-sm">{formatVisitTime(entry.at, Intl.DateTimeFormat().resolvedOptions().timeZone, i18n.resolvedLanguage)} {friendlyTimezoneName(Intl.DateTimeFormat().resolvedOptions().timeZone, i18n.resolvedLanguage)} · {entry.actorId === actorId ? t('problemCopy06') : entry.actorRole === 'admin' ? t('problemCopy07') : entry.actorRole === 'manager' ? t('problemCopy08') : entry.actorRole === 'chef' ? t(role === 'manager' ? 'problemCopy09Kitchen' : 'problemCopy09') : t('problemCopy10')}: {entry.action === 'report' ? t('problemCopy11') : entry.note}</p>)}</details>
     {problem.status !== 'resolved' && <p className="text-sm">{problem.status === 'reported' ? t('problemCopy12') : t('problemCopy13')}</p>}
     {staff && problem.status !== 'resolved' && <div className="space-y-2">
       {!problem.claimedBy ? <Button disabled={action.isPending} onClick={() => action.mutate('claim')}>{t('problemCopy14')}</Button> : <>
-        <label className="block text-sm" htmlFor={`problem-response-${problem.id}`}>{t('problemCopy15')}</label>
+        <label className="block text-sm" htmlFor={`problem-response-${problem.id}`}>{t(role === 'manager' ? 'problemCopy15Kitchen' : 'problemCopy15')}</label>
         <Textarea id={`problem-response-${problem.id}`} value={note} maxLength={2000} onChange={event => setNote(event.target.value)} />
         {ownsTask ? <div className="flex flex-wrap gap-2">{(problem.status === 'reported' ? ['acknowledge', 'escalate'] : ['reply', 'escalate', 'resolve']).map(value => <Button key={value} variant="outline" disabled={action.isPending || !note.trim()} onClick={() => action.mutate(value)}>{value === 'acknowledge' ? t('problemCopy16') : value === 'escalate' ? t('problemCopy17') : value === 'reply' ? t('problemCopy18') : t('problemCopy19')}</Button>)}</div>
           : <Button variant="outline" disabled={action.isPending || !note.trim() || !actorId} onClick={() => action.mutate('reassign')}>{t('problemCopy20')}</Button>}
@@ -81,7 +81,7 @@ function ProblemCard({ problem, staff, role, actorId, here }: { problem: Problem
       <Textarea id={`problem-reply-${problem.id}`} value={note} maxLength={2000} onChange={event => setNote(event.target.value)} />
       <p className="text-xs text-muted-foreground">{t('problemReplyHint')}</p>
       <Button variant="outline" type="submit" disabled={action.isPending || !note.trim()}>{action.isPending ? t('problemCopy22') : t('problemCopy18')}</Button>
-      {action.isSuccess && <p role="status" className="text-sm">{t('problemCopy23')}</p>}
+      {action.isSuccess && <p role="status" className="text-sm">{t(role === 'manager' ? 'problemCopy23Kitchen' : 'problemCopy23')}</p>}
     </form>}
     {action.error && <p role="alert" className="text-sm text-destructive">{action.error.message} <button className="underline" onClick={() => void queryClient.invalidateQueries({ queryKey: ['commitment-problems'] })}>{t('problemCopy24')}</button></p>}
   </article>;
@@ -129,12 +129,12 @@ function ProblemsPanel({ kind, id, canReport = false, staff = false, role = 'che
       <DialogContent showCloseButton>
         <DialogHeader><DialogTitle>{intent?.title || t('problemCopy32')}</DialogTitle>
           <DialogDescription>{intent?.hint || (kind === 'storage'
-            ? t('problemSharedStorage', { ref: query.data?.reference || `SB-${id}` })
-            : t('problemShared', { id, kind: t(kind === 'tour' ? 'problemCopy02' : 'problemCopy01') }))}</DialogDescription></DialogHeader>
+            ? t(role === 'manager' ? 'problemSharedStorageKitchen' : 'problemSharedStorage', { ref: query.data?.reference || `SB-${id}` })
+            : t(role === 'manager' ? 'problemSharedKitchen' : 'problemShared', { id, kind: t(kind === 'tour' ? 'problemCopy02' : 'problemCopy01') }))}</DialogDescription></DialogHeader>
         {reportingAvailable ? <form className="space-y-4" onSubmit={event => { event.preventDefault(); if (description.trim().length >= 10 && !report.isPending) report.mutate(); }}>
           <div className="space-y-2"><label className="block text-sm font-medium" htmlFor={`report-${kind}-${id}`}>{intent?.label || t('problemCopy33')}</label>
             <Textarea id={`report-${kind}-${id}`} value={description} maxLength={2000} disabled={report.isPending} onChange={event => setDescription(event.target.value)} aria-describedby={`report-hint-${kind}-${id}`} />
-            <p id={`report-hint-${kind}-${id}`} className="text-xs text-muted-foreground">{t('problemCopy34')}</p></div>
+            <p id={`report-hint-${kind}-${id}`} className="text-xs text-muted-foreground">{t(role === 'manager' ? 'problemCopy34Kitchen' : 'problemCopy34')}</p></div>
           {report.error && <p role="alert" className="text-sm text-destructive">{report.error.message}</p>}
           {report.isPending && <p role="status" className="text-sm">{t('problemCopy35')}</p>}
           <DialogFooter><DialogClose asChild><Button variant="outline" type="button">{report.isPending ? t('problemCopy36') : t('problemCopy37')}</Button></DialogClose>

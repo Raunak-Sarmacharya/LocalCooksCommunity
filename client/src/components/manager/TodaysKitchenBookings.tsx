@@ -289,7 +289,7 @@ export function TodaysKitchenBookings() {
                   {booking.status === 'pending' ? <Badge variant="outline">{mt("awaitingApproval")}</Badge> : getCheckinBadge(booking.checkinStatus)}
                 </div>
                 {booking.timezone && <p className="text-xs text-muted-foreground">{friendlyTimezoneName(booking.timezone, i18n.language)}</p>}
-                <p className="break-words text-sm">{booking.chefName || booking.chefEmail || `Chef #${booking.chefId}`}</p>
+                <p className="break-words text-sm">{booking.chefName || booking.chefEmail || `Customer #${booking.chefId}`}</p>
                 {booking.visitId && <p className="text-xs text-muted-foreground">{booking.dayCount ? mt('mdDayOf', { number: booking.dayNumber, total: booking.dayCount }) : ct('inspectVisit', { number: (booking.visitBlockIndex ?? 0) + 1 })}</p>}
                 {booking.referenceCode && <p className="break-all font-mono text-xs text-muted-foreground">{booking.referenceCode}</p>}
                 <div className="flex flex-wrap gap-2 border-t pt-3">
@@ -356,7 +356,7 @@ export function TodaysKitchenBookings() {
                       <TableCell>
                         <div className="flex items-center gap-1 text-xs sm:text-sm whitespace-nowrap">
                           <User className="h-3 w-3 text-muted-foreground" />
-                          {booking.chefName || booking.chefEmail || `Chef #${booking.chefId}`}
+                          {booking.chefName || booking.chefEmail || `Customer #${booking.chefId}`}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -429,7 +429,7 @@ export function TodaysKitchenBookings() {
                     <p className="break-words font-semibold">{viewingRec.kitchenName}</p>
                     {viewingRec.locationName && <p className="text-xs text-muted-foreground">{viewingRec.locationName}</p>}
                     <p className="mt-1 text-sm text-muted-foreground">{friendlyDate(start, i18n.language, 'America/St_Johns')} · {friendlyTime(start, i18n.language, 'America/St_Johns')} – {friendlyTime(new Date(start.getTime() + viewingRec.viewing.durationMinutes * 60000), i18n.language, 'America/St_Johns')}</p>
-                    <p className="mt-2 break-words text-sm">{viewingRec.chefName || viewingRec.chefUsername?.split('@')[0] || `Chef #${viewingRec.viewing.chefId}`}</p>
+                    <p className="mt-2 break-words text-sm">{viewingRec.chefName || viewingRec.chefUsername?.split('@')[0] || `Customer #${viewingRec.viewing.chefId}`}</p>
                     <Badge className="mt-3" variant={viewingRec.viewing.status === "pending" ? "outline" : "secondary"}>{viewingRec.viewing.status}</Badge>
                   </article>;
                 })}
@@ -483,7 +483,7 @@ export function TodaysKitchenBookings() {
                         <TableCell>
                           <div className="flex items-center gap-1 text-xs sm:text-sm whitespace-nowrap">
                             <User className="h-3 w-3 text-muted-foreground" />
-                            {viewingRec.chefName || viewingRec.chefUsername?.split('@')[0] || `Chef #${viewingRec.viewing.chefId}`}
+                            {viewingRec.chefName || viewingRec.chefUsername?.split('@')[0] || `Customer #${viewingRec.viewing.chefId}`}
                           </div>
                         </TableCell>
                       </TableRow>

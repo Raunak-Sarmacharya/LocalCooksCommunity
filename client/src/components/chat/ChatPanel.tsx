@@ -214,12 +214,12 @@ export default function ChatPanel({
   // the manager — an admin does not sit opposite themselves.
   const viewerSeesChef = isManager || isAdmin;
   const getPartnerName = () => {
-    if (viewerSeesChef) return chefName || t("chatChef");
+    if (viewerSeesChef) return chefName || t(isManager ? "chatCustomer" : "chatChef");
     return managerName || t("chatManager");
   };
 
   const getPartnerLabel = () => {
-    if (viewerSeesChef) return t("chatChef");
+    if (viewerSeesChef) return t(isManager ? "chatCustomer" : "chatChef");
     return t("chatManager");
   }
 
@@ -286,7 +286,7 @@ export default function ChatPanel({
 
           const isMe = message.senderId === currentUserId;
           let senderName = "User";
-          if (message.senderRole === 'chef') senderName = chefName || t("chatChef");
+          if (message.senderRole === 'chef') senderName = chefName || t(isManager ? "chatCustomer" : "chatChef");
           if (message.senderRole === 'manager') senderName = managerName || t("chatManager");
           // The admin role is internal; the chef only ever sees the team name.
           if (message.senderRole === 'admin') senderName = localCooksName;
@@ -382,7 +382,7 @@ export default function ChatPanel({
             <div className="space-y-0.5">
               <p className="text-sm font-medium text-foreground">
                 {unavailableRole === 'chef'
-                  ? t("chatUnavailableChefTitle", "This chef's account was deleted")
+                  ? (isManager ? t("chatUnavailableCustomerTitle") : t("chatUnavailableChefTitle", "This chef's account was deleted"))
                   : unavailableRole === 'manager'
                     ? t("chatUnavailableManagerTitle", "This manager's account was deleted")
                     : t("chatUnavailableTitle", "This account was deleted")}

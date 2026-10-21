@@ -104,7 +104,7 @@ describe("VisitCodePanel", () => {
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText(/confirms arrival in Local Cooks without a code/)).toBeInTheDocument();
     expect(within(dialog).getByText(/need your access instructions/)).toBeInTheDocument();
-    fireEvent.click(within(dialog).getByLabelText("I understand chefs will be told"));
+    fireEvent.click(within(dialog).getByLabelText("I understand customers will be told"));
     const submit = within(dialog).getByRole("button", { name: "Turn on self check-in" });
     expect(submit).toBeDisabled();
     expect(within(dialog).queryByLabelText("Apply to all visits of this booking")).not.toBeInTheDocument();
@@ -116,7 +116,7 @@ describe("VisitCodePanel", () => {
     fireEvent.click(submit);
     await waitFor(() => expect(api.post).toHaveBeenCalledWith("/manager/bookings/55/visit-code/mode",
       { target: "booking:55", mode: "self", reason: "Front desk is closed today" }));
-    expect(await screen.findByText(/chef can confirm arrival without a code/)).toBeInTheDocument();
+    expect(await screen.findByText(/customer can confirm arrival without a code/)).toBeInTheDocument();
     expect(screen.queryByTestId("visit-code-value")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Switch back to staffed" })).toBeInTheDocument();
   });
@@ -132,7 +132,7 @@ describe("VisitCodePanel", () => {
     fireEvent.change(within(dialog).getByLabelText(/Why\?/), { target: { value: "Kitchen closed all day" } });
     fireEvent.click(within(dialog).getByLabelText("Apply to all visits of this booking"));
     api.post.mockResolvedValue(json(state));
-    fireEvent.click(within(dialog).getByLabelText("I understand chefs will be told"));
+    fireEvent.click(within(dialog).getByLabelText("I understand customers will be told"));
     fireEvent.click(within(dialog).getByRole("button", { name: "Turn on self check-in" }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith("/manager/bookings/55/visit-code/mode", { all: true, mode: "self", reason: "Kitchen closed all day" }));
   });
@@ -155,7 +155,7 @@ describe("VisitCodePanel", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Switch back to staffed" }));
     const dialog = await screen.findByRole("dialog");
     api.post.mockResolvedValue(json({ bookingId: 55, targets: [{ ...base, revision: 3 }] }));
-    fireEvent.click(within(dialog).getByLabelText("I understand chefs will be told"));
+    fireEvent.click(within(dialog).getByLabelText("I understand customers will be told"));
     fireEvent.click(within(dialog).getByRole("button", { name: "Switch to staffed" }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith("/manager/bookings/55/visit-code/mode", { target: "booking:55", mode: "staffed" }));
   });

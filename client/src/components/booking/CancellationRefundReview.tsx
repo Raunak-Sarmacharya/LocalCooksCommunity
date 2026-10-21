@@ -44,13 +44,13 @@ export function CancellationRefundReview({ bookingId, open, onOpenChange, manage
         <p className="font-medium">{source.itemName || bt('refundReviewBookingPayment')}</p>
         {source.scope ? <dl className="grid grid-cols-2 gap-2 text-sm"><dt>{t('refundCopy04')}</dt><dd>{money(source.capturedCents ?? 0)}</dd>
           <dt>{t('refundCopy05')}</dt><dd>{money(source.alreadyRefundedCents ?? 0)}</dd>
-          <dt>{bt('refundReviewChefRefund')}</dt><dd>{money(source.refunded ?? source.customerRefund ?? 0)}</dd>
+          <dt>{bt(manager ? 'refundReviewCustomerRefund' : 'refundReviewChefRefund')}</dt><dd>{money(source.refunded ?? source.customerRefund ?? 0)}</dd>
           <dt>{bt('refundReviewKitchenShare')}</dt><dd>{money(source.managerRefund ?? 0)}</dd>
           <dt>{bt('refundReviewServiceFeeShare')}</dt><dd>{money(source.platformRefund ?? 0)}</dd>
           <dt>{bt('refundReviewCardFee')}</dt><dd>{money(source.feeRetainedCents ?? 0)}</dd></dl>
           : <dl className="grid grid-cols-2 gap-2 text-sm"><dt>{t('refundCopy04')}</dt><dd>{money(source.captured ?? 0)}</dd>
             <dt>{t('refundCopy05')}</dt><dd>{money(source.alreadyRefunded ?? 0)}</dd>
-            <dt>{t('refundCopy06')}</dt><dd>{money(source.managerRefund ?? 0)}</dd>
+            <dt>{t(manager ? 'refundCopy06Kitchen' : 'refundCopy06')}</dt><dd>{money(source.managerRefund ?? 0)}</dd>
             <dt>{t('refundCopy07')}</dt><dd>{money(source.retainedUsedAddonCents || 0)}</dd>
             <dt>{t('refundCopy08')}</dt><dd>{money(source.processingCost ?? 0)}</dd>
             <dt>{t('refundCopy09')}</dt><dd>{money(source.serviceFeeReview ?? 0)}</dd></dl>}
@@ -65,7 +65,7 @@ export function CancellationRefundReview({ bookingId, open, onOpenChange, manage
         })}>{t('refundCopy13')}</Button>}
       </section>;
     })}
-    <p className="text-sm">{t('refundCopy14')}</p>
+    <p className="text-sm">{t(manager ? 'refundCopy14Kitchen' : 'refundCopy14')}</p>
     {error && <p role="alert" className="text-destructive">{error}</p>}
     <div className="flex flex-wrap gap-2">
       <Button variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>{t('refundCopy15')}</Button>

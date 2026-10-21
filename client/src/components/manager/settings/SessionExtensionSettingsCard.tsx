@@ -83,7 +83,7 @@ export function SessionExtensionSettingsCard({ kitchenId, admin = false }: { kit
           </span> : t(checked ? "bpAutoOn" : "bpAutoOff")}>
           <Switch id={`auto-extend-${kitchenId}`} checked={checked} disabled={!data || busy || locked || admin} onCheckedChange={setDraft} />
         </SettingsRow>
-        {data && !data.enabled && <p className="border-t border-border px-4 py-3 text-sm text-muted-foreground">{t("sxsPaused", { defaultValue: "Extra time is paused on Local Cooks right now. Chefs can still message you." })}</p>}
+        {data && !data.enabled && <p className="border-t border-border px-4 py-3 text-sm text-muted-foreground">{t("sxsPaused", { defaultValue: "Extra time is paused on Local Cooks right now. Customers can still message you." })}</p>}
       </>}
     </PolicySection>
   )
@@ -107,8 +107,8 @@ export function SessionExtensionsPlatformSwitch() {
     <Card data-testid="session-extensions-platform">
       <CardHeader><CardTitle>{t("sxsPlatformTitle", { defaultValue: "Extra time (all kitchens)" })}</CardTitle></CardHeader>
       <CardContent className="space-y-3">
-        <p className="text-sm">{data?.enabled === false ? t("sxsPlatformPaused", { defaultValue: "Paused: chefs and kitchens can’t add or charge extra time. Payments already in progress still finish." })
-          : t("sxsPlatformOn", { defaultValue: "On: chefs can ask for more time, kitchens can offer it and charge for extra time." })}</p>
+        <p className="text-sm">{data?.enabled === false ? t("sxsPlatformPaused", { defaultValue: "Paused: customers and kitchens can’t add or charge extra time. Payments already in progress still finish." })
+          : t("sxsPlatformOn", { defaultValue: "On: customers can ask for more time, kitchens can offer it and charge for extra time." })}</p>
         <label className="block text-sm">{t("sxsReason", { defaultValue: "Reason (required)" })}
           <textarea className="mt-1 block w-full rounded border p-2" value={reason} maxLength={500} onChange={event => setReason(event.target.value)} /></label>
         <SettingChangePreview whatChanges={t(data?.enabled === false ? 'scpResumeWhat' : 'scpPauseWhat')}

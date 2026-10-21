@@ -155,7 +155,7 @@ export async function fulfillQuotedKitchenBooking(session: Stripe.Checkout.Sessi
         }
         // A paid invitation is confirmed right after this; a "new request to review" notice would be wrong for both sides.
         if (!invitation) await queueBookingLifecycleEvent(tx, parent.id, 'requested', 'New kitchen booking request',
-          authorized ? `A new kitchen booking request is ready to review. The chef’s card is on hold and will only be charged if the kitchen accepts.`
+          authorized ? `A new kitchen booking request is ready to review. The customer’s card is on hold and will only be charged if the kitchen accepts.`
             : `A new kitchen booking request is ready to review. The checkout payment has been received.`, chefId,
           {
             ...(replaced?.booking.referenceCode ? { replacesRef: replaced.booking.referenceCode } : {}),

@@ -157,10 +157,10 @@ export async function previewPartialAcceptance(bookingId: number, declinedIds: n
     serviceFeeCents: capture.commission, allowed: window.allowed, deadlineAt: window.deadline.toISOString() };
 }
 
-const WAITING_MESSAGE = 'Waiting for the chef to answer your new total. To withdraw it, decline the request.';
+const WAITING_MESSAGE = 'Waiting for the customer to answer your new total. To withdraw it, decline the request.';
 const CLOSED_MESSAGE = 'This offer is no longer open. Refresh the booking for its current state.';
 const ANSWERED_MESSAGE = 'This request was already answered. Refresh the booking for its current state.';
-export const LAST_MINUTE_MESSAGE = 'This booking starts soon, so there isn’t time to ask the chef about a change. Accept the full request, or decline it and message the chef.';
+export const LAST_MINUTE_MESSAGE = 'This booking starts soon, so there isn’t time to ask the customer about a change. Accept the full request, or decline it and message the customer.';
 const PASSED_MESSAGE = 'The time to answer has passed, so this request is closed. You weren’t charged.';
 
 function answered(proposal: PartialAcceptance, state: PartialAcceptanceOutcome, actorId?: number, reason?: string): PartialAcceptance {
@@ -531,7 +531,7 @@ export async function reconcileBookingDecision(bookingId: number, recorded?: Dec
           newBookingId: replaced.bookingId, newHoldCents: replaced.holdCents, next: replaced.next } } : {}),
         ...(outcome ? { requestOutcome: outcome.kind, roleText: outcome.roleText, kitchenCaused: outcome.kind === 'declined' } : {}),
         ...(decision!.target === 'confirmed' ? { roleText: {
-        manager: { title: 'Booking confirmed', message: 'You confirmed this booking and the chef’s card was charged. Share the check-in code with them in person when they arrive.' + (paidTiming?.timing === 'after_closeout' ? ' Paid after the visit: as soon as you finish the inspection, or automatically 24 hours after it ends.' : '') } } } : {}) });
+        manager: { title: 'Booking confirmed', message: 'You confirmed this booking and the customer’s card was charged. Share the check-in code with them in person when they arrive.' + (paidTiming?.timing === 'after_closeout' ? ' Paid after the visit: as soon as you finish the inspection, or automatically 24 hours after it ends.' : '') } } } : {}) });
     }
   });
   // The chef's receipt is issued from the captured payment row, after it committed (idempotent; never fails the decision).
@@ -619,7 +619,7 @@ async function requestOutcome(tx: any, booking: { chefId: number | null; kitchen
   const { getUserDisplayName } = await import('../utils/user-display');
   const shown = booking.chefId ? await getUserDisplayName(booking.chefId, 'chef').catch(() => '') : '';
   const kitchenName = kitchen?.name || 'The kitchen';
-  const chefName = shown && shown !== 'A chef' ? shown : 'The chef';
+  const chefName = shown && shown !== 'A chef' ? shown : 'The customer';
   const day = new Date(booking.bookingDate as Date);
   const date = Number.isFinite(day.getTime()) ? new Intl.DateTimeFormat('en-CA', { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' }).format(day) : '';
   const [h, m] = String(booking.startTime || '').split(':').map(Number);

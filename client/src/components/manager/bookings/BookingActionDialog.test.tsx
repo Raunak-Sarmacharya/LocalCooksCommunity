@@ -66,9 +66,9 @@ describe('manager booking request review', () => {
     choose('Mixer', 'Decline');
     expect(await screen.findByText('New total: $146.40')).toBeInTheDocument();
     expect(previews.calls).toEqual([[31]]);
-    expect(screen.getByText('We’ll ask the chef to confirm the new total. Nothing is charged until they do.')).toBeInTheDocument();
+    expect(screen.getByText('We’ll ask the customer to confirm the new total. Nothing is charged until they do.')).toBeInTheDocument();
     // Nothing is charged yet — the money panel labels the new total as conditional on the chef.
-    expect(screen.getByText('Charged if the chef accepts')).toBeInTheDocument();
+    expect(screen.getByText('Charged if the customer accepts')).toBeInTheDocument();
     expect(screen.queryByText('Total charged')).not.toBeInTheDocument();
     expect(screen.getByText('$36.60')).toBeInTheDocument();
     expect(screen.getByText('$133.45')).toBeInTheDocument();
@@ -82,10 +82,10 @@ describe('manager booking request review', () => {
 
   it('full accept reads “The chef pays”, then the kitchen’s own amount (nothing is waiting on the chef)', () => {
     setup();
-    expect(screen.getByText('The chef pays')).toBeInTheDocument();
+    expect(screen.getByText('The customer pays')).toBeInTheDocument();
     expect(screen.getByText('Your booking amount (with HST)')).toBeInTheDocument();
     expect(screen.queryByText('Local Cooks service fee')).not.toBeInTheDocument();
-    expect(screen.queryByText('Charged if the chef accepts')).not.toBeInTheDocument();
+    expect(screen.queryByText('Charged if the customer accepts')).not.toBeInTheDocument();
   });
 
   it('dated booking: shows the server’s new total (frozen tax, equipment already in the total), never a client recomputation', async () => {
@@ -120,8 +120,8 @@ describe('manager booking request review', () => {
     const { submit } = setup({ canAskChef: false });
     expect(within(screen.getByRole('group', { name: 'Mixer' })).getByRole('button', { name: 'Decline' })).toBeDisabled();
     expect(within(screen.getByRole('group', { name: 'Mixer' })).getByRole('button', { name: 'Approve' })).toBeEnabled();
-    expect(screen.getByText('This booking starts soon, so there isn’t time to ask the chef about a change. Accept the full request, or decline it and message the chef.')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Message the chef' })).toHaveAttribute('href', '/manager/booking/112?action=message');
+    expect(screen.getByText('This booking starts soon, so there isn’t time to ask the customer about a change. Accept the full request, or decline it and message the customer.')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Message the customer' })).toHaveAttribute('href', '/manager/booking/112?action=message');
     // Accepting everything and declining the whole request still work.
     fireEvent.click(screen.getByRole('button', { name: 'Approve booking' }));
     expect(submit).toHaveBeenCalledWith(expect.objectContaining({ status: 'confirmed', equipmentActions: [{ equipmentBookingId: 31, action: 'confirmed' }] }));
@@ -143,7 +143,7 @@ describe('manager booking request review', () => {
     choose('Kitchen Session', 'Decline');
     expect(screen.getByText('Decline this request?')).toBeInTheDocument();
     expect(screen.getByText('Alex isn’t charged — their card hold is released.')).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('Message to the chef (optional)'), { target: { value: '  Closed that day.  ' } });
+    fireEvent.change(screen.getByLabelText('Message to the customer (optional)'), { target: { value: '  Closed that day.  ' } });
     fireEvent.click(screen.getByRole('button', { name: 'Decline request' }));
     expect(submit).toHaveBeenCalledWith({ bookingId: 112, status: 'cancelled', message: 'Closed that day.' });
   });

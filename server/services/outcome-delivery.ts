@@ -276,7 +276,7 @@ async function kitchenRefundText(tx: Transaction, record: any) {
   if (!booking) return null;
   const { getUserDisplayName } = await import('../utils/user-display');
   const shown = record.chef_id ? await getUserDisplayName(record.chef_id, 'chef').catch(() => '') : '';
-  const chefName = shown && shown !== 'A chef' ? shown : 'the chef';
+  const chefName = shown && shown !== 'A chef' ? shown : 'the customer';
   const amount = new Intl.NumberFormat('en-CA', { style: 'currency', currency: String(record.currency || 'CAD').toUpperCase() }).format(delta / 100);
   const reference = booking.reference_code || `KB-${booking.id}`;
   const note = typeof record.refundNote === 'string' && record.refundNote.trim() && record.refundNote.trim() !== DEFAULT_KITCHEN_REFUND_REASON ? record.refundNote.trim() : '';

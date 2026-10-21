@@ -157,7 +157,7 @@ describe('closeout notice emails (rendered from current state, mocked database)'
     state.users = { 3: { username: 'maya@example.test' }, 7: { username: 'sam@example.test' } };
     expect((await send('service_ended', 3, 'maya@example.test'))!.text).toContain('Hi maya,');
     const manager = (await send('service_ended', 7, 'sam@example.test'))!;
-    expect(manager.text).toContain('Hi sam,'); expect(manager.text).toContain('The chef’s visit has ended');
+    expect(manager.text).toContain('Hi sam,'); expect(manager.text).toContain('The customer’s visit has ended');
   });
   it('sends the closed-inspection notice to the manager only', async () => {
     state.booking.visitDuties.clockCloseout.inspections = { '2026-10-13|10:00-11:00|0': { outcome: 'auto_closed_uninspected', closedAt: '2026-10-14T13:30:00.000Z' } };

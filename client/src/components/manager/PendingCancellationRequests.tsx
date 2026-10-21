@@ -98,7 +98,7 @@ export function PendingCancellationRequests({
         result.push({
           kind: "kitchen",
           bookingId: booking.id,
-          chefName: booking.chefName || `Chef #${booking.id}`,
+          chefName: booking.chefName || `Customer #${booking.id}`,
           kitchenName: booking.kitchenName || "Kitchen",
           locationName: booking.locationName || "",
           label: `Kitchen Booking #${booking.id}`,
@@ -122,7 +122,7 @@ export function PendingCancellationRequests({
               kind: "storage",
               bookingId: booking.id,
               storageBookingId: sbId,
-              chefName: booking.chefName || `Chef #${booking.id}`,
+              chefName: booking.chefName || `Customer #${booking.id}`,
               kitchenName: booking.kitchenName || "Kitchen",
               locationName: booking.locationName || "",
               label: `${item.name} (${item.storageType})`,

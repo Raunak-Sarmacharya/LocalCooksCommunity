@@ -502,7 +502,7 @@ export function ApplicationDetailPanel({
                     <div className="flex flex-wrap items-center justify-end gap-3">
                         {isPending && (
                             <div className="flex-1 rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-                                The chef’s request is being reviewed. You can review the application after the chef uploads the kitchen documents.
+                                The customer’s request is being reviewed. You can review the application after the customer uploads the kitchen documents.
                             </div>
                         )}
 

@@ -74,10 +74,10 @@ async function updateConfirmedVisit(bookingId: number,visitId: number,expectedSt
     if (changed.length && duties) await captureKitchenDuties(tx, bookingId, duties);
     if (changed.length && arrival && values.checkinStatus === 'checked_in') await consumeForArrival(tx, gate, arrival);
     if (changed.length && values.checkinStatus === 'checked_in') await queueBookingLifecycleEvent(tx, bookingId,
-      'checkin_recorded', 'Arrival confirmed', 'Arrival is confirmed for this visit. Open the booking to see the chef’s checklist and photos.',
+      'checkin_recorded', 'Arrival confirmed', 'Arrival is confirmed for this visit. Open the booking to see the customer’s checklist and photos.',
       undefined, { visitId, recipientPolicy: 'participants', emailRecipientPolicy: 'manager' });
     if (changed.length && values.checkinStatus === 'checkout_requested') await queueBookingLifecycleEvent(tx, bookingId,
-      'checkout_requested', 'Ready for kitchen inspection', 'The chef has requested checkout for this visit. The kitchen can now review the photos and checklist. Open the booking for the inspection deadline.',
+      'checkout_requested', 'Ready for kitchen inspection', 'The customer has requested checkout for this visit. The kitchen can now review the photos and checklist. Open the booking for the inspection deadline.',
       undefined, { visitId, recipientPolicy: 'participants', emailRecipientPolicy: 'manager' });
     // Re-derive the saved clock (inspection deadline, payout timing) from the late departure.
     if (changed.length && lateDeparture && parent?.status === 'completed') await (await import('./clock-closeout')).persistBookingCloseout(bookingId, tx);
@@ -231,7 +231,7 @@ export async function claimKitchenVisit(bookingId: number, visitId: number, mana
         updatedAt: new Date(),
       }).where(eq(kitchenBookingVisits.id, visitId));
       await queueBookingLifecycleEvent(tx, bookingId, 'checkout_claim_filed', 'Visit concern sent for review',
-        `The kitchen started a draft damage claim (#${claimId}) for this visit. The kitchen needs to add photos and details, then submit it before the chef is asked to reply. Nothing has been charged for this draft.`,
+        `The kitchen started a draft damage claim (#${claimId}) for this visit. The kitchen needs to add photos and details, then submit it before the customer is asked to reply. Nothing has been charged for this draft.`,
         managerId, { visitId, damageClaimId: claimId, recipientPolicy: 'manager' });
       return claimId;
     });

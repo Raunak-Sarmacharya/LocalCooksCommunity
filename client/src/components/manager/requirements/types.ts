@@ -94,7 +94,7 @@ export const STEP1_FIELD_GROUPS: FieldGroupConfig[] = [
       // Only the QUESTION is a request-phase concern. The expiry is collected
       // with the certificate itself whenever one is uploaded, so a switch for it
       // could only ever contradict that rule.
-      { key: 'requireFoodHandlerCert', label: 'Food Safety Certificate', description: 'Ask the chef whether they hold a certificate', recommended: true },
+      { key: 'requireFoodHandlerCert', label: 'Food Safety Certificate', description: 'Ask the customer whether they hold a certificate', recommended: true },
     ]
   },
   {
@@ -148,7 +148,7 @@ export const STEP2_BUILT_IN_FIELDS: FieldGroupConfig[] = [
   },
   {
     title: 'Experience & Background',
-    description: 'Chef experience with commercial kitchen operations',
+    description: 'Customer experience with commercial kitchen operations',
     fields: [
       { key: 'tier2_kitchen_experience_required', label: 'Kitchen Experience Description', description: 'Description of their commercial kitchen experience' },
     ]

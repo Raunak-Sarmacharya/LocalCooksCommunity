@@ -68,14 +68,14 @@ describe("Booking Policies tab", () => {
     expect(screen.getByRole("button", { name: "Save cancellation policy" })).toBeDisabled();
     await waitFor(() => expect(within(screen.getByTestId("session-extension-settings")).getByRole("button", { name: "Save changes" })).toBeDisabled());
     expect(screen.queryByTestId("setting-change-preview")).not.toBeInTheDocument();
-    expect(screen.getByText("Chefs can book up to 30 days ahead.")).toBeInTheDocument();
-    expect(screen.getByText("Chefs can book back to back.")).toBeInTheDocument();
+    expect(screen.getByText("Customers can book up to 30 days ahead.")).toBeInTheDocument();
+    expect(screen.getByText("Customers can book back to back.")).toBeInTheDocument();
     expect(screen.getByText("Longest booking: 8 hours per day")).toBeInTheDocument();
     expect(screen.getByText(/One hourly booking can last up to 8 hours/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /More about Longest booking/i }));
     expect(await screen.findByText(/Applies to hourly bookings/)).toBeInTheDocument();
     expect(screen.getByText(/Full days are booked at your daily rate/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /More about Limit hours per chef each week/i }));
+    fireEvent.click(screen.getByRole("button", { name: /More about Limit hours per customer each week/i }));
     expect(await screen.findByText(/Monday–Sunday/)).toBeInTheDocument();
     expect(screen.getAllByText(/at this kitchen/i).length).toBeGreaterThan(0);
     expect(screen.queryByText(/Report damage or extra cleaning within 72 hours/)).not.toBeInTheDocument();
@@ -89,12 +89,12 @@ describe("Booking Policies tab", () => {
   it("caps the booking window at the Local Cooks limit and previews it before the save", async () => {
     const { ref, onRequestSave } = mount();
     expect(screen.getByText("Up to 60 days")).toBeInTheDocument();
-    const input = screen.getByRole("textbox", { name: "How far ahead chefs can book" });
+    const input = screen.getByRole("textbox", { name: "How far ahead customers can book" });
     fireEvent.change(input, { target: { value: "90" } });
     fireEvent.blur(input);
     expect(input).toHaveValue("60");
     const preview = within(rulesSection()).getByTestId("setting-change-preview");
-    expect(preview).toHaveTextContent("Chefs can book up to 60 days ahead.");
+    expect(preview).toHaveTextContent("Customers can book up to 60 days ahead.");
     expect(preview).toHaveTextContent("Bookings already made stay as they are.");
     expect(preview).toHaveTextContent("No upcoming bookings are affected.");
     fireEvent.click(saveRules());
@@ -105,7 +105,7 @@ describe("Booking Policies tab", () => {
 
   it("never lets the window go below one day", () => {
     mount();
-    const input = screen.getByRole("textbox", { name: "How far ahead chefs can book" });
+    const input = screen.getByRole("textbox", { name: "How far ahead customers can book" });
     fireEvent.change(input, { target: { value: "0" } });
     fireEvent.blur(input);
     expect(input).toHaveValue("1");
@@ -164,10 +164,10 @@ describe("Booking Policies tab", () => {
 
   it("works with an older server that has no window or buffer settings", async () => {
     const { ref } = mount({ ...workspace, effective: { cancellationPolicyHours: 24, minimumBookingWindowHours: 1, defaultDailyBookingLimit: 8 } });
-    expect(screen.queryByText("How far ahead chefs can book")).not.toBeInTheDocument();
+    expect(screen.queryByText("How far ahead customers can book")).not.toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: "Time free between bookings" })).not.toBeInTheDocument();
     fireEvent.change(screen.getByRole("textbox", { name: "Advance notice" }), { target: { value: "4" } });
-    expect(within(rulesSection()).getByTestId("setting-change-preview")).toHaveTextContent("Chefs must book at least 4 hours before the start.");
+    expect(within(rulesSection()).getByTestId("setting-change-preview")).toHaveTextContent("Customers must book at least 4 hours before the start.");
     expect(await ref.current!.saveAllChanges("kitchen")).toBe(true);
     expect(api.put).toHaveBeenCalledWith("/manager/kitchens/40/workspace-settings", { minimumBookingWindowHours: 4 });
   });

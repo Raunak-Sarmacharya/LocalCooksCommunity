@@ -596,7 +596,7 @@ export async function generateInvoicePDF(
 
         doc.rect(labelCol, yPos, 230, 1).fill('#000000');
         yPos += 8;
-        doc.font('Helvetica-Bold').fontSize(11).fillColor(textColor).text('Chef paid', labelCol, yPos);
+        doc.font('Helvetica-Bold').fontSize(11).fillColor(textColor).text('Customer paid', labelCol, yPos);
         doc.text(fmt(chefPaid), valueCol, yPos, { width: valueWidth, align: 'right' });
         yPos += 20;
 
@@ -905,7 +905,7 @@ export async function generateStorageInvoicePDF(
         doc.text('* You Receive is the actual amount Stripe transferred to your Connect account', 60, currentY);
         currentY += 12;
         if (serviceFee > 0) {
-          doc.text(`* Platform service fee ($${(serviceFee / 100).toFixed(2)}) was paid by the chef and kept by the platform`, 60, currentY);
+          doc.text(`* Platform service fee ($${(serviceFee / 100).toFixed(2)}) was paid by the customer and kept by the platform`, 60, currentY);
           currentY += 12;
         }
         if (taxAmount > 0 || displayTaxAmount > 0) {

@@ -78,8 +78,8 @@ export function originalSlots(rows: Pick<MoneyRows, 'booking' | 'extensions'>): 
 const slotMinutes = (slots: Slot[]) => slots.reduce((total, slot) => total + Math.max(0, toMin(slot.endTime) - toMin(slot.startTime)), 0);
 
 const EXTENSION_SOURCE: Record<string, { chef: string; manager: string }> = {
-  offer: { chef: 'accepted kitchen offer', manager: 'your offer, accepted by the chef' },
-  request: { chef: 'your request', manager: 'requested by the chef' },
+  offer: { chef: 'accepted kitchen offer', manager: 'your offer, accepted by the customer' },
+  request: { chef: 'your request', manager: 'requested by the customer' },
   extra_time: { chef: 'extra time charged after the session', manager: 'extra time you charged' },
   early_start: { chef: 'earlier start', manager: 'earlier start' },
 };

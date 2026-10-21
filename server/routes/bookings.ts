@@ -1771,7 +1771,7 @@ async function sendCancellationNotifications(
             ? 'You submitted a cancellation request. The kitchen manager will review it shortly.'
             : 'You cancelled this booking';
         const managerReason = isCancellationRequest
-            ? 'Chef requested cancellation — please review and process refund'
+            ? 'Customer requested cancellation — please review and process refund'
             : 'Cancelled by chef';
 
         // Email to chef
@@ -1845,7 +1845,7 @@ async function sendCancellationNotifications(
                     target: 'manager',
                     type: 'booking_cancellation_request',
                     title: 'Cancellation Request',
-                    message: `${chef.username || 'A chef'} has requested to cancel their booking at ${kitchen.name || 'your kitchen'}.`,
+                    message: `${chef.username || 'A customer'} has requested to cancel their booking at ${kitchen.name || 'your kitchen'}.`,
                     metadata: { bookingId, chefId: booking.chefId },
                 });
             } catch (e) { logger.error("Error creating in-app notification:", e); }

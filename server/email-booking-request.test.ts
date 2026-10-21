@@ -12,7 +12,7 @@ describe('booking request email alignment', () => {
     expect(email.html).toContain('class="email-title"');
     for (const content of [email.html, email.text]) {
       expect(content).toContain('KB-EST8DN');
-      expect(content).toContain(role === 'chef' ? 'only charged if they accept' : 'chef’s hold is released');
+      expect(content).toContain(role === 'chef' ? 'only charged if they accept' : 'customer’s hold is released');
       expect(content?.replace(/<style[\s\S]*?<\/style>/g, '').replace(/<[^>]+>/g, '')).not.toMatch(/Service fee|%|HST|\bTax\b/i);
       expect(content).toContain(role === 'chef' ? '/booking/112' : '/manager/booking/112');
       expect(content).not.toMatch(/24.{0,10}48|built-in chat|View Chef.s Profile|Pending Manager Confirmation/);

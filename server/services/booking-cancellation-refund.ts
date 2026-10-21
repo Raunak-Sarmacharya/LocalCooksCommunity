@@ -138,9 +138,9 @@ async function commitKitchenCancellation(bookingId: number, managerId: number, a
       capturedRace
         ? { kitchenCaused: true, roleText: {
           chef: { title: 'Your request was not accepted', message: `Your request was not accepted, but your card was charged before the hold could be released. Your full payment of ${dollars} is being refunded, including the card processing fee. Reference ${reference}. Your bank may take a few days to show it. Questions? Contact Local Cooks.` },
-          manager: { title: 'Request not accepted', message: 'The chef’s card was charged before the hold could be released, so Local Cooks is refunding them in full. Your payout for this booking is $0.00.' } } }
+          manager: { title: 'Request not accepted', message: 'The customer’s card was charged before the hold could be released, so Local Cooks is refunding them in full. Your payout for this booking is $0.00.' } } }
         : { kitchenCaused: true, cancellationNotice: { cause: 'kitchen', refundCents: expectedCents, reason: trimmed, kitchenShareRetainedCents: 0, reference }, roleText: { manager: {
-          title: 'You cancelled as the kitchen', message: 'The chef receives a full refund. Your payout for this booking is $0.00.' } } });
+          title: 'You cancelled as the kitchen', message: 'The customer receives a full refund. Your payout for this booking is $0.00.' } } });
     return { done: false, planId: plan.id };
   });
 }
@@ -513,7 +513,7 @@ export async function cancelChefBooking(bookingId: number, chefId: number, opera
     const dollars = (cents: number) => `$${(cents / 100).toFixed(2)}`;
     await queueBookingLifecycleEvent(tx, bookingId, 'cancelled', 'Booking cancelled',
       quoted.chefRefundCents ? `You cancelled your booking. Your refund is ${dollars(quoted.chefRefundCents)}; the ${dollars(quoted.feeRetainedCents)} card processing fee is kept. Your bank may take a few days to show it.` : 'You cancelled your booking. There is no refund under your booking’s saved policy.', actorId,
-      { cancellationNotice: { cause: 'chef', refundCents: quoted.chefRefundCents, alreadyRefundedCents: quoted.alreadyRefundedCents, feeCents: quoted.feeRetainedCents, kitchenShareRetainedCents: quoted.kitchenShareRetainedCents }, roleText: { manager: { title: 'Booking cancelled', message: `The chef cancelled. Your payout for this booking is ${dollars(quoted.kitchenShareRetainedCents)}.` } }, cancellationQuote: quoted });
+      { cancellationNotice: { cause: 'chef', refundCents: quoted.chefRefundCents, alreadyRefundedCents: quoted.alreadyRefundedCents, feeCents: quoted.feeRetainedCents, kitchenShareRetainedCents: quoted.kitchenShareRetainedCents }, roleText: { manager: { title: 'Booking cancelled', message: `The customer cancelled. Your payout for this booking is ${dollars(quoted.kitchenShareRetainedCents)}.` } }, cancellationQuote: quoted });
     return ctx.managerId;
   });
   await retryCancellationRefund(bookingId, managerId);

@@ -100,7 +100,7 @@ describe('booking email notice shell', () => {
   it.each(['staffed', 'mixed', 'legacy'] as const)('keeps the manager arrival guidance appropriate for %s', arrivalMode => {
     const email = emails.generateBookingConfirmationEmail({ ...fixture, isStaff: true, arrivalMode, reservationChefName: 'Alex' });
     expect(email.text).toContain('Alex');
-    expect(email.text).toContain(arrivalMode === 'staffed' ? 'share it with the chef in person'
+    expect(email.text).toContain(arrivalMode === 'staffed' ? 'share it with the customer in person'
       : arrivalMode === 'mixed' ? 'Arrival method varies by visit' : 'Review the arrival arrangements');
     expect(email.text).not.toContain('918273');
   });

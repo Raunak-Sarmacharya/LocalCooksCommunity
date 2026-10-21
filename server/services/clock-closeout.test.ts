@@ -84,7 +84,7 @@ describe('closeout persistence and reads (mocked database/providers)', () => {
     await db.transaction(tx => persistBookingCloseout(10, tx));
     const call = vi.mocked(queueBookingLifecycleEvent).mock.calls.find(args => args[2] === 'service_ended')!;
     const roleText = (call[6] as any).roleText;
-    expect(roleText.manager).toEqual({ title: 'No check-in from the chef', message: 'Tue, Oct 13, 10:00 a.m. Did they come? Tell us by Oct 14, 11:00 a.m.' });
+    expect(roleText.manager).toEqual({ title: 'No check-in from the customer', message: 'Tue, Oct 13, 10:00 a.m. Did they come? Tell us by Oct 14, 11:00 a.m.' });
     expect(roleText.chef).toEqual({ title: 'No check-in recorded',
       message: 'We didn\u2019t see a check-in for your booking at Harbour Kitchen (Oct 13, 10:00 a.m.). If you were there, let us know.' });
   });

@@ -131,7 +131,7 @@ it.each(['confirmed', 'cancelled'])('shows the projected kitchen remainder and r
 });
 
 it('combines reference search, inclusive dates and status, and exports only the shown rows', () => {
-  mount([row({ id: 91, referenceCode: 'KB-ABC', chefName: 'Ada, "Chef"', payout: { timing: 'after_closeout', status: 'scheduled', holdReason: null, expectedAt: null, sentAt: null, amountCents: 4800 } }),
+  mount([row({ id: 91, referenceCode: 'KB-ABC', chefName: 'Ada, "Customer"', payout: { timing: 'after_closeout', status: 'scheduled', holdReason: null, expectedAt: null, sentAt: null, amountCents: 4800 } }),
     row({ id: 92, referenceCode: 'KB-DEF', chefName: 'Other Chef' }), row({ id: 93, referenceCode: 'KB-GHI', status: 'pending' })]);
   fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'kb-abc' } });
   fireEvent.change(screen.getByLabelText('From date'), { target: { value: '2026-10-20' } });
@@ -141,8 +141,8 @@ it('combines reference search, inclusive dates and status, and exports only the 
   fireEvent.click(screen.getByRole('button', { name: 'Export CSV' }));
   const csv = vi.mocked(downloadCSV).mock.lastCall![0];
   expect(csv.split('\n')).toHaveLength(2);
-  expect(csv.split('\n')[0]).toBe('"Date","Day","Chef","Kitchen","Status","Total","Refunded","You receive"');
-  expect(csv).toContain('"Ada, ""Chef"""');
+  expect(csv.split('\n')[0]).toBe('"Date","Day","Customer","Kitchen","Status","Total","Refunded","You receive"');
+  expect(csv).toContain('"Ada, ""Customer"""');
   expect(csv).toContain('"56.50","0.00","48.00"');
   expect(csv).not.toContain('Other Chef');
   fireEvent.change(screen.getByLabelText('From date'), { target: { value: '2026-10-21' } });

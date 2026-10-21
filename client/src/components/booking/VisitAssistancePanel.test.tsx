@@ -16,7 +16,7 @@ function enterEvidence(value = '2026-10-02T17:00') {
   fireEvent.change(group.getByRole('textbox'), { target: { value: date } });
   fireEvent.click(group.getByRole('combobox'));
   fireEvent.click(screen.getByRole('option', { name: formatTime(time) }));
-  fireEvent.change(screen.getByLabelText(/Note to/), { target: { value: 'Chef reported leaving after upload failed' } });
+  fireEvent.change(screen.getByLabelText(/Note to/), { target: { value: 'Customer reported leaving after upload failed' } });
 }
 describe('manager assistance consumer', () => {
   beforeEach(() => { vi.stubGlobal('fetch', fetchMock); fetchMock.mockReset(); });
@@ -38,7 +38,7 @@ describe('manager assistance consumer', () => {
     enterEvidence(); fetchMock.mockResolvedValueOnce({ ok: false, json: async () => ({ error: 'Storage changed; refresh before assisting' }) });
     fireEvent.click(screen.getByRole('button', { name: 'Save departure time' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Your note is still here');
-    expect(screen.getByLabelText(/Note to/)).toHaveValue('Chef reported leaving after upload failed');
+    expect(screen.getByLabelText(/Note to/)).toHaveValue('Customer reported leaving after upload failed');
     expect(onSaved).not.toHaveBeenCalled();
     fireEvent.click(screen.getByLabelText('What happened?'));
     fireEvent.click(screen.getByRole('option', { name: 'Confirm storage collected' }));

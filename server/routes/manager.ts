@@ -7733,7 +7733,7 @@ router.post(
 
       res.json({
         success: true,
-        message: "Claim submitted to chef for response",
+        message: "Claim submitted to customer for response",
       });
     } catch (error) {
       logger.error("Error submitting damage claim:", error);
@@ -7934,7 +7934,7 @@ router.post(
         return res.status(400).json({
           error: result.error,
           message:
-            "Failed to charge damage claim. The chef may need to update their payment method.",
+            "Failed to charge damage claim. The customer may need to update their payment method.",
         });
       }
 

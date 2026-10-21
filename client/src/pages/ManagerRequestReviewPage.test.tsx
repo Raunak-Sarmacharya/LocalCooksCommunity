@@ -47,7 +47,7 @@ describe('kitchen request review page', () => {
     mount();
     const accept = await screen.findByTestId('rr-accept');
     await act(async () => { fireEvent.click(accept); });
-    expect(screen.getByTestId('rr-accept')).toHaveTextContent('Charging the chef’s card…');
+    expect(screen.getByTestId('rr-accept')).toHaveTextContent('Charging the customer’s card…');
     expect(screen.getByTestId('rr-accept')).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Decline' })).toBeDisabled();
     await act(async () => { release(); });
@@ -58,7 +58,7 @@ describe('kitchen request review page', () => {
     expect(await screen.findByRole('heading', { name: 'Review request from Alex' })).toBeInTheDocument();
     expect(screen.getAllByTestId('rr-day')).toHaveLength(2);
     const money = screen.getByTestId('rr-money');
-    expect(money).toHaveTextContent('The chef pays$183.00');
+    expect(money).toHaveTextContent('The customer pays$183.00');
     expect(money).toHaveTextContent('Your booking amount (with HST)$172.50');
     expect(money).toHaveTextContent('Est. card processing fee−$7.07');
     expect(money).toHaveTextContent('Est. you receive$165.43');
@@ -71,7 +71,7 @@ describe('kitchen request review page', () => {
     mount();
     await screen.findAllByTestId('rr-day');
     fireEvent.click(screen.getAllByRole('checkbox')[1]);
-    await waitFor(() => expect(screen.getByTestId('rr-money')).toHaveTextContent('The chef pays$183.00$91.50'));
+    await waitFor(() => expect(screen.getByTestId('rr-money')).toHaveTextContent('The customer pays$183.00$91.50'));
     expect(h.calls.find(call => call.method === 'POST')?.body).toEqual({ equipmentBookingIds: [], declinedVisitIds: [2] });
     expect(screen.getByTestId('rr-changes-note')).toHaveTextContent('Alex must approve these changes by');
     // The last kept day can't be declined too.
@@ -106,7 +106,7 @@ describe('kitchen request review page', () => {
     fireEvent.click(screen.getByRole('radio', { name: /Decline and suggest other times/ }));
     // Suggest: declines (with the flag the chef's notice uses), then opens the pre-filled invitation.
     expect(screen.getByRole('button', { name: 'Decline and choose other times' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('radio', { name: /^Decline\s*The chef/ }));
+    fireEvent.click(screen.getByRole('radio', { name: /^Decline\s*The customer/ }));
     fireEvent.change(screen.getByLabelText('Message to Alex (optional)'), { target: { value: 'Closed for repairs that week.' } });
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Decline request' })); });
     await waitFor(() => expect(h.navigate).toHaveBeenCalled());

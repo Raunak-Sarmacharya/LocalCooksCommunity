@@ -427,7 +427,7 @@ export async function requestKitchenCheckin(
     if (changed.length) await captureKitchenDuties(tx, bookingId, duties);
     if (changed.length) await consumeForArrival(tx, gate, arrival);
     if (changed.length) await queueBookingLifecycleEvent(tx, bookingId, 'checkin_recorded', 'Arrival confirmed',
-      'Arrival is confirmed. Open the booking to see the chef’s checklist and photos.', chefId,
+      'Arrival is confirmed. Open the booking to see the customer’s checklist and photos.', chefId,
       { recipientPolicy: 'participants', emailRecipientPolicy: 'manager' });
     return changed;
     });
@@ -564,7 +564,7 @@ export async function requestKitchenCheckout(
       // Re-derive the saved clock (inspection deadline, payout timing) from the late departure.
       if (lateDeparture) await (await import('./clock-closeout')).persistBookingCloseout(bookingId, tx);
       await queueBookingLifecycleEvent(tx, bookingId, 'checkout_requested', 'Ready for kitchen inspection',
-        'The chef has requested checkout. The kitchen can now review the photos and checklist. Open the booking for the inspection deadline.', chefId,
+        'The customer has requested checkout. The kitchen can now review the photos and checklist. Open the booking for the inspection deadline.', chefId,
         { recipientPolicy: 'participants', emailRecipientPolicy: 'manager' });
     }
     return changed;

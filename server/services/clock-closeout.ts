@@ -196,7 +196,7 @@ export async function persistBookingCloseout(bookingId: number, tx: Transaction,
           serviceEndedAt: new Date(Date.parse(visit.scheduledEndAt) + saved.serviceEndGraceMinutes * 60000).toISOString(),
           roleText: visit.attendance === 'unknown' ? await noArrivalRoleText(row, { visits: [visit] }) : checkedIn ? {
             chef: { title: 'Your booked time has ended', message: 'You are still checked in for this visit. Please check out now.' },
-            manager: { title: 'Booked time ended', message: 'The chef has not checked out for this visit. Open it to record their departure.' } } : undefined });
+            manager: { title: 'Booked time ended', message: 'The customer has not checked out for this visit. Open it to record their departure.' } } : undefined });
     }
   }
   const closedInspections = projection.visits.filter(visit => next.inspections?.[visit.key]
@@ -217,7 +217,7 @@ export async function persistBookingCloseout(bookingId: number, tx: Transaction,
           ...(noArrival ? { noArrival: true } : {}),
           // A chef still checked in is never told the visit is "complete": they are asked to check out now.
           roleText: noArrivalText ?? (stillCheckedIn ? { chef: { title: 'Your booked time has ended', message: `Your booking (${reference}) has ended and you’re still checked in. Please check out now — the kitchen may charge for the extra time.` },
-            manager: { title: 'Booked time ended — not checked out', message: `The booked time for ${reference} has ended and the chef hasn’t checked out. Message them, or record when they left; you can then charge for the extra time.` } }
+            manager: { title: 'Booked time ended — not checked out', message: `The booked time for ${reference} has ended and the customer hasn’t checked out. Message them, or record when they left; you can then charge for the extra time.` } }
             : { chef: { title: 'Your visit is complete', message: `Your visit (${reference}) is complete. Open the booking for a summary or to report a problem.` },
             manager: { title: 'A visit has ended', message: `The visit for ${reference} has ended. Review the checkout photos and notes before the inspection deadline.` } }),
           attendance: projection.visits.map(visit => ({ key: visit.key, visitId: visit.visitId, localDate: visit.localDate, attendance: visit.attendance })) });
@@ -290,7 +290,7 @@ export async function noArrivalRoleText(row: { booking: { chefId: number | null 
     const { getUserDisplayName } = await import('../utils/user-display');
     name = row.booking.chefId ? await getUserDisplayName(row.booking.chefId, 'chef').catch(() => '') : '';
   }
-  const chef = name && name !== 'A chef' ? name : 'the chef';
+  const chef = name && name !== 'A chef' ? name : 'the customer';
   return {
     manager: { title: `No check-in from ${chef}`, message: `${stop(noArrivalClock(first.scheduledStartAt, timezone, true))} Did they come? Tell us by ${stop(noArrivalClock(deadline, timezone, false))}` },
     chef: { title: 'No check-in recorded', message: `We didn’t see a check-in for your booking at ${row.kitchenName} (${noArrivalClock(first.scheduledStartAt, timezone, false)}). If you were there, let us know.` },

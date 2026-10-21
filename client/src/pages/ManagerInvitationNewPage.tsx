@@ -460,7 +460,7 @@ export default function ManagerInvitationNewPage() {
           </form>
           <aside className="space-y-4 lg:sticky lg:top-4 lg:self-start">
             <section className="space-y-3 rounded-2xl border bg-card p-5" data-testid="invitation-preview" aria-live="polite">
-              <h2 className="font-semibold">{t('invSummary')}</h2>
+              <h2 className="font-semibold">{t('invSummaryKitchen')}</h2>
               {!draft ? <p className="text-sm text-muted-foreground">{t('invSummaryEmpty')}</p>
                 : previewError ? <p role="alert" className="text-sm text-destructive">{previewError}</p>
                 : !preview ? <Loader2 className="h-5 w-5 animate-spin" aria-label={t('invLoading')} />

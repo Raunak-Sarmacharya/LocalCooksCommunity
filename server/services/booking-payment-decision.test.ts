@@ -306,8 +306,8 @@ describe('durable booking capture recovery (isolated Stripe and transaction mode
     });
     it('the kitchen cannot confirm (or re-propose) while the chef has not answered', async () => {
       waitingProposal();
-      await expect(decideAuthorizedBooking(1, 'confirmed', [], [], 2)).rejects.toThrow('Waiting for the chef');
-      await expect(decideAuthorizedBooking(1, 'confirmed', [], [{ equipmentBookingId: 2, action: 'cancelled' }], 2)).rejects.toThrow('Waiting for the chef');
+      await expect(decideAuthorizedBooking(1, 'confirmed', [], [], 2)).rejects.toThrow('Waiting for the customer');
+      await expect(decideAuthorizedBooking(1, 'confirmed', [], [{ equipmentBookingId: 2, action: 'cancelled' }], 2)).rejects.toThrow('Waiting for the customer');
       expect(mocks.capture).not.toHaveBeenCalled();
     });
     it('a change request (replacement) closes a waiting offer as replaced: no "New total declined" notice', async () => {

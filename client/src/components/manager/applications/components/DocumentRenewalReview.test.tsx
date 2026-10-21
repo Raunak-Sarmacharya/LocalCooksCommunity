@@ -29,9 +29,9 @@ describe('manager renewal review', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Decline renewal' }));
     const send = screen.getByRole('button', { name: 'Send reason and decline' });
     expect(send).toBeDisabled();
-    fireEvent.change(screen.getByLabelText('Reason for the chef (required)'), { target: { value: '   ' } });
+    fireEvent.change(screen.getByLabelText('Reason for the customer (required)'), { target: { value: '   ' } });
     expect(send).toBeDisabled();
-    fireEvent.change(screen.getByLabelText('Reason for the chef (required)'), { target: { value: '  The expiry date is cut off.  ' } });
+    fireEvent.change(screen.getByLabelText('Reason for the customer (required)'), { target: { value: '  The expiry date is cut off.  ' } });
     fireEvent.click(send);
     await waitFor(() => expect(onReview).toHaveBeenCalledWith('rejected', 'The expiry date is cut off.'));
   });

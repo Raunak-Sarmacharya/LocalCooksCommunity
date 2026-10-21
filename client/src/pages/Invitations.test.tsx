@@ -61,7 +61,7 @@ describe('kitchen: invite to book', () => {
       [/kitchen-rules/, rules], [/\/slots\?date=/, overnight], [/invitations\/preview/, { pricing, expiresAt: '2026-10-18T13:00:00Z', available: true, warnings: [] }],
       [/\/api\/manager\/invitations\?/, { invitations: [] }], [/\/api\/manager\/invitations$/, invitation()]];
     mount(<ManagerInvitationNewPage />);
-    await waitFor(() => expect(screen.getByLabelText('Chef')).toHaveTextContent('Sam Chef'));
+    await waitFor(() => expect(screen.getByLabelText('Customer')).toHaveTextContent('Sam Chef'));
     await pickDate('Date', 'October 27');
     fireEvent.click(screen.getByRole('radio', { name: '$ off' }));
     fireEvent.change(screen.getByLabelText('Dollars off the kitchen time'), { target: { value: '10' } });
@@ -80,7 +80,7 @@ describe('kitchen: invite to book', () => {
       [/kitchen-rules/, rules], [/\/slots\?date=/, overnight], [/invitations\/preview/, { pricing, expiresAt: '2026-10-18T13:00:00Z', available: true, warnings: [] }],
       [/\/api\/manager\/invitations\?/, { invitations: [] }]];
     mount(<ManagerInvitationNewPage />);
-    await waitFor(() => expect(screen.getByLabelText('Chef')).toHaveTextContent('Sam Chef'));
+    await waitFor(() => expect(screen.getByLabelText('Customer')).toHaveTextContent('Sam Chef'));
     expect(screen.getByLabelText('Start time')).toBeDisabled();
     await pickDate('Date', 'October 26');
     await waitFor(() => expect(screen.getByLabelText('Start time')).toBeEnabled());
@@ -99,7 +99,7 @@ describe('kitchen: invite to book', () => {
       [/kitchen-rules/, rules], [/\/slots\?date=/, overnight], [/invitations\/preview/, { pricing, expiresAt: '2026-10-18T13:00:00Z', available: false, unavailableReason: 'Sam Chef already has a request for this time.', warnings: [] }],
       [/\/api\/manager\/invitations\?/, { invitations: [] }]];
     mount(<ManagerInvitationNewPage />);
-    await waitFor(() => expect(screen.getByLabelText('Chef')).toHaveTextContent('Sam Chef'));
+    await waitFor(() => expect(screen.getByLabelText('Customer')).toHaveTextContent('Sam Chef'));
     await pickDate('Date', 'October 27');
     expect(await screen.findByText('Sam Chef already has a request for this time.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Send invitation' })).toBeDisabled();
@@ -118,7 +118,7 @@ describe('kitchen: invite to book', () => {
       [/\/api\/manager\/invitations\?/, { invitations: [] }],
       [/\/api\/manager\/invitations$/, invitation({ dayCount: 2, dated: true, date: '2026-10-27' })]];
     mount(<ManagerInvitationNewPage />);
-    await waitFor(() => expect(screen.getByLabelText('Chef')).toHaveTextContent('Sam Chef'));
+    await waitFor(() => expect(screen.getByLabelText('Customer')).toHaveTextContent('Sam Chef'));
     fireEvent.click(await screen.findByRole('gridcell', { name: /Tuesday, October 27, 2026/ }));
     fireEvent.click(await screen.findByRole('gridcell', { name: /Thursday, October 29, 2026/ }));
     const first = await screen.findByTestId('invitation-day-2026-10-27');

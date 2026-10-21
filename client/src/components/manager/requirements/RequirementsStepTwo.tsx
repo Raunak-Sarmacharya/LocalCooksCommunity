@@ -30,12 +30,12 @@ const ESTABLISHMENT_KEY = 'tier2_food_establishment_cert_required';
 const isComplianceField = (key: keyof LocationRequirements) => key === SAFETY_KEY || key === ESTABLISHMENT_KEY;
 const COMPLIANCE_HELP = {
   [SAFETY_KEY]: {
-    text: 'Newfoundland and Labrador requires current food safety training to be present at covered licensed food premises. We ask chefs for their certificate and expiry date to help kitchens check coverage.',
+    text: 'Newfoundland and Labrador requires current food safety training to be present at covered licensed food premises. We ask customers for their certificate and expiry date to help kitchens check coverage.',
     url: 'https://www.gov.nl.ca/hcs/publichealth/envhealth/foodsafetytraining/',
     link: 'NL food safety training rules',
   },
   [ESTABLISHMENT_KEY]: {
-    text: 'A Food Establishment Licence applies to the licensed person and premises. Ask the chef for their licence for this kitchen when their operation requires one.',
+    text: 'A Food Establishment Licence applies to the licensed person and premises. Ask the customer for their licence for this kitchen when their operation requires one.',
     url: 'https://www.gov.nl.ca/gs/licences/env-health/food/premises/',
     link: 'NL Food Establishment Licence',
   },
@@ -112,7 +112,7 @@ export function RequirementsStepTwo({
             <AlertDialogTitle>Remove this kitchen requirement?</AlertDialogTitle>
             <AlertDialogDescription>
               {pendingDisable && COMPLIANCE_HELP[pendingDisable as typeof SAFETY_KEY | typeof ESTABLISHMENT_KEY]?.text}
-              {' '}We strongly recommend keeping this document in the chef application.
+              {' '}We strongly recommend keeping this document in the customer application.
             </AlertDialogDescription>
           </AlertDialogHeader>
           {pendingDisable && <a href={COMPLIANCE_HELP[pendingDisable as typeof SAFETY_KEY | typeof ESTABLISHMENT_KEY].url} target="_blank" rel="noopener noreferrer" className="text-sm text-primary underline">Read the Newfoundland and Labrador government website</a>}

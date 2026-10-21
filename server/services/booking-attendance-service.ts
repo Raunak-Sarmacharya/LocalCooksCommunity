@@ -144,7 +144,7 @@ export async function recordBookingAttendance(bookingId: number, actor: Attendan
       await tx.update(kitchenBookings).set({ feedbackRequestedAt: now }).where(eq(kitchenBookings.id, bookingId));
     // No status/completion/checkout/financial/inventory mutation here.
     const title = input.action === 'report_no_show' ? 'No-show reported' : input.action === 'report_attended' ? 'Visit confirmed as attended' : 'Visit update withdrawn';
-    const chefName = context.booking.chefId ? await getUserDisplayName(context.booking.chefId, 'chef', tx) : 'The chef';
+    const chefName = context.booking.chefId ? await getUserDisplayName(context.booking.chefId, 'chef', tx) : 'The customer';
     const by = actor.role === 'manager' ? context.kitchenName : 'Local Cooks';
     const shared = message ? ` Note from ${by}: ${withFullStop(message)}` : '';
     // The base text is what Local Cooks (admins) read; chef and kitchen get their own wording through roleText.

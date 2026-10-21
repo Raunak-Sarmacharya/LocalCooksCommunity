@@ -53,7 +53,7 @@ describe('open change on the booking page', () => {
     render(<KitchenBookingChanges bookingId={10} manager counterpart="Sam Chef" onChanged={async () => {}} />);
     const row = await screen.findByTestId('booking-change-open');
     expect(row).toHaveTextContent(/Sam Chef asked to move this booking to/);
-    expect(row).toHaveTextContent(/The chef pays \$30\.50 more if you approve\./);
+    expect(row).toHaveTextContent(/The customer pays \$30\.50 more if you approve\./);
     expect(screen.getByTestId('change-kitchen-payout')).toHaveTextContent('Your payout goes up by $28.75, before the card processing fee.');
     expect(row).toHaveTextContent(/Their refund deadline would move to/);
     fireEvent.click(screen.getByRole('button', { name: 'Decline' }));

@@ -23,7 +23,7 @@ it('previews without saving a toggle and confirms only turning automatic approva
   expect(api.put).toHaveBeenCalledWith('/manager/kitchens/1/session-extension-settings', { autoApprove: true });
 });
 it('keeps the platform reason and requires confirmation before pausing', async () => {
-  mount(true); await screen.findByText(/On: chefs/);
+  mount(true); await screen.findByText(/On: customers/);
   fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Maintenance' } });
   fireEvent.click(screen.getByRole('button', { name: 'Pause extra time' }));
   expect(api.put).not.toHaveBeenCalled(); fireEvent.click(screen.getByRole('checkbox'));

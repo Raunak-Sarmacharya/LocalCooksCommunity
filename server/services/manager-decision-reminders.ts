@@ -26,7 +26,7 @@ export async function currentManagerDecisionReminders(tx: Parameters<Parameters<
   const deadline = responseDeadlineForBooking(row.booking, timezone, timing.managerResponseBufferHours);
   if (now >= deadline) return [];
   const [manager] = await tx.select().from(users).where(eq(users.id, row.location.managerId)).limit(1);
-  const chef = row.booking.chefId ? await getUserDisplayName(row.booking.chefId, 'chef', tx) : 'The chef';
+  const chef = row.booking.chefId ? await getUserDisplayName(row.booking.chefId, 'chef', tx) : 'The customer';
   const start = (await import('@shared/booking-response-deadline')).bookingFirstStart(row.booking, timezone);
   const deadlineText = emailLocalDateTimeSentence(deadline, timezone);
   const title = `Reminder: respond to ${chef}'s request by ${deadlineText}`;

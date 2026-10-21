@@ -1719,7 +1719,7 @@ async function handlePaymentIntentSucceeded(
             // Display name only; never show the chef's email address as a name.
             const { getUserDisplayName } = await import("../utils/user-display");
             const displayName = booking.chefId ? await getUserDisplayName(booking.chefId, "chef").catch(() => "") : "";
-            const chefName = displayName && displayName !== "A chef" && !displayName.includes("@") ? displayName : "The chef";
+            const chefName = displayName && displayName !== "A chef" && !displayName.includes("@") ? displayName : "The customer";
             const { paymentTransactions: paymentRows } = await import("@shared/schema");
             const [paid] = await db.select({ timing: paymentRows.payoutTiming }).from(paymentRows)
               .where(eq(paymentRows.paymentIntentId, paymentIntent.id)).limit(1);

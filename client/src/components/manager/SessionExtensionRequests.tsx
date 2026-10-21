@@ -25,20 +25,20 @@ export function SessionExtensionRequests() {
     setBusy(`${action}-${item.id}`); setMessage(null)
     try {
       await decideExtension(item.bookingId, item.id, { action })
-      setMessage({ id: item.id, text: action !== "decline" ? t("sxrApproved", { defaultValue: "Approved. {chef} has more time.", chef: item.chefName || t("sxrChef", { defaultValue: "The chef" }) })
+      setMessage({ id: item.id, text: action !== "decline" ? t("sxrApproved", { defaultValue: "Approved. {chef} has more time.", chef: item.chefName || t("sxrChef", { defaultValue: "The customer" }) })
         : t("sxrDeclined", { defaultValue: "Declined. Their card hold is released." }) })
     } catch (error) { setMessage({ id: item.id, text: error instanceof Error ? error.message : t("sxrFailed", { defaultValue: "That didn’t go through. Open the booking to try again." }), error: true }) }
     finally { setBusy(null); await refetch() }
   }
   return (
     <section className="space-y-2 rounded-xl border border-primary/40 p-4" aria-labelledby="extension-requests-title" data-testid="extension-requests">
-      <h2 id="extension-requests-title" className="flex items-center gap-2 text-base font-semibold"><Clock className="h-4 w-4" aria-hidden />{t("sxrTitle", { defaultValue: "Chefs asking for more time" })}</h2>
+      <h2 id="extension-requests-title" className="flex items-center gap-2 text-base font-semibold"><Clock className="h-4 w-4" aria-hidden />{t("sxrTitle", { defaultValue: "Customers asking for more time" })}</h2>
       {requests.map(item => {
         const zone = item.timezone || "America/St_Johns"
         return (
           <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 border-t pt-2">
             <p className="text-sm">{t("sxrLine", { defaultValue: "{chef} asked for {minutes} more minutes at {kitchen} (until {time}) · you’d get {payout}",
-              chef: item.chefName || t("sxrChef", { defaultValue: "The chef" }), minutes: item.minutes, kitchen: item.kitchenName,
+              chef: item.chefName || t("sxrChef", { defaultValue: "The customer" }), minutes: item.minutes, kitchen: item.kitchenName,
               time: kitchenClock(item.endAt, zone, locale), payout: money(item.kitchenGrossCents ?? 0, "CAD", locale) })}
               {" "}<Link href={`/manager/booking/${item.bookingId}`} className="underline underline-offset-4">{t("sxrOpen", { defaultValue: "Open booking" })}</Link></p>
             <div className="flex gap-2">

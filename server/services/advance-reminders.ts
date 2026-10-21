@@ -273,7 +273,7 @@ export async function currentReminders(tx: Transaction, source: ReminderSource, 
       const managerLocale = manager.preferredLocale;
       const managerMessage = facts + tEmail(managerLocale, mode === 'self' ? 'managerArrivalSelf' : mode === 'staffed' ? 'managerArrivalStaffed' : 'managerArrivalLegacy', { chef: name || 'The chef' });
       const managerArrival = { ...arrival, recipientId: manager.id, email: manager.username || '', role: 'manager' as const,
-        recipientName: undefined, visitorName: name || 'The chef', locale: managerLocale,
+        recipientName: undefined, visitorName: name || 'The customer', locale: managerLocale,
         path: `/manager/booking/${id}`, message: managerMessage, arrivalNotes: undefined, departureNotes: undefined,
         revision: hash([block.start.toISOString(), block.end.toISOString(), timezone, manager.username]) };
       // One notice, some minutes after the booked start, while the chef still has not checked in. The revision leaves out the
@@ -418,7 +418,7 @@ function bookingReminderSubject(r: Reminder) {
     end: formatVisitClock(new Date(r.end), r.timezone), kitchen: r.kitchenName || r.title });
   const time = new Intl.DateTimeFormat(r.locale || 'en-CA', { timeZone: r.timezone, hour: 'numeric', minute: '2-digit' }).format(new Date(r.start));
   if (r.kind === 'manager_no_checkin') return tEmail(r.locale, 'managerNoCheckinSubject', { chef: r.visitorName || tEmail(r.locale, 'payoutChefFallback'), kitchen: r.kitchenName || r.title });
-  if (r.role === 'manager' && r.kind === 'arrival') return tEmail(r.locale, 'managerArrivalSubject', { chef: r.visitorName || 'The chef', time, kitchen: r.kitchenName || r.title });
+  if (r.role === 'manager' && r.kind === 'arrival') return tEmail(r.locale, 'managerArrivalSubject', { chef: r.visitorName || 'The customer', time, kitchen: r.kitchenName || r.title });
   if (r.kind === 'preparation') return tEmail(r.locale, 'visitPreparationSubject', { kitchen: r.kitchenName || r.title });
   if (r.kind === 'arrival') return tEmail(r.locale, 'visitArrivalSubject', { time, kitchen: r.kitchenName || r.title });
   const titles: Record<Reminder['kind'], string> = { preparation: 'Prepare for your kitchen visit', arrival: 'Your kitchen visit is coming up',
@@ -480,13 +480,13 @@ export function renderBookingVisitReminder(r: Reminder, url = `${getAppBaseUrl(r
 
 export function renderTourReminder(r: Reminder, url = `${getAppBaseUrl(r.role === 'chef' ? 'chef' : 'kitchen')}${r.path}`, _now = Date.now()) {
   const isManager = r.role === 'manager';
-  const visitor = r.visitorName || 'The chef';
+  const visitor = r.visitorName || 'The customer';
   const heading = isManager
     ? r.kind === 'departure' ? 'The kitchen tour is ending soon' : r.kind === 'preparation' ? `${visitor} is scheduled to tour your kitchen` : `${visitor} is due to arrive soon`
     : r.kind === 'departure' ? 'Your kitchen tour is ending soon' : r.kind === 'preparation' ? 'Get ready for your kitchen tour' : 'Your kitchen tour is coming up';
   return renderTransactionalEmail({ to: r.email, recipientName: r.recipientName || (isManager ? 'Manager' : 'Chef'),
     tour: { tourId: r.reservationId, tourDate: r.start, durationMinutes: (Date.parse(r.end) - Date.parse(r.start)) / 60000 },
-    heading, subject: `${isManager ? r.kind === 'departure' ? 'Tour wrap-up reminder' : r.kind === 'preparation' ? 'Upcoming chef visit' : 'Your visiting chef is due soon' : r.kind === 'departure' ? 'Before you leave' : r.kind === 'preparation' ? 'Prepare for your visit' : 'Your kitchen tour is coming up'} · ${r.title} · TOUR-${r.reservationId}`,
+    heading, subject: `${isManager ? r.kind === 'departure' ? 'Tour wrap-up reminder' : r.kind === 'preparation' ? 'Upcoming customer visit' : 'Your visitor is due soon' : r.kind === 'departure' ? 'Before you leave' : r.kind === 'preparation' ? 'Prepare for your visit' : 'Your kitchen tour is coming up'} · ${r.title} · TOUR-${r.reservationId}`,
     message: r.message, facts: [], sections: [{ title: isManager ? 'Tour details' : 'Your visit', facts: [
       ...(r.kitchenName ? [{ label: 'Kitchen', value: r.kitchenName }] : []),
       ...(r.locationName ? [{ label: 'Location', value: r.locationName }] : []),
@@ -496,7 +496,7 @@ export function renderTourReminder(r: Reminder, url = `${getAppBaseUrl(r.role ==
       { label: 'Reference', value: `TOUR-${r.reservationId}` }] },
       { title: isManager ? 'Coordinate the visit' : 'Arrival and departure', facts: [
       ...(r.address ? [{ label: 'Address', value: r.address, url: 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(r.address) }] : []),
-      ...(r.contactEmail ? [{ label: isManager ? 'Chef contact' : 'Arrival contact', value: r.contactEmail }] : []),
+      ...(r.contactEmail ? [{ label: isManager ? 'Customer contact' : 'Arrival contact', value: r.contactEmail }] : []),
       ...(r.meetingNotes ? [{ label: 'Manager notes', value: r.meetingNotes }] : []),
       ...(r.arrivalNotes ? [{ label: 'Arrival instructions', value: r.arrivalNotes }] : []),
       ...(r.departureNotes ? [{ label: 'Departure instructions', value: r.departureNotes }] : [])] }],

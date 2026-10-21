@@ -319,7 +319,7 @@ function ChefPreviewDialog({
             {stage === "checkin" ? mt("storageCheckInTitle") : mt("storageCheckOutTitle")}
           </DialogTitle>
           <DialogDescription>
-            This is exactly what the chef sees — updates as you edit.
+            This is exactly what the customer sees — updates as you edit.
           </DialogDescription>
         </DialogHeader>
 
@@ -420,7 +420,7 @@ function ChefPreviewDialog({
             {stage === "checkin" ? mt("submitCheckIn") : mt("submitCheckout")}
           </Button>
           <p className="text-[10px] text-center text-muted-foreground">
-            Chef cannot submit until all items are checked and all photos are
+            Customer cannot submit until all items are checked and all photos are
             uploaded.
           </p>
         </div>
@@ -531,7 +531,7 @@ function StageHeader({
             htmlFor={`storage-${stage}-instructions`}
             className="text-xs font-medium text-muted-foreground"
           >
-            Instructions for Chefs{" "}
+            Instructions for Customers{" "}
             <span className="font-normal">{mt("optionalLabel")}</span>
           </Label>
           <Textarea

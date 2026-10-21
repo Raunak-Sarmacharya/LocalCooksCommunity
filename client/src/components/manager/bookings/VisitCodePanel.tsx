@@ -166,7 +166,7 @@ export function VisitCodePanel({ bookingId, customerName, kitchenName, timezone,
       : target.consumedMethod === "assisted" ? "Checked in {time}, added by the kitchen" : "Checked in {time} with the check-in code"
     return t(key, { defaultValue: fallback, time })
   }
-  const chefName = customerName || t("visitCodeChefFallback", { defaultValue: "the chef" })
+  const chefName = customerName || t("visitCodeChefFallback", { defaultValue: "the customer" })
   const visitName = (target: ManagerVisitCodeState) => {
     const visit = target.visitId ? visits.find(row => row.id === target.visitId) : undefined
     return visit?.visitDate ? t('mdDayOf', { number: visits.findIndex(row => row.id === visit.id) + 1, total: visits.length }) : visit ? t("visitCodeVisitN", { defaultValue: "Visit {number}", number: visit.blockIndex + 1 }) : ""
@@ -246,9 +246,9 @@ export function VisitCodePanel({ bookingId, customerName, kitchenName, timezone,
     : modeSelf ? t("scpSelfTitle", { chef: chefName })
       : t("visitCodeStaffedTitle", { defaultValue: "Switch back to staffed check-in?" })
   const dialogBody = !action ? "" : action.kind === "issue"
-    ? t("visitCodeIssueBody", { defaultValue: "The current code stops working immediately. Share the new code with the chef when they arrive." })
-    : modeSelf ? t("visitCodeSelfBody", { defaultValue: "The chef will be able to confirm their arrival without staff and without a code. The kitchen must provide access instructions for this visit. The current code stops working." })
-      : t("visitCodeStaffedBody", { defaultValue: "Self check-in is turned off and a new check-in code is issued. The chef will need the code from kitchen staff." })
+    ? t("visitCodeIssueBody", { defaultValue: "The current code stops working immediately. Share the new code with the customer when they arrive." })
+    : modeSelf ? t("visitCodeSelfBody", { defaultValue: "The customer will be able to confirm their arrival without staff and without a code. The kitchen must provide access instructions for this visit. The current code stops working." })
+      : t("visitCodeStaffedBody", { defaultValue: "Self check-in is turned off and a new check-in code is issued. The customer will need the code from kitchen staff." })
 
   return (
     <section className={embedded ? "space-y-3" : "rounded-2xl border bg-card p-5 sm:p-6 space-y-4"} aria-label={t("visitCodeTitle", { defaultValue: "Check-in code" })}>
@@ -265,7 +265,7 @@ export function VisitCodePanel({ bookingId, customerName, kitchenName, timezone,
             <article key={target.targetKey} className="rounded-xl border p-4 space-y-3" data-testid={`visit-code-${target.targetKey}`}>
               <dl className="grid grid-cols-1 gap-x-6 gap-y-2 text-sm empty:hidden sm:grid-cols-2">
                 {name && <div><dt className="text-xs text-muted-foreground">{t("visitCodeVisit", { defaultValue: "Visit" })}</dt><dd className="font-medium">{name}</dd></div>}
-                {!embedded && <div><dt className="text-xs text-muted-foreground">{t("visitCodeCustomer", { defaultValue: "Chef" })}</dt><dd className="font-medium">{customerName || t("visitCodeNameUnavailable", { defaultValue: "Name unavailable" })}</dd></div>}
+                {!embedded && <div><dt className="text-xs text-muted-foreground">{t("visitCodeCustomer", { defaultValue: "Customer" })}</dt><dd className="font-medium">{customerName || t("visitCodeNameUnavailable", { defaultValue: "Name unavailable" })}</dd></div>}
                 {!embedded && <div><dt className="text-xs text-muted-foreground">{t("visitCodeKitchen", { defaultValue: "Kitchen" })}</dt><dd className="font-medium">{kitchenName || "—"}</dd></div>}
                 {when && (!embedded || name) && <div><dt className="text-xs text-muted-foreground">{t("visitCodeWhen", { defaultValue: "Visit time (kitchen local)" })}</dt><dd className="font-medium tabular-nums">{when}</dd></div>}
               </dl>
@@ -293,7 +293,7 @@ export function VisitCodePanel({ bookingId, customerName, kitchenName, timezone,
                     </div>
                   ) : (
                     <div className="space-y-1 text-sm">
-                      <p>{t("visitCodeSelfActive", { defaultValue: "The chef can confirm arrival without a code. Make sure they have the access instructions for this visit." })}</p>
+                      <p>{t("visitCodeSelfActive", { defaultValue: "The customer can confirm arrival without a code. Make sure they have the access instructions for this visit." })}</p>
                       {target.modeReason && <p className="text-muted-foreground">{t("visitCodeReasonShown", { defaultValue: "Reason: {reason}", reason: target.modeReason })}</p>}
                     </div>
                   )}

@@ -61,7 +61,7 @@ it.each(['chat-57', null])('asks managers to message the chef, retains applicati
   const email = generateKitchenApplicationClearedManagerEmail({ ...details, managerEmail: 'manager@example.test', managerName: 'Morgan', conversationId });
   expect(email.html).toContain('class="email-brand"');
   expect(email.text).toContain('No application review is needed from you.');
-  expect(email.text).toContain('Please contact the chef through Local Cooks in-app messaging');
+  expect(email.text).toContain('Please contact the customer through Local Cooks in-app messaging');
   expect(email.text).toContain('View application:');
   expect(email.text).toContain('/manager/dashboard?view=applications&application=57');
   expect(email.text).toContain('For your safety, always communicate through Local Cooks so you can refer back to your messages and arrangements.');

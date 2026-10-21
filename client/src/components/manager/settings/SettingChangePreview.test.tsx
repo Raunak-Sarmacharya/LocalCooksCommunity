@@ -9,7 +9,7 @@ it('shows four lines without blocking save while fetching counts', () => {
   expect(screen.getByText('Checking your upcoming bookings…')).toBeInTheDocument();
   expect(screen.getByRole('button')).toBeEnabled();
   rerender(<SettingChangePreview {...props} onSave={save} impact={{ upcoming: 3, inSession: 1, pending: 0 }} />);
-  expect(screen.getByText(/Affects 3 upcoming bookings/)).toHaveTextContent('Chefs see the new time');
+  expect(screen.getByText(/Affects 3 upcoming bookings/)).toHaveTextContent('Customers see the new time');
   expect(screen.getAllByRole('term')).toHaveLength(4);
   fireEvent.click(screen.getByRole('button')); expect(save).toHaveBeenCalledOnce();
   rerender(<SettingChangePreview {...props} impact={{ upcoming: 0, inSession: 0, pending: 0 }} />);

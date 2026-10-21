@@ -488,7 +488,7 @@ function ManagerKitchenApplicationsContentLegacy({
             <div className="flex-1">
               <p className="text-sm text-foreground font-medium mb-1">{mt("customizeApplicationRequirements")}</p>
               <p className="text-xs text-muted-foreground">
-                Control which fields are required when chefs apply to your kitchens. You can make fields optional to streamline the application process.
+                Control which fields are required when customers apply to your kitchens. You can make fields optional to streamline the application process.
               </p>
             </div>
           </div>
@@ -662,7 +662,7 @@ function ManagerKitchenApplicationsContentLegacy({
             <DialogTitle className="flex items-center gap-2">
               <Calendar className="h-5 w-5 text-primary" />{mt("reviewChefApplication")}</DialogTitle>
             <DialogDescription>
-              Review the chef&apos;s application details and documents.
+              Review the customer&apos;s application details and documents.
             </DialogDescription>
           </DialogHeader>
 
@@ -887,7 +887,7 @@ function ManagerKitchenApplicationsContentLegacy({
                               <p className="text-xs text-gray-500">
                                 {selectedApplication.foodEstablishmentCertExpiry
                                   ? `Expires: ${new Date(selectedApplication.foodEstablishmentCertExpiry).toLocaleDateString()}`
-                                  : 'Chef Application Requirements requirement'}
+                                  : 'Customer Application Requirements requirement'}
                               </p>
                             </div>
                           </div>

@@ -89,7 +89,7 @@ export function CancellationPolicyEditor({ kitchenId, admin = false }: { kitchen
   const footer = isError || (data && !data.policy) ? undefined : <div className="space-y-3">
     {admin && <label className="block text-sm font-medium">{t('cpOverrideReason')}
       <textarea className="mt-1 block w-full rounded-md border border-input bg-background p-2 text-sm font-normal" value={reason} maxLength={2000} onChange={event => setReason(event.target.value)} /></label>}
-    <SettingChangePreview whatChanges={mt('scpCancellationWhat', { summary })} showPreview={live}
+    <SettingChangePreview whatChanges={mt('scpCancellationWhatKitchen', { summary })} showPreview={live}
       appliesTo="new_bookings" impact={impact} impactFetching={impactFetching} impactError={impactError} rightNow={impact ? mt('scpCancellationImpact', { upcoming: impact.upcoming }) : undefined}
       undo={mt('scpCancellationUndo')} confirm actionLabel={mt(admin ? 'scpSaveOverride' : 'scpSaveCancellation')} align="end" quietWhenDisabled
       secondaryAction={!admin && dirty ? <Button variant="ghost" className="min-h-11" disabled={busy} onClick={discard}>{mt('bpDiscard')}</Button> : undefined}
@@ -155,7 +155,7 @@ export function LocationCancellationPolicyEditor({ locationId }: { locationId: n
 
   return <PolicySection title={t('cpTitle')} description={mt('bpCancelLocationDescription')} testId="location-cancellation-section"
     footer={data && !isError ? <div className="space-y-3">
-      <SettingChangePreview whatChanges={mt('scpCancellationWhat', { summary })} showPreview={dirty}
+      <SettingChangePreview whatChanges={mt('scpCancellationWhatKitchen', { summary })} showPreview={dirty}
         appliesTo={mt('bpCancelLocationApplies', { count: following.length })}
         rightNow={dirty && following.length ? mt('bpCancelLocationImpact', { kitchens: followingNames }) : undefined}
         undo={mt('scpCancellationUndo')} confirm actionLabel={mt('scpSaveCancellation')} align="end" quietWhenDisabled

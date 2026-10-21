@@ -394,7 +394,7 @@ describe('real rich renderer at the persisted confirmation boundary', () => {
     await queueBookingLifecycleEvent(tx, 10, 'confirmed', 'Confirmed', 'Captured');
     const emails = state.insert.mock.calls[0][0].emails;
     expect(emails[0].content.text).toContain('Not included: Commercial Oven — the kitchen couldn’t provide it, so you weren’t charged for it.');
-    expect(emails[1].content.text).toContain('Commercial Oven — declined at approval; the chef wasn’t charged for it.');
+    expect(emails[1].content.text).toContain('Commercial Oven — declined at approval; the customer wasn’t charged for it.');
   });
   it('persists actual captured money, approved linked items, separate visits and role-specific destinations', async () => {
     state.rows[1][0].profile = { fullName: 'Sam Taylor' };

@@ -460,14 +460,14 @@ export function ChecklistSection({
               htmlFor={`${type}-${previewType}-instructions`}
               className="text-sm font-medium"
             >
-              Instructions for Chefs{" "}
+              Instructions for Customers{" "}
               <span className="text-muted-foreground font-normal">{mt("optionalLabel")}</span>
             </Label>
             <Textarea
               id={`${type}-${previewType}-instructions`}
               value={instructions || ""}
               onChange={(e) => onInstructionsChange(e.target.value || null)}
-              placeholder={`General instructions shown to chefs before ${
+              placeholder={`General instructions shown to customers before ${
                 type === "checkin" ? "check-in" : "check-out"
               }...`}
               rows={2}

@@ -50,7 +50,7 @@ it('stays quiet until a choice changes, then keeps the current policy when confi
   mount(); await waitFor(() => expect(screen.getByLabelText('Free cancellation until')).toBeEnabled());
   expect(screen.getByRole('button', { name: 'Save cancellation policy' })).toBeDisabled();
   expect(screen.queryByTestId('setting-change-preview')).not.toBeInTheDocument();
-  expect(screen.getByText(/Chefs see:/)).toBeInTheDocument();
+  expect(screen.getByText(/Customers see:/)).toBeInTheDocument();
   fireEvent.click(screen.getByLabelText('Free cancellation until'));
   fireEvent.click(screen.getByRole('option', { name: '72 hours before' }));
   expect(screen.getByTestId('setting-change-preview')).toHaveTextContent('Applies to new bookings only');

@@ -78,7 +78,7 @@ export async function currentCloseoutEmail(bookingId: number, kind: CloseoutNoti
   const firstStart = closeout.visits[0].scheduledStartAt;
   const date = formatInTimezone(new Date(firstStart), 'MMMM d, yyyy', timezone);
   const zone = friendlyTimezoneName(timezone);
-  const possessive = chefName ? `${chefName}’s` : 'The chef’s';
+  const possessive = chefName ? `${chefName}’s` : 'The customer’s';
   const place = [{ label: 'Kitchen', value: kitchen.name }, { label: 'Location', value: location.name,
     ...(location.address ? { url: 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(location.address) } : {}) },
     { label: closeout.visits.length > 1 ? 'Scheduled visits' : 'Scheduled time',

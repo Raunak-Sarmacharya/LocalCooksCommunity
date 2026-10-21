@@ -603,7 +603,7 @@ async function notify(tx: Tx, ctx: Context, quoted: Quote, facts: { cause: 'chef
     await queueBookingLifecycleEvent(tx, bookingId, 'refund_issued', `The kitchen refunded you ${refund}`,
       `${ctx.kitchenName} refunded ${refund} for ${day}${facts.reason ? `: ${facts.reason}` : ''}. Kitchen payout −${refund}.`, facts.actorId,
       { ...shared, roleText: { chef: { title: `The kitchen refunded you ${refund}`, message: `${ctx.kitchenName} sent you a refund of ${refund} for ${day}${facts.reason ? `: ${facts.reason}` : ''}. Banks usually show it within 5–10 business days.` },
-        manager: { title: `You refunded ${refund}`, message: `You refunded the chef ${refund} for ${day}. It comes out of your payout for that day.` } } });
+        manager: { title: `You refunded ${refund}`, message: `You refunded the customer ${refund} for ${day}. It comes out of your payout for that day.` } } });
     return;
   }
   if (quoted.equipmentIds.length) {
@@ -628,8 +628,8 @@ async function notify(tx: Tx, ctx: Context, quoted: Quote, facts: { cause: 'chef
     : { title: `${days} cancelled`, message: quoted.chefRefundCents ? `You cancelled ${days}. Your refund is ${refund}; the ${dollars(quoted.feeRetainedCents)} card processing fee is kept. Your other days stay booked.`
       : `You cancelled ${days}. There is no refund under your booking’s saved policy. Your other days stay booked.` };
   const manager = facts.cause === 'kitchen'
-    ? { title: `You cancelled ${days}`, message: `The chef receives a full refund of ${refund} for ${days}. Your payout for ${quoted.days.length === 1 ? 'that day' : 'those days'} is $0.00. Their other days stay booked.` }
-    : { title: `The chef cancelled ${days}`, message: `Your payout for ${quoted.days.length === 1 ? 'that day' : 'those days'} is ${dollars(quoted.kitchenShareRetainedCents)}. Their other days stay booked.` };
+    ? { title: `You cancelled ${days}`, message: `The customer receives a full refund of ${refund} for ${days}. Your payout for ${quoted.days.length === 1 ? 'that day' : 'those days'} is $0.00. Their other days stay booked.` }
+    : { title: `The customer cancelled ${days}`, message: `Your payout for ${quoted.days.length === 1 ? 'that day' : 'those days'} is ${dollars(quoted.kitchenShareRetainedCents)}. Their other days stay booked.` };
   // Local Cooks' copy is factual (admin-booking-notice uses this message).
   const admin = facts.cause === 'kitchen'
     ? `${ctx.kitchenName} cancelled ${days}. Refunded ${refund} including the card fee; Local Cooks absorbs ${dollars(quoted.processingCostAbsorbedCents)}; kitchen payout −${dollars(quoted.kitchenPaysCents)}.${facts.offer ? ` Chef may drop the remaining days without the late charge until ${zone.format(new Date(facts.offer.expiresAt))}.` : ''}`

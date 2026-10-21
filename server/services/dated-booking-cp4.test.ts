@@ -224,7 +224,7 @@ describe('Partial acceptance: the chef approves the new total before any capture
         items: [{ name: 'Mixer', date: '2099-10-07' }] }) }));
     expect((await rows(s.equipmentBookings)).every((row: any) => row.status === 'pending')).toBe(true);
     // The kitchen cannot change or re-confirm it while it waits.
-    await expect(decideAuthorizedBooking(id, 'confirmed', [], [], 2)).rejects.toThrow('Waiting for the chef');
+    await expect(decideAuthorizedBooking(id, 'confirmed', [], [], 2)).rejects.toThrow('Waiting for the customer');
   });
   it('chef accepts: captures exactly the new total, excludes the declined item from every allocation and conserves the source', async () => {
     const { id, item, proposal } = await propose();

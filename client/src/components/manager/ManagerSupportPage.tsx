@@ -42,7 +42,7 @@ export default function ManagerSupportPage({
           a: t("supportManagerSetupA2", "Every licence is checked before a kitchen goes live. You'll get an email the moment it's approved, usually within 2 business days."),
         },
         {
-          q: t("supportManagerSetupQ3", "When can chefs start booking?"),
+          q: t("supportManagerSetupQ3", "When can customers start booking?"),
           a: t("supportManagerSetupA3", "As soon as your licence is approved and your kitchen has availability set. You'll be notified by email."),
         },
       ],
@@ -61,7 +61,7 @@ export default function ManagerSupportPage({
         },
         {
           q: t("supportManagerKitchensQ3", "What's the difference between availability and rates?"),
-          a: t("supportManagerKitchensA3", "Availability decides when chefs can book you. Your hourly and daily rates, plus minimum booking hours, are set per kitchen."),
+          a: t("supportManagerKitchensA3", "Availability decides when customers can book you. Your hourly and daily rates, plus minimum booking hours, are set per kitchen."),
         },
       ],
     },
@@ -71,11 +71,11 @@ export default function ManagerSupportPage({
       questions: [
         {
           q: t("supportManagerApplicationsQ1", "What are access requirements?"),
-          a: t("supportManagerApplicationsA1", "The documents and questions a chef must satisfy before they can book your kitchen. You control these per location."),
+          a: t("supportManagerApplicationsA1", "The documents and questions a customer must satisfy before they can book your kitchen. You control these per location."),
         },
         {
           q: t("supportManagerApplicationsQ2", "What's the difference between the two tiers?"),
-          a: t("supportManagerApplicationsA2", "Local Cooks reviews the initial request. You set the kitchen access requirements, which chefs complete after initial approval."),
+          a: t("supportManagerApplicationsA2", "Local Cooks reviews the initial request. You set the kitchen access requirements, which customers complete after initial approval."),
         },
       ],
     },
@@ -107,7 +107,7 @@ export default function ManagerSupportPage({
         },
         {
           q: t("supportManagerPaymentsQ2", "How are my earnings calculated?"),
-          a: t("supportManagerPaymentsA2", "Your hourly and daily rates, plus any storage or equipment the chef books. Revenue is broken down in the Revenue tab."),
+          a: t("supportManagerPaymentsA2", "Your hourly and daily rates, plus any storage or equipment the customer books. Revenue is broken down in the Revenue tab."),
         },
       ],
     },

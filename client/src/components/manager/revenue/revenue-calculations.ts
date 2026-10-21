@@ -117,7 +117,7 @@ export function transactionsToManagerRevenueCSV(
     includeHeaders: boolean = true
 ): string {
     const dated = transactions.some(transaction => transaction.dayBreakdown?.length);
-    const headers = ["Date", "Chef", "Kitchen", "Location", "Subtotal", "Tax", "Tax Rate", "Stripe Fee", "Refunded", "Net Revenue", "Status", ...(dated ? ["Booking", "Booking total", "Day", "This day allocation", "Transfer", "This transfer", "Transfer reversed", "Sent at"] : [])];
+    const headers = ["Date", "Customer", "Kitchen", "Location", "Subtotal", "Tax", "Tax Rate", "Stripe Fee", "Refunded", "Net Revenue", "Status", ...(dated ? ["Booking", "Booking total", "Day", "This day allocation", "Transfer", "This transfer", "Transfer reversed", "Sent at"] : [])];
 
     const rows = transactions.flatMap(transaction => {
         const breakdown = getTransactionRevenueBreakdown(transaction);
