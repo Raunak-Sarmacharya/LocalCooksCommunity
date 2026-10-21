@@ -4270,6 +4270,8 @@ router.get(
             username: chefUser.username,
             fullName: chefApp?.fullName || chefUser.username,
             phone: chefUser.phoneVerifiedAt ? chefUser.phoneNumber : null,
+            // People card: "Member since" and visits completed at this manager's kitchens.
+            ...await (await import('../services/booking-people')).readChefCardFacts(user.id, booking.chefId),
           };
         }
       }
