@@ -40,6 +40,9 @@ import { saveAuthIntentFromCurrentPage } from "@/lib/auth-intent";
 import { pickPreviewActiveSectionId } from "@/lib/preview-scroll-spy";
 import { CancellationPolicyDialog, KitchenTermsDialog, cancellationPolicyFirstLine } from "@/components/booking/CancellationPolicyDialog";
 import { PublishedCancellationPolicySummary } from '@/components/booking/CancellationPolicySummary';
+import { DatedCalendarContext, DatedCalendarDay } from '@/components/booking/DatedCalendarDay';
+import { BOOKING_CALENDAR_CLASS_NAMES } from '@/components/booking/booking-calendar';
+import { dateBlockReasonKey, partlyFree, type DateStatus } from '@/components/booking/dated-booking-draft';
 import { StorageRentCta } from "@/components/storage/StorageRentCta";
 import { KitchenInventoryModals, KitchenEquipmentSections, KitchenStorageSections, InventoryModal, InventoryShowAllButton, type StorageListing } from "@/components/kitchen-application/KitchenInventory";
 import { SmartImage } from "@/components/ui/smart-image";
@@ -1506,7 +1509,7 @@ function ThingsToKnowSection({
   );
 }
 
-function GuestHoursCard({
+export function GuestHoursCard({
   availability,
   kitchenId,
   locationId,
@@ -1579,11 +1582,11 @@ function GuestHoursCard({
   /** Access status chip below the primary CTA (approved chefs / other states). */
   bookingAccessChip?: BookingAccessChip | null;
 }) {
-  const { t } = useTranslation("kitchen");
+  const { t, i18n } = useTranslation("kitchen");
   const [, navigate] = useLocation();
   const { user } = useFirebaseAuth();
   const isAuthenticated = !!user;
-  const { data: bookingRules } = useQuery<{ minimumBookingHours?: number }>({
+  const { data: bookingRules } = useQuery<{ minimumBookingHours?: number; allowMultiDayBookings?: boolean; multidayCreationEnabled?: boolean; maxBookingDays?: number }>({
     queryKey: ["/api/public/kitchens", kitchenId, "booking-estimate", "preview-minimum"],
     queryFn: async () => {
       const response = await fetch(`/api/public/kitchens/${kitchenId}/booking-estimate`);
@@ -1593,6 +1596,9 @@ function GuestHoursCard({
     enabled: !!kitchenId,
   });
   const minimumBookingHours = Number(bookingRules?.minimumBookingHours);
+  // Same switches and limits as the booking Date step, so days picked here open there unchanged.
+  const multiAllowed = bookingRules?.allowMultiDayBookings === true && bookingRules?.multidayCreationEnabled === true;
+  const maxDays = Math.min(bookingRules?.maxBookingDays ?? 7, 14);
   
   const storageKey = kitchenId ? `kitchen_dates_${kitchenId}` : 'kitchen_dates_generic';
   const tourStorageKey = kitchenId ? `viewing_booking_${kitchenId}` : null;
@@ -1608,7 +1614,12 @@ function GuestHoursCard({
   );
   const bookingDatesReady = hasRate && hasSchedule;
   
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
+  // Picked days (YYYY-MM-DD, sorted); single-date mode keeps at most one. The first day is the `from` older readers use.
+  const [selectedDays, setSelectedDays] = useState<string[]>([]);
+  const selectedDate = useMemo(() => selectedDays[0] ? new Date(`${selectedDays[0]}T00:00:00`) : undefined, [selectedDays[0]]);
+  const setSelectedDate = (date: Date | undefined) => setSelectedDays(date ? [toLocalDateString(date)] : []);
+  const [dateStatuses, setDateStatuses] = useState<Record<string, DateStatus>>({});
+  const [blockedNote, setBlockedNote] = useState("");
   const [dateInputValue, setDateInputValue] = useState("");
   const [dateNotAvailable, setDateNotAvailable] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState<Date>(() => new Date());
@@ -1663,12 +1674,16 @@ function GuestHoursCard({
       setAvailabilityLoading(true);
       try {
         const response = await fetch(
-          `/api/public/kitchens/${kitchenId}/month-availability?year=${year}&month=${month}`,
+          `/api/public/kitchens/${kitchenId}/${multiAllowed ? "date-status" : "month-availability"}?year=${year}&month=${month}`,
           { credentials: "include", cache: "no-store" }
         );
         if (!response.ok) throw new Error(kt("failedToLoadAvailability"));
-        const serverAvailability: Record<string, boolean> = await response.json();
+        const result = await response.json();
         if (cancelled) return;
+        if (multiAllowed) setDateStatuses((prev) => ({ ...prev, ...result }));
+        const serverAvailability: Record<string, boolean> = multiAllowed
+          ? Object.fromEntries(Object.entries(result as Record<string, DateStatus>).map(([date, status]) => [date, status.hourly || status.fullDay]))
+          : result;
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -1693,7 +1708,7 @@ function GuestHoursCard({
     return () => {
       cancelled = true;
     };
-  }, [kitchenId, calendarMonth, bookingDatesReady]);
+  }, [kitchenId, calendarMonth, bookingDatesReady, multiAllowed]);
 
   // Persist or clear date in sessionStorage (single day — no range).
   // Skip the initial undefined render so we don't wipe a just-saved preview date
@@ -1704,7 +1719,11 @@ function GuestHoursCard({
       const saved = sessionStorage.getItem(storageKey);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed.from) {
+        const days: string[] = Array.isArray(parsed.dates) ? parsed.dates.filter((day: unknown) => typeof day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(day)).sort() : [];
+        if (days.length) {
+          setSelectedDays(days);
+          setCalendarMonth(new Date(`${days[0]}T00:00:00`));
+        } else if (parsed.from) {
           const from = new Date(parsed.from);
           from.setHours(0, 0, 0, 0);
           setSelectedDate(from);
@@ -1722,12 +1741,17 @@ function GuestHoursCard({
   useEffect(() => {
     if (!dateHydratedRef.current) return;
     if (selectedDate) {
-      sessionStorage.setItem(storageKey, JSON.stringify({ from: selectedDate }));
+      sessionStorage.setItem(storageKey, JSON.stringify({ from: selectedDate, dates: selectedDays }));
       if (kitchenId) notifyBookingPrefsChanged(kitchenId);
     } else if (!dateNotAvailable && !pendingTypedDateRef.current) {
       sessionStorage.removeItem(storageKey);
     }
-  }, [selectedDate, storageKey, kitchenId, dateNotAvailable]);
+  }, [selectedDays.join(","), storageKey, kitchenId, dateNotAvailable]);
+
+  // Kitchen turned out single-date (rules load after a restore): keep the first day only.
+  useEffect(() => {
+    if (bookingRules && !multiAllowed && selectedDays.length > 1) setSelectedDays((days) => days.slice(0, 1));
+  }, [bookingRules, multiAllowed, selectedDays.length]);
 
   const isDayAvailable = (date: Date) => {
     const today = new Date();
@@ -1757,6 +1781,7 @@ function GuestHoursCard({
     pendingTypedDateRef.current = null;
     if (kitchenId) {
       sessionStorage.removeItem(`kitchen_booking_prefs_${kitchenId}`);
+      sessionStorage.removeItem(`kitchen_booking_days_${kitchenId}`);
       notifyBookingPrefsChanged(kitchenId);
     }
     setCalendarOpen(false);
@@ -1842,17 +1867,22 @@ function GuestHoursCard({
     if (selectedDate && !isDayAvailable(selectedDate)) {
       setSelectedDate(undefined);
       setDateNotAvailable(true);
+    } else if (selectedDays.some((day) => dateAvailability[day] === false)) {
+      // Days in a month not loaded yet stay; the booking Date step re-checks each one.
+      setSelectedDays((days) => days.filter((day) => dateAvailability[day] !== false));
     }
-  }, [selectedDate, availability, dateAvailability, availabilityLoading]);
+  }, [selectedDate, selectedDays.join(","), availability, dateAvailability, availabilityLoading]);
 
   const clearDates = () => {
     setSelectedDate(undefined);
+    setBlockedNote("");
     setDateInputValue("");
     setDateNotAvailable(false);
     pendingTypedDateRef.current = null;
     sessionStorage.removeItem(storageKey);
     if (kitchenId) {
       sessionStorage.removeItem(`kitchen_booking_prefs_${kitchenId}`);
+      sessionStorage.removeItem(`kitchen_booking_days_${kitchenId}`);
       notifyBookingPrefsChanged(kitchenId);
     }
     setCalendarOpen(true);
@@ -1869,6 +1899,7 @@ function GuestHoursCard({
       sessionStorage.removeItem(storageKey);
       if (kitchenId) {
         sessionStorage.removeItem(`kitchen_booking_prefs_${kitchenId}`);
+        sessionStorage.removeItem(`kitchen_booking_days_${kitchenId}`);
         notifyBookingPrefsChanged(kitchenId);
       }
       return;
@@ -1902,9 +1933,27 @@ function GuestHoursCard({
     commitAvailableDate(next);
   };
 
+  const selectDays = (dates: Date[] | undefined) => {
+    setSelectedDays((dates ?? []).map(toLocalDateString).sort());
+    setBlockedNote("");
+    setDateNotAvailable(false);
+    if (kitchenId) {
+      sessionStorage.removeItem(`kitchen_booking_prefs_${kitchenId}`);
+      sessionStorage.removeItem(`kitchen_booking_days_${kitchenId}`);
+      notifyBookingPrefsChanged(kitchenId);
+    }
+  };
+  const blockedDayReason = (date: Date) => {
+    const key = toLocalDateString(date);
+    const reason = dateBlockReasonKey(key, selectedDays, dateStatuses[key], maxDays, todayStr);
+    return reason && bt(reason, { count: maxDays });
+  };
+  const dayLabel = (day: string) => new Date(`${day}T12:00:00`).toLocaleDateString(i18n.language, { weekday: "short", month: "short", day: "numeric" });
+  const daysRange = selectedDays.length > 1 ? `${dayLabel(selectedDays[0])} – ${dayLabel(selectedDays[selectedDays.length - 1])}` : selectedDays[0] ? dayLabel(selectedDays[0]) : "";
+
   const handleProceed = () => {
     if (selectedDate) {
-      sessionStorage.setItem(storageKey, JSON.stringify({ from: selectedDate }));
+      sessionStorage.setItem(storageKey, JSON.stringify({ from: selectedDate, dates: selectedDays }));
     }
 
     if (isAuthenticated) {
@@ -2121,6 +2170,25 @@ function GuestHoursCard({
                 : "border-gray-300 hover:border-gray-400"
             )}
           >
+            {multiAllowed ? (
+              // Several days can't be typed as one value, so the field shows what is picked and opens the calendar.
+              <button
+                type="button"
+                onClick={(event) => { event.stopPropagation(); setCalendarOpen(!calendarOpen); }}
+                aria-expanded={calendarOpen}
+                className="min-w-0 flex-1 text-left focus-visible:outline-none"
+                data-testid="preview-days-field"
+              >
+                <span className="block text-xs font-medium uppercase tracking-wider text-gray-500">
+                  {t("selectYourDates", "Choose your dates")}
+                </span>
+                {/* A narrow card wraps after the count, never inside the date range. */}
+                <span className={cn("mt-0.5 block text-sm", daysRange ? "text-gray-900" : "text-gray-500")}>
+                  {selectedDays.length > 1 && `${bt("mdSelectedDays", { count: selectedDays.length })} · `}
+                  {daysRange ? <span className="whitespace-nowrap">{daysRange}</span> : t("addDates", "Add dates")}
+                </span>
+              </button>
+            ) : (
             <label className="min-w-0 flex-1">
               <span className="block text-xs font-medium uppercase tracking-wider text-gray-500">
                 {t("selectYourDate", "Choose your date")}
@@ -2149,6 +2217,7 @@ function GuestHoursCard({
                 </span>
               ) : null}
             </label>
+            )}
             <button
               type="button"
               onClick={(event) => { event.stopPropagation(); setCalendarOpen(!calendarOpen); }}
@@ -2180,6 +2249,30 @@ function GuestHoursCard({
                 <div className="grid grid-cols-7 gap-2">{Array.from({ length: 35 }, (_, index) => <Skeleton key={index} className="aspect-square rounded-md" />)}</div>
               </div>
             )}
+            {multiAllowed ? (
+              <DatedCalendarContext.Provider value={{ reason: blockedDayReason, announce: setBlockedNote, locale: i18n.language,
+                partial: (date) => partlyFree(dateStatuses[toLocalDateString(date)]), partialLabel: bt("bkDayLimited") }}>
+                <p className="px-2 pt-1.5 text-xs text-muted-foreground">{t("pickDaysHint", { count: maxDays })}</p>
+                <UICalendar
+                  mode="multiple"
+                  selected={selectedDays.map((day) => new Date(`${day}T12:00:00`))}
+                  onSelect={selectDays}
+                  month={calendarMonth}
+                  onMonthChange={setCalendarMonth}
+                  initialFocus={false}
+                  showOutsideDays={false}
+                  disabled={(date) => !!blockedDayReason(date)}
+                  components={{ Day: DatedCalendarDay }}
+                  className="w-full bg-transparent p-1"
+                  classNames={{ ...BOOKING_CALENDAR_CLASS_NAMES, cell: "relative h-10 p-0 text-center text-sm" }}
+                />
+                <p className="flex items-center gap-1.5 px-2 pb-1.5 text-xs text-muted-foreground">
+                  <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />{bt("bkDayLimited")}
+                </p>
+                {/* A tapped unavailable day says why here too (touch has no hover title). */}
+                <p role="status" aria-live="polite" className={cn("px-2 pb-1.5 text-xs text-gray-700", !blockedNote && "sr-only")}>{blockedNote}</p>
+              </DatedCalendarContext.Provider>
+            ) : (
             <UICalendar
               mode="single"
               selected={selectedDate}
@@ -2215,6 +2308,7 @@ function GuestHoursCard({
                 return !isDayAvailable(d);
               }}
             />
+            )}
           </div>
         </CollapsibleContent>
       </Collapsible>

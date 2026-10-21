@@ -766,7 +766,7 @@ router.get("/public/kitchens/:kitchenId/booking-estimate", async (req: Request, 
         }
 
         const { getFeeConfig } = await import("../services/stripe-checkout-fee-service");
-        const feeConfig = await getFeeConfig();
+        const [feeConfig, policies] = await Promise.all([getFeeConfig(), kitchenBookingPolicies(kitchenId)]);
 
         const hourlyRate =
             kitchen.hourlyRate !== null && kitchen.hourlyRate !== undefined
@@ -788,6 +788,10 @@ router.get("/public/kitchens/:kitchenId/booking-estimate", async (req: Request, 
             taxRatePercent: Number.isFinite(taxRatePercent) ? taxRatePercent : 0,
             maxSlotsPerChef,
             platformCommissionRate: feeConfig.platformCommissionRate,
+            // The kitchen page card picks days under the same rules as the booking Date step.
+            allowMultiDayBookings: policies.allowMultiDayBookings,
+            multidayCreationEnabled: policies.multidayCreationEnabled,
+            maxBookingDays: policies.maxBookingDays,
         });
     } catch (error: any) {
         logger.error("Error fetching public booking estimate:", error);
