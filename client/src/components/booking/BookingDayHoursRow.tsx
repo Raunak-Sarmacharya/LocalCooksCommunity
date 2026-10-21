@@ -49,6 +49,7 @@ export function BookingDayHoursRow({ title, slots, value, onChange, hourlyRate, 
   const startOptions = slots.map((slot, index) => ({ slot, index, ok: !slot.isFullyBooked && maxLength(index) >= minimum }));
   const endOptions = startIndex >= 0 ? Array.from({ length: maxLength(startIndex) }, (_, i) => i + 1)
     .filter(hours => hours >= minimum).map(hours => ({ hours, end: addHour(slots[startIndex + hours - 1].time) })) : [];
+  const chosenEnd = endOptions.find(option => option.hours === length)?.end;
 
   const pickStart = (time: string) => {
     const index = slots.findIndex(slot => slot.time === time);
@@ -118,7 +119,8 @@ export function BookingDayHoursRow({ title, slots, value, onChange, hourlyRate, 
               </label>
               <label className="space-y-1 text-xs font-medium text-gray-600">{t("bkEnd")}
                 <Select value={length >= minimum && startIndex >= 0 ? String(length) : ""} onValueChange={pickEnd} disabled={startIndex < 0}>
-                  <SelectTrigger className="h-11 bg-white text-sm"><SelectValue placeholder={t("bkChooseEnd")} /></SelectTrigger>
+                  {/* Time only: the length and cost show under the pickers (the option text truncated on phones). */}
+                  <SelectTrigger className="h-11 bg-white text-sm"><SelectValue placeholder={t("bkChooseEnd")}>{chosenEnd && time(chosenEnd)}</SelectValue></SelectTrigger>
                   <SelectContent>{endOptions.map(({ hours, end }) => <SelectItem key={hours} value={String(hours)}>
                     {time(end)} · {t("bkHours", { count: hours })}
                   </SelectItem>)}</SelectContent>

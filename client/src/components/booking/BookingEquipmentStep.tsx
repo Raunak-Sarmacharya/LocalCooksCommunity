@@ -96,7 +96,7 @@ export function BookingEquipmentStep({ included, rental, selectedIds, onToggle, 
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-semibold text-gray-900">{equipmentLabel(item)}</span>
-                <span className="block truncate text-xs text-muted-foreground">{t("bkEqPerDay", { amount: money(item.sessionRate) })}{detail ? ` · ${detail}` : ""}</span>
+                <span className="block text-xs text-muted-foreground">{t("bkEqPerDay", { amount: money(item.sessionRate) })}{detail ? ` · ${detail}` : ""}</span>
               </span>
               <button type="button" aria-pressed={on} onClick={() => onToggle(item.id)}
                 aria-label={t(on ? "bkEqRemoveNamed" : "bkEqAddNamed", { name: equipmentLabel(item) })}
