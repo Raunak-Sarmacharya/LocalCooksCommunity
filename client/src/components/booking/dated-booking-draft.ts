@@ -1,5 +1,6 @@
 import { addHour, sortTimesInOperatingWindow } from '@shared/operating-hours';
 import { validateKitchenSlotSelection } from '@shared/consecutive-booking-slots';
+import { dateReasonKey } from './booking-calendar';
 
 export type DayHours = { pricingMode: 'hourly' | 'daily'; times: string[] };
 export type DatedSlot = { time: string; available: number; capacity: number; isFullyBooked: boolean };
@@ -18,6 +19,19 @@ export function dateSelectionReason(date: string, selected: string[], limit: num
   const dates = [...selected, date].sort();
   return (Date.parse(dates[dates.length - 1]) - Date.parse(dates[0])) / 86_400_000 > 14 ? 'span' : null;
 }
+
+/** Booking-namespace key for why `date` can't join `selected` (null = pickable). Shared by the booking Date step and the kitchen page card. */
+export function dateBlockReasonKey(date: string, selected: string[], status: DateStatus | undefined, maxDays: number, today: string, bookableThrough?: string | null) {
+  if (selected.includes(date)) return null;
+  if (date < today) return 'mdReasonPast';
+  if (bookableThrough && date > bookableThrough) return 'mdReasonAdvance';
+  if (!status?.hourly && !status?.fullDay) return dateReasonKey(status?.reason);
+  const limit = dateSelectionReason(date, selected, maxDays);
+  return limit === 'count' ? 'mdCountLimit' : limit === 'span' ? 'mdSpanLimit' : null;
+}
+
+/** Bookable, but not every hour is free (the orange dot). */
+export const partlyFree = (status?: DateStatus) => !!status?.hourly && !status.fullDay;
 
 export function buildDatedDays(dates: string[], template: DayHours, overrides: Record<string, DayHours>,
   equipmentIds: number[], excluded: Record<string, number[]>, resources: Record<string, DayResources>): DatedDay[] {

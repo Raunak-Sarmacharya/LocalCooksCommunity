@@ -12,7 +12,7 @@ import { CancellationPolicyTimeline, type PolicyResponse } from './CancellationP
 import { CheckoutCancellationDisclosure, CheckoutConsentNotice } from './CheckoutCancellationDisclosure';
 import { ChangeRequestBanner, ChangeRequestConsentLine, useReplacedRequest } from './ChangeRequestNotice';
 import { CANCELLATION_DISCLOSURE_VERSION, DATED_DISCLOSURE_VERSION } from '@shared/cancellation-policy';
-import { buildDatedDays, datedDayError, dateSelectionReason, localDateKey, readDatedDraft, type DayHours, type DayResources, type DateStatus } from './dated-booking-draft';
+import { buildDatedDays, dateBlockReasonKey, datedDayError, dateSelectionReason, localDateKey, partlyFree, readDatedDraft, type DayHours, type DayResources, type DateStatus } from './dated-booking-draft';
 import { DatedCalendarDay, DatedCalendarContext } from './DatedCalendarDay';
 import { BOOKING_CALENDAR_CLASS_NAMES, BOOKING_CALENDAR_TWO_MONTH_CLASS_NAMES, dateReasonKey } from './booking-calendar';
 import { useBookingEligibility } from "@/hooks/use-booking-eligibility";
@@ -587,10 +587,10 @@ export default function KitchenBookingFlow({
     const restore = legacyDate
       ? { dateIso: legacyDate, slots: legacySlots || [], step: 'slots' as BookingStep }
       : restoreForKitchen
-        ? { dateIso: restoreForKitchen.dateIso, slots: restoreForKitchen.slots }
+        ? { dateIso: restoreForKitchen.dateIso, slots: restoreForKitchen.slots, dates: restoreForKitchen.dates }
         : undefined;
-    // Hide Date in the rail immediately when prefs exist so the stepper doesn't flash it.
-    if (restore?.dateIso) {
+    // Hide Date in the rail immediately when prefs exist so the stepper doesn't flash it (kitchen-page days open on Date).
+    if (restore?.dateIso && !restore.dates) {
       setHideDateStep(true);
     }
     void handleKitchenSelect(
@@ -911,6 +911,8 @@ export default function KitchenBookingFlow({
       dateIso: string;
       slots: string[];
       step?: BookingStep;
+      /** Days picked on the kitchen page: open on Date with all of them selected. */
+      dates?: string[];
     }
   ) => {
     setIsFlowReady(false);
@@ -994,8 +996,13 @@ export default function KitchenBookingFlow({
         const [y, m, d] = restore.dateIso.split("-").map(Number);
         const restoredDate = new Date(y, m - 1, d);
         setSelectedDate(restoredDate);
-        setSelectedDates([restore.dateIso]);
+        setSelectedDates(restore.dates ?? [restore.dateIso]);
         setCalendarMonth(new Date(y, m - 1, 1));
+        if (restore.dates) {
+          setHideDateStep(false);
+          setCurrentStep('calendar');
+          return;
+        }
         if (restore.slots?.length) {
           if (restore.slots.some(time => !/^([01]\d|2[0-3]):[0-5]\d$/.test(time))) {
             toast({ title: ct('sweepText17'), description: ct('sweepText19'), variant: 'destructive' });
@@ -1041,14 +1048,9 @@ export default function KitchenBookingFlow({
   };
 
   const blockedDateReason = (date: Date): string | null => {
-    const key = localDateKey(date);
-    if (selectedDates.includes(key)) return null;
-    const limitReason = dateSelectionReason(key, selectedDates, Math.min(dayRules.maxBookingDays ?? 7, 14));
-    if (date < today) return t('mdReasonPast');
-    if (bookableThrough && key > bookableThrough) return t('mdReasonAdvance');
-    const status = dateStatuses[key];
-    if (status?.hourly || status?.fullDay) return limitReason ? t(limitReason === 'count' ? 'mdCountLimit' : 'mdSpanLimit', { count: dayRules.maxBookingDays ?? 7 }) : null;
-    return t(dateReasonKey(status?.reason));
+    const key = localDateKey(date), maxDays = Math.min(dayRules.maxBookingDays ?? 7, 14);
+    const reason = dateBlockReasonKey(key, selectedDates, dateStatuses[key], maxDays, localDateKey(today), bookableThrough);
+    return reason && t(reason, { count: maxDays });
   };
   const selectMultipleDates = (dates: Date[] | undefined) => {
     const keys = (dates ?? []).map(localDateKey).sort();
@@ -1452,7 +1454,7 @@ export default function KitchenBookingFlow({
             )}
             {bookableThrough && <p className="text-sm text-muted-foreground">{t("bookingBookableThrough", { defaultValue: "Bookable up to {date}", date: new Intl.DateTimeFormat(i18n.resolvedLanguage || i18n.language || "en-CA", { dateStyle: "medium" }).format(new Date(`${bookableThrough}T12:00:00`)) })}</p>}
             {multipleAllowed ? <DatedCalendarContext.Provider value={{ reason: blockedDateReason, announce: setDateAnnouncement, locale: i18n.language,
-              partial: date => { const status = dateStatuses[localDateKey(date)]; return !!status?.hourly && !status.fullDay; }, partialLabel: t("bkDayLimited") }}>
+              partial: date => partlyFree(dateStatuses[localDateKey(date)]), partialLabel: t("bkDayLimited") }}>
               <p className="mb-2 text-sm text-muted-foreground">{t('mdSelectHelp', { count: Math.min(dayRules.maxBookingDays ?? 7, 14) })}</p>
               <UICalendar mode="multiple" numberOfMonths={2} pagedNavigation showOutsideDays={false}
                 selected={selectedDates.map(date => new Date(`${date}T12:00:00`))} onSelect={selectMultipleDates}

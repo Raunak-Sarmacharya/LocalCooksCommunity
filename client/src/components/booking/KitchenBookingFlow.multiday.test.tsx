@@ -75,6 +75,16 @@ describe('the existing flow with more days', () => {
     fireEvent.click(day(7)); // moving the first date retains the other selected date
     expect(day(9)).toHaveAttribute('aria-selected', 'true');
   });
+  it('opens on the Date step with every day picked on the kitchen page selected', async () => {
+    sessionStorage.setItem('kitchen_dates_4', JSON.stringify({ from: new Date(2030, 9, 7), dates: ['2030-10-07', '2030-10-09', '2030-10-11'] }));
+    await open();
+    for (const number of [7, 9, 11]) expect(day(number)).toHaveAttribute('aria-selected', 'true');
+    const yourDays = screen.getByRole('region', { name: 'Your days' });
+    await waitFor(() => expect(within(yourDays).getAllByRole('listitem')).toHaveLength(3));
+    expect(within(yourDays).getByText(/Wed, Oct 9/)).toBeInTheDocument();
+    await chooseDays();
+    expect(row(11)).toBeInTheDocument();
+  });
   it('makes unavailable reasons focusable and readable to keyboard and screen reader users', async () => {
     await open();
     for (const [number, reason] of [[4, 'Already booked'], [5, 'Kitchen closed'], [6, 'Too soon'], [8, 'Over your weekly hours limit'], [10, 'Beyond how far ahead you can book']] as const) {
