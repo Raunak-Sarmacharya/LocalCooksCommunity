@@ -99,7 +99,11 @@ export function BookingDayHoursRow({ title, slots, value, onChange, hourlyRate, 
                 className={cn("flex-1", selected.has(slot.time) ? "bg-[#E10939]" : slot.isFullyBooked
                   ? "bg-[repeating-linear-gradient(135deg,#d1d5db_0,#d1d5db_3px,#f3f4f6_3px,#f3f4f6_6px)]" : "bg-emerald-100")} />)}
             </div>
-            <div className="mt-1 flex justify-between text-[11px] text-muted-foreground"><span>{openStart && time(openStart)}</span><span>{openEnd && time(openEnd)}</span></div>
+            {/* A label every 3 hours, aligned to its slot, so booked hours read without counting; closing time at the end. */}
+            <div className="relative mt-1 flex gap-px text-[11px] text-muted-foreground">
+              {slots.map((slot, i) => <span key={slot.time} className="flex-1 whitespace-nowrap">{i % 3 === 0 && i <= slots.length - 3 ? time(slot.time).replace(":00", "") : ""}</span>)}
+              {openEnd && <span className="absolute right-0 top-0 whitespace-nowrap bg-white pl-1">{time(openEnd).replace(":00", "")}</span>}
+            </div>
           </div>
           <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground" aria-hidden="true">
             <span className="flex items-center gap-1.5"><span className="h-2.5 w-4 rounded-sm bg-emerald-100" />{t("bkFreeHours")}</span>
