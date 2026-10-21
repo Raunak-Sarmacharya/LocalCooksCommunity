@@ -41,7 +41,7 @@ function readStoredDays(kitchenId: string): string[] | undefined {
     const dates = JSON.parse(sessionStorage.getItem(`kitchen_dates_${kitchenId}`) ?? "null")?.dates;
     if (!Array.isArray(dates) || !dates.length || dates.length > 14) return undefined;
     const valid = dates.filter((date): date is string => typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date));
-    return valid.length === dates.length ? [...new Set(valid)].sort() : undefined;
+    return valid.length === dates.length ? Array.from(new Set(valid)).sort() : undefined;
   } catch {
     return undefined;
   }
