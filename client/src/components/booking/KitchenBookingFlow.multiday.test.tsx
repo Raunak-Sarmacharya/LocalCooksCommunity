@@ -149,8 +149,8 @@ describe('the existing flow with more days', () => {
     pick(9, 'Start', /^9:00/); pick(9, 'End', /^11:00/);
     cleanup(); await open(); expect(day(7)).toHaveAttribute('aria-selected', 'true'); expect(day(9)).toHaveAttribute('aria-selected', 'true');
     fireEvent.click(screen.getByRole('button', { name: 'Choose hours' }));
-    await waitFor(() => expect(within(row(9)).getByRole('combobox', { name: 'End' })).toHaveTextContent(/11:00.*2 hours/));
-    expect(within(row(7)).getByRole('combobox', { name: 'End' })).toHaveTextContent(/10:00.*1 hour/);
+    await waitFor(() => expect(within(row(9)).getByRole('combobox', { name: 'End' })).toHaveTextContent(/11:00/)); expect(row(9)).toHaveTextContent(/2 hours/);
+    expect(within(row(7)).getByRole('combobox', { name: 'End' })).toHaveTextContent(/10:00/); expect(row(7)).toHaveTextContent(/1 hour/);
   });
   it('applies the kitchen hourly cap to a restored multi-day draft before checkout', async () => {
     sessionStorage.setItem('kitchen_booking_days_4', JSON.stringify({ version: 1, dates: ['2030-10-07', '2030-10-11'],

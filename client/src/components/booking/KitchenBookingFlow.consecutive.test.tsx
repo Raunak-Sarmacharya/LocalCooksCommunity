@@ -122,7 +122,7 @@ describe('actual kitchen picker consecutive selection', () => {
     fixture.times = ['22:00', '23:00', '00:00'];
     await open(['23:00', '00:00']);
     expect(screen.getByRole('combobox', { name: 'bkStart' })).toHaveTextContent(time('23:00'));
-    expect(screen.getByRole('combobox', { name: 'bkEnd' })).toHaveTextContent(`${time('01:00')} · bkHours`);
+    expect(screen.getByRole('combobox', { name: 'bkEnd' })).toHaveTextContent(time('01:00')); // the duration shows under the pickers, not in the End trigger
     fireEvent.click(screen.getByRole('button', { name: /^Continue$/ }));
     expect(screen.getByText(/Confirm/, { selector: 'p[aria-live="polite"]' })).toBeInTheDocument();
   });
