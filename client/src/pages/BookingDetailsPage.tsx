@@ -1253,11 +1253,12 @@ export default function BookingDetailsPage() {
   );
 
   const cap = (value?: string | null) => value ? value.charAt(0).toUpperCase() + value.slice(1) : '';
+  // Declined in a waiting new-total offer: the row stays pending until the chef answers.
+  const isDeclinedInOffer = (item: { id: number }) => !!proposal && (proposal.declined.some(d => d.id === item.id)
+    || proposal.equipment.some(e => e.id === item.id && e.status === 'cancelled'));
   const itemChip = (item: { id: number; status: string; paymentStatus?: string }, storage: boolean) => {
     const voided = isItemVoided(item), refunded = isItemRefunded(item);
-    // Declined in a waiting new-total offer: the row stays pending until the chef answers.
-    const declinedInOffer = !storage && !!proposal && (proposal.declined.some(d => d.id === item.id)
-      || proposal.equipment.some(e => e.id === item.id && e.status === 'cancelled'));
+    const declinedInOffer = !storage && isDeclinedInOffer(item);
     if (storage && item.status === 'completed') return <InfoChip variant="success" icon={<CheckCircle2 className="h-2.5 w-2.5" />}>{cap(t('bdStatusCleared'))}</InfoChip>;
     if (refunded) return <InfoChip variant="warning" icon={<Receipt className="h-2.5 w-2.5" />}>{cap(t('bdStatusRefunded'))}</InfoChip>;
     if (declinedInOffer) return <InfoChip variant="outline" icon={<XCircle className="h-2.5 w-2.5" />} data-testid="pa-declined-item-chip">
@@ -1870,24 +1871,47 @@ export default function BookingDetailsPage() {
   const storageRows = allStorageBookings.map(storage => ({ id: storage.id, name: storage.storageListing?.name || `Storage #${storage.storageListingId}`,
     detail: storage.startDate ? `${formatShortDate(storage.pricingModel === 'hourly' ? storage.startDate : storage.startDate.slice(0, 10))} – ${formatShortDate(storage.pricingModel === 'hourly' ? storage.endDate : storage.endDate.slice(0, 10))}` : null,
     price: formatCurrency(storage.totalPrice), struck: isItemVoided(storage) || isItemRefunded(storage) || storage.status === 'cancelled', chip: itemChip(storage, true) }));
-  // Multi-day: the same equipment can be on several days, so each row names its day, in day order.
+  // Multi-day: the same equipment can be on several days; one row per item names its days, in day order.
   const equipmentDay = (equipment: { kitchenBookingVisitId?: number | null }) => datedBooking ? bookingDays.find(visit => visit.id === equipment.kitchenBookingVisitId)?.visitDate ?? null : null;
-  const equipmentRows = [...allEquipmentBookings].sort((a, b) => (equipmentDay(a) ?? '').localeCompare(equipmentDay(b) ?? '')).map(equipment => ({ id: equipment.id, name: equipment.equipmentListing?.equipmentType || `Equipment #${equipment.equipmentListingId}`,
-    detail: [(date => date ? formatShortDate(date) : null)(equipmentDay(equipment)),
-      equipment.equipmentListing?.brand].filter(Boolean).join(' · ') || null, price: formatCurrency(equipment.totalPrice),
-    struck: isItemVoided(equipment) || isItemRefunded(equipment) || equipment.status === 'cancelled', chip: itemChip(equipment, false) }));
-  const addOns = booking && (storageRows.length > 0 || equipmentRows.length > 0) && (
+  type EquipmentBooking = (typeof allEquipmentBookings)[number];
+  const equipmentDayLabel = (equipment: EquipmentBooking) => (date => date ? formatShortDate(date) : null)(equipmentDay(equipment));
+  const isStruckItem = (equipment: EquipmentBooking) => isItemVoided(equipment) || isItemRefunded(equipment) || equipment.status === 'cancelled';
+  const byListing = (list: EquipmentBooking[]) => [...list.reduce((map, equipment) =>
+    map.set(equipment.equipmentListingId, [...(map.get(equipment.equipmentListingId) ?? []), equipment]), new Map<number, EquipmentBooking[]>()).values()];
+  // shortcut: the API doesn't send availabilityType, so $0 means included (as on the review page); a pending cancellation keeps a full row for the kitchen's answer.
+  const isIncludedItem = (equipment: EquipmentBooking) => !Number(equipment.totalPrice) && equipment.status !== 'cancellation_requested';
+  const sortedEquipment = [...allEquipmentBookings].sort((a, b) => (equipmentDay(a) ?? '').localeCompare(equipmentDay(b) ?? ''));
+  const equipmentAction = (equipment: EquipmentBooking) => booking && isManagerView && booking.paymentDecision?.state !== 'pending' && equipment.status === 'cancellation_requested' && booking.status === 'confirmed'
+    ? <div className="flex flex-wrap gap-2">
+      <Button variant="outline" size="sm" className="min-h-11" disabled={itemCancellationPending} onClick={() => void reviewEquipmentCancellation(equipment.id, true)}>{t('bdAcceptCancellation', { defaultValue: 'Accept cancellation' })}</Button>
+      <Button variant="outline" size="sm" className="min-h-11" disabled={itemCancellationPending} onClick={() => void reviewEquipmentCancellation(equipment.id, false)}>{t('bdDeclineCancellation', { defaultValue: 'Decline cancellation' })}</Button>
+    </div> : null;
+  const equipmentRows = byListing(sortedEquipment.filter(equipment => !isIncludedItem(equipment))).map(items => {
+    const [first] = items, live = items.filter(equipment => !isStruckItem(equipment)), actions = items.map(equipmentAction);
+    const statusKey = (equipment: EquipmentBooking) => [equipment.status, equipment.paymentStatus, isDeclinedInOffer(equipment)].join();
+    // One status for the whole rental unless its days differ or a day has its own action; then each day gets a line.
+    const perDay = items.length > 1 && (items.some(equipment => statusKey(equipment) !== statusKey(first)) || actions.some(Boolean));
+    const brand = first.equipmentListing?.brand;
+    return { id: first.id, name: first.equipmentListing?.equipmentType || `Equipment #${first.equipmentListingId}`,
+      detail: [perDay ? null : items.map(equipmentDayLabel).filter(Boolean).join(', '), brand].filter(Boolean).join(' · ') || null,
+      price: formatCurrency((live.length ? live : items).reduce((sum, equipment) => sum + (equipment.totalPrice || 0), 0)), struck: !live.length,
+      chip: perDay ? null : itemChip(first, false), actions: perDay ? null : actions[0],
+      days: perDay ? items.map((equipment, index) => ({ key: equipment.id, label: equipmentDayLabel(equipment) ?? '', price: formatCurrency(equipment.totalPrice),
+        struck: isStruckItem(equipment), chip: itemChip(equipment, false), actions: actions[index] })) : undefined };
+  });
+  const includedItems = byListing(sortedEquipment.filter(isIncludedItem)).map(items => {
+    const off = items.filter(equipment => isStruckItem(equipment) || isDeclinedInOffer(equipment));
+    return { key: items[0].id, name: items[0].equipmentListing?.equipmentType || `Equipment #${items[0].equipmentListingId}`,
+      note: [items[0].equipmentListing?.brand, !off.length ? null : off.length === items.length ? t('bdIncludedUnavailable')
+        : t('bdIncludedUnavailableOn', { days: off.map(equipmentDayLabel).filter(Boolean).join(', ') })].filter(Boolean).join(' · ') || null };
+  });
+  const addOns = booking && (storageRows.length > 0 || allEquipmentBookings.length > 0) && (
     <section aria-labelledby="booking-addons-title">
       <Card className={`${cardClass} space-y-4`}>
         <h2 id="booking-addons-title" className={headingClass}>{t('bdhAddOns')}</h2>
         <StorageRows title={t('bdStorageSection')} rows={storageRows} />
-        <EquipmentRows title={t('bdEquipmentSection')} rows={equipmentRows} actions={id => {
-          const equipment = allEquipmentBookings.find(item => item.id === id);
-          return isManagerView && equipment && booking.paymentDecision?.state !== 'pending' && equipment.status === 'cancellation_requested' && booking.status === 'confirmed' && <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" className="min-h-11" disabled={itemCancellationPending} onClick={() => void reviewEquipmentCancellation(id, true)}>{t('bdAcceptCancellation', { defaultValue: 'Accept cancellation' })}</Button>
-            <Button variant="outline" size="sm" className="min-h-11" disabled={itemCancellationPending} onClick={() => void reviewEquipmentCancellation(id, false)}>{t('bdDeclineCancellation', { defaultValue: 'Decline cancellation' })}</Button>
-          </div>;
-        }} />
+        <EquipmentRows title={t('bdEquipmentSection')} rows={equipmentRows}
+          included={{ label: t('bdIncludedWithKitchen', { count: includedItems.length }), items: includedItems }} />
       </Card>
     </section>
   );

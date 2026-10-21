@@ -3624,6 +3624,7 @@
   "rrCantHost": "Impossible ce jour-là",
   "rrCantProvide": "Impossible de fournir",
   "rrIncluded": "Inclus",
+  "rrIncludedEquipment": "Équipement inclus ({count})",
   "rrEquipment": "Équipement",
   "rrNoTimeForChanges": "Cette réservation commence bientôt : il n’y a pas le temps de proposer des changements au chef. Acceptez la demande complète ou refusez-la.",
   "rrChefNote": "Note de {chef}",

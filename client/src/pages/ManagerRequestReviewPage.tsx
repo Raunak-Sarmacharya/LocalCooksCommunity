@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation, useRoute } from 'wouter';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Clock, Info, Loader2 } from 'lucide-react';
+import { ArrowLeft, ChevronDown, Clock, Info, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useFirebaseAuth } from '@/hooks/use-auth';
 import { apiClient } from '@/lib/api';
@@ -157,14 +157,27 @@ export default function ManagerRequestReviewPage() {
                         {t('rrCantHost')}</label>}
                     </div>
                   </div>
-                  {day.items.length > 0 && <ul className="space-y-1.5 rounded-xl bg-muted/40 p-3">{day.items.map(item => {
-                    const off = dayOff || declinedItems.includes(item.id);
-                    return <li key={item.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
-                      <span className={off ? 'line-through text-muted-foreground' : ''}>{item.name} · {item.cents ? money(item.cents) : t('rrIncluded')}</span>
-                      <label className="flex items-center gap-2"><Checkbox checked={off} disabled={dayOff || !timeForChanges || busy}
-                        onCheckedChange={() => toggle(declinedItems, setDeclinedItems, item.id)} />{t('rrCantProvide')}</label>
-                    </li>;
-                  })}</ul>}
+                  {day.items.length > 0 && (() => {
+                    const row = (item: typeof day.items[number]) => {
+                      const off = dayOff || declinedItems.includes(item.id);
+                      return <li key={item.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                        <span className={off ? 'line-through text-muted-foreground' : ''}>{item.name}{item.cents ? ` · ${money(item.cents)}` : ''}</span>
+                        <label className="flex items-center gap-2"><Checkbox checked={off} disabled={dayOff || !timeForChanges || busy}
+                          onCheckedChange={() => toggle(declinedItems, setDeclinedItems, item.id)} />{t('rrCantProvide')}</label>
+                      </li>;
+                    };
+                    // Included equipment is folded: the kitchen rarely needs it, but can still mark a broken item.
+                    const included = day.items.filter(item => !item.cents), paid = day.items.filter(item => item.cents);
+                    return <div className="space-y-1.5 rounded-xl bg-muted/40 p-3">
+                      {paid.length > 0 && <ul className="space-y-1.5">{paid.map(row)}</ul>}
+                      {included.length > 0 && <details className="group" data-testid="rr-included">
+                        <summary className="flex min-h-9 cursor-pointer list-none items-center gap-1.5 text-sm text-muted-foreground [&::-webkit-details-marker]:hidden">
+                          {t('rrIncludedEquipment', { count: included.length })}<ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" aria-hidden />
+                        </summary>
+                        <ul className="mt-1 space-y-1.5">{included.map(row)}</ul>
+                      </details>}
+                    </div>;
+                  })()}
                 </li>;
               })}</ul>
               {!timeForChanges && <p className="mt-2 text-sm text-muted-foreground">{t('rrNoTimeForChanges')}</p>}

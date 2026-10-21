@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import en from '@shared/i18n/locales/en-CA/manager.json';
 
@@ -59,6 +59,25 @@ describe('kitchen request review page', () => {
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Send changes to Alex' })); });
     await waitFor(() => expect(h.navigate).toHaveBeenCalled());
     expect(h.calls.find(call => call.method === 'PUT')?.body).toMatchObject({ status: 'confirmed', declinedVisitIds: [2] });
+  });
+  it('folds included equipment per day; a broken included item can still be marked and is sent like any add-on', async () => {
+    const oven = { status: 'confirmed', totalPrice: 2500, equipmentListing: { equipmentType: 'Commercial Oven' } };
+    const range = { status: 'confirmed', totalPrice: 0, equipmentListing: { equipmentType: 'Gas Range', brand: 'Garland' } };
+    h.details.equipmentBookings = [{ ...oven, id: 101, kitchenBookingVisitId: 1 }, { ...range, id: 102, kitchenBookingVisitId: 1 },
+      { ...oven, id: 103, kitchenBookingVisitId: 2 }, { ...range, id: 104, kitchenBookingVisitId: 2 }];
+    mount();
+    const [day1] = await screen.findAllByTestId('rr-day');
+    // The paid rental stays a visible row; the included item sits in the fold.
+    expect(day1).toHaveTextContent('Commercial Oven · $25.00');
+    const folds = screen.getAllByTestId('rr-included');
+    expect(folds).toHaveLength(2);
+    expect(folds[0]).toHaveTextContent('Included equipment (1)');
+    expect(folds[0]).not.toHaveAttribute('open');
+    fireEvent.click(within(folds[0]).getByRole('checkbox'));
+    await waitFor(() => expect(h.calls.find(call => call.method === 'POST')?.body).toEqual({ equipmentBookingIds: [102], declinedVisitIds: [] }));
+    await act(async () => { fireEvent.click(await screen.findByRole('button', { name: 'Send changes to Alex' })); });
+    await waitFor(() => expect(h.navigate).toHaveBeenCalled());
+    expect(h.calls.find(call => call.method === 'PUT')?.body).toEqual({ status: 'confirmed', equipmentActions: [{ equipmentBookingId: 102, action: 'cancelled' }], declinedVisitIds: [] });
   });
   it('decline: plain decline with a message, or suggest other times through a pre-filled invitation', async () => {
     mount();

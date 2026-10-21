@@ -3624,6 +3624,7 @@
   "rrCantHost": "Can’t host this day",
   "rrCantProvide": "Can’t provide",
   "rrIncluded": "Included",
+  "rrIncludedEquipment": "Included equipment ({count})",
   "rrEquipment": "Equipment",
   "rrNoTimeForChanges": "This booking starts soon, so there isn’t time to ask the chef about changes. Accept the full request, or decline it.",
   "rrChefNote": "Note from {chef}",

@@ -815,6 +815,44 @@ it('lists only the current days’ equipment after an approved change, each with
   expect(addOns).not.toHaveTextContent(/Cancelled/i);
 });
 
+it('groups a rental over several days into one row and folds included equipment once (live #222, Oct 21)', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(START - 3 * 86_400_000);
+  h.manager = true;
+  const oven = { equipmentListingId: 89, totalPrice: 2500, paymentStatus: 'paid', status: 'confirmed', equipmentListing: { equipmentType: 'Commercial Oven' } };
+  const range = { equipmentListingId: 90, totalPrice: 0, paymentStatus: 'paid', status: 'confirmed', equipmentListing: { equipmentType: 'Gas Range', brand: 'Garland' } };
+  const days = [15, 17, 19];
+  const booking = (ovenDay2: object) => ({ ...base(), scheduleRevision: 1, status: 'confirmed', paymentStatus: 'paid',
+    paymentTransaction: { amount: 30000, serviceFee: 2000, managerRevenue: 28000, status: 'succeeded' }, totalPrice: 28000,
+    visits: days.map((day, i) => ({ id: i + 10, blockIndex: i, visitDate: `2030-01-${day}`, scheduleRevision: 1, scheduleState: 'active',
+      startTime: '10:00', endTime: '12:00', checkinStatus: 'not_checked_in', updatedAt: '2030-01-10T12:00:00Z' })),
+    equipmentBookings: days.flatMap((_, i) => [{ ...oven, ...(i === 1 ? ovenDay2 : {}), id: 100 + i, kitchenBookingVisitId: i + 10 },
+      { ...range, id: 200 + i, kitchenBookingVisitId: i + 10, ...(i === 2 ? { status: 'cancelled', paymentStatus: 'failed' } : {}) }]) });
+  h.booking = booking({});
+  const { unmount } = render(<BookingDetailsPage />);
+  let rows = await screen.findByTestId('equipment-rows');
+  expect(within(rows).getAllByText('Commercial Oven')).toHaveLength(1);
+  expect(rows).toHaveTextContent('Jan 15, Jan 17, Jan 19');
+  expect(rows).toHaveTextContent('$75.00');
+  expect(rows).not.toHaveTextContent('$0.00');
+  expect(within(rows).queryByTestId('equipment-row-days')).toBeNull();
+  // Included: one folded line, each item once, with the day the kitchen couldn't provide it.
+  const included = within(rows).getByTestId('included-equipment');
+  expect(included).toHaveTextContent('Included with the kitchen (1)');
+  expect(within(included).getAllByText('Gas Range')).toHaveLength(1);
+  expect(included).toHaveTextContent('Garland · Not available on Jan 19');
+  unmount();
+  // One day refunded, another with a cancellation request: each day gets its own line, with the kitchen's answer on its day.
+  h.booking = booking({ status: 'cancelled', paymentStatus: 'refunded' });
+  h.booking.equipmentBookings[4] = { ...h.booking.equipmentBookings[4], status: 'cancellation_requested' };
+  render(<BookingDetailsPage />);
+  rows = await screen.findByTestId('equipment-rows');
+  const perDay = within(rows).getAllByTestId('equipment-row-days')[0];
+  const lines = within(perDay).getAllByRole('listitem');
+  expect(lines.map(line => line.textContent)).toEqual([expect.stringMatching(/^Jan 15\$25\.00Confirmed$/), expect.stringMatching(/^Jan 17\$25\.00Refunded$/),
+    expect.stringMatching(/^Jan 19Accept cancellationDecline cancellation\$25\.00/)]);
+  expect(rows).toHaveTextContent('$50.00');
+});
+
 it('opens a pending dated request for the kitchen when every day has its own clock (live crash, Oct 18)', async () => {
   vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(START - 3 * 86_400_000);
   h.manager = true;
