@@ -102,7 +102,7 @@ export function CalendarEventRow({ event, locale, dot = false }: { event: Calend
   const time = eventTime(event, locale);
   const look = eventLook(event);
   return (
-    <EventLink event={event} className="group grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 rounded-md py-2.5 transition-colors hover:bg-stone-50 motion-reduce:transition-none">
+    <EventLink event={event} className="group grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 py-2.5 transition-colors hover:bg-stone-50 motion-reduce:transition-none">
       <span className={cn("flex min-w-0 items-center gap-2 text-sm font-semibold tabular-nums text-stone-900", event.cancelled && "text-stone-500 line-through")}>
         {dot && <span aria-hidden="true" className={cn("size-2 shrink-0 rounded-sm", look.dot)} />}
         <span className="min-w-0 break-words">{time || event.label}</span>

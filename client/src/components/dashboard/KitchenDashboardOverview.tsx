@@ -502,7 +502,7 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
       {task.action ? <><span className={cn(btnSecondary, "hidden sm:inline-flex")}>{task.action}</span><ChevronRight className="size-4 text-stone-400 sm:hidden" aria-hidden="true" /></>
         : <ChevronRight className="size-4 text-stone-400" aria-hidden="true" />}
     </>;
-    const className = cn("grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-5 rounded-md border-t border-stone-100 py-3 text-left transition-colors first:border-t-0 hover:bg-stone-50/70 motion-reduce:transition-none sm:px-4", focusRing);
+    const className = cn("grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-5 border-t border-stone-100 py-3 text-left transition-colors first:border-t-0 hover:bg-stone-50/70 motion-reduce:transition-none sm:px-4", focusRing);
     return task.href ? <Link key={task.id} href={task.href} className={className}>{content}</Link> : <button key={task.id} type="button" className={className} onClick={() => openTask(task)}>{content}</button>;
   };
   const requestRow = (task: Task) => {
@@ -637,7 +637,7 @@ return <div key={kitchen.id}><button type="button" onClick={() => onNavigate(lis
           <time dateTime={item.date} title={displayDate(item.date)} className="whitespace-nowrap text-xs text-stone-500">{formatRelativeTime(item.date, i18n.language)}</time>
           <span className={cn("col-span-2 mt-0.5 min-w-0 truncate", sub)}>{[item.person, item.kitchen, item.scheduled, item.time].filter(Boolean).join(" · ")}</span>
         </>;
-        const className = cn("grid w-full grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-3 rounded-md border-t border-stone-100 py-2.5 text-left transition-colors first:border-t-0 hover:bg-stone-50/70 motion-reduce:transition-none", focusRing);
+        const className = cn("grid w-full grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-3 border-t border-stone-100 py-2.5 text-left transition-colors first:border-t-0 hover:bg-stone-50/70 motion-reduce:transition-none", focusRing);
         return item.kind === "booking" ? <Link key={`booking-${item.activityKey}`} href={item.href} className={className}>{content}</Link>
           : <button type="button" key={`${item.kind}-${item.id}-${item.kind === "tour" ? item.activityKey : "current"}`} onClick={() => openTask({ id: String(item.id), title: item.title, view, param: ACTIVITY_PARAM[item.kind] })} className={className}>{content}</button>;
       })}
@@ -671,7 +671,7 @@ return <div key={kitchen.id}><button type="button" onClick={() => onNavigate(lis
       {tomorrowList.length > 0 && <div className="mt-2 border-t border-stone-100 pt-3" data-testid="overview-tomorrow">
         <p className="flex justify-between gap-3 text-xs text-stone-500"><span>{mt("ovrTomorrowOn", { date: weekdayDate(tomorrowKey) })}</span><span>{mt("ovrBookingCount", { count: tomorrowList.length })}</span></p>
         <ul className="mt-1.5">{tomorrowList.map(event => <li key={event.key}>
-          <Link href={event.href ?? "/manager/bookings"} className={cn("flex justify-between gap-3 rounded py-1 text-[13px] hover:text-stone-900", focusRing)}>
+          <Link href={event.href ?? "/manager/bookings"} className={cn("flex min-h-10 items-center justify-between gap-3 rounded text-[13px] hover:text-stone-900 lg:min-h-7", focusRing)}>
             <span className="whitespace-nowrap font-semibold tabular-nums text-stone-900">{timeRange(formatTime(event.start!, i18n.language), formatTime(event.end!, i18n.language))}</span>
             <span className="min-w-0 truncate text-stone-600">{event.title}</span>
           </Link></li>)}</ul>
