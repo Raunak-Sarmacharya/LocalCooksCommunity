@@ -27,13 +27,15 @@ type Attendance = { bookingId: number; status: string; checkinStatus: string | n
 type Action = 'arrival' | 'departure' | 'report_no_show' | 'report_attended' | 'withdraw_attendance' | 'support';
 type VisitDetails = Parameters<typeof hasBookingAttendanceEvidence>[0] & { id?: number; checkedInAt?: string | null; checkoutRequestedAt?: string | null; checkedOutAt?: string | null };
 
-export function BookingAttendancePanel({ bookingId, manager, localCooks = false, onSaved, timezone, chefName, closeout, visitDetails = [], embedded = false, hideArrivalStatus = false, fixOpen, onFixOpenChange, fixAction, fixVisitId }: {
+export function BookingAttendancePanel({ bookingId, manager, localCooks = false, onSaved, timezone, chefName, closeout, visitDetails = [], embedded = false, hideArrivalStatus = false, hideDispute = false, fixOpen, onFixOpenChange, fixAction, fixVisitId }: {
   bookingId: number; manager: boolean; localCooks?: boolean; onSaved: () => Promise<void>; managerVisitHref?: string;
   timezone?: string | null; chefName?: string; closeout?: BookingCloseout; visitDetails?: VisitDetails[];
   /** Inside the booking page's Visit details: no card chrome, heading, zone line, status text or extra Message button (the Now card has them). */
   embedded?: boolean;
   /** Another line already says when they checked in (manager, visit code), so skip the arrival-only status. */
   hideArrivalStatus?: boolean;
+  /** The page header already offers the chef "I was there", so the support link would be a second way to say it. */
+  hideDispute?: boolean;
   /** Controls "Fix the visit record" from the page's overflow menu; the in-card trigger is then hidden. */
   fixOpen?: boolean; onFixOpenChange?: (open: boolean) => void;
   /** Opens "Fix the visit record" straight on this choice when it applies ("Record when they left", "They came", "Report no-show"). */
@@ -185,7 +187,7 @@ export function BookingAttendancePanel({ bookingId, manager, localCooks = false,
       {zone && !embedded && <p className="text-xs text-muted-foreground">{friendlyTimezoneName(zone, locale)}</p>}
       {!manager && !localCooks && chosen && noShow && <div className="space-y-3">
         {latest?.sharedMessage && <blockquote className="rounded-lg bg-muted p-3 text-sm whitespace-pre-wrap">{latest.sharedMessage}</blockquote>}
-        <div className="flex flex-wrap items-center gap-3">{!embedded && <MessageKitchenButton bookingId={bookingId} />}<a className="text-sm underline" href={localCooksSupportHref({ bookingId, role: manager ? "manager" : "chef", situation: "Visit attendance needs review" })}>{t('fixDispute')}</a></div>
+        {!(embedded && hideDispute) && <div className="flex flex-wrap items-center gap-3">{!embedded && <MessageKitchenButton bookingId={bookingId} />}{!hideDispute && <a className="text-sm underline" href={localCooksSupportHref({ bookingId, role: manager ? "manager" : "chef", situation: "Visit attendance needs review" })}>{t('fixDispute')}</a>}</div>}
       </div>}
       {(events.length > 0 || assistance.length > 0) && <details><summary className="cursor-pointer text-sm">{t('fixHistory')}</summary><ol className="mt-3 space-y-3 text-sm">
         {events.map(event => <li key={event.id}><p>{eventLabel(event)} · {when(event.createdAt)}</p>{event.sharedMessage && <p className="whitespace-pre-wrap text-muted-foreground">{event.sharedMessage}</p>}{localCooks && event.internalNotes && <p>{t('fixInternal')}: {event.internalNotes}</p>}</li>)}

@@ -479,7 +479,9 @@ describe("no check-in recorded", () => {
     const scroll = vi.fn();
     const support = document.getElementById("booking-support");
     if (support) support.scrollIntoView = scroll;
-    fireEvent.click(within(screen.getByTestId("now-secondary")).getByRole("button", { name: "I was there" }));
+    // The chef's one action is a real button in the header, not a quiet link, .
+    expect(screen.queryByTestId("now-secondary")).toBeNull();
+    fireEvent.click(within(screen.getByTestId("booking-header")).getByRole("button", { name: "I was there" }));
     expect(scroll).toHaveBeenCalled();
   });
 });

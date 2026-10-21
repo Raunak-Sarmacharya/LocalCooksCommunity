@@ -124,6 +124,12 @@ it('inside the booking page leaves Message kitchen to the page header for a disp
   expect(await screen.findByRole('link', { name: 'This isn’t right: contact Local Cooks' })).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Message kitchen' })).not.toBeInTheDocument();
 });
+it('drops its support link when the page header already offers I was there', async () => {
+  const { client } = mount({ manager: false, embedded: true, hideDispute: true, data: { ...record, visits: [{ ...record.visits[0], checkinStatus: 'no_show' }], history: [{ id: 1, visitId: 5, action: 'report_no_show', actorRole: 'manager', sharedMessage: 'We waited.', createdAt: '2026-10-04T12:00:00Z' }] } });
+  expect((await screen.findAllByText('We waited.')).length).toBeGreaterThan(0);
+  await waitFor(() => expect(client.isFetching()).toBe(0));
+  expect(screen.queryByRole('link', { name: 'This isn’t right: contact Local Cooks' })).not.toBeInTheDocument();
+});
 it('labels support actions and keeps internal notes on the admin endpoint', async () => {
   const { fetcher } = mount({ manager: false, localCooks: true });
   fireEvent.click(await screen.findByRole('button', { name: 'Fix visit record (support)' }));

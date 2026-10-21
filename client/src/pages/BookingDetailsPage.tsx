@@ -1552,8 +1552,11 @@ export default function BookingDetailsPage() {
         : [{ key, label: policyT('dcV2Report'), onSelect: () => setClaimOpen(true) }];
     }
   });
-  const visibleSecondary = secondaryLinks.slice(0, NOW_SECONDARY_VISIBLE);
-  const overflowSecondary = secondaryLinks.slice(NOW_SECONDARY_VISIBLE);
+  // "I was there" is the chef's one action after a no-show report: a real button in the header, not a quiet link.
+  const iWasThere = secondaryLinks.find(link => link.key === 'i_was_there');
+  const linkSecondary = secondaryLinks.filter(link => link.key !== 'i_was_there');
+  const visibleSecondary = linkSecondary.slice(0, NOW_SECONDARY_VISIBLE);
+  const overflowSecondary = linkSecondary.slice(NOW_SECONDARY_VISIBLE);
   const visibleKeys = new Set(visibleSecondary.map(link => link.key));
 
   // ⋯ menu: the full action list, minus whatever is already one tap away (the primary and the visible links).
@@ -1759,6 +1762,7 @@ export default function BookingDetailsPage() {
         )}
       </>}
       body={<>
+        {iWasThere && <div><Button type="button" variant="outline" className="min-h-11" data-testid={iWasThere.testId} onClick={iWasThere.onSelect}>{iWasThere.label}</Button></div>}
         {primary === 'answer_attendance' && (
           <div className="flex flex-wrap gap-2" role="group" aria-label={t('bnDidTheyCome')} data-testid="attendance-answer">
             <Button type="button" variant="outline" className="min-h-11" data-testid="they-came" onClick={() => openFix('report_attended')}>{t('bnTheyCame')}</Button>
@@ -1808,7 +1812,7 @@ export default function BookingDetailsPage() {
       claimLines={claimLines}
       evidence={visitEvidence}
       attendance={<BookingAttendancePanel key={`${booking.id}-${isManagerView}`} bookingId={booking.id} manager={isManagerView} onSaved={reloadBookingDetails} timezone={booking.location?.timezone}
-        chefName={chefName} closeout={booking.closeout} embedded
+        chefName={chefName} closeout={booking.closeout} embedded hideDispute={!!iWasThere}
         {...(isManagerView ? { fixOpen, onFixOpenChange: setFixOpen, fixAction, fixVisitId } : {})}
         visitDetails={booking.visits?.length ? booking.visits : [{ ...booking, id: undefined }]} />}
       fixLabel={isManagerView && !visibleKeys.has('fix_record') && !visibleKeys.has('record_left') ? t('fixTitle') : undefined}
