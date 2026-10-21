@@ -22,7 +22,7 @@ export function kitchenActionKindIcon(kind: KitchenActionKind): LucideIcon {
   }
 }
 
-/** Status chip with action-specific icon (Book Now ≠ Accepting Requests ≠ Check). */
+/** Status chip with action-specific icon (Book Now ≠ Accepting requests ≠ Check). */
 export function KitchenStatusChip({
   display,
   className,

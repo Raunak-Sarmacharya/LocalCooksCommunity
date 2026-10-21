@@ -1112,7 +1112,7 @@ export default function KitchenBookingFlow({
       {
         key: "confirm",
         label: t("sheetStepConfirm", "Confirm"),
-        subtext: t("sheetStepConfirmSubtext", "Review & pay"),
+        subtext: t("sheetStepConfirmSubtext", "Review & request"),
       },
     ];
     return all.filter((s) => {
@@ -1182,7 +1182,7 @@ export default function KitchenBookingFlow({
   };
   const bookingTimeBlocks = bookingVisitBlocks(
     orderedSelectedSlots.map(startTime => ({ startTime, endTime: addHour(startTime) }))
-  ).map(block => `${formatTime(block.startTime)} - ${formatTime(block.endTime)}`);
+  ).map(block => `${formatTime(block.startTime)} – ${formatTime(block.endTime)}`);
   const datedSummaryRows = isMultiDay ? datedPrices.map(day => ({
     date: formatDate(new Date(`${day.date}T12:00:00`)),
     hours: day.pricingMode === 'daily' ? t('sheetDailyRate') : day.slots.length
@@ -1423,7 +1423,7 @@ export default function KitchenBookingFlow({
             <div className="min-w-0">
               <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
                 <Icon icon="mdi:calendar-month-outline" className="h-4 w-4 text-[#E10939]" aria-hidden />
-                {t("sheetSelectDateTitle", "Select Date")}
+                {t("sheetSelectDateTitle", "Choose your days")}
               </h3>
               <p className="text-sm text-muted-foreground mt-1">
                 {t("sheetTapDateToContinue", "Tap an available date to continue")}
@@ -1543,7 +1543,7 @@ export default function KitchenBookingFlow({
         <div className="flex h-full min-h-[16rem] flex-col gap-4">
           <div className="flex shrink-0 items-start justify-between gap-3">
             <div className="min-w-0">
-              <h3 className="text-base font-semibold text-gray-900">{isMultiDay ? t("bkChooseHoursEachDay") : t("sheetSelectTimeTitle", "Select Time")}</h3>
+              <h3 className="text-base font-semibold text-gray-900">{isMultiDay ? t("bkChooseHoursEachDay") : t("sheetSelectTimeTitle", "Choose your hours")}</h3>
               <p className="text-sm text-muted-foreground mt-1">
                 {isMultiDay ? t('mdSelectedDays', { count: selectedDates.length }) : formatDate(selectedDate)}
                 {maxSlotsPerChef != null ? ` · ${t("sheetMaxHoursBadge", { maxHours: maxSlotsPerChef, defaultValue: `Max ${maxSlotsPerChef} hours` })}` : ""}
@@ -1761,7 +1761,7 @@ export default function KitchenBookingFlow({
         <div className="mb-2 flex items-center justify-between gap-2">
           <span className="flex items-center gap-2 text-base font-semibold text-muted-foreground">
             <Icon icon="mdi:receipt-text-outline" className="h-4 w-4 text-[#E10939]" aria-hidden />
-            {t("sheetOrderSummaryLabel", "Booking Summary")}
+            {t("sheetOrderSummaryLabel", "Booking summary")}
           </span>
           {selectedKitchen && (bookingRateMode === "daily" ? kitchenPricing?.dailyRate : kitchenPricing?.hourlyRate) != null ? (
             <InfoChip variant="count" icon={<Icon icon="mdi:cash-clock" className="!text-black" />}>

@@ -1246,7 +1246,7 @@
   "sheetMaxHoursBadge": "Макс. {maxHours} год",
   "shellDashboard": "Панель керування",
   "shellDiscoverKitchens": "Знайти кухні",
-  "showAllCount": "Показати всі {count} {label}",
+  "showAllCount": "Показати всі ({count})",
   "showFewerPhotos": "Показати менше фото",
   "showLess": "Згорнути",
   "signInToBook": "Увійдіть для бронювання",

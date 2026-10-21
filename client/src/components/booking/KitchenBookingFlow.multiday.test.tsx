@@ -45,7 +45,7 @@ async function open() {
   render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
     <KitchenBookingFlow locationId={1} locationName="Harbour" onCancel={() => {}} />
   </QueryClientProvider>);
-  await screen.findByText('Select Date');
+  await screen.findByText('Choose your days');
   await waitFor(() => expect(day(7) ?? screen.getAllByRole('gridcell', { name: '7' })[0]).not.toHaveAttribute('aria-disabled', 'true'));
 }
 function day(number: number) {

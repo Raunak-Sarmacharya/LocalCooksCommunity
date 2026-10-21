@@ -1450,7 +1450,7 @@ function ThingsToKnowSection({
   return (
     <section id="preview-things-to-know" className="scroll-mt-32 border-t border-gray-200 pt-6 sm:pt-8">
       <h2 className="text-lg font-semibold text-gray-900 sm:text-xl">
-        {t("thingsToKnowTitle", "Before You Book")}
+        {t("thingsToKnowTitle", "Before you book")}
       </h2>
       <div className="mt-4 grid grid-cols-1 divide-y divide-gray-200 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
         {columns.map((col) => (
@@ -1462,7 +1462,7 @@ function ThingsToKnowSection({
               <PreviewIcon icon={col.icon} size={16} className="text-[#E10939]" />
               <h3 className="text-sm font-semibold text-gray-900">{col.title}</h3>
             </div>
-            <div className="mt-1.5 flex-1 text-sm leading-relaxed text-gray-600">{col.id === 'cancellation' && kitchenId ? <PublishedCancellationPolicySummary kitchenId={kitchenId} /> : col.body}</div>
+            <div className="mt-1.5 flex-1 text-sm leading-relaxed text-gray-600">{col.id === 'cancellation' && kitchenId ? <PublishedCancellationPolicySummary kitchenId={kitchenId} headline /> : col.body}</div>
             {col.id === "cancellation" ? (
               <button
                 type="button"
@@ -3570,7 +3570,7 @@ export default function KitchenPreviewPage() {
                   }]
                 : []),
               { id: "preview-location", label: t("whereItIs", "Location") },
-              { id: "preview-things-to-know", label: t("thingsToKnowTitle", "Before You Book") },
+              { id: "preview-things-to-know", label: t("thingsToKnowTitle", "Before you book") },
             ]}
             activeId={activeSection}
             onNavigate={(id) => {

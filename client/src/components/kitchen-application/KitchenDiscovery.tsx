@@ -322,7 +322,7 @@ export default function KitchenDiscovery({
                   <KitchenStatusChip display={display} />
                 ) : kitchen.canAcceptBookings ? (
                   <InfoChip tone="success" icon={<AcceptingRequestsIcon />}>
-                    {t("applyFlowAcceptingBookings", "Accepting Requests")}
+                    {t("applyFlowAcceptingBookings", "Accepting requests")}
                   </InfoChip>
                 ) : (
                   <InfoChip tone="progress">

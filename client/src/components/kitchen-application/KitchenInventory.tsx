@@ -504,7 +504,7 @@ export function InventoryShowAllButton({
       className="inline-flex min-h-8 items-center gap-1 text-sm font-semibold text-[#E10939] hover:text-[#c90832] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E10939]"
       onClick={onClick}
     >
-      {t("showAllCount", { count, label: t(label, { defaultValue: label }), defaultValue: `Show all ${count} ${label}` })}
+      {t("showAllCount", { count, label: t(label, { defaultValue: label }), defaultValue: `Show all ${count} items` })}
       <PreviewIcon icon="mdi:chevron-right" size={16} className="ml-0.5" />
     </button>
   );

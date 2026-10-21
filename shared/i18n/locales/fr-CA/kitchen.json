@@ -1246,7 +1246,7 @@
   "sheetMaxHoursBadge": "Max {maxHours} h",
   "shellDashboard": "Tableau de bord",
   "shellDiscoverKitchens": "Découvrir les cuisines",
-  "showAllCount": "Tout afficher ({count} {label})",
+  "showAllCount": "Afficher les {count} articles",
   "showFewerPhotos": "Afficher moins de photos",
   "showLess": "Afficher moins",
   "signInToBook": "Se connecter pour réserver",

@@ -17,9 +17,11 @@ export function CancellationPolicySummary({ policy, timezone, startAt, processin
     deadline: startAt && timezone ? cancellationDeadlineLabel(startAt, policy.noticeHours, timezone, i18n.language) : '',
     fee: new Intl.NumberFormat(i18n.language, { style: 'currency', currency: 'CAD' }).format((processingFeeCents ?? 0) / 100) })}</p>;
 }
-export function PublishedCancellationPolicySummary({ kitchenId }: { kitchenId: number }) {
+/** `headline`: the checkout's one-line "until the kitchen accepts" summary (kitchen page); storage keeps the plain summary. */
+export function PublishedCancellationPolicySummary({ kitchenId, headline = false }: { kitchenId: number; headline?: boolean }) {
   const { t } = useTranslation('booking');
   const { data } = useQuery<PolicyResponse>({ queryKey: ['cancellation-policy', kitchenId], queryFn: () => apiGet(`/kitchens/${kitchenId}/cancellation-policy`, false) });
+  if (data?.policy && headline) return <p className="text-sm leading-relaxed">{t('cpSidebarSummary', { hours: data.policy.noticeHours })}</p>;
   return data?.policy ? <CancellationPolicySummary policy={data.policy} /> : <p className="text-sm text-muted-foreground">{t('cpError')}</p>;
 }
 
