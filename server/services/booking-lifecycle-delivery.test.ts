@@ -286,6 +286,17 @@ describe('booking lifecycle recipients and durable email evidence', () => {
     const email = state.insert.mock.calls[0][0].emails.find((item: any) => item.to === 'test_admin@localcooks.ca');
     expect(email.content.subject).toMatch(/^Booking cancelled · /);
   });
+  it('a day the kitchen cancels: chef and kitchen emails use their own words, never the internal refund and payout summary', async () => {
+    await queueBookingLifecycleEvent(tx, 10, 'day_cancelled', 'The kitchen can’t host you on Thu, Nov 5',
+      'Kitchen cancelled Thu, Nov 5. Refunded $250.10 including the card fee; Local Cooks absorbs $9.41; kitchen payout −$226.34.', 2,
+      { roleText: { chef: { title: 'The kitchen can’t host you on Thu, Nov 5', message: 'Your payment for that day, $250.10, is being refunded in full.' },
+        manager: { title: 'You cancelled Thu, Nov 5', message: 'The chef receives a full refund of $250.10 for Thu, Nov 5.' } } });
+    const emails = state.insert.mock.calls[0][0].emails;
+    const chef = emails.find((item: any) => item.to === 'chef@example.test'), manager = emails.find((item: any) => item.to === 'manager@example.test');
+    expect(chef.content.subject).toBe('The kitchen can’t host you on Thu, Nov 5');
+    expect(manager.content.subject).toBe('You cancelled Thu, Nov 5');
+    for (const email of [chef, manager]) expect(`${email.content.html} ${email.content.text}`).not.toMatch(/absorbs|kitchen payout −/);
+  });
   it('commits participant receipts, manager-only email and reminder reconciliation for a visit action', async () => {
     await queueBookingLifecycleEvent(tx, 10, 'checkout_requested', 'Inspection needed', 'Inspect current visit', 3,
       { visitId: 5, recipientPolicy: 'participants', emailRecipientPolicy: 'manager' });
