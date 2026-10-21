@@ -11,7 +11,7 @@ export function ChefSummary({ chef, name }: { chef: { id: number; memberSince?: 
     ? t('bdhMemberSince', { date: new Intl.DateTimeFormat(i18n.resolvedLanguage || i18n.language, { month: 'long', year: 'numeric' }).format(new Date(chef.memberSince)) }) : null;
   const facts = [since, typeof chef.completedBookingsHere === 'number' ? t('bdhBookingsHere', { count: chef.completedBookingsHere }) : null].filter(Boolean).join(' · ');
   const href = `/manager/customers/${chef.id}`;
-  return <div className="flex items-center gap-3" data-testid="person-who">
+  return <div className="flex items-start gap-3" data-testid="person-who">
     <Avatar className="h-10 w-10 shrink-0"><AvatarFallback className="bg-muted text-[13px] font-semibold">{initials(name)}</AvatarFallback></Avatar>
     <div className="min-w-0">
       <p className="truncate text-sm font-medium">{name}</p>
