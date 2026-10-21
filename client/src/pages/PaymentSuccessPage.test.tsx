@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import en from '@shared/i18n/locales/en-CA/booking.json';
-vi.mock('@/hooks/use-auth', () => ({ useFirebaseAuth: vi.fn() }));
+vi.mock('@/hooks/use-auth', () => ({ useFirebaseAuth: vi.fn(() => ({ loading: false })) }));
 vi.mock('@/lib/api', () => ({ getAuthHeaders: async () => ({ Authorization: 'Bearer fixture' }) }));
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ i18n: { language: 'en-CA' }, t: (key: string, values: Record<string, string> = {}) => String((en as Record<string, string>)[key] || key).replace(/\{(\w+)\}/g, (_, name) => values[name] || '') }) }));
 import PaymentSuccessPage from './PaymentSuccessPage';

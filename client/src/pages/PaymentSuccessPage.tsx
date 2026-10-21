@@ -19,7 +19,8 @@ function ReplacementResult({ replacement, t }: { replacement: NonNullable<Checko
 }
 
 export default function PaymentSuccessPage() {
-  useFirebaseAuth();
+  // The status call needs the restored sign-in; asking earlier gets a 401 and shows "Still verifying" to every chef.
+  const { loading: authLoading } = useFirebaseAuth();
   const { t: translate, i18n } = useTranslation('booking');
   const t = translate as unknown as (key: string, options?: Record<string, unknown>) => string;
   const sessionId = new URLSearchParams(window.location.search).get('session_id');
@@ -27,7 +28,7 @@ export default function PaymentSuccessPage() {
   const [unavailable, setUnavailable] = useState(!sessionId);
   const [refresh, setRefresh] = useState(0);
   useEffect(() => {
-    if (!sessionId) return;
+    if (!sessionId || authLoading) return;
     let cancelled = false, timer: ReturnType<typeof setTimeout>;
     const controller = new AbortController();
     setUnavailable(false);
@@ -52,7 +53,7 @@ export default function PaymentSuccessPage() {
     };
     void load();
     return () => { cancelled = true; clearTimeout(timer); controller.abort(); };
-  }, [sessionId, refresh]);
+  }, [sessionId, refresh, authLoading]);
 
   const state = unavailable ? 'needs_support' : outcome?.state || 'verifying';
   const amount = outcome?.amountCents == null ? null : new Intl.NumberFormat(i18n.language, { style: 'currency', currency: outcome.currency.toUpperCase() }).format(outcome.amountCents / 100);
