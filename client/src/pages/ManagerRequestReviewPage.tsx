@@ -160,9 +160,10 @@ export default function ManagerRequestReviewPage() {
                   {day.items.length > 0 && (() => {
                     const row = (item: typeof day.items[number]) => {
                       const off = dayOff || declinedItems.includes(item.id);
-                      return <li key={item.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
-                        <span className={off ? 'line-through text-muted-foreground' : ''}>{item.name}{item.cents ? ` · ${money(item.cents)}` : ''}</span>
-                        <label className="flex items-center gap-2"><Checkbox checked={off} disabled={dayOff || !timeForChanges || busy}
+                      // Checkbox column stays right on a phone; a long name wraps instead of pushing it under.
+                      return <li key={item.id} className="flex items-center justify-between gap-3 text-sm">
+                        <span className={`min-w-0 ${off ? 'line-through text-muted-foreground' : ''}`}>{item.name}{item.cents ? ` · ${money(item.cents)}` : ''}</span>
+                        <label className="flex shrink-0 items-center gap-2"><Checkbox checked={off} disabled={dayOff || !timeForChanges || busy}
                           onCheckedChange={() => toggle(declinedItems, setDeclinedItems, item.id)} />{t('rrCantProvide')}</label>
                       </li>;
                     };
