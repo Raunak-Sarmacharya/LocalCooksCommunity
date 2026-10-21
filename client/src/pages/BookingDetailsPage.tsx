@@ -46,6 +46,7 @@ import { InfoChip } from "@/components/chef/info-chip";
 import { Checkbox } from "@/components/ui/checkbox";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { ChefSummary } from "@/components/booking/ChefSummary";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { formatPhoneForDisplay, normalizePhoneNumber } from "@shared/phone-validation";
 import { ArrowLeft, MapPin, FileText, Download, Loader2, CheckCircle2, XCircle, AlertCircle, Phone, Mail, Receipt, LogIn, LogOut, Camera, FileWarning, Clock, MoreHorizontal, MessageSquare, CalendarPlus, CalendarX, ClipboardCheck, LifeBuoy, Info } from "lucide-react";
@@ -142,7 +143,7 @@ interface BookingDetails {
   createdAt: string;
   updatedAt?: string;
   paymentIntentId?: string;
-  kitchenContact?: { email: string; phone: string | null } | null;
+  kitchenContact?: { email: string; phone: string | null; hostName?: string | null } | null;
   kitchen?: {
     id: number;
     name: string;
@@ -175,6 +176,9 @@ interface BookingDetails {
     username: string;
     fullName?: string;
     phone?: string;
+    memberSince?: string | null;
+    /** Completed visits at the signed-in manager's kitchens. */
+    completedBookingsHere?: number;
   };
   storageBookings?: Array<{
     pricingModel?: string;
@@ -1825,16 +1829,22 @@ export default function BookingDetailsPage() {
 
   const latitude = booking?.location?.latitude, longitude = booking?.location?.longitude;
   const hasCoordinates = typeof latitude === 'number' && typeof longitude === 'number';
-  // Contact card: the hero already shows who (name, photo/initials) and Message, so this holds only the ways to reach them.
+  // People card (Airbnb host view, Food Corridor renter record): who they are, then the ways to reach them. The chef sees the
+  // kitchen and its host's name, never the manager's raw email.
   const contactPhone = booking ? (isManagerView ? booking.chef?.phone : booking.kitchenContact?.phone) : null;
-  const contactEmail = booking ? (isManagerView ? booking.chef?.username : booking.kitchenContact?.email) : null;
+  const contactEmail = booking && isManagerView ? booking.chef?.username : null;
   const locationLine = !isManagerView && booking?.location?.name && booking.location.name !== kitchenName ? booking.location.name : null;
-  const hasContact = (!!contactPhone && !!booking && contactVisible(booking.status)) || !!contactEmail || (!isManagerView && (!!mapsHref || !!locationLine));
+  const hostName = !isManagerView ? booking?.kitchenContact?.hostName : null;
+  const hasContact = (!!contactPhone && !!booking && contactVisible(booking.status)) || !!contactEmail || (isManagerView && !!booking?.chef) || !!messageAllowed
+    || (!isManagerView && (!!mapsHref || !!locationLine || !!hostName));
   const personCard = booking && hasContact && (
     <section aria-labelledby="booking-person-title" data-testid="person-card">
       <Card className={cardClass}>
         <h2 id="booking-person-title" className={headingClass}>{isManagerView ? t('bdhChefLabel') : t('bdhKitchenLabel')}</h2>
+        {isManagerView && booking.chef && <div className="mt-3"><ChefSummary chef={booking.chef} name={chefName} /></div>}
         {locationLine && <p className="mt-0.5 text-sm text-muted-foreground">{locationLine}</p>}
+        {hostName && <p className="mt-0.5 text-sm text-muted-foreground" data-testid="kitchen-host">{t('bdhHostedBy', { name: hostName })}</p>}
+        {messageAllowed && <div className="mt-3">{messageButton()}</div>}
         <div className="mt-2 space-y-1">
           {(() => {
             const phone = contactPhone;

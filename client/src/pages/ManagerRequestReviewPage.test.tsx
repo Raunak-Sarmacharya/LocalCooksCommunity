@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import en from '@shared/i18n/locales/en-CA/manager.json';
 
-const h = vi.hoisted(() => ({ details: null as any, calls: [] as Array<{ method: string; path: string; body?: any }>, navigate: vi.fn(), preview: null as any }));
+const h = vi.hoisted(() => ({ details: null as any, calls: [] as Array<{ method: string; path: string; body?: any }>, navigate: vi.fn(), preview: null as any, hold: null as Promise<void> | null }));
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ i18n: { resolvedLanguage: 'en-CA' },
   t: (key: string, values: Record<string, string> = {}) => String((en as Record<string, string>)[key] || key).replace(/\{(\w+)\}/g, (_, name) => values[name] ?? '') }) }));
 vi.mock('wouter', () => ({ useRoute: () => [true, { id: '216' }], useLocation: () => ['/manager/booking/216/review', h.navigate],
@@ -14,17 +14,17 @@ const reply = (body: any, ok = true) => ({ ok, json: async () => body });
 vi.mock('@/lib/api', () => ({ apiClient: {
   get: async (path: string) => { h.calls.push({ method: 'GET', path }); return reply(h.details); },
   post: async (path: string, body: any) => { h.calls.push({ method: 'POST', path, body }); return reply(h.preview); },
-  put: async (path: string, body: any) => { h.calls.push({ method: 'PUT', path, body }); return reply(body.status === 'confirmed' && body.declinedVisitIds?.length ? { proposal: { id: 'p1' } } : { success: true }); },
+  put: async (path: string, body: any) => { h.calls.push({ method: 'PUT', path, body }); await h.hold; return reply(body.status === 'confirmed' && body.declinedVisitIds?.length ? { proposal: { id: 'p1' } } : { success: true }); },
 } }));
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import ManagerRequestReviewPage from './ManagerRequestReviewPage';
 
 const mount = () => render(<QueryClientProvider client={new QueryClient()}><ManagerRequestReviewPage /></QueryClientProvider>);
 beforeEach(() => {
-  h.calls = []; h.navigate.mockReset();
+  h.calls = []; h.navigate.mockReset(); h.hold = null;
   h.details = { id: 216, referenceCode: 'KB-8XU587', chefId: 380, status: 'pending', paymentStatus: 'authorized', scheduleRevision: 1,
     bookingDate: '2026-11-23', startTime: '09:00', endTime: '12:00', responseDeadlineAt: '2026-10-20T15:25:00Z', partialAcceptanceAvailable: true,
-    chef: { username: 'chef', fullName: 'Alex' }, kitchen: { name: 'Main Kitchen' }, location: { id: 47, timezone: 'America/St_Johns' },
+    chef: { id: 380, username: 'chef', fullName: 'Alex', memberSince: '2025-03-14T12:00:00Z', completedBookingsHere: 2 }, kitchen: { name: 'Main Kitchen' }, location: { id: 47, timezone: 'America/St_Johns' },
     visits: [{ id: 1, visitDate: '2026-11-23', startTime: '09:00', endTime: '12:00', scheduleRevision: 1, scheduleState: 'active', priceSnapshot: { kitchenCents: 7500 } },
       { id: 2, visitDate: '2026-11-25', startTime: '09:00', endTime: '12:00', scheduleRevision: 1, scheduleState: 'active', priceSnapshot: { kitchenCents: 7500 } }],
     equipmentBookings: [], paymentTransaction: { amount: 18300, serviceFee: 1050, cardFeeRate: { percent: 0.037, fixedCents: 30 }, estimatedStripeProcessingFee: 707 } };
@@ -33,6 +33,26 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe('kitchen request review page', () => {
+  it('names the chef with initials and a profile link instead of an email', async () => {
+    mount();
+    const card = await screen.findByTestId('rr-chef');
+    expect(card).toHaveTextContent('Alex');
+    expect(card).not.toHaveTextContent('chef@');
+    fireEvent.click(within(card).getByRole('link'));
+    expect(h.navigate).toHaveBeenCalledWith('/manager/customers/380');
+  });
+  it('while the card is charged, Accept says so and both buttons wait', async () => {
+    let release = () => {};
+    h.hold = new Promise<void>(resolve => { release = resolve; });
+    mount();
+    const accept = await screen.findByTestId('rr-accept');
+    await act(async () => { fireEvent.click(accept); });
+    expect(screen.getByTestId('rr-accept')).toHaveTextContent('Charging the chef’s card…');
+    expect(screen.getByTestId('rr-accept')).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Decline' })).toBeDisabled();
+    await act(async () => { release(); });
+    await waitFor(() => expect(h.navigate).toHaveBeenCalledWith('/manager/booking/216'));
+  });
   it('shows each day, what the chef pays and what the kitchen keeps (held US card: 3.7% + 30¢), and accepts the whole request', async () => {
     mount();
     expect(await screen.findByRole('heading', { name: 'Review request from Alex' })).toBeInTheDocument();
@@ -91,6 +111,18 @@ describe('kitchen request review page', () => {
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Decline request' })); });
     await waitFor(() => expect(h.navigate).toHaveBeenCalled());
     expect(h.calls.find(call => call.method === 'PUT')?.body).toEqual({ status: 'cancelled', message: 'Closed for repairs that week.' });
+  });
+  it('while declining, the button says the hold is being released and Back waits', async () => {
+    let release = () => {};
+    h.hold = new Promise<void>(resolve => { release = resolve; });
+    mount();
+    await screen.findAllByTestId('rr-day');
+    fireEvent.click(screen.getByRole('button', { name: 'Decline' }));
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Decline request' })); });
+    expect(screen.getByRole('button', { name: /Releasing the hold…/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: en.rrBackToReview })).toBeDisabled();
+    await act(async () => { release(); });
+    await waitFor(() => expect(h.navigate).toHaveBeenCalled());
   });
   it('suggest other times: declines with the flag, then opens the invitation pre-filled from the request', async () => {
     mount();

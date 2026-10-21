@@ -65,7 +65,7 @@ const base = () => ({
   kitchen: { id: 2, name: "Harbour Kitchen", locationId: 3 },
   location: { id: 3, name: "Harbour", address: "1 Water St, St. John's", timezone: "America/St_Johns" },
   chef: { id: 1, username: "ada@example.com", fullName: "Ada Lovelace", phone: "+17095550101" },
-  kitchenContact: { email: "kitchen@example.com", phone: "+17095550199" },
+  kitchenContact: { email: "kitchen@example.com", phone: "+17095550199", hostName: "Sam Host" },
 });
 const closeout = (deadline: string) => ({ phase: "booked_time_ended", timezone: "America/St_Johns", serviceEndedAt: "2030-01-15T15:30:00Z",
   visits: [{ key: "b", phase: "booked_time_ended", arrivalRecorded: true, scheduledStartAt: "2030-01-15T13:30:00Z", scheduledEndAt: "2030-01-15T15:30:00Z",
@@ -172,10 +172,25 @@ describe("contact details", () => {
     const phone = within(card).getByRole("link", { name: /709/ });
     expect(phone).toHaveAttribute("href", "tel:+17095550199");
     expect(card).toHaveTextContent("For your safety, keep messages and payments in Local Cooks.");
-    // Message lives in the Now card (and the mobile bar) only; the contact card doesn't repeat it, or the hero's name.
-    expect(within(card).queryByRole("button", { name: "Message kitchen" })).not.toBeInTheDocument();
+    // People card (Airbnb host view): the kitchen's place, its host by name and Message; never the manager's raw email.
+    expect(within(card).getByRole("button", { name: "Message kitchen" })).toBeInTheDocument();
     expect(card).not.toHaveTextContent("Harbour Kitchen");
-    expect(screen.getAllByRole("button", { name: "Message kitchen" })).toHaveLength(2); // header + mobile bar (CSS shows one)
+    expect(card).not.toHaveTextContent("kitchen@example.com");
+    expect(within(card).getByTestId("kitchen-host")).toHaveTextContent("Hosted by Sam Host");
+  });
+
+  it("kitchen: the chef card names the chef with initials, Member since, completed visits here and View profile", async () => {
+    h.manager = true;
+    h.booking = { ...base(), status: "confirmed", paymentStatus: "paid", chef: { ...base().chef, memberSince: "2025-03-14T12:00:00Z", completedBookingsHere: 1 } };
+    render(<BookingDetailsPage />);
+    const who = within(await screen.findByTestId("person-card")).getByTestId("person-who");
+    expect(who).toHaveTextContent("AL");
+    expect(who).toHaveTextContent("Ada Lovelace");
+    expect(who).toHaveTextContent("Member since March 2025 · 1 booking at your kitchens");
+    const card = screen.getByTestId("person-card");
+    fireEvent.click(within(card).getByRole("link", { name: "View profile" }));
+    expect(h.navigate).toHaveBeenCalledWith("/manager/customers/1");
+    expect(within(card).getByRole("button", { name: "Message chef" })).toBeInTheDocument();
   });
 
   it("keeps the phone private while the request is pending", async () => {

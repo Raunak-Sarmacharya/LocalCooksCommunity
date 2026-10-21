@@ -11,6 +11,7 @@ import ManagerBookingLayout from '@/layouts/ManagerBookingLayout';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
+import { ChefSummary } from '@/components/booking/ChefSummary';
 import { cardFeeForAmount, type CardFeeRate } from '@shared/card-fee-estimate';
 import { partialAcceptanceDeadlineText } from '@shared/partial-acceptance';
 
@@ -21,7 +22,7 @@ type Equipment = { id: number; kitchenBookingVisitId?: number | null; totalPrice
 type Details = { id: number; referenceCode?: string | null; chefId: number; status: string; paymentStatus?: string; scheduleRevision?: number;
   bookingDate: string; startTime: string; endTime: string; pricingMode?: string; totalPrice?: number; specialNotes?: string | null;
   responseDeadlineAt?: string | null; partialAcceptanceAvailable?: boolean; partialAcceptance?: { state?: string } | null;
-  chef?: { fullName?: string; username: string }; kitchen?: { name: string }; location?: { id: number; timezone?: string };
+  chef?: { id: number; fullName?: string; username: string; memberSince?: string | null; completedBookingsHere?: number }; kitchen?: { name: string }; location?: { id: number; timezone?: string };
   visits?: Visit[]; equipmentBookings?: Equipment[];
   paymentTransaction?: { amount: number; serviceFee?: number; cardFeeRate?: CardFeeRate | null; estimatedStripeProcessingFee?: number | null } };
 type Preview = { oldTotalCents: number; newTotalCents: number; serviceFeeCents: number; allowed: boolean; deadlineAt: string };
@@ -187,6 +188,10 @@ export default function ManagerRequestReviewPage() {
               <p className="mt-2 whitespace-pre-wrap text-sm">{booking.specialNotes}</p></section>}
           </div>
           <aside className="space-y-4 lg:sticky lg:top-4 lg:self-start">
+            {booking.chef && <section className="rounded-2xl border bg-card p-5" aria-labelledby="rr-chef" data-testid="rr-chef">
+              <h2 id="rr-chef" className="text-base font-semibold">{t('rrChefTitle')}</h2>
+              <div className="mt-3"><ChefSummary chef={booking.chef} name={chef} /></div>
+            </section>}
             <section className="rounded-2xl border bg-card p-5 text-sm" aria-labelledby="rr-money" data-testid="rr-money">
               <h2 id="rr-money" className="text-base font-semibold">{t('rrMoneyTitle')}</h2>
               <div className="mt-3 space-y-2">
@@ -220,13 +225,13 @@ export default function ManagerRequestReviewPage() {
               <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                 <Button variant="ghost" disabled={busy} onClick={() => setDeclining(null)}>{t('rrBackToReview')}</Button>
                 {declining === 'decline'
-                  ? <Button variant="destructive" disabled={busy} onClick={() => void decide('cancelled')}>{busy && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}{t('rrConfirmDecline')}</Button>
-                  : <Button disabled={busy} onClick={() => void decide('cancelled', true)}>{busy && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}{t('rrContinueInvite')}</Button>}
+                  ? <Button variant="destructive" disabled={busy} onClick={() => void decide('cancelled')}>{busy && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}{t(busy ? 'rrReleasing' : 'rrConfirmDecline')}</Button>
+                  : <Button disabled={busy} onClick={() => void decide('cancelled', true)}>{busy && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}{t(busy ? 'rrReleasing' : 'rrContinueInvite')}</Button>}
               </div>
             </div> : <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end">
               <Button variant="outline" disabled={busy} onClick={() => setDeclining('decline')}>{t('rrDecline')}</Button>
               <Button disabled={busy || (changed && (!preview || !preview.allowed))} onClick={() => void decide('confirmed')} data-testid="rr-accept">
-                {busy && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}{changed ? t('rrSendChanges', { chef }) : t('rrAccept')}</Button>
+                {busy && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}{busy ? t(changed ? 'rrSending' : 'rrCharging') : changed ? t('rrSendChanges', { chef }) : t('rrAccept')}</Button>
             </div>}
           </div>
         </div>}
