@@ -1876,8 +1876,8 @@ export default function BookingDetailsPage() {
   type EquipmentBooking = (typeof allEquipmentBookings)[number];
   const equipmentDayLabel = (equipment: EquipmentBooking) => (date => date ? formatShortDate(date) : null)(equipmentDay(equipment));
   const isStruckItem = (equipment: EquipmentBooking) => isItemVoided(equipment) || isItemRefunded(equipment) || equipment.status === 'cancelled';
-  const byListing = (list: EquipmentBooking[]) => [...list.reduce((map, equipment) =>
-    map.set(equipment.equipmentListingId, [...(map.get(equipment.equipmentListingId) ?? []), equipment]), new Map<number, EquipmentBooking[]>()).values()];
+  const byListing = (list: EquipmentBooking[]): EquipmentBooking[][] => Array.from(list.reduce((map, equipment) =>
+    map.set(equipment.equipmentListingId, [...(map.get(equipment.equipmentListingId) ?? []), equipment]), new Map<number, EquipmentBooking[]>()).values());
   // shortcut: the API doesn't send availabilityType, so $0 means included (as on the review page); a pending cancellation keeps a full row for the kitchen's answer.
   const isIncludedItem = (equipment: EquipmentBooking) => !Number(equipment.totalPrice) && equipment.status !== 'cancellation_requested';
   const sortedEquipment = [...allEquipmentBookings].sort((a, b) => (equipmentDay(a) ?? '').localeCompare(equipmentDay(b) ?? ''));
