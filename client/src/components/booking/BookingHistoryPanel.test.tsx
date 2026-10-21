@@ -176,3 +176,20 @@ it('names a multi-day visit by its day and date, never an internal id', async ()
   expect(screen.queryByText(/#156/)).not.toBeInTheDocument();
   client.clear();
 });
+
+it('says which day was cancelled, by whom, and what was refunded, on both sides', async () => {
+  const events = [
+    { key: '1', kind: 'requested', recordedAt: '2026-10-01T12:00:00Z' },
+    { key: '2', kind: 'day_cancelled', recordedAt: '2026-10-21T12:00:00Z', dayDate: '2026-11-05', cancelledBy: 'kitchen', amountCents: 25010 },
+    { key: '3', kind: 'day_cancelled', recordedAt: '2026-10-22T12:00:00Z', dayDate: '2026-11-06', cancelledBy: 'chef' },
+    { key: '4', kind: 'refund_issued', recordedAt: '2026-10-23T12:00:00Z', dayDate: '2026-11-04', cancelledBy: 'kitchen', amountCents: 1500 },
+  ];
+  vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ complete: true, events }) })));
+  mount('manager', 'Maya Chen');
+  expect(await screen.findByText('Thu, Nov 5 cancelled by the kitchen · $250.10 refunded')).toBeInTheDocument();
+  expect(screen.getByText('Fri, Nov 6 cancelled by Maya Chen')).toBeInTheDocument();
+  expect(screen.getByText('Wed, Nov 4 · $15.00 refunded by the kitchen')).toBeInTheDocument();
+  cleanup();
+  mount('chef');
+  expect(await screen.findByText('Fri, Nov 6 cancelled by you')).toBeInTheDocument();
+});

@@ -47,6 +47,15 @@ export function BookingHistoryPanel({ id, version, reference, role, timezone, ca
       : event.kind === 'ext_expired' ? `expired_${flowKey}` : event.kind === 'ext_withdrawn' ? `withdrawn_${flowKey}` : 'refunded';
     return t(`historyExt_${name}` as 'historyGoodwill_chef', { minutes: event.minutes ?? 0, amount: money(event.amountCents ?? 0), chef: who });
   };
+  // "Thu, Nov 5 cancelled by the kitchen · $250.10 refunded": which day, who, and what came back.
+  const dayText = (event: BookingHistoryResponse['events'][number]) => {
+    if (!event.dayDate) return t(`historyEvents.${event.kind}` as const);
+    const date = new Intl.DateTimeFormat(i18n.resolvedLanguage || 'en-CA', { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' }).format(new Date(`${event.dayDate}T12:00:00Z`));
+    const refunded = event.amountCents ? t('historyDayRefunded', { amount: money(event.amountCents) }) : '';
+    if (event.kind === 'refund_issued') return t('historyDayRefund', { date, amount: money(event.amountCents ?? 0) });
+    return t(event.cancelledBy === 'kitchen' ? 'historyDayCancelledByKitchen' : role === 'chef' ? 'historyDayCancelledByYou' : 'historyDayCancelledByCustomer',
+      { date, chef: chefName || t('historyChefFallback') }) + refunded;
+  };
   return <section aria-label={t('historyTitle')} className="min-w-0 space-y-3 rounded-xl border bg-card p-5 text-xs">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <h2 className="text-sm font-semibold leading-5">{t('historyTitle')}</h2>
@@ -77,6 +86,7 @@ export function BookingHistoryPanel({ id, version, reference, role, timezone, ca
                     ? t(role === 'manager' ? 'historyGoodwill_manager' : 'historyGoodwill_chef', { amount: money(event.amountCents), chef: chefName || t('historyChefFallback') })
                     : event.kind === 'addon_removed' ? (event.refundState === 'fee_pending' ? t('historyAddonRemovedFeePending', { item: event.itemName }) : event.refundState === 'processing' ? t('historyAddonRemovedProcessing', { item: event.itemName, amount: money(event.refundedCents || 0) }) : event.refundedCents ? t('historyAddonRemovedRefund', { item: event.itemName, amount: money(event.refundedCents) }) : t('historyAddonRemoved', { item: event.itemName }))
                     : event.kind.startsWith('ext_') ? extensionText(event)
+                    : event.kind === 'day_cancelled' || (event.kind === 'refund_issued' && event.dayDate) ? dayText(event)
                     : event.kind === 'replaced_by' || event.kind === 'replaces' ? (event.otherBookingId
                       ? <a className="underline underline-offset-2 hover:text-foreground" data-testid="history-linked-request"
                         href={`${role === 'manager' ? '/manager' : ''}/booking/${event.otherBookingId}`}>{t(event.kind === 'replaced_by' ? 'historyReplacedBy' : 'historyReplaces', { ref: event.otherRef ?? `#${event.otherBookingId}` })}</a>

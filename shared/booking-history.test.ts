@@ -117,3 +117,21 @@ describe('booking changes in the history', () => {
     expect(history.events.map(event => event.kind)).toEqual(['kitchen_change_requested', 'kitchen_change_applied', 'kitchen_change_requested']);
   });
 });
+
+describe('day cancellations in the history', () => {
+  it('shows a cancelled day and a day refund with the day, who and the refund (the kind was dropped before)', () => {
+    const shared = { noticeDay: { date: '2026-11-05', startTime: '06:00', endTime: '20:00' }, operationId: 'op-1' };
+    const history = buildBookingHistory({ createdAt: '2026-10-01T12:00:00Z' }, [
+      { id: 1, kind: 'requested', createdAt: '2026-10-01T12:00:00Z' },
+      { id: 2, kind: 'day_cancelled', createdAt: '2026-10-21T12:00:00Z', metadata: { ...shared, dayCancellation: { cause: 'kitchen', visitIds: [7], refundCents: 25010, feeCents: 0 }, roleText: { chef: { title: 'private' } } } },
+      { id: 3, kind: 'refund_issued', createdAt: '2026-10-22T12:00:00Z', metadata: { ...shared, dayCancellation: { cause: 'kitchen', visitIds: [7], refundCents: 1500 } } },
+      { id: 4, kind: 'day_cancelled', createdAt: '2026-10-23T12:00:00Z', metadata: { noticeDay: { date: '2026-11-06' }, dayCancellation: { cause: 'chef', refundCents: 0 } } },
+    ]);
+    expect(history.events.slice(1)).toEqual([
+      { key: 'event-2', kind: 'day_cancelled', recordedAt: '2026-10-21T12:00:00.000Z', dayDate: '2026-11-05', cancelledBy: 'kitchen', amountCents: 25010 },
+      { key: 'event-3', kind: 'refund_issued', recordedAt: '2026-10-22T12:00:00.000Z', dayDate: '2026-11-05', cancelledBy: 'kitchen', amountCents: 1500 },
+      { key: 'event-4', kind: 'day_cancelled', recordedAt: '2026-10-23T12:00:00.000Z', dayDate: '2026-11-06', cancelledBy: 'chef' },
+    ]);
+    expect(JSON.stringify(history)).not.toMatch(/op-1|private/);
+  });
+});

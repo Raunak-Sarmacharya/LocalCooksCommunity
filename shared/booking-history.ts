@@ -1,5 +1,5 @@
 const kinds = ['requested', 'confirmed', 'cancelled', 'cancellation_requested', 'cancellation_declined',
-  'cancellation_reviewed', 'refund_issued', 'addon_removed', 'goodwill_refunded', 'payment_recovery_needed', 'item_withdrawn', 'item_cancellation_requested',
+  'cancellation_reviewed', 'day_cancelled', 'refund_issued', 'addon_removed', 'goodwill_refunded', 'payment_recovery_needed', 'item_withdrawn', 'item_cancellation_requested',
   'checkin_recorded', 'checkout_requested', 'checkout_cleared', 'checkout_claim_filed',
   'report_no_show', 'report_attended', 'withdraw_attendance', 'kitchen_change_requested', 'kitchen_change_applied',
   'kitchen_change_declined', 'kitchen_change_withdrawn', 'kitchen_change_expired',
@@ -18,7 +18,9 @@ export type BookingHistoryEvent = { key: string; kind: typeof kinds[number]; rec
   /** `replaced_by` / `replaces` only: the booking reference on the other side of the link. */
   otherRef?: string;
   /** `replaced_by` / `replaces` only: the other booking's id, for a link (its own page still checks access). */
-  otherBookingId?: number };
+  otherBookingId?: number;
+  /** `day_cancelled` and a day's `refund_issued`: the day (YYYY-MM-DD) and who cancelled it; `amountCents` is the customer's refund. */
+  dayDate?: string; cancelledBy?: 'chef' | 'kitchen' };
 export type ExtensionFlow = 'ask' | 'offer' | 'early' | 'charge';
 export type BookingHistoryResponse = { events: BookingHistoryEvent[]; complete: boolean };
 type Facts = { createdAt?: unknown; cancellationRequestedAt?: unknown; cancellationRequestDeclinedAt?: unknown;
@@ -95,10 +97,17 @@ export function buildBookingHistory(booking: Facts, records: RecordedEvent[], vi
     if (record.kind === 'refund_issued' && addon) continue;
     if (record.kind === 'addon_removed' && typeof addon?.itemName !== 'string') continue;
     const amount = record.kind === 'goodwill_refunded' && Number.isSafeInteger(metadata.amountCents) && Number(metadata.amountCents) > 0 ? Number(metadata.amountCents) : undefined;
+    // A cancelled or refunded day says which day, who, and what came back (dated-booking-cancellation records these facts).
+    const dayCancellation = metadata.dayCancellation && typeof metadata.dayCancellation === 'object' ? metadata.dayCancellation as Record<string, unknown> : undefined;
+    const noticeDay = metadata.noticeDay && typeof metadata.noticeDay === 'object' ? metadata.noticeDay as Record<string, unknown> : undefined;
+    const day = dayCancellation && (record.kind === 'day_cancelled' || record.kind === 'refund_issued') ? {
+      ...(typeof noticeDay?.date === 'string' && /^\d{4}-\d{2}-\d{2}/.test(noticeDay.date) ? { dayDate: noticeDay.date.slice(0, 10) } : {}),
+      ...(dayCancellation.cause === 'chef' || dayCancellation.cause === 'kitchen' ? { cancelledBy: dayCancellation.cause } : {}),
+      ...(Number.isSafeInteger(dayCancellation.refundCents) && Number(dayCancellation.refundCents) > 0 ? { amountCents: Number(dayCancellation.refundCents) } : {}) } : {};
     // A goodwill refund without a known amount cannot say what was refunded, so it is left out.
     if (record.kind === 'goodwill_refunded' && !amount) continue;
     events.push({ key: record.key ?? 'event-' + record.id, kind: record.kind as BookingHistoryEvent['kind'], recordedAt,
-      ...(amount ? { amountCents: amount } : {}),
+      ...(amount ? { amountCents: amount } : {}), ...day,
       ...((record.kind === 'replaced_by' || record.kind === 'replaces') && typeof metadata.otherRef === 'string' && metadata.otherRef ? { otherRef: metadata.otherRef.slice(0, 40) } : {}),
       ...((record.kind === 'replaced_by' || record.kind === 'replaces') && positiveId(Number(metadata.otherBookingId)) ? { otherBookingId: Number(metadata.otherBookingId) } : {}),
       ...(record.kind === 'addon_removed' && typeof addon?.itemName === 'string' ? (() => {
