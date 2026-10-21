@@ -109,6 +109,62 @@ describe("BookingCalendarWidget", () => {
     screen.unmount();
   });
 
+  describe("several kitchens", () => {
+    const kitchens = [{ id: 1, name: "Kitchen East" }, { id: 2, name: "Kitchen West with a long name" }];
+    // East and West booked at overlapping hours on Sunday; a tour without a kitchen; West alone on Monday.
+    const shared: CalendarEvent[] = [
+      { key: "e1", kind: "booking", date: "2026-10-18", start: "10:00", end: "12:00", title: "Ana", kitchenId: 1, kitchen: "Kitchen East", label: "Confirmed", tone: "green", href: "/manager/booking/1" },
+      { key: "w1", kind: "booking", date: "2026-10-18", start: "11:00", end: "14:00", title: "Bo", kitchenId: 2, kitchen: "Kitchen West with a long name", label: "Confirmed", tone: "green", href: "/manager/booking/2" },
+      { key: "t1", kind: "tour", date: "2026-10-18", start: "15:00", end: "15:30", title: "Jamie", label: "Tour booked", tone: "blue", onOpen: vi.fn() },
+      { key: "w2", kind: "booking", date: "2026-10-19", start: "09:00", end: "10:00", title: "Cy", kitchenId: 2, kitchen: "Kitchen West with a long name", label: "Confirmed", tone: "green", href: "/manager/booking/3" },
+    ];
+    const stats = vi.fn((kitchenId: number | null) => <p data-testid="stats">{kitchenId === null ? "all" : `kitchen ${kitchenId}`}</p>);
+    const renderWith = (list = kitchens) => {
+      vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
+      return render(<BookingCalendarWidget events={shared} kitchens={list} stats={stats} isLoading={false} today="2026-10-18" onNavigateToBookings={vi.fn()} />);
+    };
+
+    it("gives each kitchen its own lane on a day, so overlapping bookings never share a row", () => {
+      const screen = renderWith();
+      const sunday = screen.getByRole("region", { name: /Sunday, October 18/ });
+      const lanes = within(sunday).getAllByTestId("timeline-lane");
+      expect(lanes.map(lane => lane.firstElementChild!.textContent)).toEqual(["Kitchen East", "Kitchen West with a long name", "kitchenTours"]);
+      expect(within(lanes[0]).getAllByRole("link").map(link => link.getAttribute("href"))).toEqual(["/manager/booking/1"]);
+      expect(within(lanes[1]).getAllByRole("link").map(link => link.getAttribute("href"))).toEqual(["/manager/booking/2"]);
+      // The bar names its kitchen in the tooltip and to screen readers.
+      expect(within(lanes[1]).getByRole("link")).toHaveAttribute("title", "Bo · Kitchen West with a long name · 11:00 a.m.–2:00 p.m. · Confirmed");
+      expect(within(lanes[1]).getByRole("link", { name: /Bo, Kitchen West with a long name, Confirmed/ })).toBeTruthy();
+      // A day only lists the kitchens with something on; a day with nothing keeps one empty lane.
+      expect(within(screen.getByRole("region", { name: /Monday, October 19/ })).getAllByTestId("timeline-lane").map(lane => lane.firstElementChild!.textContent)).toEqual(["Kitchen West with a long name"]);
+      expect(within(screen.getByRole("region", { name: /Tuesday, October 20/ })).getAllByTestId("timeline-lane")).toHaveLength(1);
+      expect(screen.getByTestId("stats").textContent).toBe("all");
+      screen.unmount();
+    });
+
+    it("filters the calendar and the week's numbers to one kitchen, back to the one-kitchen look", () => {
+      Object.assign(Element.prototype, { hasPointerCapture: () => false, releasePointerCapture() {}, scrollIntoView() {} });
+      const screen = renderWith();
+      const filter = screen.getByRole("combobox", { name: "ovrKitchenFilter" });
+      expect(filter.textContent).toBe("ovrAllKitchens");
+      fireEvent.pointerDown(filter, { button: 0, ctrlKey: false, pointerType: "mouse" });
+      fireEvent.click(screen.getByRole("option", { name: "Kitchen West with a long name" }));
+      expect(screen.getByTestId("stats").textContent).toBe("kitchen 2");
+      expect(screen.queryAllByTestId("timeline-lane")).toHaveLength(0);
+      const hrefs = screen.getAllByRole("link").map(link => link.getAttribute("href"));
+      expect(hrefs).toEqual(["/manager/booking/2", "/manager/booking/3"]);
+      // The location-wide tour stays.
+      expect(screen.getByRole("button", { name: /Jamie/ })).toBeTruthy();
+      screen.unmount();
+    });
+
+    it("draws one kitchen exactly as before: no filter, no lanes", () => {
+      const screen = renderWith(kitchens.slice(0, 1));
+      expect(screen.queryByRole("combobox")).toBeNull();
+      expect(screen.queryAllByTestId("timeline-lane")).toHaveLength(0);
+      screen.unmount();
+    });
+  });
+
   it("offers no Show cancelled switch when nothing is cancelled", () => {
     const screen = setup();
     expect(screen.queryByRole("switch")).toBeNull();

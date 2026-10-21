@@ -38,7 +38,7 @@ vi.mock("@/components/booking/BookingNowCard", () => ({ StatusPill: ({ children 
 vi.mock("@/lib/api", () => ({ apiGet: vi.fn() }));
 // The real rows and sorting, a marker for the calendar itself (its own render is tested in BookingCalendarWidget.test).
 vi.mock("./BookingCalendarWidget", async (importOriginal) => ({ ...(await importOriginal<typeof import("./BookingCalendarWidget")>()),
-  default: ({ events, stats }: { events: Array<{ key: string; date: string; label: string; state?: string }>; stats?: ReactNode }) => <>{stats}<div data-testid="calendar">{events.map(event => `${event.key}@${event.date}:${event.label}${event.state ? `[${event.state}]` : ""}`).join("|")}</div></> }));
+  default: ({ events, stats }: { events: Array<{ key: string; date: string; label: string; state?: string; kitchenId?: number }>; stats?: (kitchenId: number | null) => ReactNode }) => <>{stats?.(null)}<div data-testid="calendar">{events.map(event => `${event.key}@${event.date}:${event.label}${event.state ? `[${event.state}]` : ""}${event.kitchenId ? `{k${event.kitchenId}}` : ""}`).join("|")}</div><div data-testid="stats-kitchen-11">{stats?.(11)}</div></> }));
 
 import KitchenDashboardOverview from "./KitchenDashboardOverview";
 
@@ -510,6 +510,61 @@ describe("revamped overview (R3)", () => {
     expect(row(45)).toContain("stActionHandover");
     expect(row(46)).toContain("Ana · stChipRemovalReview");
     expect(row(46)).toContain("stActionRecordRemoval");
+  });
+
+  describe("several kitchens at the location", () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-10-21T21:00:00Z")); // Wed 6:30 p.m. in St. John's
+      state.kitchens = [{ id: 10, locationId: 1, name: "Kitchen East", isActive: true, listingStatus: "active" }, { id: 11, locationId: 1, name: "Kitchen West", isActive: true, listingStatus: "active" }];
+      const visit = (id: number, kitchenId: number, chefName: string, bookingDate: string, status: string, extra = {}) => ({ id, kitchenId, locationId: 1, chefName, kitchenName: kitchenId === 10 ? "Kitchen East" : "Kitchen West",
+        bookingDate, createdAt: "2025-01-01", startTime: "13:00", endTime: "15:00", status, timezone: "America/St_Johns", ...extra });
+      state.bookings = [
+        visit(207, 11, "Morgan", "2026-10-21", "completed", { checkinStatus: "not_checked_in", closeout: { phase: "ended", visits: [{ localDate: "2026-10-21", startTime: "13:00", endTime: "15:00", attendance: "unknown", inspection: { canRespond: true, deadline: "2026-10-22T18:30:00.000Z" } }] } }),
+        // Both kitchens booked at the same hours tomorrow.
+        visit(400, 10, "East Chef", "2026-10-22", "confirmed"), visit(401, 11, "West Chef", "2026-10-22", "confirmed")];
+      state.rentals = [{ id: 45, kitchen: { id: 11, name: "Kitchen West" }, listing: { id: 5, name: "Dry shelf" }, chef: { id: 2, name: "Sam" }, state: "reserved", startOn: "2026-10-17", paidThrough: "2026-10-30", timezone: "America/St_Johns", actions: [], terms: [] }];
+    });
+    afterEach(() => vi.useRealTimers());
+
+    it("names the kitchen on every row that would otherwise leave it unsaid", () => {
+      const html = render();
+      const attention = attentionOf(html);
+      expect(attention.split('id="attention-attendance"')[1]).toContain("Morgan · Kitchen West");
+      expect(attention).toContain('aria-label="ovrTheyCame: today, 1:00–3:00 p.m., Morgan, Kitchen West"');
+      expect(attention.split('id="attention-storage"')[1]).toContain("Sam · Kitchen West · stChipMoveInOverdue");
+      const tomorrow = html.split('data-testid="overview-tomorrow"')[1].split("</section>")[0];
+      expect(tomorrow).toContain("East Chef · Kitchen East");
+      expect(tomorrow).toContain("West Chef · Kitchen West");
+      // Every timed calendar event carries its kitchen, so the week can give each kitchen its own lane.
+      const calendar = html.split('data-testid="calendar"')[1];
+      expect(calendar).toContain("booking-400-0-0@2026-10-22:bdhPill_confirmed[booked]{k10}");
+      expect(calendar).toContain("booking-401-0-0@2026-10-22:bdhPill_confirmed[booked]{k11}");
+      expect(calendar).toContain("rental-in-45@2026-10-17:ovrMoveIn{k11}");
+    });
+
+    it("keeps one-kitchen rows as they were (no kitchen name added)", () => {
+      state.kitchens = state.kitchens.slice(1);
+      const html = render();
+      expect(attentionOf(html).split('id="attention-attendance"')[1]).not.toContain("Kitchen West");
+      expect(attentionOf(html).split('id="attention-storage"')[1]).toContain("Sam · stChipMoveInOverdue");
+      expect(html.split('data-testid="overview-tomorrow"')[1].split("</section>")[0]).not.toContain("· Kitchen West");
+    });
+
+    it("counts the week across every kitchen, or only the one the calendar is filtered to", () => {
+      state.withParams = true;
+      state.hours = [0, 1, 2, 3, 4, 5, 6].map(dayOfWeek => ({ dayOfWeek, startTime: "09:00", endTime: "17:00", isAvailable: true }));
+      const html = render();
+      const tile = (scope: string, key: string) => scope.slice(scope.indexOf(`data-testid="week-${key}"`)).slice(0, 700);
+      const all = html, west = html.split('data-testid="stats-kitchen-11"')[1];
+      expect(tile(all, "bookings")).toMatch(/>3<\/dd>/);
+      expect(tile(all, "hours")).toContain("ovrHoursValue{&quot;hours&quot;:&quot;6&quot;}");
+      // Both kitchens' open hours: 2 × 7 × 8 h = 112 h.
+      expect(tile(all, "utilisation")).toContain("ovrOfOpenHours{&quot;hours&quot;:&quot;112&quot;}");
+      expect(tile(west, "bookings")).toMatch(/>2<\/dd>/);
+      expect(tile(west, "hours")).toContain("ovrHoursValue{&quot;hours&quot;:&quot;4&quot;}");
+      expect(tile(west, "utilisation")).toContain("ovrOfOpenHours{&quot;hours&quot;:&quot;56&quot;}");
+    });
   });
 
   it("uses the Revenue page's words and drops the contradicting Pending payments footer", () => {

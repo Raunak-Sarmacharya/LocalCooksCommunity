@@ -6,6 +6,7 @@ import { mt } from "@/i18n/manager";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { timeRange, type BookingPillTone } from "@/lib/booking-header-state";
 import { formatTime } from "@/lib/formatters";
 import { addDaysKey, spanMinutes, weekStartKey } from "@/lib/manager-week-stats";
@@ -30,6 +31,9 @@ export type CalendarEvent = {
   sortAt?: number;
   title: string;
   detail?: string;
+  /** The kitchen it happens in (none for a location-wide tour); names the lane and the filter when a location has several. */
+  kitchenId?: number;
+  kitchen?: string;
   /** State in words ("Answer needed", "Tour requested", "Closed"). */
   label: string;
   tone: BookingPillTone;
@@ -126,7 +130,20 @@ function axisFor(events: CalendarEvent[]) {
 // shortcut: label width is estimated per character (12 px Figtree ≈ 6.6 px, bare digits ≈ 6 px); measure with a probe if labels ever clip.
 const textWidth = (text: string) => text.length * (/^[\d–:]+$/.test(text) ? 6 : 6.6);
 
-function WeekTimeline({ week, byDay, today, nowMinutes, locale, onOpenDay }: { week: string[]; byDay: Map<string, CalendarEvent[]>; today: string; nowMinutes: number; locale: string; onOpenDay: (key: string) => void }) {
+type Kitchen = { id: number; name: string };
+/**
+ * Several kitchens: one lane per kitchen that has something timed that day (a resource timeline, like Google Calendar's
+ * and The Food Corridor's resource views), so two kitchens booked at the same hour never draw over each other. Tours
+ * without a kitchen get their own lane. One kitchen (or the filter on one): a single unlabelled lane, the old look.
+ */
+const lanesFor = (timed: CalendarEvent[], kitchens: Kitchen[]) => {
+  const lanes = kitchens.map(kitchen => ({ key: String(kitchen.id), name: kitchen.name, events: timed.filter(event => event.kitchenId === kitchen.id) }));
+  lanes.push({ key: "none", name: mt("kitchenTours"), events: timed.filter(event => !kitchens.some(kitchen => kitchen.id === event.kitchenId)) });
+  const used = lanes.filter(lane => lane.events.length);
+  return used.length ? used : [{ key: "empty", name: "", events: [] }];
+};
+
+function WeekTimeline({ week, byDay, today, nowMinutes, locale, onOpenDay, kitchens }: { week: string[]; byDay: Map<string, CalendarEvent[]>; today: string; nowMinutes: number; locale: string; onOpenDay: (key: string) => void; kitchens: Kitchen[] | null }) {
   const trackRef = useRef<HTMLDivElement>(null);
   const [trackWidth, setTrackWidth] = useState(0);
   useEffect(() => {
@@ -145,11 +162,13 @@ function WeekTimeline({ week, byDay, today, nowMinutes, locale, onOpenDay }: { w
   const dayNumber = dayFormat(locale, { day: "numeric" });
   const longDay = dayFormat(locale, { weekday: "long", month: "long", day: "numeric" });
   const pxPerMinute = trackWidth / (to - from);
+  // Kitchen lanes need room for a kitchen's name; one kitchen keeps the narrow day column.
+  const columns = kitchens ? "grid-cols-[120px_minmax(0,1fr)_52px] sm:grid-cols-[160px_minmax(0,1fr)_52px]" : "grid-cols-[88px_minmax(0,1fr)_52px] sm:grid-cols-[112px_minmax(0,1fr)_52px]";
   const grid = ticks.slice(1, -1).map(minutes => <i key={minutes} aria-hidden="true" className="absolute inset-y-0 w-px bg-stone-100" style={{ left: pct(minutes) }} />);
   return (
     <div className="overflow-x-auto" data-testid="week-timeline">
       <div className="min-w-[640px]">
-        <div aria-hidden="true" className="grid h-7 grid-cols-[88px_minmax(0,1fr)_52px] items-center text-[11px] leading-4 text-stone-500 sm:grid-cols-[112px_minmax(0,1fr)_52px]">
+        <div aria-hidden="true" className={cn("grid h-7 items-center text-[11px] leading-4 text-stone-500", columns)}>
           <span />
           <div ref={trackRef} className="relative h-full">{ticks.map((minutes, index) => <span key={minutes} className={cn("absolute top-1.5 whitespace-nowrap", index === 0 ? "" : index === ticks.length - 1 ? "-translate-x-full" : "-translate-x-1/2")} style={{ left: pct(minutes) }}>{hourLabel(minutes)}</span>)}</div>
           <span />
@@ -160,39 +179,54 @@ function WeekTimeline({ week, byDay, today, nowMinutes, locale, onOpenDay }: { w
           // Cancelled first, so a live booking in the same hours is drawn on top of it.
           const timed = list.filter(event => event.start && event.end).sort((a, b) => Number(!a.cancelled) - Number(!b.cancelled));
           const notes = list.filter(allDay);
-          const bookedMinutes = timed.filter(event => event.kind === "booking" && !event.cancelled).reduce((sum, event) => sum + spanMinutes(event.start!, event.end!), 0);
+          const hoursOf = (events: CalendarEvent[]) => { const minutes = events.filter(event => event.kind === "booking" && !event.cancelled).reduce((sum, event) => sum + spanMinutes(event.start!, event.end!), 0);
+            return minutes ? mt("ovrHoursValue", { hours: new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(minutes / 60) }) : ""; };
           const nextStart = Math.min(to, ...timed.map(event => minutesOf(event.start!)).filter(start => start > nowMinutes));
+          const dayButton = <button type="button" onClick={() => onOpenDay(key)} className={cn("shrink-0 rounded text-left", focusRing)}><span className="font-semibold">{weekday(key)}</span><span className={cn("ml-1", isToday ? "" : "text-stone-500")}>{dayNumber(key)}</span></button>;
+          const noteLinks = notes.map(event => <EventLink key={event.key} event={event} label={[event.label, event.title].join(" · ")} className={cn("truncate text-[11px] leading-[14px] text-stone-500 hover:text-stone-900", !kitchens && "block")}>{kitchens && event.kitchen ? `${event.label} · ${event.kitchen}` : event.label}</EventLink>);
+          const track = (events: CalendarEvent[], first: boolean, height: string, top: string) => (
+            <div className={cn("relative", height)}>
+              {grid}
+              {events.map(event => {
+                const start = minutesOf(event.start!), end = start + spanMinutes(event.start!, event.end!);
+                const range = eventTime(event, locale);
+                const short = range.replace(/:00(?=\D|$)/g, "");
+                const digits = short.replace(/\s?[ap]\.\s?m\./gi, "");
+                const width = (Math.min(end, to) - Math.max(start, from)) * pxPerMinute;
+                // The longest form that fits inside the bar; the full text is always in the tooltip and label.
+                const roomy = !trackWidth ? short : [`${event.title} · ${range}`, range, short].find(text => textWidth(text) + 16 <= width - 2);
+                const text = roomy ?? (textWidth(digits) + 8 <= width - 2 ? digits : "");
+                const where = kitchens ? event.kitchen : undefined;
+                const full = [longDay(key), range, event.title, where, event.label].filter(Boolean).join(", ");
+                return <EventLink key={event.key} event={event} label={full} title={[event.title, where, range, event.label].filter(Boolean).join(" · ")}
+                  style={{ left: pct(start), width: `calc(${pct(end)} - ${pct(start)} - 1px)` }}
+                  className={cn("absolute h-6 overflow-hidden whitespace-nowrap rounded-md text-xs font-medium leading-6 [font-variant-numeric:proportional-nums] hover:shadow-[inset_0_0_0_1px_currentColor]", top,
+                    roomy ? "px-2" : "px-1 text-center", eventLook(event).bar, eventLook(event).bar.includes("border") && "leading-[22px]")}>{text}</EventLink>;
+              })}
+              {isToday && nowMinutes >= from && nowMinutes <= to && <>
+                <span aria-hidden="true" className={cn("absolute -ml-px w-0.5 bg-primary", !kitchens ? "inset-y-1 rounded-sm" : first ? "bottom-0 top-1 rounded-t-sm" : "inset-y-0",
+                  first && "before:absolute before:-left-[3px] before:-top-[3px] before:size-2 before:rounded-full before:bg-primary")} style={{ left: pct(nowMinutes) }} />
+                {first && (nextStart - nowMinutes) * pxPerMinute > 86 && <span className={cn("absolute whitespace-nowrap pl-2 text-[11px] font-semibold leading-4 text-[#8f0a2b]", kitchens ? "top-2" : "top-3.5")} style={{ left: pct(nowMinutes) }}>{mt("ovrNowAt", { time: hourMinute(nowMinutes, locale) })}</span>}
+              </>}
+            </div>);
+          const rowClass = cn("grid items-center", columns);
+          const sectionClass = cn("rounded-lg", isToday ? "bg-[#fef3f5]" : "[&+&]:shadow-[inset_0_1px_0_#f0eeec]");
+          if (!kitchens) return (
+            <section key={key} aria-label={longDay(key)} className={cn(rowClass, "h-11", sectionClass)}>
+              <div className={cn("min-w-0 pl-2.5 text-sm leading-4", isToday ? "text-[#8f0a2b]" : "text-stone-900")}>{dayButton}{noteLinks}</div>
+              {track(timed, true, "h-11", "top-2.5")}
+              <div className="pr-2.5 text-right text-sm font-medium tabular-nums text-stone-900">{hoursOf(timed)}</div>
+            </section>);
+          // The day as a heading over its kitchen lanes; each lane names its kitchen and its own booked hours.
           return (
-            <section key={key} aria-label={longDay(key)} className={cn("grid h-11 grid-cols-[88px_minmax(0,1fr)_52px] items-center rounded-lg sm:grid-cols-[112px_minmax(0,1fr)_52px]", isToday ? "bg-[#fef3f5]" : "[&+&]:shadow-[inset_0_1px_0_#f0eeec]")}>
-              <div className={cn("min-w-0 pl-2.5 text-sm leading-4", isToday ? "text-[#8f0a2b]" : "text-stone-900")}>
-                <button type="button" onClick={() => onOpenDay(key)} className={cn("rounded text-left", focusRing)}><span className="font-semibold">{weekday(key)}</span><span className={cn("ml-1", isToday ? "" : "text-stone-500")}>{dayNumber(key)}</span></button>
-                {notes.map(event => <EventLink key={event.key} event={event} label={[event.label, event.title].join(" · ")} className="block truncate text-[11px] leading-[14px] text-stone-500 hover:text-stone-900">{event.label}</EventLink>)}
-              </div>
-              <div className="relative h-11">
-                {grid}
-                {timed.map(event => {
-                  const start = minutesOf(event.start!), end = start + spanMinutes(event.start!, event.end!);
-                  const range = eventTime(event, locale);
-                  const short = range.replace(/:00(?=\D|$)/g, "");
-                  const digits = short.replace(/\s?[ap]\.\s?m\./gi, "");
-                  const width = (Math.min(end, to) - Math.max(start, from)) * pxPerMinute;
-                  // The longest form that fits inside the bar; the full text is always in the tooltip and label.
-                  const roomy = !trackWidth ? short : [`${event.title} · ${range}`, range, short].find(text => textWidth(text) + 16 <= width - 2);
-                  const text = roomy ?? (textWidth(digits) + 8 <= width - 2 ? digits : "");
-                  const full = [longDay(key), range, event.title, event.label].filter(Boolean).join(", ");
-                  return <EventLink key={event.key} event={event} label={full} title={[event.title, range, event.label].join(" · ")}
-                    style={{ left: pct(start), width: `calc(${pct(end)} - ${pct(start)} - 1px)` }}
-                    className={cn("absolute top-2.5 h-6 overflow-hidden whitespace-nowrap rounded-md text-xs font-medium leading-6 [font-variant-numeric:proportional-nums] hover:shadow-[inset_0_0_0_1px_currentColor]",
-                      roomy ? "px-2" : "px-1 text-center", eventLook(event).bar, eventLook(event).bar.includes("border") && "leading-[22px]")}>{text}</EventLink>;
-                })}
-                {isToday && nowMinutes >= from && nowMinutes <= to && <>
-                  <span aria-hidden="true" className="absolute inset-y-1 -ml-px w-0.5 rounded-sm bg-primary before:absolute before:-left-[3px] before:-top-[3px] before:size-2 before:rounded-full before:bg-primary" style={{ left: pct(nowMinutes) }} />
-                  {(nextStart - nowMinutes) * pxPerMinute > 86 && <span className="absolute top-3.5 whitespace-nowrap pl-2 text-[11px] font-semibold leading-4 text-[#8f0a2b]" style={{ left: pct(nowMinutes) }}>{mt("ovrNowAt", { time: hourMinute(nowMinutes, locale) })}</span>}
-                </>}
-              </div>
-              <div className="pr-2.5 text-right text-sm font-medium tabular-nums text-stone-900">{bookedMinutes ? mt("ovrHoursValue", { hours: new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(bookedMinutes / 60) }) : ""}</div>
-            </section>
-          );
+            <section key={key} aria-label={longDay(key)} className={cn("pb-1", sectionClass)} data-testid="timeline-day">
+              <div className={cn("flex h-7 min-w-0 items-end gap-2 pl-2.5 text-sm leading-4", isToday ? "text-[#8f0a2b]" : "text-stone-900")}>{dayButton}{noteLinks}</div>
+              {lanesFor(timed, kitchens).map((lane, index) => <div key={lane.key} className={cn(rowClass, "h-8")} data-testid="timeline-lane">
+                <span className="min-w-0 truncate pl-2.5 text-xs text-stone-600" title={lane.name}>{lane.name}</span>
+                {track(lane.events, index === 0, "h-8", "top-1")}
+                <span className="pr-2.5 text-right text-[13px] font-medium tabular-nums text-stone-900">{hoursOf(lane.events)}</span>
+              </div>)}
+            </section>);
         })}
       </div>
     </div>
@@ -213,18 +247,25 @@ interface BookingCalendarWidgetProps {
   today: string;
   /** The kitchen's zone, for the now-line. */
   timezone?: string;
-  /** The week's numbers, shown between the header and the calendar. */
-  stats?: ReactNode;
+  /** The week's numbers for the kitchen filter (null: every kitchen), shown between the header and the calendar. */
+  stats?: (kitchenId: number | null) => ReactNode;
+  /** The location's kitchens; two or more add a kitchen filter and kitchen lanes. */
+  kitchens?: Kitchen[];
   onNavigateToBookings: () => void;
 }
 
-export default function BookingCalendarWidget({ events, isLoading, today, timezone = "America/St_Johns", stats, onNavigateToBookings }: BookingCalendarWidgetProps) {
+export default function BookingCalendarWidget({ events: allEvents, isLoading, today, timezone = "America/St_Johns", stats, kitchens = [], onNavigateToBookings }: BookingCalendarWidgetProps) {
   const { i18n } = useTranslation();
   const locale = i18n.language;
   const [view, setView] = useState<View>(defaultCalendarView);
   const [anchor, setAnchor] = useState(today);
   const [showCancelled, setShowCancelled] = useState(false);
   const cancelledId = useId();
+  const [kitchenFilter, setKitchenFilter] = useState("all");
+  const filterId = kitchens.some(kitchen => String(kitchen.id) === kitchenFilter) ? Number(kitchenFilter) : null;
+  // A tour without a kitchen is the whole location's, so it stays under every kitchen.
+  const events = useMemo(() => filterId === null ? allEvents : allEvents.filter(event => event.kitchenId === undefined || event.kitchenId === filterId), [allEvents, filterId]);
+  const lanes = kitchens.length > 1 && filterId === null ? kitchens : null;
   const hasCancelled = events.some(event => event.cancelled);
 
   const byDay = useMemo(() => {
@@ -269,7 +310,11 @@ export default function BookingCalendarWidget({ events, isLoading, today, timezo
     <section className={card} data-testid="overview-calendar" aria-labelledby="overview-week-title">
       <div className={cn(cardHead, "flex-wrap")}>
         <h2 id="overview-week-title" className={cardTitle} aria-live="polite">{thisWeek ? <>{mt("ovrThisWeek")}<span className={cardMeta} data-testid="calendar-range">{range}</span></> : <span data-testid="calendar-range">{range}</span>}</h2>
-        <div className="flex w-full items-center gap-2 sm:w-auto">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+          {kitchens.length > 1 && <Select value={filterId === null ? "all" : kitchenFilter} onValueChange={setKitchenFilter}>
+            <SelectTrigger className="h-10 min-h-10 w-full gap-2 rounded-lg border-0 bg-white px-3 text-[13px] font-medium text-stone-900 shadow-[0_1px_2px_rgba(28,25,23,.06)] ring-1 ring-inset ring-stone-300 hover:ring-stone-400 sm:h-8 sm:min-h-0 sm:w-auto sm:max-w-[14rem]" aria-label={mt("ovrKitchenFilter")} data-testid="calendar-kitchen-filter"><SelectValue /></SelectTrigger>
+            <SelectContent><SelectItem value="all">{mt("ovrAllKitchens")}</SelectItem>{kitchens.map(kitchen => <SelectItem key={kitchen.id} value={String(kitchen.id)}>{kitchen.name}</SelectItem>)}</SelectContent>
+          </Select>}
           <button type="button" className={cn(btnSecondary, "hidden flex-none sm:inline-flex")} onClick={() => setAnchor(today)}>{mt("today")}</button>
           <button type="button" className={cn(btnSecondary, "w-10 flex-none px-0 sm:w-8")} onClick={() => shift(-1)} aria-label={mt("previous")}><ChevronLeft className="size-4" aria-hidden="true" /></button>
           <button type="button" className={cn(btnSecondary, "w-10 flex-none px-0 sm:w-8")} onClick={() => shift(1)} aria-label={mt("next")}><ChevronRight className="size-4" aria-hidden="true" /></button>
@@ -289,10 +334,10 @@ export default function BookingCalendarWidget({ events, isLoading, today, timezo
       </div>
 
       <div className="px-4 pb-4 pt-3 sm:px-5 sm:pb-5">
-        {thisWeek && stats}
+        {thisWeek && stats?.(filterId)}
         {isLoading ? <Skeleton className="mt-4 h-48 rounded-lg" /> : view === "week" ? (
           <div className="mt-4">
-            <WeekTimeline week={week} byDay={byDay} today={today} nowMinutes={nowMinutes} locale={locale} onOpenDay={openDay} />
+            <WeekTimeline week={week} byDay={byDay} today={today} nowMinutes={nowMinutes} locale={locale} onOpenDay={openDay} kitchens={lanes} />
             {weekEmpty && <p className={cn("mt-2 rounded-lg bg-stone-50 p-4", sub)}>{mt("ovrNothingThisWeek")}</p>}
           </div>
         ) : view === "agenda" ? (
@@ -335,7 +380,7 @@ export default function BookingCalendarWidget({ events, isLoading, today, timezo
                     <span className={cn("inline-flex size-6 items-center justify-center self-start rounded-full text-xs font-medium tabular-nums", key === today && "bg-primary text-white")}>{dayNumber(key)}</span>
                     <span className="flex flex-wrap gap-0.5 md:hidden" aria-hidden="true">{list.slice(0, 3).map(event => <span key={event.key} className={cn("size-1.5 rounded-sm", eventLook(event).dot)} />)}</span>
                     <span className="hidden space-y-0.5 md:block" aria-hidden="true">
-                      {list.slice(0, 2).map(event => <span key={event.key} className={cn("block truncate rounded px-1 text-[11px] leading-4", eventLook(event).bar)}>{eventTime(event, locale) ? `${eventTime(event, locale).split("–")[0]} ` : ""}{event.title}</span>)}
+                      {list.slice(0, 2).map(event => <span key={event.key} title={[event.title, lanes ? event.kitchen : undefined, eventTime(event, locale), event.label].filter(Boolean).join(" · ")} className={cn("block truncate rounded px-1 text-[11px] leading-4", eventLook(event).bar)}>{eventTime(event, locale) ? `${eventTime(event, locale).split("–")[0]} ` : ""}{event.title}</span>)}
                       {list.length > 2 && <span className="block px-1 text-[11px] text-stone-500">{mt("plusMoreCount", { count: list.length - 2 })}</span>}
                     </span>
                   </button>

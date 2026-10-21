@@ -7,7 +7,7 @@ import { formatTourWhen } from '@/lib/chef-viewing-display';
 import { isPendingOrUpcomingTour } from "@/lib/chef-viewing-display";
 import { useTourClock } from "@/hooks/use-tour-clock";
 import { tourActivity } from "@shared/tour-activity";
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Link } from "wouter";
@@ -24,7 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import BookingCalendarWidget, { CalendarEventRow, kitchenNowMinutes, sortEvents, type CalendarEvent, type VisitState } from "./BookingCalendarWidget";
-import { badge, btnPrimary, btnSecondary, card, cardBody, cardHead, cardMeta, cardTitle, focusRing, groupCount, groupLabel, sub } from "./dashboard-ui";
+import { badge, btnPrimary, btnSecondary, card, cardBody, cardHead, cardMeta, cardTitle, focusRing, groupCount, groupLabel, linkTertiary, sub } from "./dashboard-ui";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { bookingResponseDeadline, formatResponseDeadline } from "@/lib/booking-response-deadline";
 import { timeRange } from "@/lib/booking-header-state";
@@ -172,7 +172,17 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
   const { i18n } = useTranslation();
   const { bookings: allBookings, isLoadingBookings, isErrorBookings } = useManagerDashboard();
   const [showDoneToday, setShowDoneToday] = useState(false);
+  const [allActivity, setAllActivity] = useState(false);
+  const attentionRef = useRef<HTMLDivElement>(null);
+  const todayRef = useRef<HTMLDivElement>(null);
+  const activityListRef = useRef<HTMLDivElement>(null);
+  const [activityUnderAttention, setActivityUnderAttention] = useState(false);
+  const [hiddenActivity, setHiddenActivity] = useState(0);
   const locationKitchens = kitchens.filter((kitchen) => !selectedLocation || kitchen.locationId === selectedLocation.id);
+  // Rows name their kitchen only when the location has several (one kitchen keeps the v2 rows as they are).
+  const multiKitchen = locationKitchens.length > 1;
+  const kitchenName = (id?: number | null, name?: string | null) => name || locationKitchens.find(kitchen => kitchen.id === id)?.name;
+  const inKitchen = (id?: number | null, name?: string | null) => multiKitchen ? kitchenName(id, name) : undefined;
   const activity = useManagerOverviewActivity(selectedLocation?.id, locationKitchens.map((kitchen) => kitchen.id));
   const licenseForKitchen = (kitchen: Kitchen) => locations.find((location) => location.id === kitchen.locationId);
   const liveKitchens = locationKitchens.filter((kitchen) => kitchenIsVisibleToChefs(kitchen, licenseForKitchen(kitchen)));
@@ -280,7 +290,7 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
     ...locationViewings.flatMap((item) => tourActivity(item.viewing).map(event => ({ kind: "tour" as const, id: item.viewing.id, activityKey: event.key, date: event.recordedAt,
       title: mt(event.corrected ? "activityTourCorrected" : event.disruptionReason ? "activityTourDisrupted" : event.status === 'cancelled' && (item.viewing.adminReviewDecision === 'denied' || item.viewing.cancelledBy === 'manager_declined') ? "activityTourDeclined" : tourActivityLabel[event.status] ?? "kitchenTours"),
       person: chefDisplayName(item), kitchen: item.kitchenName || item.locationName, scheduled: displayDate(item.viewing.scheduledAt), time: tourTime(item) }))),
-    ...activity.storageBookings.filter(item => !!item.createdAt).map(item => ({kind:"storage" as const,id:item.id,date:item.createdAt!,title:mt("activityStorageRequested"),person:chefDisplayName(item),kitchen:item.storageName || item.kitchenName,scheduled: [item.startDate,item.endDate].filter(Boolean).map(value=>displayDate(item.pricingModel === "hourly" ? value! : value!.slice(0, 10))).join(" – "),time:""})),
+    ...activity.storageBookings.filter(item => !!item.createdAt).map(item => ({kind:"storage" as const,id:item.id,date:item.createdAt!,title:mt("activityStorageRequested"),person:chefDisplayName(item),kitchen:[item.storageName || item.kitchenName, item.storageName && multiKitchen ? item.kitchenName : undefined].filter(Boolean).join(" · "),scheduled: [item.startDate,item.endDate].filter(Boolean).map(value=>displayDate(item.pricingModel === "hourly" ? value! : value!.slice(0, 10))).join(" – "),time:""})),
     ...locationApplications.filter(item => !!(item.updatedAt || item.createdAt)).map(item => ({kind:"application" as const,id:item.id,date:item.updatedAt || item.createdAt!,title:mt("overviewApplicationActivity", {status:mt(({inReview:"overviewAwaitingReview",approved:"approved",rejected:"rejected",pending:"pending"} as Record<string,string>)[item.status] ?? "overviewStatusUpdated")}),person:chefDisplayName(item),kitchen:locations.find(location=>location.id===item.locationId)?.name,scheduled:displayDate(item.updatedAt || item.createdAt!),time:""})),
     ...activity.claims.filter(item => !!(item.updatedAt || item.createdAt)).map(item => ({kind:"claim" as const,id:item.id,date:item.updatedAt || item.createdAt!,title:mt("overviewClaimActivity",{status:mt(financialActivityStatus[item.status ?? ""] ?? "overviewStatusUpdated")}),person:chefDisplayName(item),kitchen:item.kitchenName,scheduled:displayDate(item.updatedAt || item.createdAt!),time:""})),
   ].filter(item => Number.isFinite(Date.parse(item.date)) && Date.parse(item.date) <= Date.now()).sort((a, b) => Date.parse(b.date) - Date.parse(a.date)).slice(0, RECENT_ACTIVITY_LIMIT);
@@ -293,7 +303,7 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
   const groups = new Map<string, Task[]>();
   const addTask = (label: string, task: Task) => groups.set(label, [...(groups.get(label) ?? []), task]);
   const recordTitle = (record: { id?: number; chefName?: string; kitchenName?: string; storageName?: string; claimTitle?: string; referenceCode?: string }) =>
-    record.claimTitle || [chefDisplayName(record), record.storageName || record.kitchenName].filter(Boolean).join(" · ") || record.referenceCode || `#${record.id}`;
+    record.claimTitle || [chefDisplayName(record), record.storageName || record.kitchenName, record.storageName && multiKitchen ? record.kitchenName : undefined].filter(Boolean).join(" · ") || record.referenceCode || `#${record.id}`;
   if (activity.paymentsNeedAttention) addTask("overviewPaymentsAttention", { id: "payments", title: mt(activity.paymentsAction ?? "overviewPaymentsUpdate"), view: "payments" });
   const unreadThreads = activity.unreadThreads ?? [];
   for (const thread of unreadThreads) addTask("overviewUnreadMessages", { id: thread.id, title: applications.find((application) => application.id === thread.applicationId)?.fullName || mt("overviewConversationTitle", { id: thread.applicationId }), detail: mt("overviewUnreadThreadCount", { count: thread.unreadManagerCount }), view: "messages", param: "conversation" });
@@ -348,11 +358,11 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
   for (const checkout of activity.storageCheckouts) addTask("overviewStorageCheckoutReviews", { id: String(checkout.storageBookingId ?? checkout.id), title: recordTitle(checkout), view: "storage-bookings" });
   const rentalTitle = (rental: StorageRental) => [rental.chef?.name && !rental.chef.name.includes("@") ? rental.chef.name : mt("guestChef"), rental.listing?.name].filter(Boolean).join(" · ");
   for (const rental of pendingRequests(locationRentals)) addTask("overviewStorageRequests", { id: `rental-${rental.id}`, title: rentalTitle(rental),
-    detail: mt("ovrStorageStarts", { date: storageDay(rental.startOn, i18n.language) }), view: "storage-bookings", href: `/manager/storage/${rental.id}` });
+    detail: [inKitchen(rental.kitchen?.id, rental.kitchen?.name), mt("ovrStorageStarts", { date: storageDay(rental.startOn, i18n.language) })].filter(Boolean).join(" · "), view: "storage-bookings", href: `/manager/storage/${rental.id}` });
   for (const rental of locationRentals) {
     const chip = chipForRental(rental);
     if (occupiesUnit(rental) && chipNeedsAction(chip)) addTask("ovrStorageToAction", { id: `rental-${rental.id}`, title: rental.listing?.name || rentalTitle(rental),
-      detail: [rental.chef?.name && !rental.chef.name.includes("@") ? rental.chef.name : mt("guestChef"), mt(storageChipKey(chip), { ns: "storage" })].join(" · "),
+      detail: [rental.chef?.name && !rental.chef.name.includes("@") ? rental.chef.name : mt("guestChef"), inKitchen(rental.kitchen?.id, rental.kitchen?.name), mt(storageChipKey(chip), { ns: "storage" })].filter(Boolean).join(" · "),
       action: STORAGE_ACTION[chip] && mt(STORAGE_ACTION[chip]!, { ns: "storage" }), view: "storage-bookings", href: `/manager/storage/${rental.id}` });
   }
   for (const claim of activity.claims) if (["draft", "approved", "partially_approved", "chef_accepted", "charge_failed", "escalated"].includes(claim.status ?? "")) addTask("overviewClaimsToAction", { id: String(claim.id), title: recordTitle(claim), view: "damage-claims", param: "claim", detail: mt(claim.status === "draft" ? "overviewClaimComplete" : "overviewClaimCollect") });
@@ -420,8 +430,12 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
     ? [[kitchen.id, { weekly: weeklyHours[index].data!, overrides: dateOverrides[index].data! }] as const] : []));
   const weekDays = dayRows.map(({ row }) => ({ bookingId: row.id, kitchenId: row.kitchenId, status: row.status, bookingDate: row.bookingDate, startTime: row.startTime,
     endTime: row.endTime, operatingWindowStartTime: row.operatingWindowStartTime, selectedSlots: row.selectedSlots }));
-  const thisWeek = weekStats(weekDays, thisWeekStart, hoursByKitchen);
-  const lastWeek = weekStats(weekDays, lastWeekStart, hoursByKitchen);
+  /** This week and last, for every kitchen or the one the calendar is filtered to (bookings, hours and open hours alike). */
+  const statsFor = (kitchenId: number | null) => {
+    const days = kitchenId === null ? weekDays : weekDays.filter(day => day.kitchenId === kitchenId);
+    const hours = kitchenId === null ? hoursByKitchen : new Map(Array.from(hoursByKitchen).filter(([id]) => id === kitchenId));
+    return { thisWeek: weekStats(days, thisWeekStart, hours), lastWeek: weekStats(days, lastWeekStart, hours) };
+  };
 
   /** Everything on the kitchen's calendar, one event per booked day and visit block, coloured like the booking pills. */
   const calendarEvents: CalendarEvent[] = !hasActivity ? [] : [
@@ -436,7 +450,7 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
       const label = state === "answer" ? mt("ovrLegendAnswerNeeded") : state === "finished" ? mt("ovrLegendFinished") : ct(pill.key);
       return kitchenBookingBlocks(row).map((block, index) => ({ key: `booking-${row.id}-${day.visitId ?? 0}-${index}`, kind: "booking" as const, date: day.dayKey,
         start: block.startTime, end: block.endTime, sortAt: startAt === undefined ? undefined : startAt + spanMinutes(row.startTime, block.startTime) % 1440 * 60_000,
-        title: chefDisplayName(row), detail: [dayLabel(day), row.kitchenName].filter(Boolean).join(" · "), label, tone: pill.tone, state,
+        title: chefDisplayName(row), detail: [dayLabel(day), row.kitchenName].filter(Boolean).join(" · "), kitchenId: row.kitchenId, kitchen: kitchenName(row.kitchenId, row.kitchenName), label, tone: pill.tone, state,
         muted: FINISHED_PHASES.includes(phase), cancelled: phase === "cancelled", now: HAPPENING_NOW.includes(phase), href: `/manager/booking/${row.id}` }));
     }),
     ...locationViewings.filter(({ viewing }) => ["pending", "confirmed", "completed"].includes(viewing.status) && Number.isFinite(Date.parse(viewing.scheduledAt))).map(item => {
@@ -444,6 +458,7 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
       const status = item.viewing.status;
       return { key: `tour-${item.viewing.id}`, kind: "tour" as const, date: tourDay(item), start: clockIn(at, DEFAULT_TIMEZONE),
         end: clockIn(at + (item.viewing.durationMinutes ?? 30) * 60_000, DEFAULT_TIMEZONE), sortAt: at, title: chefDisplayName(item),
+        kitchenId: item.viewing.targetedKitchenId ?? undefined, kitchen: item.viewing.targetedKitchenId ? kitchenName(item.viewing.targetedKitchenId, item.kitchenName) : undefined,
         detail: [mt("ovrLegendTour"), item.kitchenName || item.locationName].filter(Boolean).join(" · "),
         label: mt(status === "pending" ? "ovrTourRequested" : status === "completed" ? "completed" : "ovrTourScheduled"),
         tone: status === "pending" ? "amber" as const : status === "completed" ? "grey" as const : "blue" as const, muted: status === "completed",
@@ -452,11 +467,11 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
     ...hoursKitchens.flatMap((kitchen, index) => (dateOverrides[index]?.data ?? []).map(item => {
       const closed = !item.isAvailable || !item.startTime || !item.endTime;
       return { key: `override-${kitchen.id}-${item.id || item.specificDate}`, kind: closed ? "closed" as const : "hours" as const, date: item.specificDate.slice(0, 10),
-        ...(closed ? {} : { start: item.startTime!, end: item.endTime! }), title: kitchen.name, detail: item.reason || undefined,
+        ...(closed ? {} : { start: item.startTime!, end: item.endTime! }), title: kitchen.name, detail: item.reason || undefined, kitchenId: kitchen.id, kitchen: kitchen.name,
         label: mt(closed ? "closed" : "ovrSpecialHours"), tone: closed ? "grey" as const : "neutral" as const, onOpen: () => onNavigate("availability", kitchen.id) };
     })),
     ...locationRentals.flatMap(rental => {
-      const base = { title: rentalTitle(rental), detail: rental.kitchen?.name, href: `/manager/storage/${rental.id}` };
+      const base = { title: rentalTitle(rental), detail: rental.kitchen?.name, kitchenId: rental.kitchen?.id, kitchen: rental.kitchen?.name, href: `/manager/storage/${rental.id}` };
       const events: CalendarEvent[] = [];
       if (["requested", "reserved", "active", "move_out_requested", "removal_review"].includes(rental.state) && rental.startOn) events.push({ ...base, key: `rental-in-${rental.id}`,
         kind: "moveIn", date: rental.startOn.slice(0, 10), label: mt(rental.state === "requested" ? "ovrStorageRequested" : "ovrMoveIn"), tone: rental.state === "requested" ? "amber" : "purple",
@@ -519,7 +534,7 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
       <span aria-hidden="true" className="hidden size-9 items-center justify-center rounded-full bg-white text-xs font-semibold text-[#8f0a2b] ring-1 ring-[#fbcbd6] lg:flex">{initials}</span>
       <div className="min-w-0">
         <p className="break-words font-medium text-stone-900">{[listWhenLine(days[0].row, i18n.language, words), days.length > 1 ? mt("ovrDayCount", { count: days.length }) : ""].filter(Boolean).join(" · ")}</p>
-        <p className={cn("mt-0.5", sub)}>{[chef, booking.kitchenName].filter(Boolean).join(" · ")}{facts.length > 0 && <><span className="hidden sm:inline"> · </span><span className="block sm:inline">{facts.join(" · ")}</span></>}</p>
+        <p className={cn("mt-0.5", sub)}>{[chef, kitchenName(booking.kitchenId, booking.kitchenName)].filter(Boolean).join(" · ")}{facts.length > 0 && <><span className="hidden sm:inline"> · </span><span className="block sm:inline">{facts.join(" · ")}</span></>}</p>
         {due && <p className="mt-1.5 flex items-center gap-1.5 text-[13px] font-medium text-[#8f0a2b]"><Clock className="size-3.5 shrink-0" aria-hidden="true" />{mt("ovrRespondBy", { when: due })}</p>}
       </div>
       <Link href={`/manager/booking/${booking.id}/review`} className={cn(btnPrimary, "sm:h-11 sm:w-full lg:h-9 lg:w-auto")}>{mt("ovrReviewRequest")}</Link>
@@ -540,11 +555,11 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
     return <div key={`${booking.id}-${answer.visitId ?? 0}`} data-testid="attendance-answer-row" className="grid gap-x-5 gap-y-2.5 border-t border-stone-100 py-3 first:border-t-0 sm:px-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
       <div className="min-w-0">
         <p className="font-medium text-stone-900">{when}</p>
-        <p className={cn("mt-0.5", sub)}>{chef}<span className={cn("block", deadline - Date.now() <= 3 * 3_600_000 && "font-medium text-amber-800")}>{by}</span></p>
+        <p className={cn("mt-0.5", sub)}>{[chef, inKitchen(booking.kitchenId, booking.kitchenName)].filter(Boolean).join(" · ")}<span className={cn("block", deadline - Date.now() <= 3 * 3_600_000 && "font-medium text-amber-800")}>{by}</span></p>
       </div>
       <div className="flex gap-2">
-        <Link href={href("came")} className={answerButton} aria-label={`${mt("ovrTheyCame")}: ${when}, ${chef}`}>{mt("ovrTheyCame")}</Link>
-        <Link href={href("no_show")} className={answerButton} aria-label={`${mt("ovrReportNoShow")}: ${when}, ${chef}`}>{mt("ovrReportNoShow")}</Link>
+        <Link href={href("came")} className={answerButton} aria-label={[`${mt("ovrTheyCame")}: ${when}`, chef, inKitchen(booking.kitchenId, booking.kitchenName)].filter(Boolean).join(", ")}>{mt("ovrTheyCame")}</Link>
+        <Link href={href("no_show")} className={answerButton} aria-label={[`${mt("ovrReportNoShow")}: ${when}`, chef, inKitchen(booking.kitchenId, booking.kitchenName)].filter(Boolean).join(", ")}>{mt("ovrReportNoShow")}</Link>
       </div>
     </div>;
   };
@@ -625,8 +640,10 @@ return <div key={kitchen.id}><button type="button" onClick={() => onNavigate(lis
   const historyLoading = isLoadingBookings || isLoadingViewings || isLoadingApplications || activity.isLoading;
   const historyError = isErrorBookings || isErrorViewings || isErrorApplications || activity.isError;
   const activityCard = <section className={cn(fixedCards ? panelClass : card, "flex flex-col xl:h-full")} data-testid="overview-activity" aria-labelledby="overview-activity-title">
-    <div className={cardHead}><h2 id="overview-activity-title" className={cardTitle}>{mt("overviewRecentActivity")}</h2></div>
-    <div className={cn("min-h-0 flex-1 overflow-y-auto px-4 pb-3 sm:px-5", !fixedCards && "max-h-[420px] xl:max-h-none")} tabIndex={0} role="region" aria-label={mt("overviewRecentActivity")}>
+    <div className={cardHead}><h2 id="overview-activity-title" className={cardTitle}>{mt("overviewRecentActivity")}</h2>
+      {(hiddenActivity > 0 || allActivity) && <button type="button" className={cn(linkTertiary, "shrink-0")} aria-expanded={allActivity} onClick={() => setAllActivity(open => !open)}>{allActivity ? mt("ovrShowFewer") : mt("ovrShowMoreCount", { count: hiddenActivity })}</button>}</div>
+    {/* Column flex that wraps: a row that doesn't fit whole moves to a second, clipped column instead of showing cut in half. */}
+    <div ref={activityListRef} className={cn("relative min-h-0 flex-1 pb-3", fixedCards ? "overflow-y-auto px-4 sm:px-5" : allActivity ? "px-4 sm:px-5" : "mx-4 flex max-h-[420px] flex-col flex-wrap content-start overflow-hidden sm:mx-5 xl:max-h-none [&>*]:w-full [&>*]:shrink-0")} tabIndex={0} role="region" aria-label={mt("overviewRecentActivity")}>
       {historyError && <p role="status" className="mb-3 text-sm text-destructive">{mt("overviewActivityPartialError")}</p>}
       {historyLoading && !recent.length && <Skeleton className="h-24 rounded-lg" />}
       {!historyLoading && !historyError && !recent.length && <p className={cn("rounded-lg bg-stone-50 p-4", sub)}>{mt("overviewRecentActivityEmpty")}</p>}
@@ -645,7 +662,7 @@ return <div key={kitchen.id}><button type="button" onClick={() => onNavigate(lis
   </section>;
 
   const todayBookings = todayList.filter(event => event.kind === "booking").length;
-  const todayCard = <section className={card} data-testid="overview-today" aria-labelledby="overview-today-title">
+  const todayCard = <section className={cn(card, "xl:h-full")} data-testid="overview-today" aria-labelledby="overview-today-title">
     <div className={cardHead}><h2 id="overview-today-title" className={cardTitle}>{mt("today")}{todayBookings > 0 && <span className={cardMeta}>{mt("ovrBookingCount", { count: todayBookings })}</span>}</h2></div>
     <div className={cn(cardBody, "pt-1")}>
       {scheduleLoading && !todayList.length && <Skeleton className="h-20 rounded-lg" />}
@@ -673,19 +690,19 @@ return <div key={kitchen.id}><button type="button" onClick={() => onNavigate(lis
         <ul className="mt-1.5">{tomorrowList.map(event => <li key={event.key}>
           <Link href={event.href ?? "/manager/bookings"} className={cn("flex min-h-10 items-center justify-between gap-3 rounded text-[13px] hover:text-stone-900 lg:min-h-7", focusRing)}>
             <span className="whitespace-nowrap font-semibold tabular-nums text-stone-900">{timeRange(formatTime(event.start!, i18n.language), formatTime(event.end!, i18n.language))}</span>
-            <span className="min-w-0 truncate text-stone-600">{event.title}</span>
+            <span className={cn("min-w-0 text-stone-600", multiKitchen ? "break-words text-right" : "truncate")}>{[event.title, multiKitchen ? event.kitchen : undefined].filter(Boolean).join(" · ")}</span>
           </Link></li>)}</ul>
       </div>}
     </div>
   </section>;
 
-  const weekTiles = [
+  const weekStatsBlock = (kitchenId: number | null) => { const { thisWeek, lastWeek } = statsFor(kitchenId); const weekTiles = [
     { key: "bookings", label: mt("ovrWeekBookings"), value: String(thisWeek.bookings), lines: [mt("ovrLastWeek", { value: String(lastWeek.bookings) })] },
     { key: "hours", label: mt("ovrWeekHours"), value: mt("ovrHoursValue", { hours: hoursText(thisWeek.bookedMinutes, i18n.language) }), lines: [mt("ovrLastWeek", { value: mt("ovrHoursValue", { hours: hoursText(lastWeek.bookedMinutes, i18n.language) }) })] },
     { key: "utilisation", label: mt("ovrWeekUtilisation"), value: thisWeek.utilisation === null ? "—" : percent(thisWeek.utilisation),
       lines: thisWeek.utilisation === null ? [mt("ovrUtilisationNoHours")] : [mt("ovrOfOpenHours", { hours: hoursText(thisWeek.openMinutes, i18n.language) }), mt("ovrLastWeek", { value: lastWeek.utilisation === null ? "—" : percent(lastWeek.utilisation) })] },
   ];
-  const weekStatsBlock = bookings.length > 0 && <dl data-testid="overview-week" className="grid border-b border-stone-100 pb-4 lg:grid-cols-[1fr_1fr_1.4fr]">
+  return bookings.length > 0 && <dl data-testid="overview-week" className="grid border-b border-stone-100 pb-4 lg:grid-cols-[1fr_1fr_1.4fr]">
     {weekTiles.map((tile, index) => <div key={tile.key} data-testid={`week-${tile.key}`} className={cn("grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 py-2.5 lg:block lg:py-0", index > 0 && "border-t border-stone-100 lg:border-l lg:border-t-0 lg:pl-5", index < 2 && "lg:pr-5")}>
       <dt className="text-sm text-stone-900 lg:text-[13px] lg:text-stone-600">{tile.label}</dt>
       <dd className="row-span-2 flex items-center justify-end gap-3 text-[22px] font-semibold leading-8 tracking-[-0.01em] text-stone-900 tabular-nums lg:mt-1 lg:justify-start lg:text-[26px] lg:leading-[34px]">{tile.key === "utilisation" && hoursLoading ? <Skeleton className="h-7 w-14 rounded" /> : tile.value}</dd>
@@ -695,7 +712,7 @@ return <div key={kitchen.id}><button type="button" onClick={() => onNavigate(lis
         {lastWeek.utilisation !== null && <span className="absolute -inset-y-1 w-0.5 rounded-sm bg-stone-900" style={{ left: `${Math.min(100, lastWeek.utilisation)}%` }} />}
       </dd>}
     </div>)}
-  </dl>;
+  </dl>; };
 
   const revenueVisible = bookings.length > 0 || activity.storageBookings.length > 0 || locationRentals.length > 0 || liveKitchens.length > 0;
   const revenueCard = <RevenuePayoutsCard className={card} locale={i18n.language} isLoading={ledger.isLoading || isLoadingRevenue || isLoadingPayouts} isError={isErrorRevenue}
@@ -734,6 +751,27 @@ return <div key={kitchen.id}><button type="button" onClick={() => onNavigate(lis
           {listingBadge(item)}<ChevronRight className="size-4 shrink-0 text-stone-400" aria-hidden="true" /></button></li>)}</ul>
       </PopoverContent></Popover>;
 
+  /*
+   * Desktop columns end together: Needs attention and Today keep their natural height, and Recent activity fills the gap
+   * under whichever of them is shorter (whole rows only). Measured, because both lists change with the day's data.
+   */
+  useEffect(() => {
+    const attention = attentionRef.current, todayNode = todayRef.current, list = activityListRef.current;
+    if (typeof ResizeObserver === "undefined") return;
+    const measure = () => {
+      // Content height, not the box: a card stretched by the last row of its column must not decide where the feed goes.
+      const natural = (node: Element | null) => Array.from(node?.firstElementChild?.children ?? []).reduce((sum, child) => sum + (child as HTMLElement).offsetHeight, 0);
+      if (attention && todayNode) setActivityUnderAttention(natural(attention) < natural(todayNode));
+      // Rows pushed into the clipped second column are the ones not shown.
+      const rows = list ? Array.from(list.children) as HTMLElement[] : [];
+      setHiddenActivity(rows.filter(row => row.offsetLeft > rows[0].offsetLeft).length);
+    };
+    const observer = new ResizeObserver(measure);
+    // The cards' own parts: a stretched card doesn't resize when its content grows.
+    [...Array.from(attention?.firstElementChild?.children ?? []), ...Array.from(todayNode?.firstElementChild?.children ?? []), list].forEach(node => node && observer.observe(node));
+    measure();
+    return () => observer.disconnect();
+  }, [hasActivity, recent.length, allActivity]);
   const switcher = locations.length > 1 && onSelectLocation && selectedLocation && <Select value={String(selectedLocation.id)} onValueChange={value => { const location = locations.find(item => String(item.id) === value); if (location) onSelectLocation(location); }}>
     <SelectTrigger className="h-10 w-full sm:w-64" aria-label={mt("ovrLocation")}><SelectValue /></SelectTrigger>
     <SelectContent>{locations.map(location => <SelectItem key={location.id} value={String(location.id)}>{location.name}</SelectItem>)}</SelectContent>
@@ -744,13 +782,15 @@ return <div key={kitchen.id}><button type="button" onClick={() => onNavigate(lis
         {switcher ? <div className="mt-2">{switcher}</div> : <p className="mt-1 text-sm text-stone-600">{selectedLocation?.name ?? (locations.length > 1 ? mt("cmdAllLocations") : mt("overviewYourWorkspace"))}</p>}</div>
       {hasActivity && <div className="min-w-0 lg:pt-1">{listingChip}</div>}
     </header>
-    {hasActivity ? <div className="grid gap-4 sm:gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,360px)] xl:grid-rows-[auto_1fr] xl:[grid-template-areas:'attn_today'_'attn_activity'_'week_week'_'pay_pay']">
-        <div className="min-w-0 xl:[grid-area:attn]">{attentionCard(false)}</div>
-        <div className="min-w-0 xl:[grid-area:today]">{todayCard}</div>
-        <div className="min-w-0 xl:[grid-area:week]"><BookingCalendarWidget events={calendarEvents} isLoading={isLoadingBookings} today={today} timezone={timezone} stats={weekStatsBlock} onNavigateToBookings={() => onNavigate("bookings")} /></div>
+    {hasActivity ? <div className={cn("grid gap-4 sm:gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,360px)] xl:grid-rows-[auto_1fr]", activityUnderAttention
+        ? "xl:[grid-template-areas:'attn_today'_'activity_today'_'week_week'_'pay_pay']" : "xl:[grid-template-areas:'attn_today'_'attn_activity'_'week_week'_'pay_pay']")}>
+        {/* The feed takes whole rows; when even one row is more than the gap, the shorter column's card absorbs the rest. */}
+        <div ref={attentionRef} className="min-w-0 xl:[grid-area:attn]">{attentionCard(false)}</div>
+        <div ref={todayRef} className="min-w-0 xl:[grid-area:today]">{todayCard}</div>
+        <div className="min-w-0 xl:[grid-area:week]"><BookingCalendarWidget events={calendarEvents} isLoading={isLoadingBookings} today={today} timezone={timezone} stats={weekStatsBlock} kitchens={locationKitchens} onNavigateToBookings={() => onNavigate("bookings")} /></div>
         {revenueVisible && <div className="min-w-0 xl:[grid-area:pay]">{revenueCard}</div>}
-        {/* Zero height + min-height of the area: the feed scrolls inside the space Needs attention leaves, never stretching it. */}
-        <div className="min-w-0 xl:h-0 xl:min-h-[max(100%,260px)] xl:[grid-area:activity]">{activityCard}</div>
+        {/* Zero height + min-height of the area: the feed fills the space the taller column leaves, never stretching it (unless opened in full). */}
+        <div className={cn("min-w-0 xl:[grid-area:activity]", !allActivity && "xl:h-0 xl:min-h-[max(100%,136px)]")}>{activityCard}</div>
       </div>
       : <>
         <div className="grid gap-4 lg:grid-cols-2">{liveKitchens.length ? <>{attentionCard(true)}{listingCard}</> : <>{listingCard}{attentionCard(true)}</>}</div>

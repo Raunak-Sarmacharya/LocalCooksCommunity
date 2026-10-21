@@ -39,6 +39,15 @@ describe('week numbers', () => {
     expect(stats).toEqual({ bookings: 1, bookedMinutes: 360, openMinutes: 7 * 240, utilisation: 21 });
     expect(weekStats([day(4, '2026-10-25', 'completed')], '2026-10-25', new Map()).utilisation).toBeNull();
   });
+  it('adds up several kitchens: bookings and hours from each, open hours of each with its own closures', () => {
+    const open = (start: string, end: string) => [0, 1, 2, 3, 4, 5, 6].map(dayOfWeek => ({ dayOfWeek, startTime: start, endTime: end, isAvailable: true }));
+    const day = (bookingId: number, kitchenId: number, startTime: string, endTime: string) => ({ bookingId, kitchenId, status: 'confirmed', bookingDate: '2026-10-20', startTime, endTime });
+    // East 4 h a day (28 h); West 8 h a day closed on Monday (48 h): 76 open hours. Both booked at the same hours.
+    const hours = new Map([[1, { weekly: open('09:00', '13:00'), overrides: [] }], [2, { weekly: open('09:00', '17:00'), overrides: [{ specificDate: '2026-10-19T00:00:00.000Z', isAvailable: false }] }]]);
+    expect(weekStats([day(1, 1, '10:00', '12:00'), day(2, 2, '10:00', '13:00')], '2026-10-18', hours)).toEqual({ bookings: 2, bookedMinutes: 300, openMinutes: 76 * 60, utilisation: 7 });
+    // A kitchen whose hours aren't known adds its booked hours but never counts against open hours it doesn't have.
+    expect(weekStats([day(1, 1, '10:00', '12:00'), day(2, 2, '10:00', '13:00'), day(3, 3, '09:00', '10:00')], '2026-10-18', hours)).toEqual({ bookings: 3, bookedMinutes: 360, openMinutes: 76 * 60, utilisation: 7 });
+  });
 });
 
 describe('revenueSummaryFromCurrent', () => {
