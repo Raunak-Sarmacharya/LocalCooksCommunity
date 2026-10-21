@@ -1758,15 +1758,18 @@ export default function KitchenBookingFlow({
     // Desktop rail
     return (
       <div className="rounded-[1.35rem] border bg-white p-3 shadow-sm">
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <span className="flex items-center gap-2 text-base font-semibold text-muted-foreground">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+          <span className="flex items-center gap-2 whitespace-nowrap text-base font-semibold text-muted-foreground">
             <Icon icon="mdi:receipt-text-outline" className="h-4 w-4 text-[#E10939]" aria-hidden />
             {t("sheetOrderSummaryLabel", "Booking summary")}
           </span>
-          {selectedKitchen && (bookingRateMode === "daily" ? kitchenPricing?.dailyRate : kitchenPricing?.hourlyRate) != null ? (
+          {/* Both rates when the kitchen offers both, like the kitchen page's "$25/hr · $180/day". */}
+          {selectedKitchen && ((kitchenPricing?.hourlyRate ?? 0) > 0 || (kitchenPricing?.dailyRate ?? 0) > 0) ? (
             <InfoChip variant="count" icon={<Icon icon="mdi:cash-clock" className="!text-black" />}>
-              {formatCurrency((bookingRateMode === "daily" ? kitchenPricing?.dailyRate : kitchenPricing?.hourlyRate) || 0)}
-              {bookingRateMode === "daily" ? t("sheetPerDay", "/day") : t("sheetPerHour", "/hour")}
+              {[
+                (kitchenPricing?.hourlyRate ?? 0) > 0 ? `${formatCurrency(kitchenPricing!.hourlyRate!)}${t("sheetPerHour", "/hour")}` : null,
+                (kitchenPricing?.dailyRate ?? 0) > 0 ? `${formatCurrency(kitchenPricing!.dailyRate!)}${t("sheetPerDay", "/day")}` : null,
+              ].filter(Boolean).join(" · ")}
             </InfoChip>
           ) : null}
         </div>
