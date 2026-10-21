@@ -108,7 +108,7 @@ export function openAttendanceAnswers(row: BookingListRow): AttendanceAnswer[] {
     answers.set(visit.visitId, seen ? { ...seen, endTime: visit.endTime, deadline: deadline > seen.deadline ? deadline : seen.deadline }
       : { visitId: visit.visitId, localDate: visit.localDate, startTime: visit.startTime, endTime: visit.endTime, deadline });
   }
-  return [...answers.values()];
+  return Array.from(answers.values());
 }
 
 /** The header phase for a list row, from `bookingHeaderPhase` with the booking page's inputs. */
