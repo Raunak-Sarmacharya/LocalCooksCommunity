@@ -1620,6 +1620,10 @@ function GuestHoursCard({
   const [loadedMonthKey, setLoadedMonthKey] = useState<string | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const pendingTypedDateRef = useRef<string | null>(null);
+  // The card starts low on the page, so the inline calendar can open below the fold: bring the whole card into view.
+  useEffect(() => {
+    if (calendarOpen) requestAnimationFrame(() => cardRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" }));
+  }, [calendarOpen]);
 
   const toLocalDateString = (date: Date) => {
     const y = date.getFullYear();

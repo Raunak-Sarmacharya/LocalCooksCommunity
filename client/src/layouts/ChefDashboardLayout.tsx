@@ -6,7 +6,6 @@ import { Separator } from "@/components/ui/separator"
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb"
 import { useFirebaseAuth } from "@/hooks/use-auth"
 import { useChefSidebarHiddenItems } from "@/hooks/use-chef-sidebar-hidden-items"
-import { Command } from "lucide-react"
 import { Icon } from "@iconify/react"
 import "@/lib/kitchen-inventory-icons"
 import ChefNotificationCenter from "@/components/chef/ChefNotificationCenter"
@@ -135,12 +134,12 @@ export default function ChefDashboardLayout({
                     <div className="flex items-center gap-2 sm:gap-4">
                         <Button
                             variant="outline"
-                            className="relative h-9 w-9 sm:w-full justify-center sm:justify-start rounded-[0.5rem] bg-background text-sm font-normal text-muted-foreground shadow-none sm:pr-12 md:w-40 lg:w-64"
+                            className="relative hidden h-9 w-full justify-start md:inline-flex rounded-[0.5rem] bg-background text-sm font-normal text-muted-foreground shadow-none sm:pr-12 md:w-40 lg:w-64"
                             onClick={() => setIsCommandOpen(true)}
                             aria-label={t("shellSearch")}
                         >
-                            <span className="hidden sm:inline-flex">{t("shellSearch")}</span>
-                            <Command className="h-4 w-4 sm:hidden" />
+                            {/* Desktop only: a ⌘K palette is no use on a phone; the sidebar covers navigation there. */}
+                            <span>{t("shellSearch")}</span>
                             <kbd className="pointer-events-none absolute right-[0.3rem] top-[0.3rem] hidden h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium opacity-100 sm:flex">
                                 <span className="text-xs">⌘</span>K
                             </kbd>
