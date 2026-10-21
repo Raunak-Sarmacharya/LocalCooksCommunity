@@ -31,8 +31,8 @@ export function CheckoutCancellationDisclosure({ policy, startAt, detailsOpen, o
       {shortNotice
         ? <p className={warning} data-testid="cancel-short-notice">{t('cpShort', { hours: policy.policy.noticeHours, charge })}</p>
         : <p className={bare ? 'text-sm leading-relaxed text-gray-600' : 'text-sm leading-relaxed'} data-testid="cancel-headline">{startAt
-          ? t('cpCheckoutHeadline', { deadline: cancellationDeadlineLabel(startAt, policy.policy.noticeHours, policy.timezone, i18n.language) })
-          : t('cpSidebarSummary', { hours: policy.policy.noticeHours })}</p>}
+          ? t(policy.policy.lateChargePercent === 50 ? 'cpCheckoutHeadlineHalf' : 'cpCheckoutHeadline', { deadline: cancellationDeadlineLabel(startAt, policy.policy.noticeHours, policy.timezone, i18n.language) })
+          : t(policy.policy.lateChargePercent === 50 ? 'cpSidebarSummaryHalf' : 'cpSidebarSummary', { hours: policy.policy.noticeHours })}</p>}
       {nearDeadline && <p className={warning} data-testid="cancel-near-deadline">{t('cpNearDeadline', { charge })}</p>}
       <button type="button" className="min-h-[44px] text-sm font-medium text-gray-900 underline underline-offset-4 sm:min-h-0" aria-expanded={open} aria-controls={panelId}
         onClick={() => setOpen(!open)}>{t(open ? 'cpHideDetails' : 'cpDetails')}</button>

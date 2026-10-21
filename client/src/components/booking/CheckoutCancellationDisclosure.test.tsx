@@ -8,7 +8,7 @@ const openDetails = () => fireEvent.click(screen.getByRole('button', { name: 'De
 
 it('normal booking: one calm line, the policy timeline behind Details, no checkbox', () => {
   render(<CheckoutCancellationDisclosure policy={policy} startAt={inHours(5 * 24)} />);
-  expect(screen.getByTestId('cancel-headline')).toHaveTextContent(/^Free to cancel until the kitchen accepts\. After that, cancel by .*Newfoundland Time\) for a refund, minus the card processing fee\.$/);
+  expect(screen.getByTestId('cancel-headline')).toHaveTextContent(/^Free to cancel until the kitchen accepts\. After that, cancel by .*Newfoundland Time\) for a full refund, or later for 50% back, minus the card processing fee\.$/);
   expect(screen.queryByRole('checkbox')).toBeNull();
   expect(screen.queryByTestId('cancel-details')).toBeNull();
   expect(screen.queryByTestId('cancel-near-deadline')).toBeNull();
@@ -26,6 +26,7 @@ it('normal booking: one calm line, the policy timeline behind Details, no checkb
 
 it('full late charge: the timeline says there is no refund after the deadline', () => {
   render(<CheckoutCancellationDisclosure policy={{ ...policy, policy: { ...policy.policy, lateChargePercent: 100 } }} startAt={inHours(5 * 24)} />);
+  expect(screen.getByTestId('cancel-headline')).toHaveTextContent(/^Free to cancel until the kitchen accepts\. After that, cancel by .*Newfoundland Time\) for a refund, minus the card processing fee\.$/);
   openDetails();
   expect(screen.getByTestId('cancel-details')).toHaveTextContent(/After .*No refund\./);
 });
@@ -49,7 +50,7 @@ it('near the deadline: headline plus a visible warning that the kitchen may acce
 
 it('without a start time the headline states the notice in hours', () => {
   render(<CheckoutCancellationDisclosure policy={policy} />);
-  expect(screen.getByTestId('cancel-headline')).toHaveTextContent('Free to cancel until the kitchen accepts. After that, cancel up to 48 hours before for a refund, minus the card processing fee.');
+  expect(screen.getByTestId('cancel-headline')).toHaveTextContent('Free to cancel until the kitchen accepts. After that, cancel up to 48 hours before for a full refund, or later for 50% back, minus the card processing fee.');
 });
 
 it('says so when the policy could not load', () => {

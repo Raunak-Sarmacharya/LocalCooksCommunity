@@ -21,7 +21,7 @@ export function CancellationPolicySummary({ policy, timezone, startAt, processin
 export function PublishedCancellationPolicySummary({ kitchenId, headline = false }: { kitchenId: number; headline?: boolean }) {
   const { t } = useTranslation('booking');
   const { data } = useQuery<PolicyResponse>({ queryKey: ['cancellation-policy', kitchenId], queryFn: () => apiGet(`/kitchens/${kitchenId}/cancellation-policy`, false) });
-  if (data?.policy && headline) return <p className="text-sm leading-relaxed">{t('cpSidebarSummary', { hours: data.policy.noticeHours })}</p>;
+  if (data?.policy && headline) return <p className="text-sm leading-relaxed">{t(data.policy.lateChargePercent === 50 ? 'cpSidebarSummaryHalf' : 'cpSidebarSummary', { hours: data.policy.noticeHours })}</p>;
   return data?.policy ? <CancellationPolicySummary policy={data.policy} /> : <p className="text-sm text-muted-foreground">{t('cpError')}</p>;
 }
 

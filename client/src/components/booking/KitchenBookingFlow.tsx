@@ -2086,7 +2086,7 @@ export default function KitchenBookingFlow({
                   locationName={locationName}
                   locationAddress={locationAddress}
                   onPolicyOpen={() => setCancellationPolicyOpen(true)}
-                  policySummary={acceptedPolicy ? policyT('cpSidebarSummary', { hours: acceptedPolicy.policy.noticeHours, late: String(acceptedPolicy.policy.lateChargePercent) }) : undefined}
+                  policySummary={acceptedPolicy ? policyT(acceptedPolicy.policy.lateChargePercent === 50 ? 'cpSidebarSummaryHalf' : 'cpSidebarSummary', { hours: acceptedPolicy.policy.noticeHours }) : undefined}
                 />
               ) : (
                 <Skeleton className="h-40 w-full rounded-2xl" />
@@ -2106,7 +2106,7 @@ export default function KitchenBookingFlow({
                   locationAddress={locationAddress}
                   compact
                   onPolicyOpen={() => setCancellationPolicyOpen(true)}
-                  policySummary={acceptedPolicy ? policyT('cpSidebarSummary', { hours: acceptedPolicy.policy.noticeHours, late: String(acceptedPolicy.policy.lateChargePercent) }) : undefined}
+                  policySummary={acceptedPolicy ? policyT(acceptedPolicy.policy.lateChargePercent === 50 ? 'cpSidebarSummaryHalf' : 'cpSidebarSummary', { hours: acceptedPolicy.policy.noticeHours }) : undefined}
                 />
               ) : (
                 <Skeleton className="h-14 w-full rounded-xl" />
