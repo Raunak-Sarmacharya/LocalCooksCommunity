@@ -24,7 +24,8 @@ export interface BookingListRow {
   /** The kitchen zone from the server's closeout projection (preferred over `locationTimezone`). */
   timezone?: string | null;
   /** The server's closeout projection, as on the booking page. */
-  closeout?: { phase?: string | null; legacy?: boolean; visits?: Array<{ attendance?: string | null; inspection?: { canRespond?: boolean } | null }> | null } | null;
+  closeout?: { phase?: string | null; legacy?: boolean; visits?: Array<{ visitId?: number; localDate?: string; startTime?: string; endTime?: string; attendance?: string | null;
+    inspection?: { canRespond?: boolean; deadline?: string } | null }> | null } | null;
   /** Per-visit check-in states (multi-visit bookings). */
   visitStates?: Array<{ id?: number; checkinStatus: string; checkoutRequestedAt?: string | null; visitDate?: string | null; startTime?: string; endTime?: string; operatingWindowStartTime?: string | null }> | null;
   scheduleRevision?: number;
@@ -89,6 +90,26 @@ export function bookingListBounds(row: BookingListRow): { startAt: Date; endAt: 
 }
 
 export const listInspectionCanRespond = (row: BookingListRow) => !!row.closeout?.visits?.some(visit => !!visit.inspection?.canRespond);
+
+export type AttendanceAnswer = { visitId?: number; localDate: string; startTime: string; endTime: string; deadline: string };
+
+/**
+ * The visits the kitchen can still answer "Did they come?" for: nobody recorded an arrival and the server says the
+ * window is open. One answer per visit record; blocks without their own visit row are answered for the whole booking,
+ * by the latest deadline among them (the server's `noArrivalRoleText`). Deadlines are the server's, never recomputed.
+ */
+export function openAttendanceAnswers(row: BookingListRow): AttendanceAnswer[] {
+  if (row.closeout?.legacy) return [];
+  const answers = new Map<number | undefined, AttendanceAnswer>();
+  for (const visit of row.closeout?.visits ?? []) {
+    const deadline = visit.inspection?.deadline;
+    if (visit.attendance !== 'unknown' || !visit.inspection?.canRespond || !deadline || !visit.localDate || !visit.startTime || !visit.endTime) continue;
+    const seen = answers.get(visit.visitId);
+    answers.set(visit.visitId, seen ? { ...seen, endTime: visit.endTime, deadline: deadline > seen.deadline ? deadline : seen.deadline }
+      : { visitId: visit.visitId, localDate: visit.localDate, startTime: visit.startTime, endTime: visit.endTime, deadline });
+  }
+  return [...answers.values()];
+}
 
 /** The header phase for a list row, from `bookingHeaderPhase` with the booking page's inputs. */
 export function bookingListPhase(row: BookingListRow, now = Date.now()): BookingHeaderPhase {

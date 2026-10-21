@@ -13,13 +13,16 @@ const state = vi.hoisted(() => ({
   hours: [] as Array<Record<string, unknown>>,
   overrides: [] as Array<Record<string, unknown>>,
   licenseStatus: "approved" as string,
+  /** When set, `mt` shows its values too ("key{...}"), for checking server-sourced text such as deadlines. */
+  withParams: false,
+  readiness: [] as Array<Record<string, unknown>>,
   licenseExpiry: "2099-01-01",
   activity: { paymentsNeedAttention: false, paymentsAction: "overviewPaymentsUpdate", unreadMessages: 0, storageBookings: [] as Array<Record<string, unknown>>, extensions: [] as Array<Record<string, unknown>>, storageCheckouts: [] as Array<Record<string, unknown>>, claims: [] as Array<Record<string, unknown>>, visits: [], isLoading: false, isError: false },
 }));
 
 vi.mock("@/hooks/use-auth", () => ({ useFirebaseAuth: () => ({ user: { uid: "manager-1", displayName: "Alex" } }) }));
 vi.mock("@/hooks/use-manager-dashboard", () => ({ useManagerDashboard: () => ({ bookings: state.bookings, isLoadingBookings: false, isErrorBookings: false }) }));
-vi.mock("@/hooks/use-manager-overview-activity", () => ({ useManagerOverviewActivity: () => state.activity }));
+vi.mock("@/hooks/use-manager-overview-activity", () => ({ useManagerOverviewActivity: () => ({ ...state.activity, listingReadiness: state.readiness }) }));
 vi.mock("@/components/manager/revenue/hooks/use-manager-revenue", () => ({ useManagerRevenue: () => ({ data: undefined, isLoading: false }) }));
 vi.mock("@tanstack/react-query", () => ({
   useQuery: ({ queryKey }: { queryKey: string[] }) => ({ data: queryKey[0] === "managerViewings" ? state.viewings : queryKey[0] === "/api/manager/kitchen-applications" ? state.applications
@@ -28,14 +31,14 @@ vi.mock("@tanstack/react-query", () => ({
 }));
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ i18n: { language: "en-CA" } }) }));
 vi.mock("wouter", () => ({ Link: ({ href, children, ...props }: { href: string; children: ReactNode }) => <a href={href} {...props}>{children}</a> }));
-vi.mock("@/i18n/manager", () => ({ mt: (key: string) => key }));
+vi.mock("@/i18n/manager", () => ({ mt: (key: string, values?: Record<string, unknown>) => state.withParams && values && !("ns" in values) ? `${key}${JSON.stringify(values)}` : key }));
 vi.mock("@/i18n/chef-ns", () => ({ ct: (key: string) => key }));
 vi.mock("@/components/booking/BookingNowCard", () => ({ StatusPill: ({ children }: { children: ReactNode }) => <span data-testid="booking-status-pill">{children}</span>,
   PILL: new Proxy({}, { get: () => ({ surface: "", dot: "" }) }) }));
 vi.mock("@/lib/api", () => ({ apiGet: vi.fn() }));
 // The real rows and sorting, a marker for the calendar itself (its own render is tested in BookingCalendarWidget.test).
 vi.mock("./BookingCalendarWidget", async (importOriginal) => ({ ...(await importOriginal<typeof import("./BookingCalendarWidget")>()),
-  default: ({ events }: { events: Array<{ key: string; date: string; label: string }> }) => <div data-testid="calendar">{events.map(event => `${event.key}@${event.date}:${event.label}`).join("|")}</div> }));
+  default: ({ events, stats }: { events: Array<{ key: string; date: string; label: string; state?: string }>; stats?: ReactNode }) => <>{stats}<div data-testid="calendar">{events.map(event => `${event.key}@${event.date}:${event.label}${event.state ? `[${event.state}]` : ""}`).join("|")}</div></> }));
 
 import KitchenDashboardOverview from "./KitchenDashboardOverview";
 
@@ -63,6 +66,8 @@ beforeEach(() => {
   state.overrides = [];
   state.licenseStatus = "approved";
   state.licenseExpiry = "2099-01-01";
+  state.withParams = false;
+  state.readiness = [];
   state.activity.unreadMessages = 0;
   state.activity.paymentsNeedAttention = false;
   state.activity.storageBookings = [];
@@ -110,11 +115,10 @@ describe("manager overview states", () => {
     state.viewings = [{ viewing: { id: 77, locationId: 1, status: "no_show", scheduledAt: "2025-01-01T12:00:00Z", durationMinutes: 30 } }];
     expect(render()).not.toContain("overviewTourFeedback");
   });
-  it("puts confirmed future tours in the schedule without creating a manager action", () => {
+  it("puts confirmed future tours on the calendar without creating a manager action", () => {
     state.viewings = [{ viewing: { id: 77, locationId: 1, status: "confirmed", scheduledAt: "2099-01-01T12:00:00Z", durationMinutes: 30 }, chefName: "Future Chef" }];
     const html = render();
-    expect(html).toContain("overviewUpcomingBookings");
-    expect(html).toContain("Future Chef");
+    expect(html).toContain("tour-77@2099-01-01:ovrTourScheduled");
     expect(html).not.toContain("overviewTourFeedback");
   });
   it("shows messages and active storage before any kitchen bookings", () => {
@@ -145,7 +149,7 @@ describe("manager overview states", () => {
     state.bookings = [{ id: 40, kitchenId: 10, locationId: 1, kitchenName: "Kitchen A", bookingDate: "2025-01-01", createdAt: "2024-12-01", startTime: "09:00", endTime: "12:00", status: "completed" }];
     const html = render();
     expect(html).toContain("listingStatusDraftLabel");
-    expect(html).toContain("overviewHistory");
+    expect(html).toContain('data-testid="overview-activity"');
     expect(html).toContain("/manager/booking/40");
   });
 
@@ -153,7 +157,7 @@ describe("manager overview states", () => {
     state.kitchens = [{ id: 10, locationId: 1, name: "Kitchen A", isActive: true, listingStatus: "draft" }];
     state.viewings = [{ viewing: { id: 77, locationId: 1, status: "completed", scheduledAt: "2025-01-01T12:00:00Z", updatedAt: "2025-01-01T13:00:00Z" } }];
     const html = render();
-    expect(html).toContain("overviewHistory");
+    expect(html).toContain('data-testid="overview-activity"');
     expect(html).toContain("activityTourCompleted");
     expect(html).not.toContain("/manager/booking/77");
   });
@@ -189,18 +193,17 @@ it("keeps requested storage move-ins and unfinished expired storage actionable",
 
 it("prioritizes attention for listed kitchens and setup for unlisted kitchens",()=>{state.kitchens=[{id:10,locationId:1,name:"Kitchen East",listingStatus:"active",isActive:true},{id:11,locationId:1,name:"Kitchen West",listingStatus:"draft",isActive:true}];let html=render();expect(html.indexOf("overviewNeedsAttention")).toBeLessThan(html.indexOf("overviewListingStatus"));expect(html).toContain("Kitchen East");expect(html).toContain("Kitchen West");expect(html).toContain("listingStatusLiveLabel");expect(html).toContain("listingStatusDraftLabel");state.kitchens[0].listingStatus="draft";html=render();expect(html.indexOf("overviewListingStatus")).toBeLessThan(html.indexOf("overviewNeedsAttention"));});
 
-it("explains booking history with status, chef, kitchen and schedule, without a history View all",()=>{state.bookings=[{id:90,kitchenId:10,locationId:1,chefName:"Morgan",kitchenName:"Kitchen East",bookingDate:"2025-01-01",createdAt:"2024-12-01",startTime:"09:00",endTime:"12:00",status:"cancelled"}];const html=render();const history=html.slice(html.indexOf("overviewHistory"));expect(history).toContain("activityBookingRequested");expect(history).not.toContain("activityBookingCancelled");expect(history).toContain("Morgan · Kitchen East · Wed, Jan 1, 2025 · 9:00 a.m.–12:00 p.m.");expect(history).not.toContain("viewAll");expect(history).toContain("/manager/booking/90");});
+it("explains booking history with status, chef, kitchen and schedule, without a history View all",()=>{state.bookings=[{id:90,kitchenId:10,locationId:1,chefName:"Morgan",kitchenName:"Kitchen East",bookingDate:"2025-01-01",createdAt:"2024-12-01",startTime:"09:00",endTime:"12:00",status:"cancelled"}];const html=render();const history=html.slice(html.indexOf('data-testid="overview-activity"'));expect(history).toContain("activityBookingRequested");expect(history).not.toContain("activityBookingCancelled");expect(history).toContain("Morgan · Kitchen East · Wed, Jan 1, 2025 · 9:00 a.m.–12:00 p.m.");expect(history).not.toContain("viewAll");expect(history).toContain("/manager/booking/90");});
 
 it("does not count a submitted licence awaiting review as manager work",()=>{state.licenseStatus="pending";const html=render();expect(html).not.toContain("overviewLicenseAttention");expect(html).toContain("overviewAllCaughtUp");});
 
-it("sorts the mixed schedule by date and excludes completed storage",()=>{state.bookings=[{id:90,kitchenId:10,locationId:1,chefName:"Late booking",bookingDate:"2099-01-03",createdAt:"2025-01-01",startTime:"09:00",endTime:"12:00",status:"confirmed"}];state.viewings=[{viewing:{id:91,locationId:1,status:"confirmed",scheduledAt:"2099-01-02T12:00:00Z"},chefName:"Middle tour"}];state.activity.storageBookings=[{id:92,status:"confirmed",storageName:"Early storage",startDate:"2099-01-01",endDate:"2099-01-05",checkoutStatus:"active"},{id:93,status:"confirmed",storageName:"Completed storage",startDate:"2099-01-01",endDate:"2099-01-05",checkoutStatus:"completed"}];const html=render();const schedule=html.slice(html.indexOf('aria-label="overviewUpcomingBookings"'),html.indexOf("overviewHistory"));expect(schedule.indexOf("Early storage")).toBeLessThan(schedule.indexOf("Middle tour"));expect(schedule.indexOf("Middle tour")).toBeLessThan(schedule.indexOf("Late booking"));expect(schedule).not.toContain("Completed storage");});
-it("keeps dated storage, application and claim history visible during a partial failure",()=>{state.applications=[{id:20,locationId:1,fullName:"Applicant",status:"approved",createdAt:"2025-01-01"}];state.activity.storageBookings=[{id:21,status:"cancelled",storageName:"Dry storage",createdAt:"2025-01-02"}];state.activity.claims=[{id:22,status:"under_review",claimTitle:"Worktop damage",createdAt:"2025-01-03"}];state.activity.isError=true;const html=render();const history=html.slice(html.indexOf("overviewHistory"));expect(history).toContain("overviewActivityPartialError");expect(history).toContain("overviewApplicationActivity");expect(history).toContain("activityStorageRequested");expect(history).not.toContain("overviewStorageActivity");expect(history).toContain("overviewClaimActivity");expect(html).not.toContain("overviewClaimsToAction");});
+it("keeps dated storage, application and claim history visible during a partial failure",()=>{state.applications=[{id:20,locationId:1,fullName:"Applicant",status:"approved",createdAt:"2025-01-01"}];state.activity.storageBookings=[{id:21,status:"cancelled",storageName:"Dry storage",createdAt:"2025-01-02"}];state.activity.claims=[{id:22,status:"under_review",claimTitle:"Worktop damage",createdAt:"2025-01-03"}];state.activity.isError=true;const html=render();const history=html.slice(html.indexOf('data-testid="overview-activity"'));expect(history).toContain("overviewActivityPartialError");expect(history).toContain("overviewApplicationActivity");expect(history).toContain("activityStorageRequested");expect(history).not.toContain("overviewStorageActivity");expect(history).toContain("overviewClaimActivity");expect(html).not.toContain("overviewClaimsToAction");});
 
 it("never substitutes a chef email for a display name in overview rows",()=>{state.activity.storageBookings=[{id:30,status:"pending",chefName:"chef@example.com",chefEmail:"chef@example.com",storageName:"Dry shelf",createdAt:"2025-01-01"}];state.activity.claims=[{id:31,status:"draft",chefEmail:"chef@example.com",claimTitle:"Worktop damage",createdAt:"2025-01-02"}];const html=render();expect(html).not.toContain("chef@example.com");expect(html).toContain("guestChef");expect(html).toContain("Dry shelf");});
 
-it("uses the parent booking chef identity in recent storage activity",()=>{state.bookings=[{id:5,chefId:2,kitchenId:10,chefName:"Morgan Lee",locationId:1,status:"completed",bookingDate:"2025-01-01",createdAt:"2025-01-01",startTime:"09:00",endTime:"12:00"}];state.activity.storageBookings=[{id:10,chefId:2,chefName:"Guest chef",chefEmail:"email@example.com",storageName:"Dry shelf",status:"cancelled",createdAt:"2025-01-02"}];const html=render();expect(html).not.toContain("email@example.com");expect(html).not.toContain("Guest chef");expect(html.match(/Morgan Lee/g)?.length).toBeGreaterThanOrEqual(2);expect(html.match(/data-radix-scroll-area-viewport=""/g)).toHaveLength(5);expect(html).not.toContain("scrollbar-width:thin");});
+it("uses the parent booking chef identity in recent storage activity",()=>{state.bookings=[{id:5,chefId:2,kitchenId:10,chefName:"Morgan Lee",locationId:1,status:"completed",bookingDate:"2025-01-01",createdAt:"2025-01-01",startTime:"09:00",endTime:"12:00"}];state.activity.storageBookings=[{id:10,chefId:2,chefName:"Guest chef",chefEmail:"email@example.com",storageName:"Dry shelf",status:"cancelled",createdAt:"2025-01-02"}];const html=render();expect(html).not.toContain("email@example.com");expect(html).not.toContain("Guest chef");expect(html.match(/Morgan Lee/g)?.length).toBeGreaterThanOrEqual(2);expect(html).not.toContain("scrollbar-width:thin");});
 
-it("keeps payout branding distinct from normal workflow icons",()=>{state.activity.paymentsNeedAttention=true;const html=render();expect(html).toContain("text-stripe");expect(html).toContain("overviewPaymentsUpdate");expect(html.match(/overviewPaymentsAttention/g)).toHaveLength(1);});
+it("lists payout work once in Needs attention",()=>{state.activity.paymentsNeedAttention=true;const html=render();expect(html).toContain("overviewPaymentsUpdate");expect(html.match(/overviewPaymentsAttention/g)).toHaveLength(1);});
 
 it("shows only payment recovery work for a linked item with an unfinished parent decision",()=>{state.bookings=[{id:90,kitchenId:10,locationId:1,status:"pending",paymentStatus:"authorized",paymentDecision:{state:"pending"},bookingDate:"2099-01-01",startTime:"09:00",endTime:"10:00"}];state.activity.storageBookings=[{id:91,kitchenBookingId:90,status:"pending",storageName:"Held shelf",createdAt:"2025-01-01"}];const html=render();expect(html).toContain("overviewPaymentRecovery");expect(html).not.toContain("overviewStorageRequests");expect(html).not.toContain("overviewBookingRequests");});
 
@@ -212,7 +215,7 @@ it("lists a booking request once in Recent activity, not as both the booking and
   ];
   try {
     const html = render();
-    const history = html.slice(html.indexOf("overviewHistory"));
+    const history = html.slice(html.indexOf('data-testid="overview-activity"'));
     expect(history).toContain("activityBookingRequested");
     expect(history).not.toContain("Kitchen booking requested");
     expect(history).toContain("Kitchen booking confirmed");
@@ -249,8 +252,6 @@ describe("revamped overview (R3)", () => {
         { id: 902, checkinStatus: "not_checked_in", visitDate: plus(3), startTime: "20:00", endTime: "21:00" }] }];
     const html = render();
     expect(html).not.toContain("8:00–9:00 p.m., 8:00–9:00 p.m.");
-    const schedule = html.slice(html.indexOf('aria-label="overviewUpcomingBookings"'), html.indexOf("overviewHistory"));
-    expect(schedule.match(/mdDayOf · [^<]*8:00–9:00 p\.m\./g)).toHaveLength(2);
     const calendar = html.slice(html.indexOf('data-testid="calendar"'));
     expect(calendar).toContain(`booking-90-901-0@${plus(2)}`);
     expect(calendar).toContain(`booking-90-902-0@${plus(3)}`);
@@ -386,18 +387,20 @@ describe("revamped overview (R3)", () => {
     afterEach(() => vi.useRealTimers());
     const todayOf = (html: string) => html.slice(html.indexOf('data-testid="overview-today"'), html.indexOf('data-testid="overview-week"'));
 
-    it("leads with tonight's booking and folds cancelled and finished into one line", () => {
+    it("lists the day in time order with the now-line, and folds only the cancelled ones", () => {
       const card = todayOf(render());
-      expect(card).toContain("TestSprite chef with a long display name");
+      const text = card.replace(/<[^>]+>/g, " ");
+      expect(text.indexOf("Finished Chef")).toBeLessThan(text.indexOf("ovrNowAt"));
+      expect(text.indexOf("ovrNowAt")).toBeLessThan(text.indexOf("TestSprite chef with a long display name"));
+      expect(card).toContain("ovrNoOneInKitchen");
       expect(card).not.toContain("Cancelled Chef");
-      expect(card).not.toContain("Finished Chef");
-      expect(card).toMatch(/aria-expanded="false"[^>]*>.*ovrTodayCancelled · ovrTodayFinished/);
+      expect(card).toMatch(/aria-expanded="false"[^>]*>.*ovrTodayCancelled/);
       expect(card).not.toContain("ovrNothingToday");
       // The name wraps in the narrow column instead of being cut off.
       expect(card).not.toMatch(/truncate[^"]*">TestSprite/);
     });
 
-    it("shows the cancelled and finished rows when the line is opened", () => {
+    it("shows the cancelled rows when the line is opened", () => {
       vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
       const screen = renderDom(<KitchenDashboardOverview selectedLocation={location()} locations={[location()]} kitchens={state.kitchens} onNavigate={vi.fn()} />);
       const card = screen.getByTestId("overview-today");
@@ -407,17 +410,113 @@ describe("revamped overview (R3)", () => {
       const text = card.textContent!;
       expect(text.indexOf("TestSprite")).toBeLessThan(text.indexOf("Cancelled Chef One"));
       expect(text).toContain("Cancelled Chef Two");
-      expect(text).toContain("Finished Chef");
       screen.unmount();
       vi.unstubAllGlobals();
     });
+
+    it("lists tomorrow's bookings under the day, each linking to its booking", () => {
+      state.bookings.push({ ...booking(95, "Tomorrow Chef", "13:00", "15:00", "confirmed"), bookingDate: "2026-10-19" });
+      const tomorrow = render().split('data-testid="overview-tomorrow"')[1].split("</section>")[0];
+      expect(tomorrow).toContain("Tomorrow Chef");
+      expect(tomorrow).toContain("1:00–3:00 p.m.");
+      expect(tomorrow).toContain('href="/manager/booking/95"');
+    });
+  });
+
+  describe("Did they come?", () => {
+    // Dev booking 207 on Oct 21, 2026: day 2 still answerable until 4:00 p.m. tomorrow, day 1 recorded; booking 300's window closed.
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-10-21T21:00:00Z")); // 6:30 p.m. in St. John's
+      live();
+      state.bookings = [{ id: 207, kitchenId: 10, locationId: 1, chefName: "Morgan", kitchenName: "Kitchen East", bookingDate: "2026-10-18", createdAt: "2025-01-01",
+        startTime: "14:00", endTime: "16:00", status: "completed", checkinStatus: "not_checked_in", timezone: "America/St_Johns", scheduleRevision: 1,
+        visitStates: [{ id: 156, checkinStatus: "checked_out", visitDate: "2026-10-18", startTime: "14:00", endTime: "16:00" },
+          { id: 157, checkinStatus: "not_checked_in", visitDate: "2026-10-21", startTime: "14:00", endTime: "16:00" }],
+        closeout: { phase: "ended", visits: [
+          { visitId: 156, localDate: "2026-10-18", startTime: "14:00", endTime: "16:00", attendance: "recorded", inspection: { canRespond: false, deadline: "2026-10-19T18:30:00.000Z" } },
+          { visitId: 157, localDate: "2026-10-21", startTime: "14:00", endTime: "16:00", attendance: "unknown", inspection: { canRespond: true, deadline: "2026-10-22T18:30:00.000Z" } },
+        ] } },
+        { id: 300, kitchenId: 10, locationId: 1, chefName: "Closed Chef", kitchenName: "Kitchen East", bookingDate: "2026-10-17", createdAt: "2025-01-01",
+          startTime: "09:00", endTime: "10:00", status: "completed", checkinStatus: "not_checked_in", timezone: "America/St_Johns",
+          closeout: { phase: "ended", visits: [{ localDate: "2026-10-17", startTime: "09:00", endTime: "10:00", attendance: "unknown", inspection: { canRespond: false, deadline: "2026-10-18T13:30:00.000Z" } }] } }];
+    });
+    afterEach(() => vi.useRealTimers());
+
+    it("asks only about visits still in their window, with the server's deadline, and both answers open the visit record", () => {
+      state.withParams = true;
+      const attention = attentionOf(render());
+      const group = attention.split('id="attention-attendance"')[1];
+      expect(group).toContain("ovrDidTheyComeNote");
+      expect(group.match(/data-testid="attendance-answer-row"/g)).toHaveLength(1);
+      expect(group).toContain("ovrAnswerBy{&quot;when&quot;:&quot;Thu, Oct 22, 4:00 p.m.&quot;}");
+      expect(group).toContain('href="/manager/booking/207?visitId=157&amp;attendance=came"');
+      expect(group).toContain('href="/manager/booking/207?visitId=157&amp;attendance=no_show"');
+      expect(attention).not.toContain("Closed Chef");
+      // Asked once: not also a "Follow up ended bookings" row.
+      expect(attention).not.toContain("overviewBookingOutcomes");
+    });
+
+    it("marks the answerable day Answer needed on the calendar and the closed one No check-in recorded", () => {
+      const calendar = render().split('data-testid="calendar"')[1];
+      expect(calendar).toContain("booking-207-157-0@2026-10-21:ovrLegendAnswerNeeded[answer]");
+      expect(calendar).toContain("booking-207-156-0@2026-10-18:ovrLegendFinished[finished]");
+      expect(calendar).toMatch(/booking-300-0-0@2026-10-17:[^|]*\[noCheckin\]/);
+    });
+  });
+
+  describe("listing chip", () => {
+    const withBooking = () => { state.bookings = [{ id: 90, kitchenId: 10, locationId: 1, chefName: "Morgan", bookingDate: plus(3), createdAt: "2025-01-01", startTime: "09:00", endTime: "10:00", status: "confirmed" }]; };
+    it("names a single kitchen with its state and its optional improvements", () => {
+      live(); withBooking(); state.withParams = true;
+      state.readiness = [{ kitchenId: 10, data: { checklist: { missingRequirementIds: [], openRecommendationIds: ["gallery", "tours"] } } }];
+      const chip = render().split('data-testid="listing-chip"')[1].split("</button>")[0];
+      expect(chip).toContain("Kitchen East");
+      expect(chip).toContain("listingStatusLiveLabel");
+      expect(chip).toContain("ovrOptionalImprovements{&quot;count&quot;:2}");
+    });
+    it("sums up several kitchens and lists each one, with its state, in a popover", () => {
+      vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
+      state.withParams = true;
+      state.kitchens = [{ id: 10, locationId: 1, name: "Kitchen East", isActive: true, listingStatus: "active" }, { id: 11, locationId: 1, name: "Pastry Room", isActive: true, listingStatus: "draft" },
+        { id: 12, locationId: 1, name: "Cold Prep", isActive: true, listingStatus: "active" }];
+      state.readiness = [{ kitchenId: 11, data: { checklist: { missingRequirementIds: ["rate"], openRecommendationIds: [] } } }];
+      withBooking();
+      const onNavigate = vi.fn();
+      const screen = renderDom(<KitchenDashboardOverview selectedLocation={location()} locations={[location()]} kitchens={state.kitchens} onNavigate={onNavigate} />);
+      const chip = screen.getByTestId("listing-chip");
+      expect(chip.textContent).toBe('overviewKitchenCount{"count":3}ovrListedCount{"count":2} · ovrNotListedCount{"count":1}');
+      fireEvent.pointerDown(chip, { button: 0, ctrlKey: false });
+      fireEvent.click(chip);
+      const list = within(screen.getByTestId("listing-popover"));
+      expect(list.getAllByRole("button").map(button => button.textContent)).toEqual(["Kitchen EastlistingStatusLiveLabel",
+        'Pastry RoomovrItemsToFinish{"count":1}listingStatusDraftLabel', "Cold PreplistingStatusLiveLabel"]);
+      fireEvent.click(list.getByRole("button", { name: /Pastry Room/ }));
+      expect(onNavigate).toHaveBeenCalledWith("listing-review", 11);
+      screen.unmount();
+      vi.unstubAllGlobals();
+    });
+  });
+
+  it("gives each storage row its reason and the rental page's own action", () => {
+    live();
+    state.rentals = [
+      { id: 45, kitchen: { id: 10, name: "Kitchen East" }, listing: { id: 5, name: "Dry shelf" }, chef: { id: 2, name: "Sam" }, state: "reserved", startOn: plus(-4), paidThrough: plus(9), timezone: "America/St_Johns", actions: [], terms: [] },
+      { id: 46, kitchen: { id: 10, name: "Kitchen East" }, listing: { id: 6, name: "Cooler" }, chef: { id: 3, name: "Ana" }, state: "removal_review", startOn: plus(-20), paidThrough: plus(-2), actions: [], terms: [] },
+    ];
+    const group = attentionOf(render()).split('id="attention-storage"')[1];
+    const row = (id: number) => group.split(`href="/manager/storage/${id}"`)[1].split("</a>")[0];
+    expect(row(45)).toContain("Sam · stChipMoveInOverdue");
+    expect(row(45)).toContain("stActionHandover");
+    expect(row(46)).toContain("Ana · stChipRemovalReview");
+    expect(row(46)).toContain("stActionRecordRemoval");
   });
 
   it("uses the Revenue page's words and drops the contradicting Pending payments footer", () => {
     live();
     state.bookings = [{ id: 90, kitchenId: 10, locationId: 1, bookingDate: plus(1), createdAt: "2025-01-01", startTime: "09:00", endTime: "10:00", status: "confirmed" }];
     const card = render().split('data-testid="overview-revenue"')[1];
-    for (const key of ["r1PaidOut", "r1Upcoming", "r1OnHold", "overviewPaidBookings"]) expect(card).toContain(key);
+    for (const key of ["ovrPaidOutThisMonth", "r1Upcoming", "r1OnHold", "ovrPaidBookingsCount"]) expect(card).toContain(key);
     for (const key of ["overviewPaidEarnings", "revenueUpcomingPayouts", "overviewPendingPayments"]) expect(card).not.toContain(key);
   });
 });

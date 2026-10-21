@@ -7,7 +7,7 @@ import { formatTourWhen } from '@/lib/chef-viewing-display';
 import { isPendingOrUpcomingTour } from "@/lib/chef-viewing-display";
 import { useTourClock } from "@/hooks/use-tour-clock";
 import { tourActivity } from "@shared/tour-activity";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Link } from "wouter";
@@ -16,14 +16,20 @@ import { mt } from "@/i18n/manager";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useManagerDashboard } from "@/hooks/use-manager-dashboard";
 import { useManagerOverviewActivity } from "@/hooks/use-manager-overview-activity";
-import { formatDate, formatRelativeTime } from "@/lib/formatters";
+import { formatCurrency, formatDate, formatRelativeTime, formatTime } from "@/lib/formatters";
 import { kitchenIsVisibleToChefs, licenseAllowsBookings } from "@shared/kitchen-license";
-import { CheckCircle, ChevronRight } from "@/components/ui/manager-icons";
+import { CheckCircle, ChevronDown, ChevronRight } from "@/components/ui/manager-icons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import BookingCalendarWidget, { CalendarEventRow, splitToday, type CalendarEvent } from "./BookingCalendarWidget";
+import BookingCalendarWidget, { CalendarEventRow, kitchenNowMinutes, sortEvents, type CalendarEvent, type VisitState } from "./BookingCalendarWidget";
+import { badge, btnPrimary, btnSecondary, card, cardBody, cardHead, cardMeta, cardTitle, focusRing, groupCount, groupLabel, sub } from "./dashboard-ui";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { bookingResponseDeadline, formatResponseDeadline } from "@/lib/booking-response-deadline";
+import { timeRange } from "@/lib/booking-header-state";
+import { cn } from "@/lib/utils";
+import { Clock, Info } from "lucide-react";
 import { RevenuePayoutsCard } from "./RevenuePayoutsCard";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { HAPPENING_NOW, managerDatedListDay, managerListDays } from "@/lib/booking-list-status";
@@ -32,11 +38,11 @@ import type { BookingPillTone } from "@/lib/booking-header-state";
 import { addDaysKey, kitchenTodayKey, spanMinutes, weekStartKey, weekStats, type DateOverride, type WeeklyHours } from "@/lib/manager-week-stats";
 import { revenueSummaryFromCurrent, revenueSummaryFromLedger } from "@/lib/manager-revenue-summary";
 import { useManagerRevenue } from "@/components/manager/revenue/hooks/use-manager-revenue";
-import { chipForRental, chipNeedsAction, occupiesUnit, pendingRequests, type StorageRental } from "@/lib/storage-board";
+import { chipForRental, chipNeedsAction, occupiesUnit, pendingRequests, type StorageRental, type UnitChip } from "@/lib/storage-board";
 import { storageDay } from "@/lib/storage-rentals";
 import { StatusPill } from "@/components/booking/BookingNowCard";
 import { bookingCancelCause } from "@/lib/booking-cancel-cause";
-import { bookingListBounds, bookingListPhase, bookingListPill, listWhenLine, type BookingListRow } from "@/lib/booking-list-status";
+import { bookingListBounds, bookingListPhase, bookingListPill, listWhenLine, openAttendanceAnswers, type BookingListRow } from "@/lib/booking-list-status";
 import { ct } from "@/i18n/chef-ns";
 
 interface Location { id: number; name: string; address: string; kitchenLicenseUrl?: string | null; kitchenLicenseStatus?: string | null; kitchenLicenseExpiry?: string | null; timezone?: string; kitchenLicensePendingUrl?: string | null; kitchenLicensePendingExpiry?: string | null }
@@ -66,6 +72,10 @@ interface Booking {
   checkinWindowMinutesBefore?: number | null;
   selectedSlots?: BookingListRow["selectedSlots"];
   scheduleRevision?: number;
+  paymentStatus?: string;
+  responseDeadlineAt?: string | null;
+  durationHours?: number | string | null;
+  totalPrice?: number | null;
 }
 interface Viewing { viewing: { id: number; locationId: number; status: string; scheduledAt: string; createdAt?: string; updatedAt?: string; durationMinutes?: number; requestedRescheduleAt?: string | null; disruptionReason?: string | null; outcomeHistory?: unknown; checkedInAt?: string | null; checkedOutAt?: string | null; attendanceHistory?: unknown; targetedKitchenId?: number | null; adminReviewDecision?: string | null; cancelledBy?: string | null }; chefName?: string; kitchenName?: string; locationName?: string }
 interface Application { chefId?: number; createdAt?: string; updatedAt?: string; fullName?: string; id: number; locationId: number; status: string; current_tier?: number; currentTier?: number; tier2_completed_at?: string | null }
@@ -88,7 +98,11 @@ const clockIn = (at: number, timeZone: string) => new Intl.DateTimeFormat("en-GB
 const FINISHED_PHASES = ["completed", "visit_ended", "no_show", "issue", "cancelled"];
 /** Needs-attention groups about a day that has ended: each item names that day and opens its inspection. */
 const FOLLOW_UP_ACTIONS = ["overviewKitchenCheckoutReviews", "overviewBookingOutcomes"];
-const STORAGE_CHIP_KEY: Record<string, string> = { grace: "stChipGrace", holdover: "stChipHoldover", moveOutDue: "stChipMoveOutDue", needsCleaning: "stChipNeedsCleaning", removalReview: "stChipRemovalReview" };
+/** The storage board's own chip words ("Move-in overdue"), one key per chip, so a new chip can't arrive without a reason. */
+const storageChipKey = (chip: UnitChip) => `stChip${chip[0].toUpperCase()}${chip.slice(1)}`;
+/** The rental page's first action for each chip that needs the kitchen (`StorageRentalDetail`'s prominent actions). */
+const STORAGE_ACTION: Partial<Record<UnitChip, string>> = { moveInOverdue: "stActionHandover", grace: "stActionOfferExtension", holdover: "stActionHoldoverCharge",
+  moveOutDue: "stActionClearMoveOut", needsCleaning: "stActionMarkReady", removalReview: "stActionRecordRemoval" };
 
 /**
  * Listing row tone — mirrors the `KitchenListingStatus` bar on the review page so the row reads as a
@@ -232,7 +246,7 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
    * never every day's slots merged into one line.
    */
   const dayRows = bookings.flatMap(booking => managerListDays(booking).map(day => ({ ...day, booking, dayKey: dayKey(day.row.bookingDate) })));
-  const dayLabel = (day: { dayNumber?: number; dayCount?: number }) => day.dayCount ? mt("mdDayOf", { number: day.dayNumber, total: day.dayCount }) : "";
+  const dayLabel = (day: { dayNumber?: number; dayCount?: number }) => (day.dayCount ?? 0) > 1 ? mt("mdDayOf", { number: day.dayNumber, total: day.dayCount }) : "";
   /** The day a booking's next step is about (the agenda's choice), labelled "Day N of M" when it has several. */
   const datedDay = (booking: Booking) => {
     const row = managerDatedListDay(booking);
@@ -275,7 +289,7 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
   const status = liveKitchens.length > 0 ? "live" : publishedButUnavailable ? "unavailable" : locationKitchens.length > 0 ? "draft" : "empty";
   const applicationJourney = status === "live" && bookings.length === 0;
   const journeyView = applicationJourney ? "applications" : primaryKitchen ? "listing-review" : "kitchens";
-  interface Task { id: string; title: string; detail?: string; view: string; href?: string; param?: string; locationId?: number }
+  interface Task { id: string; title: string; detail?: string; view: string; href?: string; param?: string; locationId?: number; booking?: Booking; action?: string }
   const groups = new Map<string, Task[]>();
   const addTask = (label: string, task: Task) => groups.set(label, [...(groups.get(label) ?? []), task]);
   const recordTitle = (record: { id?: number; chefName?: string; kitchenName?: string; storageName?: string; claimTitle?: string; referenceCode?: string }) =>
@@ -285,6 +299,10 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
   for (const thread of unreadThreads) addTask("overviewUnreadMessages", { id: thread.id, title: applications.find((application) => application.id === thread.applicationId)?.fullName || mt("overviewConversationTitle", { id: thread.applicationId }), detail: mt("overviewUnreadThreadCount", { count: thread.unreadManagerCount }), view: "messages", param: "conversation" });
   if (!unreadThreads.length && activity.unreadMessages > 0) addTask("overviewUnreadMessages", { id: "messages", title: mt("overviewUnreadThreadCount", { count: activity.unreadMessages }), view: "messages" });
   const inspectionHref = (bookingId: number, visitId?: number) => `/manager/booking/${bookingId}/inspection${visitId ? `?visitId=${visitId}` : ""}`;
+  // Did they come?: visits the server still lets the kitchen answer, soonest deadline first.
+  const attendanceAnswers = bookings.flatMap(booking => openAttendanceAnswers(booking).map(answer => ({ booking, answer })))
+    .sort((a, b) => a.answer.deadline.localeCompare(b.answer.deadline));
+  const answering = (booking: Booking, visitId?: number) => attendanceAnswers.some(item => item.booking.id === booking.id && (visitId === undefined || item.answer.visitId === undefined || item.answer.visitId === visitId));
   for (const booking of bookings) {
     const bookingZone = locations.find((location) => location.id === (booking.locationId ?? booking.location?.id))?.timezone;
     const label = bookingNextAction(booking, bookingZone);
@@ -298,15 +316,15 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
     const perDay = !!days[0]?.dayCount && (!label || FOLLOW_UP_ACTIONS.includes(label));
     const endedDays = perDay ? days.flatMap(day => {
       const action = bookingNextAction(day.row, bookingZone);
-      return action && FOLLOW_UP_ACTIONS.includes(action) ? [{ day, action }] : [];
+      return action && FOLLOW_UP_ACTIONS.includes(action) && !(action === "overviewBookingOutcomes" && answering(booking, day.visitId)) ? [{ day, action }] : [];
     }) : [];
     for (const { day, action } of endedDays) addTask(action, { id: `${booking.id}:${day.visitId}`, title: recordTitle(booking),
       detail: [dayLabel(day), listWhenLine(day.row, i18n.language, words)].filter(Boolean).join(" · "), view: "bookings", href: inspectionHref(booking.id, day.visitId) });
-    if (label && !perDay) {
+    if (label && !perDay && !(label === "overviewBookingOutcomes" && answering(booking))) {
       const dated = datedDay(booking);
       const visitId = dated.row.visitStates?.length === 1 ? dated.row.visitStates[0].id : undefined;
       // A follow-up (checkout to review, ended booking) opens that day's inspection; everything else opens the booking.
-      addTask(label, { id: String(booking.id), title: recordTitle(booking), detail: [dated.label, listWhenLine(dated.row, i18n.language, words)].filter(Boolean).join(" · "), view: "bookings",
+      addTask(label, { id: String(booking.id), title: recordTitle(booking), booking, detail: [dated.label, listWhenLine(dated.row, i18n.language, words)].filter(Boolean).join(" · "), view: "bookings",
         href: FOLLOW_UP_ACTIONS.includes(label) ? inspectionHref(booking.id, visitId) : `/manager/booking/${booking.id}` });
     }
     for (const item of booking.equipmentItems || []) if (booking.status === 'confirmed' && item.status === 'cancellation_requested')
@@ -331,8 +349,12 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
   const rentalTitle = (rental: StorageRental) => [rental.chef?.name && !rental.chef.name.includes("@") ? rental.chef.name : mt("guestChef"), rental.listing?.name].filter(Boolean).join(" · ");
   for (const rental of pendingRequests(locationRentals)) addTask("overviewStorageRequests", { id: `rental-${rental.id}`, title: rentalTitle(rental),
     detail: mt("ovrStorageStarts", { date: storageDay(rental.startOn, i18n.language) }), view: "storage-bookings", href: `/manager/storage/${rental.id}` });
-  for (const rental of locationRentals) if (occupiesUnit(rental) && chipNeedsAction(chipForRental(rental))) addTask("ovrStorageToAction", { id: `rental-${rental.id}`, title: rentalTitle(rental),
-    detail: mt(STORAGE_CHIP_KEY[chipForRental(rental)], { ns: "storage" }), view: "storage-bookings", href: `/manager/storage/${rental.id}` });
+  for (const rental of locationRentals) {
+    const chip = chipForRental(rental);
+    if (occupiesUnit(rental) && chipNeedsAction(chip)) addTask("ovrStorageToAction", { id: `rental-${rental.id}`, title: rental.listing?.name || rentalTitle(rental),
+      detail: [rental.chef?.name && !rental.chef.name.includes("@") ? rental.chef.name : mt("guestChef"), mt(storageChipKey(chip), { ns: "storage" })].join(" · "),
+      action: STORAGE_ACTION[chip] && mt(STORAGE_ACTION[chip]!, { ns: "storage" }), view: "storage-bookings", href: `/manager/storage/${rental.id}` });
+  }
   for (const claim of activity.claims) if (["draft", "approved", "partially_approved", "chef_accepted", "charge_failed", "escalated"].includes(claim.status ?? "")) addTask("overviewClaimsToAction", { id: String(claim.id), title: recordTitle(claim), view: "damage-claims", param: "claim", detail: mt(claim.status === "draft" ? "overviewClaimComplete" : "overviewClaimCollect") });
   for (const location of locations) {
     if (selectedLocation && location.id !== selectedLocation.id) continue;
@@ -408,9 +430,13 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
       const phase = bookingListPhase(row);
       const pill = bookingListPill(phase, true, bookingCancelCause({ status: row.status, chefId: row.chefId, paymentDecision: row.paymentDecision as never }));
       const startAt = bookingListBounds(row)?.startAt.getTime();
+      // One state per visit day; "Answer needed" only while the server still takes the kitchen's answer.
+      const state: VisitState = phase === "cancelled" ? "cancelled" : phase === "pending" ? "requested" : answering(row, day.visitId) ? "answer"
+        : phase === "no_checkin" || phase === "no_show" ? "noCheckin" : ["completed", "visit_ended", "issue", "checkout_review"].includes(phase) ? "finished" : "booked";
+      const label = state === "answer" ? mt("ovrLegendAnswerNeeded") : state === "finished" ? mt("ovrLegendFinished") : ct(pill.key);
       return kitchenBookingBlocks(row).map((block, index) => ({ key: `booking-${row.id}-${day.visitId ?? 0}-${index}`, kind: "booking" as const, date: day.dayKey,
         start: block.startTime, end: block.endTime, sortAt: startAt === undefined ? undefined : startAt + spanMinutes(row.startTime, block.startTime) % 1440 * 60_000,
-        title: chefDisplayName(row), detail: [dayLabel(day), row.kitchenName].filter(Boolean).join(" · "), label: ct(pill.key), tone: pill.tone,
+        title: chefDisplayName(row), detail: [dayLabel(day), row.kitchenName].filter(Boolean).join(" · "), label, tone: pill.tone, state,
         muted: FINISHED_PHASES.includes(phase), cancelled: phase === "cancelled", now: HAPPENING_NOW.includes(phase), href: `/manager/booking/${row.id}` }));
     }),
     ...locationViewings.filter(({ viewing }) => ["pending", "confirmed", "completed"].includes(viewing.status) && Number.isFinite(Date.parse(viewing.scheduledAt))).map(item => {
@@ -440,63 +466,105 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
       return events;
     }),
   ];
-  // Today: in the kitchen now, then next up; finished and cancelled are folded into one line under the list.
-  const todayEvents = splitToday(calendarEvents.filter(event => event.date === today));
-  const cancelledToday = todayEvents.done.filter(event => event.cancelled).length;
-  const inKitchenNow = todayEvents.active.filter(event => event.now).length;
+  // Today: every visit in time order, a now-line between what's done and what's next; cancelled ones fold into one line.
+  const todayAll = sortEvents(calendarEvents.filter(event => event.date === today));
+  const todayList = todayAll.filter(event => !event.cancelled);
+  const cancelledTodayList = todayAll.filter(event => event.cancelled);
+  const inKitchenNow = todayList.filter(event => event.now).length;
+  const nowAt = Date.now();
+  const firstAfterNow = todayList.findIndex(event => !!event.start && (event.sortAt ?? 0) > nowAt);
+  const nowIndex = firstAfterNow < 0 ? todayList.length : firstAfterNow;
+  const tomorrowKey = addDaysKey(today, 1);
+  const tomorrowList = sortEvents(calendarEvents.filter(event => event.date === tomorrowKey && event.kind === "booking" && !event.cancelled));
   const nextDay = upcoming.find(day => day.dayKey > today);
   const scheduleLoading = isLoadingBookings || isLoadingViewings || isLoadingRentals || activity.isLoading;
   const longDate = new Intl.DateTimeFormat(i18n.language, { timeZone: timezone, weekday: "long", month: "long", day: "numeric" }).format(Date.now());
-  const shortDay = (key: string) => new Intl.DateTimeFormat(i18n.language, { timeZone: "UTC", month: "short", day: "numeric" }).format(new Date(`${key}T12:00:00Z`));
+  const weekdayDate = (key: string) => new Intl.DateTimeFormat(i18n.language, { timeZone: "UTC", weekday: "short", month: "short", day: "numeric" }).format(new Date(`${key}T12:00:00Z`));
   const percent = (value: number) => new Intl.NumberFormat(i18n.language, { style: "percent", maximumFractionDigits: 0 }).format(value / 100);
-  const cardClass = "min-w-0 rounded-[20px] border border-border/70 bg-card shadow-[0_2px_12px_-6px_rgba(15,23,42,0.12)]";
+  const cardClass = card;
+  const panelClass = `${card} h-[320px]`;
 
-  const panelClass = `${cardClass} h-[320px]`;
-  const attentionCard = (<Card className={panelClass}>
-          <CardContent className="flex h-full flex-col p-5 md:p-6">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">{mt("overviewToday")}</p>
-                <h2 className="mt-1 text-xl font-semibold tracking-tight">{mt("overviewNeedsAttention")}</h2>
-              </div>
-              {isLoadingBookings || isLoadingViewings || isLoadingApplications || activity.isLoading ? <Skeleton className="h-6 w-16 rounded-full" /> : attentionCount > 0 ? <Badge variant="outline" className="shrink-0 border-primary/15 bg-primary/5 text-primary tabular-nums">{mt("overviewActionCount", { count: attentionCount })}</Badge> : null}
-            </div>
-
-            <ScrollArea className="min-h-0 flex-1" tabIndex={0} role="region" aria-label={mt("overviewNeedsAttention")}>
-            {isErrorBookings || isErrorViewings || isErrorApplications || activity.isError ? <p role="status" className="mt-4 text-sm text-destructive">{mt("overviewActivityPartialError")}</p> : null}
-            {isLoadingBookings || isLoadingViewings || isLoadingApplications || activity.isLoading ? <Skeleton className="mt-4 h-10 rounded-xl" /> : null}
-            <div className="mt-4 space-y-3">{attentionGroups.map((group) => {
-              const isPayouts = group.items[0]?.view === "payments";
-              const GroupIcon = managerNavIcons[group.items[0]?.view as keyof typeof managerNavIcons] ?? managerNavIcons.bookings;
-              return <section key={group.label} className="overflow-hidden">
-              <h3 className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-border/60 bg-card py-2 text-xs font-semibold"><span className="flex items-center gap-2"><GroupIcon aria-hidden="true" className={`size-4 shrink-0 ${isPayouts ? "text-stripe" : "text-primary"}`} />{mt(group.label)}</span><Badge variant="count">{group.items.length}</Badge></h3>
-              <div className="divide-y divide-border/50">{group.items.map((task) => {
-                const content = <><span className="min-w-0"><span className="block truncate text-sm font-medium">{task.title}</span>{task.detail && <span className="mt-0.5 block truncate text-xs text-muted-foreground">{task.detail}</span>}</span><ChevronRight className="size-4 shrink-0 text-muted-foreground" /></>;
-                /* Same hover contract as `rowClass` above — background wash only, no red text flip.
-                   These are the only two clickable row styles on the page, so they must agree. */
-                const taskClass = "flex w-full items-center justify-between gap-3 rounded-lg px-2 py-2.5 text-left transition-[background-color,color] duration-200 ease-out motion-reduce:transition-none hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary";
-                return task.href ? <Link key={task.id} href={task.href} className={taskClass}>{content}</Link> : <button key={task.id} className={taskClass} onClick={() => openTask(task)}>{content}</button>;
-              })}</div>
-            </section>; })}</div>
-            {/*
-             * Empty state, dressed like the sibling cards' empty states: a `bg-muted/40` block,
-             * left-aligned, sized by its own content.
-             *
-             * It used to be centred inside `h-full max-h-44` with a green-tinted fill, which broke in
-             * three ways. `h-full` cannot resolve here — Radix wraps ScrollArea children in a
-             * `display: table` element that sizes to its content, so 100% of it is 100% of nothing and
-             * the block collapsed to `max-h-44`. The fixed `max-h-44` then stopped it responding to
-             * longer copy or a narrower column. And the centring made it the only centred empty state
-             * on the page, so it sat off-axis from the Upcoming and Recent activity cards.
-             *
-             * No green. "All caught up" is an ABSENCE of work, not an achievement, so the whole block
-             * stays in the muted register — icon included. It is still legible: the heading keeps the
-             * normal text colour and only the supporting line drops to muted.
-             */}
-            {!attentionGroups.length && !activity.isLoading && !activity.isError && !isLoadingBookings && !isLoadingViewings && !isLoadingApplications && !isErrorBookings && !isErrorViewings && !isErrorApplications && <div className="mt-4 flex items-start gap-3 rounded-xl bg-muted/40 p-4"><span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-background/70 text-muted-foreground" aria-hidden="true"><CheckCircle className="size-4" /></span><div className="min-w-0"><p className="text-sm font-medium">{mt("overviewAllCaughtUp")}</p><p className="mt-1 text-xs text-muted-foreground">{mt("overviewAllCaughtUpBody")}</p></div></div>}
-            </ScrollArea>
-          </CardContent>
-        </Card>);
+  const attentionLoading = isLoadingBookings || isLoadingViewings || isLoadingApplications || activity.isLoading;
+  const attentionError = isErrorBookings || isErrorViewings || isErrorApplications || activity.isError;
+  const todoCount = attentionCount + attendanceAnswers.length;
+  const requestGroup = attentionGroups.find(group => group.label === "overviewPendingBookings");
+  const storageGroup = attentionGroups.find(group => group.label === "ovrStorageToAction");
+  const otherGroups = attentionGroups.filter(group => group !== requestGroup && group !== storageGroup);
+  const groupSection = (key: string, label: string, count: number, children: ReactNode, note?: ReactNode) => (
+    <section key={key} aria-labelledby={`attention-${key}`} className="border-t border-stone-100 pt-4 first:border-t-0 first:pt-0 [&+&]:mt-4">
+      <h3 id={`attention-${key}`} className={cn(groupLabel, "sm:px-4")}>{label}<span className={groupCount}>{count}</span></h3>
+      {note}
+      <div className="mt-2">{children}</div>
+    </section>);
+  const rowLink = (task: Task) => {
+    const content = <>
+      <span className="min-w-0"><span className="block break-words text-sm font-medium text-stone-900">{task.title}</span>{task.detail && <span className={cn("mt-0.5 block break-words", sub)}>{task.detail}</span>}</span>
+      {task.action ? <><span className={cn(btnSecondary, "hidden sm:inline-flex")}>{task.action}</span><ChevronRight className="size-4 text-stone-400 sm:hidden" aria-hidden="true" /></>
+        : <ChevronRight className="size-4 text-stone-400" aria-hidden="true" />}
+    </>;
+    const className = cn("grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-5 rounded-md border-t border-stone-100 py-3 text-left transition-colors first:border-t-0 hover:bg-stone-50/70 motion-reduce:transition-none sm:px-4", focusRing);
+    return task.href ? <Link key={task.id} href={task.href} className={className}>{content}</Link> : <button key={task.id} type="button" className={className} onClick={() => openTask(task)}>{content}</button>;
+  };
+  const requestRow = (task: Task) => {
+    const booking = task.booking!;
+    const days = managerListDays(booking);
+    const chef = chefDisplayName(booking);
+    const hours = Number(booking.durationHours);
+    const deadline = bookingResponseDeadline(booking);
+    const due = deadline && formatResponseDeadline(deadline, i18n.language, booking.timezone || timezone, false);
+    const facts = [Number.isFinite(hours) && hours > 0 ? mt("ovrHoursValue", { hours: hoursText(hours * 60, i18n.language) }) : "",
+      typeof booking.totalPrice === "number" ? formatCurrency(booking.totalPrice, "CAD", i18n.language) : ""].filter(Boolean);
+    const initials = chef.split(/\s+/).map(part => part[0]).slice(0, 2).join("").toUpperCase();
+    return <div key={task.id} className="grid gap-3 rounded-[10px] bg-[#fef3f5] px-4 py-3.5 lg:grid-cols-[36px_minmax(0,1fr)_auto] lg:items-center lg:gap-x-4 [&+&]:mt-2" data-testid="booking-request">
+      <span aria-hidden="true" className="hidden size-9 items-center justify-center rounded-full bg-white text-xs font-semibold text-[#8f0a2b] ring-1 ring-[#fbcbd6] lg:flex">{initials}</span>
+      <div className="min-w-0">
+        <p className="break-words font-medium text-stone-900">{[listWhenLine(days[0].row, i18n.language, words), days.length > 1 ? mt("ovrDayCount", { count: days.length }) : ""].filter(Boolean).join(" · ")}</p>
+        <p className={cn("mt-0.5", sub)}>{[chef, booking.kitchenName].filter(Boolean).join(" · ")}{facts.length > 0 && <><span className="hidden sm:inline"> · </span><span className="block sm:inline">{facts.join(" · ")}</span></>}</p>
+        {due && <p className="mt-1.5 flex items-center gap-1.5 text-[13px] font-medium text-[#8f0a2b]"><Clock className="size-3.5 shrink-0" aria-hidden="true" />{mt("ovrRespondBy", { when: due })}</p>}
+      </div>
+      <Link href={`/manager/booking/${booking.id}/review`} className={cn(btnPrimary, "sm:h-11 sm:w-full lg:h-9 lg:w-auto")}>{mt("ovrReviewRequest")}</Link>
+    </div>;
+  };
+  // Two equal answers share the row width until the column is wide enough to sit them beside the visit.
+  const answerButton = cn(btnSecondary, "sm:h-10 sm:flex-1 lg:h-8 lg:flex-none");
+  const answerRow = ({ booking, answer }: typeof attendanceAnswers[number]) => {
+    const zone = booking.timezone || timezone;
+    const when = `${answer.localDate === today ? mt("today") : weekdayDate(answer.localDate)}, ${timeRange(formatTime(answer.startTime, i18n.language), formatTime(answer.endTime, i18n.language))}`;
+    const deadline = Date.parse(answer.deadline);
+    const by = kitchenTodayKey(zone, deadline) === today
+      ? mt("ovrAnswerByToday", { time: new Intl.DateTimeFormat(i18n.language, { timeZone: zone, hour: "numeric", minute: "2-digit" }).format(deadline) })
+      : mt("ovrAnswerBy", { when: new Intl.DateTimeFormat(i18n.language, { timeZone: zone, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(deadline) });
+    const chef = chefDisplayName(booking);
+    // Both answers open the booking's visit record on that choice; nothing is recorded until the kitchen confirms there.
+    const href = (choice: "came" | "no_show") => `/manager/booking/${booking.id}?${answer.visitId ? `visitId=${answer.visitId}&` : ""}attendance=${choice}`;
+    return <div key={`${booking.id}-${answer.visitId ?? 0}`} data-testid="attendance-answer-row" className="grid gap-x-5 gap-y-2.5 border-t border-stone-100 py-3 first:border-t-0 sm:px-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+      <div className="min-w-0">
+        <p className="font-medium text-stone-900">{when}</p>
+        <p className={cn("mt-0.5", sub)}>{chef}<span className={cn("block", deadline - Date.now() <= 3 * 3_600_000 && "font-medium text-amber-800")}>{by}</span></p>
+      </div>
+      <div className="flex gap-2">
+        <Link href={href("came")} className={answerButton} aria-label={`${mt("ovrTheyCame")}: ${when}, ${chef}`}>{mt("ovrTheyCame")}</Link>
+        <Link href={href("no_show")} className={answerButton} aria-label={`${mt("ovrReportNoShow")}: ${when}, ${chef}`}>{mt("ovrReportNoShow")}</Link>
+      </div>
+    </div>;
+  };
+  const attentionCard = (fixedHeight: boolean) => {
+    const body = <>
+      {attentionError && <p role="status" className="mb-3 text-sm text-destructive">{mt("overviewActivityPartialError")}</p>}
+      {attentionLoading && <Skeleton className="h-12 rounded-lg" />}
+      {requestGroup && groupSection("requests", mt(requestGroup.label), requestGroup.items.length, requestGroup.items.map(task => task.booking ? requestRow(task) : rowLink(task)))}
+      {attendanceAnswers.length > 0 && groupSection("attendance", mt("ovrDidTheyCome"), attendanceAnswers.length, attendanceAnswers.map(answerRow),
+        <p className={cn("mt-1.5 flex gap-1.5 sm:px-4", sub)}><Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />{mt("ovrDidTheyComeNote")}</p>)}
+      {storageGroup && groupSection("storage", mt(storageGroup.label), storageGroup.items.length, storageGroup.items.map(rowLink))}
+      {otherGroups.map((group, index) => groupSection(`group-${index}`, mt(group.label), group.items.length, group.items.map(rowLink)))}
+      {!todoCount && !attentionLoading && !attentionError && <div className="flex items-start gap-3 rounded-lg bg-stone-50 p-4"><CheckCircle className="mt-0.5 size-4 shrink-0 text-stone-500" aria-hidden="true" /><div className="min-w-0"><p className="text-sm font-medium">{mt("overviewAllCaughtUp")}</p><p className={cn("mt-1", sub)}>{mt("overviewAllCaughtUpBody")}</p></div></div>}
+    </>;
+    return <section className={cn(fixedHeight ? panelClass : card, "flex flex-col xl:h-full")} aria-labelledby="overview-attention-title" data-testid="overview-attention">
+      <div className={cardHead}><h2 id="overview-attention-title" className={cardTitle}>{mt("overviewNeedsAttention")}{todoCount > 0 && <span className={cardMeta}>{mt("ovrToDoCount", { count: todoCount })}</span>}</h2></div>
+      {fixedHeight ? <ScrollArea className={cn(cardBody, "min-h-0 flex-1")} tabIndex={0} role="region" aria-label={mt("overviewNeedsAttention")}>{body}</ScrollArea>
+        : <div className={cardBody} role="region" aria-label={mt("overviewNeedsAttention")}>{body}</div>}
+    </section>;
+  };
   const listingCard = (<Card className={panelClass}><CardContent className="flex h-full flex-col gap-4 p-5 md:p-6">
 <div><p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">{mt("overviewListingStatus")}</p><h2 className="mt-1 text-xl font-semibold tracking-tight">{mt("overviewKitchenCount", { count: locationKitchens.length })}</h2></div>
 <ScrollArea className="min-h-0 flex-1" tabIndex={0} role="region" aria-label={mt("overviewListingStatus")}>
@@ -553,70 +621,141 @@ return <div key={kitchen.id}><button type="button" onClick={() => onNavigate(lis
       {scheduleRows.map(item => {const content=<><span className="min-w-0"><span className="block truncate text-sm font-medium">{item.title}</span><span className="mt-0.5 block text-xs leading-5 text-muted-foreground">{item.detail}</span></span><span className="flex shrink-0 items-center gap-2">{"pill" in item && item.pill ? <StatusPill tone={item.pill.tone}>{ct(item.pill.key)}</StatusPill> : <Badge variant="outline" className="font-medium">{item.label}</Badge>}<ChevronRight className="size-4 text-muted-foreground" aria-hidden="true" /></span></>;return item.href ? <Link key={item.key} href={item.href} className={rowClass}>{content}</Link> : <button key={item.key} className={rowClass} onClick={()=>openTask(item)}>{content}</button>;})}
       {!scheduleRows.length && !isLoadingBookings && !isLoadingViewings && !isLoadingApplications && !activity.isLoading && !isErrorBookings && !isErrorViewings && !isErrorApplications && !activity.isError && <div className="rounded-xl bg-muted/40 p-4"><p className="font-medium">{mt(bookings.length ? "overviewNoUpcoming" : !applicationJourney ? "overviewPrepareForApplications" : pendingApplications.length ? "overviewApplicationsToReview" : approvedApplications.length ? "overviewApprovedChefs" : "overviewWaitingForApplications")}</p><p className="mt-1 text-sm text-muted-foreground">{mt(bookings.length ? status === "draft" && hasHistory ? "overviewPastBookingsRemain" : "overviewNoUpcomingBody" : !applicationJourney ? "overviewPublishBeforeApplicationsBody" : pendingApplications.length ? "overviewReviewApplicationsBody" : approvedApplications.length ? "overviewApprovedChefsBody" : "overviewWaitingForApplicationsBody")}</p></div>}
     </ScrollArea></CardContent></Card>;
+  const fixedCards = !hasActivity;
   const historyLoading = isLoadingBookings || isLoadingViewings || isLoadingApplications || activity.isLoading;
   const historyError = isErrorBookings || isErrorViewings || isErrorApplications || activity.isError;
-  const historyCard = <Card className={panelClass}><CardContent className="flex h-full flex-col p-5 md:p-6"><div><p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">{mt("overviewHistory")}</p><h2 className="mt-1 text-xl font-semibold">{mt("overviewRecentActivity")}</h2></div><ScrollArea className={scrollClass} tabIndex={0} role="region" aria-label={mt("overviewRecentActivity")}>
-    {historyError && <p role="status" className="mb-3 text-sm text-destructive">{mt("overviewActivityPartialError")}</p>}
-    {historyLoading && !recent.length && <Skeleton className="h-32 rounded-xl" />}
-    {!historyLoading && !historyError && !recent.length && <p className="rounded-xl bg-muted/40 p-4 text-sm text-muted-foreground">{mt("overviewRecentActivityEmpty")}</p>}
-    {recent.map(item => {const view = ACTIVITY_VIEW[item.kind] ?? "bookings"; const ActivityIcon = managerNavIcons[view] ?? managerNavIcons.bookings; const content = <><span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground" aria-hidden="true"><ActivityIcon className="size-4" /></span><span className="flex min-w-0 flex-1 flex-col"><span className="block text-sm font-medium">{item.title}</span><span className="mt-0.5 block truncate text-xs leading-5 text-muted-foreground">{[item.person, item.kitchen, item.scheduled, item.time].filter(Boolean).join(" · ")}</span></span><span className="flex shrink-0 items-center gap-2"><time dateTime={item.date} title={displayDate(item.date)} className="whitespace-nowrap text-xs text-muted-foreground">{formatRelativeTime(item.date, i18n.language)}</time><ChevronRight className="size-4 shrink-0 text-muted-foreground transition-[transform,color] duration-200 ease-out motion-reduce:transition-none motion-reduce:transform-none group-hover:translate-x-0.5 group-hover:text-foreground" aria-hidden="true" /></span></>;return item.kind === "booking" ? <Link key={`booking-${item.activityKey}`} href={item.href} className={`group ${rowClass}`}>{content}</Link> : <button key={`${item.kind}-${item.id}-${item.kind === "tour" ? item.activityKey : "current"}`} onClick={() => openTask({ id: String(item.id), title: item.title, view, param: ACTIVITY_PARAM[item.kind] })} className={`group ${rowClass}`}>{content}</button>;})}
-  </ScrollArea></CardContent></Card>;
-  const todayCard = <Card className={panelClass} data-testid="overview-today"><CardContent className="flex h-full flex-col p-5 md:p-6">
-    <div className="flex items-start justify-between gap-3">
-      <div className="min-w-0"><p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">{mt("today")}</p><h2 className="mt-1 text-xl font-semibold tracking-tight">{longDate}</h2></div>
-      {inKitchenNow > 0 && <Badge variant="outline" className="shrink-0 border-success/40 bg-success/10 text-foreground">{mt("ovrInKitchenNow", { count: inKitchenNow })}</Badge>}
+  const activityCard = <section className={cn(fixedCards ? panelClass : card, "flex flex-col xl:h-full")} data-testid="overview-activity" aria-labelledby="overview-activity-title">
+    <div className={cardHead}><h2 id="overview-activity-title" className={cardTitle}>{mt("overviewRecentActivity")}</h2></div>
+    <div className={cn("min-h-0 flex-1 overflow-y-auto px-4 pb-3 sm:px-5", !fixedCards && "max-h-[420px] xl:max-h-none")} tabIndex={0} role="region" aria-label={mt("overviewRecentActivity")}>
+      {historyError && <p role="status" className="mb-3 text-sm text-destructive">{mt("overviewActivityPartialError")}</p>}
+      {historyLoading && !recent.length && <Skeleton className="h-24 rounded-lg" />}
+      {!historyLoading && !historyError && !recent.length && <p className={cn("rounded-lg bg-stone-50 p-4", sub)}>{mt("overviewRecentActivityEmpty")}</p>}
+      {recent.map(item => {
+        const view = ACTIVITY_VIEW[item.kind] ?? "bookings";
+        const content = <>
+          <span className="min-w-0 text-sm font-medium text-stone-900">{item.title}</span>
+          <time dateTime={item.date} title={displayDate(item.date)} className="whitespace-nowrap text-xs text-stone-500">{formatRelativeTime(item.date, i18n.language)}</time>
+          <span className={cn("col-span-2 mt-0.5 min-w-0 truncate", sub)}>{[item.person, item.kitchen, item.scheduled, item.time].filter(Boolean).join(" · ")}</span>
+        </>;
+        const className = cn("grid w-full grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-3 rounded-md border-t border-stone-100 py-2.5 text-left transition-colors first:border-t-0 hover:bg-stone-50/70 motion-reduce:transition-none", focusRing);
+        return item.kind === "booking" ? <Link key={`booking-${item.activityKey}`} href={item.href} className={className}>{content}</Link>
+          : <button type="button" key={`${item.kind}-${item.id}-${item.kind === "tour" ? item.activityKey : "current"}`} onClick={() => openTask({ id: String(item.id), title: item.title, view, param: ACTIVITY_PARAM[item.kind] })} className={className}>{content}</button>;
+      })}
     </div>
-    <ScrollArea className={scrollClass} tabIndex={0} role="region" aria-label={mt("today")}>
-      {scheduleLoading && !todayEvents.active.length && <Skeleton className="h-24 rounded-xl" />}
-      <div className="divide-y divide-border/50">{todayEvents.active.map(event => <CalendarEventRow key={event.key} event={event} locale={i18n.language} />)}</div>
-      {!scheduleLoading && !todayEvents.active.length && <div className="rounded-xl bg-muted/40 p-4"><p className="text-sm font-medium">{mt("ovrNothingToday")}</p>
-        {nextDay && <p className="mt-1 text-xs text-muted-foreground">{mt("ovrNextUp", { when: [chefDisplayName(nextDay.row), dayLabel(nextDay), listWhenLine(nextDay.row, i18n.language, words)].filter(Boolean).join(" · ") })}</p>}</div>}
-      {todayEvents.done.length > 0 && <div className="mt-2 border-t border-border/50 pt-1">
-        <button type="button" aria-expanded={showDoneToday} aria-controls="overview-today-done" onClick={() => setShowDoneToday(open => !open)}
-          className="flex w-full items-center gap-1.5 rounded-lg px-2 py-2 text-left text-xs text-muted-foreground hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
-          <ChevronRight aria-hidden="true" className={`size-3.5 shrink-0 transition-transform motion-reduce:transition-none ${showDoneToday ? "rotate-90" : ""}`} />
-          {[cancelledToday ? mt("ovrTodayCancelled", { count: cancelledToday }) : "", todayEvents.done.length - cancelledToday ? mt("ovrTodayFinished", { count: todayEvents.done.length - cancelledToday }) : ""].filter(Boolean).join(" · ")}
-        </button>
-        {showDoneToday && <div id="overview-today-done" className="divide-y divide-border/50">{todayEvents.done.map(event => <CalendarEventRow key={event.key} event={event} locale={i18n.language} />)}</div>}
+  </section>;
+
+  const todayBookings = todayList.filter(event => event.kind === "booking").length;
+  const todayCard = <section className={card} data-testid="overview-today" aria-labelledby="overview-today-title">
+    <div className={cardHead}><h2 id="overview-today-title" className={cardTitle}>{mt("today")}{todayBookings > 0 && <span className={cardMeta}>{mt("ovrBookingCount", { count: todayBookings })}</span>}</h2></div>
+    <div className={cn(cardBody, "pt-1")}>
+      {scheduleLoading && !todayList.length && <Skeleton className="h-20 rounded-lg" />}
+      <div className="divide-y divide-stone-100">{todayList.slice(0, nowIndex).map(event => <CalendarEventRow key={event.key} event={event} locale={i18n.language} />)}</div>
+      {todayList.length > 0 && <div className="flex items-center gap-2 py-2.5 text-xs" data-testid="today-now-line">
+        <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-primary" />
+        <span className="whitespace-nowrap font-semibold text-[#8f0a2b]">{mt("ovrNowAt", { time: formatTime(`${Math.floor(kitchenNowMinutes(timezone, nowAt) / 60)}:${String(kitchenNowMinutes(timezone, nowAt) % 60).padStart(2, "0")}`, i18n.language) })}</span>
+        <span className="whitespace-nowrap text-stone-500">{inKitchenNow ? mt("ovrInKitchenNow", { count: inKitchenNow }) : mt("ovrNoOneInKitchen")}</span>
+        <span aria-hidden="true" className="h-0.5 min-w-4 flex-1 rounded-full bg-primary" />
       </div>}
-    </ScrollArea>
-  </CardContent></Card>;
+      <div className="divide-y divide-stone-100">{todayList.slice(nowIndex).map(event => <CalendarEventRow key={event.key} event={event} locale={i18n.language} />)}</div>
+      {!scheduleLoading && todayList.length > 0 && nowIndex === todayList.length && <p className={cn("pb-1", sub)}>{mt("ovrNothingElseToday")}</p>}
+      {!scheduleLoading && !todayList.length && <div className="rounded-lg bg-stone-50 p-4"><p className="text-sm font-medium">{mt("ovrNothingToday")}</p>
+        {nextDay && !tomorrowList.length && <p className={cn("mt-1", sub)}>{mt("ovrNextUp", { when: [chefDisplayName(nextDay.row), dayLabel(nextDay), listWhenLine(nextDay.row, i18n.language, words)].filter(Boolean).join(" · ") })}</p>}</div>}
+      {cancelledTodayList.length > 0 && <div className="mt-2 border-t border-stone-100 pt-1">
+        <button type="button" aria-expanded={showDoneToday} aria-controls="overview-today-cancelled" onClick={() => setShowDoneToday(open => !open)}
+          className={cn("flex w-full items-center gap-1.5 rounded-md py-2 text-left text-[13px] text-stone-600 hover:text-stone-900", focusRing)}>
+          <ChevronRight aria-hidden="true" className={cn("size-3.5 shrink-0 transition-transform motion-reduce:transition-none", showDoneToday && "rotate-90")} />
+          {mt("ovrTodayCancelled", { count: cancelledTodayList.length })}
+        </button>
+        {showDoneToday && <div id="overview-today-cancelled" className="divide-y divide-stone-100">{cancelledTodayList.map(event => <CalendarEventRow key={event.key} event={event} locale={i18n.language} />)}</div>}
+      </div>}
+      {tomorrowList.length > 0 && <div className="mt-2 border-t border-stone-100 pt-3" data-testid="overview-tomorrow">
+        <p className="flex justify-between gap-3 text-xs text-stone-500"><span>{mt("ovrTomorrowOn", { date: weekdayDate(tomorrowKey) })}</span><span>{mt("ovrBookingCount", { count: tomorrowList.length })}</span></p>
+        <ul className="mt-1.5">{tomorrowList.map(event => <li key={event.key}>
+          <Link href={event.href ?? "/manager/bookings"} className={cn("flex justify-between gap-3 rounded py-1 text-[13px] hover:text-stone-900", focusRing)}>
+            <span className="whitespace-nowrap font-semibold tabular-nums text-stone-900">{timeRange(formatTime(event.start!, i18n.language), formatTime(event.end!, i18n.language))}</span>
+            <span className="min-w-0 truncate text-stone-600">{event.title}</span>
+          </Link></li>)}</ul>
+      </div>}
+    </div>
+  </section>;
+
   const weekTiles = [
     { key: "bookings", label: mt("ovrWeekBookings"), value: String(thisWeek.bookings), lines: [mt("ovrLastWeek", { value: String(lastWeek.bookings) })] },
     { key: "hours", label: mt("ovrWeekHours"), value: mt("ovrHoursValue", { hours: hoursText(thisWeek.bookedMinutes, i18n.language) }), lines: [mt("ovrLastWeek", { value: mt("ovrHoursValue", { hours: hoursText(lastWeek.bookedMinutes, i18n.language) }) })] },
     { key: "utilisation", label: mt("ovrWeekUtilisation"), value: thisWeek.utilisation === null ? "—" : percent(thisWeek.utilisation),
       lines: thisWeek.utilisation === null ? [mt("ovrUtilisationNoHours")] : [mt("ovrOfOpenHours", { hours: hoursText(thisWeek.openMinutes, i18n.language) }), mt("ovrLastWeek", { value: lastWeek.utilisation === null ? "—" : percent(lastWeek.utilisation) })] },
   ];
-  const weekCard = <Card className={cardClass} data-testid="overview-week"><CardContent className="p-5 md:p-6">
-    <div><p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">{mt("ovrThisWeek")}</p><h2 className="mt-1 text-base font-semibold">{shortDay(thisWeekStart)} – {shortDay(addDaysKey(thisWeekStart, 6))}</h2></div>
-    <dl className="mt-4 grid grid-cols-3 gap-2 sm:gap-3">{weekTiles.map(tile => <div key={tile.key} className="min-w-0 rounded-xl bg-muted/35 px-3 py-3 sm:px-4" data-testid={`week-${tile.key}`}>
-      <dt className="truncate text-xs text-muted-foreground">{tile.label}</dt>
-      <dd className="mt-1 text-xl font-semibold tracking-tight tabular-nums sm:text-2xl">{tile.key === "utilisation" && hoursLoading ? <Skeleton className="h-7 w-14 rounded" /> : tile.value}</dd>
-      {!(tile.key === "utilisation" && hoursLoading) && tile.lines.map(line => <dd key={line} className="mt-0.5 text-xs leading-4 text-muted-foreground">{line}</dd>)}
-    </div>)}</dl>
-  </CardContent></Card>;
+  const weekStatsBlock = bookings.length > 0 && <dl data-testid="overview-week" className="grid border-b border-stone-100 pb-4 lg:grid-cols-[1fr_1fr_1.4fr]">
+    {weekTiles.map((tile, index) => <div key={tile.key} data-testid={`week-${tile.key}`} className={cn("grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 py-2.5 lg:block lg:py-0", index > 0 && "border-t border-stone-100 lg:border-l lg:border-t-0 lg:pl-5", index < 2 && "lg:pr-5")}>
+      <dt className="text-sm text-stone-900 lg:text-[13px] lg:text-stone-600">{tile.label}</dt>
+      <dd className="row-span-2 flex items-center justify-end gap-3 text-[22px] font-semibold leading-8 tracking-[-0.01em] text-stone-900 tabular-nums lg:mt-1 lg:justify-start lg:text-[26px] lg:leading-[34px]">{tile.key === "utilisation" && hoursLoading ? <Skeleton className="h-7 w-14 rounded" /> : tile.value}</dd>
+      {!(tile.key === "utilisation" && hoursLoading) && <dd className="text-xs leading-4 text-stone-500 lg:mt-0.5">{tile.lines.join(" · ")}</dd>}
+      {tile.key === "utilisation" && !hoursLoading && thisWeek.utilisation !== null && <dd aria-hidden="true" className="relative col-span-2 mt-2 h-1.5 max-w-[240px] rounded-full bg-stone-100">
+        <span className="absolute inset-y-0 left-0 rounded-full bg-primary" style={{ width: `${Math.min(100, thisWeek.utilisation)}%` }} />
+        {lastWeek.utilisation !== null && <span className="absolute -inset-y-1 w-0.5 rounded-sm bg-stone-900" style={{ left: `${Math.min(100, lastWeek.utilisation)}%` }} />}
+      </dd>}
+    </div>)}
+  </dl>;
+
   const revenueVisible = bookings.length > 0 || activity.storageBookings.length > 0 || locationRentals.length > 0 || liveKitchens.length > 0;
-  const revenueCard = (className: string) => <RevenuePayoutsCard className={className} locale={i18n.language} isLoading={ledger.isLoading || isLoadingRevenue || isLoadingPayouts} isError={isErrorRevenue}
+  const revenueCard = <RevenuePayoutsCard className={card} locale={i18n.language} isLoading={ledger.isLoading || isLoadingRevenue || isLoadingPayouts} isError={isErrorRevenue}
     monthLabel={new Date().toLocaleDateString(i18n.language, { month: "long", year: "numeric" })} onDetails={() => onNavigate("revenue")}
     summary={revenueSummaryFromLedger(ledger.data) ?? revenueSummaryFromCurrent(revenue, upcomingPayouts, selectedLocation ? new Set(bookings.map(booking => booking.id)) : undefined)}
     // "Pending payments" (the old overview's pendingPayments) is no longer shown: it read $0.00 beside a non-zero Upcoming.
-    extras={[{ label: mt("overviewPaidBookings"), value: String(revenue?.paidBookingCount ?? 0) }]} />;
+    extras={[mt("ovrPaidBookingsCount", { count: revenue?.paidBookingCount ?? 0 })]} />;
+
+  // Listing chip: one kitchen names itself; several summarise and list each kitchen in a popover.
+  const listings = locationKitchens.map(kitchen => {
+    const review = (activity.listingReadiness ?? []).find(item => item.kitchenId === kitchen.id);
+    const checklist = review?.data?.checklist;
+    const listed = kitchenIsVisibleToChefs(kitchen, licenseForKitchen(kitchen));
+    const missing = checklist?.missingRequirementIds.length ?? 0;
+    const optional = checklist?.openRecommendationIds.length ?? 0;
+    const complete = Boolean(checklist && !review?.isLoading && !review?.isError && !missing && !optional);
+    return { kitchen, listed, unavailable: kitchen.listingStatus === "active" && !listed, note: missing ? mt("ovrItemsToFinish", { count: missing }) : optional ? mt("ovrOptionalImprovements", { count: optional }) : "",
+      open: () => onNavigate(complete ? "kitchens" : "listing-review", kitchen.id) };
+  });
+  const listingBadge = (item: typeof listings[number]) => item.listed ? <span className={badge.positive}><span aria-hidden="true" className="size-1.5 rounded-full bg-emerald-500" />{mt("listingStatusLiveLabel")}</span>
+    : <span className={item.unavailable ? badge.attention : badge.neutral}>{mt(item.unavailable ? "ovrUnavailable" : "listingStatusDraftLabel")}</span>;
+  const chipClass = cn("inline-flex min-h-10 max-w-full items-center gap-2.5 rounded-lg bg-white px-3 text-[13px] text-stone-900 shadow-[0_1px_2px_rgba(28,25,23,.06)] ring-1 ring-inset ring-stone-200 transition-colors hover:ring-stone-300 motion-reduce:transition-none", focusRing);
+  const listedCount = listings.filter(item => item.listed).length;
+  const listingChip = !listings.length ? <button type="button" className={chipClass} onClick={() => onNavigate("kitchens")} data-testid="listing-chip">{mt("addYourKitchen")}<ChevronRight className="size-4 text-stone-400" aria-hidden="true" /></button>
+    : listings.length === 1 ? <button type="button" className={chipClass} onClick={listings[0].open} data-testid="listing-chip">
+      <span className="min-w-0 truncate font-semibold">{listings[0].kitchen.name}</span>{listingBadge(listings[0])}
+      {listings[0].note && <><span aria-hidden="true" className="hidden h-4 w-px bg-stone-200 sm:block" /><span className="hidden whitespace-nowrap text-stone-600 sm:inline">{listings[0].note}</span></>}
+      <ChevronRight className="hidden size-4 shrink-0 text-stone-400 sm:block" aria-hidden="true" /></button>
+    : <Popover><PopoverTrigger asChild><button type="button" className={chipClass} data-testid="listing-chip">
+        <span className="font-semibold">{mt("overviewKitchenCount", { count: listings.length })}</span>
+        <span className="text-stone-600">{[listedCount ? mt("ovrListedCount", { count: listedCount }) : "", listings.length - listedCount ? mt("ovrNotListedCount", { count: listings.length - listedCount }) : ""].filter(Boolean).join(" · ")}</span>
+        <ChevronDown className="size-4 shrink-0 text-stone-400" aria-hidden="true" /></button></PopoverTrigger>
+      <PopoverContent align="end" className="w-[min(22rem,calc(100vw-2rem))] rounded-xl border-stone-200 p-1.5" data-testid="listing-popover">
+        <ul aria-label={mt("overviewListingStatus")}>{listings.map(item => <li key={item.kitchen.id}><button type="button" onClick={item.open} className={cn("flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left hover:bg-stone-50", focusRing)}>
+          <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium text-stone-900">{item.kitchen.name}</span>{item.note && <span className="block text-xs text-stone-500">{item.note}</span>}</span>
+          {listingBadge(item)}<ChevronRight className="size-4 shrink-0 text-stone-400" aria-hidden="true" /></button></li>)}</ul>
+      </PopoverContent></Popover>;
+
   const switcher = locations.length > 1 && onSelectLocation && selectedLocation && <Select value={String(selectedLocation.id)} onValueChange={value => { const location = locations.find(item => String(item.id) === value); if (location) onSelectLocation(location); }}>
     <SelectTrigger className="h-10 w-full sm:w-64" aria-label={mt("ovrLocation")}><SelectValue /></SelectTrigger>
     <SelectContent>{locations.map(location => <SelectItem key={location.id} value={String(location.id)}>{location.name}</SelectItem>)}</SelectContent>
   </Select>;
-  return <div className="space-y-4">
-    <header className="flex flex-col gap-3 pb-2 sm:flex-row sm:items-end sm:justify-between">
-      <div className="min-w-0"><p className="mb-1 text-xs font-semibold uppercase tracking-widest text-primary">{longDate}</p><h1 className="text-2xl font-semibold tracking-tight md:text-3xl">{mt("overviewWelcome", {name:user?.displayName?.split(" ")[0] || mt("shellManagerFallback")})}</h1>
-        {!switcher && <p className="mt-1 text-sm text-muted-foreground">{selectedLocation?.name ?? (locations.length > 1 ? mt("cmdAllLocations") : mt("overviewYourWorkspace"))}</p>}</div>
-      {switcher}
+  return <div className="space-y-4 sm:space-y-5">
+    <header className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+      <div className="min-w-0"><h1 className="text-[22px] font-[650] leading-7 tracking-[-0.02em] text-stone-900 sm:text-[26px] sm:leading-8">{longDate}</h1>
+        {switcher ? <div className="mt-2">{switcher}</div> : <p className="mt-1 text-sm text-stone-600">{selectedLocation?.name ?? (locations.length > 1 ? mt("cmdAllLocations") : mt("overviewYourWorkspace"))}</p>}</div>
+      {hasActivity && <div className="min-w-0 lg:pt-1">{listingChip}</div>}
     </header>
-    {hasActivity ? <div className="grid gap-4 lg:grid-cols-3"><div className="min-w-0 lg:col-span-2">{attentionCard}</div>{todayCard}</div>
-      : <div className="grid gap-4 lg:grid-cols-2">{liveKitchens.length ? <>{attentionCard}{listingCard}</> : <>{listingCard}{attentionCard}</>}</div>}
-    {bookings.length > 0 && weekCard}
-    {hasActivity && <BookingCalendarWidget events={calendarEvents} isLoading={isLoadingBookings} today={today} onNavigateToBookings={() => onNavigate("bookings")} />}
-    {hasActivity ? <div className="grid gap-4 lg:grid-cols-3">{revenueVisible ? revenueCard(`${cardClass} lg:col-span-2`) : null}<div className={revenueVisible ? "min-w-0" : "min-w-0 lg:col-span-3"}>{listingCard}</div></div>
-      : revenueVisible && revenueCard(cardClass)}
-    <div className="grid gap-4 lg:grid-cols-2">{upcomingCard}{historyCard}</div>
+    {hasActivity ? <div className="grid gap-4 sm:gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,360px)] xl:grid-rows-[auto_1fr] xl:[grid-template-areas:'attn_today'_'attn_activity'_'week_week'_'pay_pay']">
+        <div className="min-w-0 xl:[grid-area:attn]">{attentionCard(false)}</div>
+        <div className="min-w-0 xl:[grid-area:today]">{todayCard}</div>
+        <div className="min-w-0 xl:[grid-area:week]"><BookingCalendarWidget events={calendarEvents} isLoading={isLoadingBookings} today={today} timezone={timezone} stats={weekStatsBlock} onNavigateToBookings={() => onNavigate("bookings")} /></div>
+        {revenueVisible && <div className="min-w-0 xl:[grid-area:pay]">{revenueCard}</div>}
+        {/* Zero height + min-height of the area: the feed scrolls inside the space Needs attention leaves, never stretching it. */}
+        <div className="min-w-0 xl:h-0 xl:min-h-[max(100%,260px)] xl:[grid-area:activity]">{activityCard}</div>
+      </div>
+      : <>
+        <div className="grid gap-4 lg:grid-cols-2">{liveKitchens.length ? <>{attentionCard(true)}{listingCard}</> : <>{listingCard}{attentionCard(true)}</>}</div>
+        {revenueVisible && revenueCard}
+        <div className="grid gap-4 lg:grid-cols-2">{upcomingCard}{activityCard}</div>
+      </>}
   </div>;
 }

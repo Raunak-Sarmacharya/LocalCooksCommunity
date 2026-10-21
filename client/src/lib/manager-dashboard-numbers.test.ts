@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { managerDatedListDay, managerListDays } from './booking-list-status';
+import { managerDatedListDay, managerListDays, openAttendanceAnswers } from './booking-list-status';
 import { openMinutes, spanMinutes, weekStartKey, weekStats } from './manager-week-stats';
 import { revenueSummaryFromCurrent } from './manager-revenue-summary';
 
@@ -54,5 +54,29 @@ describe('revenueSummaryFromCurrent', () => {
   });
   it('reports unknown sources as unknown, not zero', () => {
     expect(revenueSummaryFromCurrent(undefined, undefined)).toEqual({ paidOut: null, upcoming: null, onHold: null, monthToDate: null });
+  });
+});
+
+describe('openAttendanceAnswers', () => {
+  const visit = (over: Record<string, unknown>) => ({ localDate: '2026-10-20', startTime: '17:00', endTime: '18:00', attendance: 'unknown',
+    inspection: { canRespond: true, deadline: '2026-10-21T21:30:00.000Z' }, ...over });
+  it('lists only unanswered visits whose window the server says is open, each with its own deadline (as dev booking 207)', () => {
+    const answers = openAttendanceAnswers({ status: 'completed', bookingDate: '2026-10-18', startTime: '14:00', endTime: '16:00', closeout: { visits: [
+      visit({ visitId: 156, localDate: '2026-10-18', attendance: 'recorded', inspection: { canRespond: false, deadline: '2026-10-19T18:30:00.000Z' } }),
+      visit({ visitId: 157, inspection: { canRespond: true, deadline: '2026-10-22T18:30:00.000Z' } }),
+      visit({ visitId: 158, localDate: '2026-10-16', inspection: { canRespond: false, deadline: '2026-10-17T18:30:00.000Z' } }),
+      visit({ visitId: 159, attendance: 'no_show' }),
+    ] } });
+    expect(answers).toEqual([{ visitId: 157, localDate: '2026-10-20', startTime: '17:00', endTime: '18:00', deadline: '2026-10-22T18:30:00.000Z' }]);
+  });
+  it('answers blocks without their own visit row once, for the booking, by the latest deadline', () => {
+    const answers = openAttendanceAnswers({ status: 'completed', bookingDate: '2026-10-21', startTime: '10:00', endTime: '15:00', closeout: { visits: [
+      visit({ localDate: '2026-10-21', startTime: '10:00', endTime: '11:00', inspection: { canRespond: true, deadline: '2026-10-22T13:30:00.000Z' } }),
+      visit({ localDate: '2026-10-21', startTime: '14:00', endTime: '15:00', inspection: { canRespond: true, deadline: '2026-10-22T17:30:00.000Z' } }),
+    ] } });
+    expect(answers).toEqual([{ visitId: undefined, localDate: '2026-10-21', startTime: '10:00', endTime: '15:00', deadline: '2026-10-22T17:30:00.000Z' }]);
+  });
+  it('asks nothing of a legacy closeout', () => {
+    expect(openAttendanceAnswers({ status: 'completed', bookingDate: '2026-10-21', startTime: '10:00', endTime: '11:00', closeout: { legacy: true, visits: [visit({})] } })).toEqual([]);
   });
 });
