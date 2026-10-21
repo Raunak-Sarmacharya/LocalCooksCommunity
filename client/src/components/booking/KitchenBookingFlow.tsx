@@ -1236,7 +1236,8 @@ export default function KitchenBookingFlow({
         : sortSelectedSlots(selectedSlots);
       const startTime = sortedSlots[0];
       const lastSlot = sortedSlots[sortedSlots.length - 1];
-      const endTime = addHour(lastSlot);
+      // Multi-day sends `days` and may have no single-day slots (a full day edited last); don't touch them then.
+      const endTime = lastSlot ? addHour(lastSlot) : undefined;
 
       const bookingDateStr = toLocalDateString(selectedDate);
       const [year, month, day] = bookingDateStr.split('-').map(Number);
@@ -1292,7 +1293,8 @@ export default function KitchenBookingFlow({
         throw new Error(tt("noCheckoutUrl"));
       }
     } catch (error: any) {
-      const message = error instanceof TypeError
+      // Only a failed fetch is a connection problem; any other TypeError is our bug and must not blame the chef's network.
+      const message = error instanceof TypeError && /fetch|network|load failed/i.test(error.message)
         ? t("bookingErrorNetwork", "We could not reach Local Cooks. Check your connection and try again.")
         : error.message || t("toastCheckoutFailedDefaultDesc", "Failed to start checkout. Please try again.");
       setCheckoutError(message);

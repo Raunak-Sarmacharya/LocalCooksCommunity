@@ -134,6 +134,16 @@ describe('the existing flow with more days', () => {
       { date: '2030-10-11', pricingMode: 'daily', slots: ['09:00','10:00','11:00','12:00'].map(startTime => ({ startTime, endTime: `${Number(startTime.slice(0,2)) + 1}:00` })), equipmentIds: [] },
     ]);
   });
+  it('reaches checkout when the last day edited is a full day (no single-day slots to read)', async () => {
+    await open(); await chooseDays(7, 11);
+    pick(7, 'Start', /^9:00/);
+    fireEvent.click(within(row(11)).getByRole('radio', { name: /Full day/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue to confirm' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue to payment' }));
+    await waitFor(() => expect(f.payload).not.toBeNull());
+    expect(f.payload.days.map((day: { date: string; pricingMode: string }) => [day.date, day.pricingMode])).toEqual([['2030-10-07', 'hourly'], ['2030-10-11', 'daily']]);
+  });
   it('keeps a single selected day on the original steps and scalar checkout even when multi-day is enabled', async () => {
     await open(); await chooseDays(7); pick(7, 'Start', /^9:00/);
     expect(screen.queryByRole('button', { name: 'Use these hours for all days' })).toBeNull();
