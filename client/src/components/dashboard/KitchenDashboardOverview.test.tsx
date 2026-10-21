@@ -534,8 +534,9 @@ describe("revamped overview (R3)", () => {
       expect(attention).toContain('aria-label="ovrTheyCame: today, 1:00–3:00 p.m., Morgan, Kitchen West"');
       expect(attention.split('id="attention-storage"')[1]).toContain("Sam · Kitchen West · stChipMoveInOverdue");
       const tomorrow = html.split('data-testid="overview-tomorrow"')[1].split("</section>")[0];
-      expect(tomorrow).toContain("East Chef · Kitchen East");
-      expect(tomorrow).toContain("West Chef · Kitchen West");
+      // Chef over kitchen, each on its own line.
+      expect(tomorrow).toMatch(/East Chef<\/span><span[^>]*>Kitchen East/);
+      expect(tomorrow).toMatch(/West Chef<\/span><span[^>]*>Kitchen West/);
       // Every timed calendar event carries its kitchen, so the week can give each kitchen its own lane.
       const calendar = html.split('data-testid="calendar"')[1];
       expect(calendar).toContain("booking-400-0-0@2026-10-22:bdhPill_confirmed[booked]{k10}");

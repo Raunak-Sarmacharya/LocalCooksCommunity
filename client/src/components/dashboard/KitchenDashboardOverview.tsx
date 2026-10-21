@@ -688,9 +688,11 @@ return <div key={kitchen.id}><button type="button" onClick={() => onNavigate(lis
       {tomorrowList.length > 0 && <div className="mt-2 border-t border-stone-100 pt-3" data-testid="overview-tomorrow">
         <p className="flex justify-between gap-3 text-xs text-stone-500"><span>{mt("ovrTomorrowOn", { date: weekdayDate(tomorrowKey) })}</span><span>{mt("ovrBookingCount", { count: tomorrowList.length })}</span></p>
         <ul className="mt-1.5">{tomorrowList.map(event => <li key={event.key}>
-          <Link href={event.href ?? "/manager/bookings"} className={cn("flex min-h-10 items-center justify-between gap-3 rounded text-[13px] hover:text-stone-900 lg:min-h-7", focusRing)}>
+          <Link href={event.href ?? "/manager/bookings"} className={cn("flex min-h-10 items-center justify-between gap-3 rounded text-[13px] hover:text-stone-900 lg:min-h-7", multiKitchen && "py-1.5", focusRing)}>
             <span className="whitespace-nowrap font-semibold tabular-nums text-stone-900">{timeRange(formatTime(event.start!, i18n.language), formatTime(event.end!, i18n.language))}</span>
-            <span className={cn("min-w-0 text-stone-600", multiKitchen ? "break-words text-right" : "truncate")}>{[event.title, multiKitchen ? event.kitchen : undefined].filter(Boolean).join(" · ")}</span>
+            {/* Several kitchens: chef over kitchen, each on one line, instead of one ragged wrapped line. */}
+            {multiKitchen ? <span className="min-w-0 text-right text-stone-600"><span className="block truncate">{event.title}</span><span className="block truncate text-xs text-stone-500">{event.kitchen}</span></span>
+              : <span className="min-w-0 truncate text-stone-600">{event.title}</span>}
           </Link></li>)}</ul>
       </div>}
     </div>
@@ -789,8 +791,8 @@ return <div key={kitchen.id}><button type="button" onClick={() => onNavigate(lis
         <div ref={todayRef} className="min-w-0 xl:[grid-area:today]">{todayCard}</div>
         <div className="min-w-0 xl:[grid-area:week]"><BookingCalendarWidget events={calendarEvents} isLoading={isLoadingBookings} today={today} timezone={timezone} stats={weekStatsBlock} kitchens={locationKitchens} onNavigateToBookings={() => onNavigate("bookings")} /></div>
         {revenueVisible && <div className="min-w-0 xl:[grid-area:pay]">{revenueCard}</div>}
-        {/* Zero height + min-height of the area: the feed fills the space the taller column leaves, never stretching it (unless opened in full). */}
-        <div className={cn("min-w-0 xl:[grid-area:activity]", !allActivity && "xl:h-0 xl:min-h-[max(100%,136px)]")}>{activityCard}</div>
+        {/* Zero height + min-height of the area: the feed fills the space the taller column leaves (at least three rows), never stretching it beyond that (unless opened in full). */}
+        <div className={cn("min-w-0 xl:[grid-area:activity]", !allActivity && "xl:h-0 xl:min-h-[max(100%,260px)]")}>{activityCard}</div>
       </div>
       : <>
         <div className="grid gap-4 lg:grid-cols-2">{liveKitchens.length ? <>{attentionCard(true)}{listingCard}</> : <>{listingCard}{attentionCard(true)}</>}</div>
