@@ -7,13 +7,15 @@ vi.mock('react-i18next', () => ({ useTranslation: () => ({ i18n: { language: 'en
 import PaymentSuccessPage from './PaymentSuccessPage';
 const result = { sessionId: 'cs_requested', state: 'verifying', bookingId: null, paymentIntentId: 'pi_requested', operatingDate: '2099-01-01', amountCents: 2440, currency: 'cad', moneyStatus: 'unverified', refundId: null, lastCheckedAt: null };
 let fetcher: ReturnType<typeof vi.fn>;
+const sessionCalls = () => fetcher.mock.calls.filter(([url]) => String(url).includes("/by-session/")).length;
 beforeEach(() => {
   vi.useFakeTimers(); window.history.replaceState({}, '', '/payment-success?session_id=cs_requested');
   fetcher = vi.fn().mockResolvedValue({ ok: true, json: async () => result }); vi.stubGlobal('fetch', fetcher);
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); });
-const mount = async (patch = {}) => {
-  fetcher.mockResolvedValue({ ok: true, json: async () => ({ ...result, ...patch }) });
+// The booking details (kitchen, times, reply deadline) are display only; without them the page falls back to the outcome.
+const mount = async (patch = {}, details?: object) => {
+  fetcher.mockImplementation(async (url: string) => url.includes("/details") ? { ok: !!details, json: async () => details } : { ok: true, json: async () => ({ ...result, ...patch }) });
   render(<PaymentSuccessPage />); await act(async () => {});
 };
 describe('checkout return states', () => {
@@ -25,7 +27,7 @@ describe('checkout return states', () => {
     expect(screen.getByText('$24.40 held on your card. You haven’t been charged.')).toBeInTheDocument();
     expect(screen.getByText(en.checkoutRequestCreatedDetail)).toBeInTheDocument();
     await act(async () => { vi.advanceTimersByTime(60_000); });
-    expect(fetcher).toHaveBeenCalledTimes(1); expect(window.location.pathname).toBe('/payment-success');
+    expect(sessionCalls()).toBe(1); expect(window.location.pathname).toBe('/payment-success');
   });
   it('an invitation reads "Confirming" until the booking is confirmed, then "Your booking is confirmed" (live #194)', async () => {
     await mount({ state: 'request_created', bookingId: 194, invitation: true, confirmed: false });
@@ -36,16 +38,41 @@ describe('checkout return states', () => {
     expect(screen.getByRole('heading', { name: en.checkoutConfirmed })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: en.checkoutViewBooking })).toHaveAttribute('href', '/booking/194');
     await act(async () => { vi.advanceTimersByTime(60_000); });
-    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(sessionCalls()).toBe(2);
   });
   it('shows our booking reference, not the Stripe checkout id, once the request exists (live #181)', async () => {
     await mount({ state: 'request_created', bookingId: 42, referenceCode: 'KB-ABC123' });
     expect(screen.getByText('Booking reference: KB-ABC123')).toBeInTheDocument();
     expect(screen.queryByText(/cs_requested/)).not.toBeInTheDocument();
   });
+  it('starts calm while the checkout is normally landing, and escalates to "Still verifying" only after 20 s', async () => {
+    await mount();
+    expect(screen.getByRole('heading', { name: en.checkoutSending })).toBeInTheDocument();
+    expect(screen.getByText(en.checkoutSendingDetail)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: en.checkoutCheckAgain })).not.toBeInTheDocument();
+    await act(async () => { await vi.advanceTimersByTimeAsync(20_000); });
+    expect(screen.getByRole('heading', { name: en.checkoutVerifying })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: en.checkoutCheckAgain })).toBeInTheDocument();
+  });
+  it('shows the kitchen, every day with its times, the reply deadline and what happens next from the booking', async () => {
+    const visit = (id: number, visitDate: string) => ({ id, visitDate, startTime: '06:00', endTime: '07:00', scheduleRevision: 1, scheduleState: 'active' });
+    await mount({ state: 'request_created', bookingId: 42 }, { status: 'pending', paymentStatus: 'authorized', responseDeadlineAt: '2099-01-01T20:41:00Z',
+      bookingDate: '2099-01-05', startTime: '06:00', endTime: '07:00', scheduleRevision: 1, visits: [visit(1, '2099-01-05'), visit(2, '2099-01-06'), visit(3, '2099-01-07')],
+      kitchen: { name: 'Harbour Kitchen', photos: [] }, location: { name: 'Harbour Hall', timezone: 'America/St_Johns' } });
+    await act(async () => {});
+    expect(screen.getByRole('heading', { name: 'Harbour Kitchen' })).toBeInTheDocument();
+    expect(screen.getByText('Harbour Hall')).toBeInTheDocument();
+    expect(screen.getByTestId('reply-deadline')).toHaveTextContent(/^Harbour Kitchen has until .*Jan 1.*Newfoundland.* to respond.$/);
+    expect(screen.getByTestId('request-days').querySelectorAll('li')).toHaveLength(3);
+    expect(screen.getByTestId('request-days')).toHaveTextContent(/Jan 5.*6:00.*7:00/);
+    for (const key of ['rvStepSend', 'rvStepRespond', 'rvStepArrive'] as const) expect(screen.getByText(en[key])).toBeInTheDocument();
+    // The hold explanation still shows, now beside the amount.
+    expect(screen.getByText(en.checkoutRequestCreatedDetail)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: en.checkoutDashboard })).toHaveAttribute('href', '/dashboard');
+  });
   it('stops polling in an honest verifying state, with next steps and contextual support', async () => {
     await mount(); await act(async () => { await vi.advanceTimersByTimeAsync(40_000); });
-    expect(screen.getByText(en.checkoutVerifyingDetail)).toBeInTheDocument(); expect(fetcher).toHaveBeenCalledTimes(16);
+    expect(screen.getByText(en.checkoutVerifyingDetail)).toBeInTheDocument(); expect(sessionCalls()).toBe(16);
     for (const [url] of fetcher.mock.calls) expect(url).toBe('/api/chef/bookings/by-session/cs_requested');
     expect(screen.queryByText('Payment confirmed')).not.toBeInTheDocument();
     const href = screen.getByRole('link', { name: en.supportContact }).getAttribute('href')!;
@@ -73,7 +100,7 @@ describe('checkout return states', () => {
     expect(screen.getByRole('heading', { name: en.checkoutNeedsSupport })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: en.checkoutViewRequest })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: en.checkoutCheckAgain })); await act(async () => {});
-    expect(fetcher).toHaveBeenCalledTimes(17);
+    expect(sessionCalls()).toBe(17);
   });
 });
 
@@ -116,18 +143,18 @@ describe('checkout return after "Change request"', () => {
     fetcher.mockResolvedValue({ ok: true, json: async () => ({ ...result, ...created, replacement: replacement('two_bookings') }) });
     await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
     expect(screen.getByTestId('change-request-result')).toHaveTextContent('You now have two bookings.');
-    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(sessionCalls()).toBe(2);
     await act(async () => { await vi.advanceTimersByTimeAsync(6000); });
-    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(sessionCalls()).toBe(2);
   });
 
   it('continues refreshing a release beyond the ordinary verification retry window, with a slower interval', async () => {
     await mount({ ...created, replacement: replacement('releasing') });
     await act(async () => { await vi.advanceTimersByTimeAsync(32_000); });
-    expect(fetcher).toHaveBeenCalledTimes(16);
+    expect(sessionCalls()).toBe(16);
     fetcher.mockResolvedValue({ ok: true, json: async () => ({ ...result, ...created, replacement: replacement('withdrawn') }) });
     await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
-    expect(fetcher).toHaveBeenCalledTimes(17);
+    expect(sessionCalls()).toBe(17);
     expect(screen.getByTestId('change-request-result')).toHaveTextContent('was withdrawn and its card hold released');
   });
 
