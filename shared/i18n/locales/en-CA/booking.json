@@ -1367,7 +1367,7 @@
   "rvMessageLabel": "Message the kitchen (optional)",
   "rvMessageHelp": "What you’ll make, and anything they should have ready.",
   "rvMessagePlaceholder": "E.g. Prepping sauces for a farmers market. I’ll bring my own containers.",
-  "rvStepSend": "You pay and send the request",
+  "rvStepSend": "You add your card and send the request",
   "rvStepRespond": "The kitchen accepts or declines",
   "rvStepArrive": "You get your arrival details",
   "rvPayButton": "Continue to payment",
