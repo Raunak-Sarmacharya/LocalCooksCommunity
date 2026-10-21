@@ -1499,7 +1499,7 @@ export default function BookingDetailsPage() {
       {primaryLabel}
     </Button>
   );
-  const messageLabel = openingConversation ? t('detailsCopy18') : isManagerView ? t('detailsCopy19') : t('detailsCopy20');
+  const messageLabel = openingConversation ? t('detailsCopy18') : isManagerView ? t('detailsCopy19', { chef: chefName.split(/\s+/)[0] }) : t('detailsCopy20');
   const messageButton = (className?: string) => messageAllowed && (
     <Button type="button" variant="outline" className={cn('min-h-11', className)} onClick={() => void openBookingConversation()} disabled={openingConversation}>
       <MessageSquare className="mr-1.5 h-4 w-4" aria-hidden />{messageLabel}
@@ -1639,14 +1639,14 @@ export default function BookingDetailsPage() {
       <div className="space-y-3 pb-3">
         {booking.checkinNotes && (
           <div>
-            <p className="mb-1 text-xs font-medium text-muted-foreground">{booking.checkedInMethod === 'self' ? t('bookingAttendanceChefMessage') : t('bookingAttendanceManagerMessage')}</p>
+            <p className="mb-1 text-xs font-medium text-muted-foreground">{booking.checkedInMethod === 'self' ? t('bookingAttendanceChefMessage') : t(isManagerView ? 'bookingAttendanceManagerMessageKitchen' : 'bookingAttendanceManagerMessage')}</p>
             <p className="whitespace-pre-wrap text-sm">{booking.checkinNotes}</p>
           </div>
         )}
-        {booking.checkoutManagerMessage && <div><p className="text-xs text-muted-foreground">{t('bookingAttendanceManagerMessage')}</p><p className="whitespace-pre-wrap text-sm">{booking.checkoutManagerMessage}</p></div>}
+        {booking.checkoutManagerMessage && <div><p className="text-xs text-muted-foreground">{t(isManagerView ? 'bookingAttendanceManagerMessageKitchen' : 'bookingAttendanceManagerMessage')}</p><p className="whitespace-pre-wrap text-sm">{booking.checkoutManagerMessage}</p></div>}
         {booking.checkoutNotes && (
           <div>
-            <p className="mb-1 text-xs font-medium text-muted-foreground">{booking.checkoutNotes.startsWith('Message from kitchen manager: ') ? t('bookingAttendanceManagerMessage') : t('bookingAttendanceChefMessage')}</p>
+            <p className="mb-1 text-xs font-medium text-muted-foreground">{booking.checkoutNotes.startsWith('Message from kitchen manager: ') ? t(isManagerView ? 'bookingAttendanceManagerMessageKitchen' : 'bookingAttendanceManagerMessage') : t('bookingAttendanceChefMessage')}</p>
             <p className="whitespace-pre-wrap text-sm">{booking.checkoutNotes}</p>
           </div>
         )}
@@ -1832,10 +1832,9 @@ export default function BookingDetailsPage() {
   // People card (Airbnb host view, Food Corridor renter record): who they are, then the ways to reach them. The chef sees the
   // kitchen and its host's name, never the manager's raw email.
   const contactPhone = booking ? (isManagerView ? booking.chef?.phone : booking.kitchenContact?.phone) : null;
-  const contactEmail = booking && isManagerView ? booking.chef?.username : null;
   const locationLine = !isManagerView && booking?.location?.name && booking.location.name !== kitchenName ? booking.location.name : null;
   const hostName = !isManagerView ? booking?.kitchenContact?.hostName : null;
-  const hasContact = (!!contactPhone && !!booking && contactVisible(booking.status)) || !!contactEmail || (isManagerView && !!booking?.chef) || !!messageAllowed
+  const hasContact = (!!contactPhone && !!booking && contactVisible(booking.status)) || (isManagerView && !!booking?.chef) || !!messageAllowed
     || (!isManagerView && (!!mapsHref || !!locationLine || !!hostName));
   const personCard = booking && hasContact && (
     <section aria-labelledby="booking-person-title" data-testid="person-card">
@@ -1854,10 +1853,6 @@ export default function BookingDetailsPage() {
                 <p className="text-[13px] leading-[18px] text-muted-foreground">{t('bdhSafetyHelper')}</p>
               </div>
             ) : null;
-          })()}
-          {(() => {
-            const email = contactEmail;
-            return email ? <a href={`mailto:${email}`} className="flex min-h-11 items-center break-all text-[13px] text-muted-foreground underline-offset-4 hover:underline">{email}</a> : null;
           })()}
           {/* Where (chef, Airbnb pattern): the map card (address + Get directions in its footer) when the kitchen can be
               placed — the same component as the listing; otherwise the full address and a directions link. */}
@@ -2100,7 +2095,7 @@ export default function BookingDetailsPage() {
   );
 
   const history = booking && (
-    <BookingHistoryPanel timezone={booking.location?.timezone} id={booking.id} reference={booking.referenceCode} role={isManagerView ? 'manager' : 'chef'} cancelCause={cancelCause} chefName={booking.chef?.fullName || booking.chef?.username || null} version={booking.updatedAt || booking.createdAt} limit={3} days={bookingDays} />
+    <BookingHistoryPanel timezone={booking.location?.timezone} id={booking.id} reference={booking.referenceCode} role={isManagerView ? 'manager' : 'chef'} cancelCause={cancelCause} chefName={booking.chef?.fullName || null} version={booking.updatedAt || booking.createdAt} limit={3} days={bookingDays} />
   );
 
   const help = booking && (
@@ -2152,7 +2147,8 @@ export default function BookingDetailsPage() {
         {nowCard}
         {/* A pending request's days are listed once, in the review above; day cards (check-in, payouts) start once it's accepted. */}
         {datedBooking && booking && !(isManagerView && booking.status === 'pending') && (isManagerView ? <ManagerBookingDays bookingId={booking.id} revision={booking.scheduleRevision!} visits={bookingDays} money={booking.dayMoney} payout={booking.payout}
-          timezone={booking.location?.timezone || 'America/St_Johns'} status={booking.status} onChanged={reloadBookingDetails} />
+          timezone={booking.location?.timezone || 'America/St_Johns'} status={booking.status} onChanged={reloadBookingDetails}
+          customerName={booking.chef?.fullName} kitchenName={booking.kitchen?.name} reference={booking.referenceCode} />
           : <BookingDayList bookingId={booking.id} visits={bookingDays} timezone={booking.location?.timezone || 'America/St_Johns'} status={booking.status} money={booking.dayMoney}
             notOffered={proposal?.declinedVisitIds} />)}
         {wide ? (

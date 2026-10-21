@@ -116,7 +116,7 @@ describe("pending booking page", () => {
     h.manager = true;
     render(<BookingDetailsPage />);
     const banner = await screen.findByTestId("booking-next-step");
-    expect(banner).toHaveTextContent(/^Respond by .+, or the request expires and the chef’s card hold is released\.$/);
+    expect(banner).toHaveTextContent(/^Respond by .+, or the request expires and the customer’s card hold is released\.$/);
   });
 
   it("shows no deadline banner without a live card hold", async () => {
@@ -169,15 +169,15 @@ describe("partial acceptance: waiting on the chef", () => {
     render(<BookingDetailsPage />);
     const card = await screen.findByTestId("payment-card");
     expect(within(card).queryByTestId("payment-headline")).not.toBeInTheDocument();
-    expect(within(card).getByTestId("payment-status-line")).toHaveTextContent("Payout depends on the chef’s answer");
+    expect(within(card).getByTestId("payment-status-line")).toHaveTextContent("Payout depends on the customer’s answer");
     expect(card).not.toHaveTextContent("$55.43");
     expect(within(card).queryByTestId("pa-payout-depends")).not.toBeInTheDocument();
-    expect(card.textContent?.split("Payout depends on the chef’s answer")).toHaveLength(2);
+    expect(card.textContent?.split("Payout depends on the customer’s answer")).toHaveLength(2);
   });
 
   it.each([
     [false, "Not included if you accept"],
-    [true, "Kitchen can’t provide · chef deciding"],
+    [true, "Kitchen can’t provide · customer deciding"],
   ] as const)("add-on chip while waiting (manager=%s)", async (manager, chip) => {
     h.manager = manager;
     h.booking = waitingOffer();

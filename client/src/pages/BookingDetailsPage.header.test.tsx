@@ -76,7 +76,7 @@ type Case = { name: string; now: number; booking: Record<string, unknown>; pill:
 const cases: Case[] = [
   { name: "pending", now: START - 3 * 86_400_000, booking: { createdAt: new Date(START - 3 * 86_400_000 - 3_600_000).toISOString() },
     pill: { chef: "Request pending", manager: "Request pending" },
-    next: { chef: /^Request sent\. Harbour Kitchen answers by Jan 13 at 9:00 a\.m\.$/, manager: /^Respond by Jan 13 at 9:00 a\.m\., or the request expires and the chef’s card hold is released\.$/ },
+    next: { chef: /^Request sent\. Harbour Kitchen answers by Jan 13 at 9:00 a\.m\.$/, manager: /^Respond by Jan 13 at 9:00 a\.m\., or the request expires and the customer’s card hold is released\.$/ },
     primary: { chef: null, manager: "Review request" }, message: true },
   { name: "confirmed upcoming", now: START - 3 * 86_400_000, booking: { status: "confirmed", paymentStatus: "paid", checkinStatus: "not_checked_in" },
     pill: { chef: "Confirmed", manager: "Confirmed" },
@@ -136,7 +136,7 @@ describe.each(["chef", "manager"] as const)("booking details header (%s)", role 
     else expect(primaries).toHaveLength(0);
 
     // Message is one tap away whenever the server allows a conversation; the mobile bar mirrors it.
-    const messageName = role === "manager" ? "Message chef" : "Message kitchen";
+    const messageName = role === "manager" ? "Message Ada" : "Message kitchen";
     if (message) {
       expect(within(header).getByRole("button", { name: messageName })).toBeInTheDocument();
       expect(within(screen.getByTestId("mobile-action-bar")).getByRole("button", { name: messageName })).toBeInTheDocument();
@@ -190,7 +190,7 @@ describe("contact details", () => {
     const card = screen.getByTestId("person-card");
     fireEvent.click(within(card).getByRole("link", { name: "View profile" }));
     expect(h.navigate).toHaveBeenCalledWith("/manager/customers/1");
-    expect(within(card).getByRole("button", { name: "Message chef" })).toBeInTheDocument();
+    expect(within(card).getByRole("button", { name: "Message Ada" })).toBeInTheDocument();
   });
 
   it("keeps the phone private while the request is pending", async () => {
@@ -200,7 +200,7 @@ describe("contact details", () => {
     const card = await screen.findByTestId("person-card");
     expect(within(card).queryByRole("link", { name: /709/ })).not.toBeInTheDocument();
     expect(within(card).queryByTestId("contact-phone")).not.toBeInTheDocument();
-    expect(card).toHaveTextContent("ada@example.com");
+    expect(card).not.toHaveTextContent("ada@example.com"); // contact stays in Local Cooks messages
   });
 
   it("hides the Visit card before confirmation instead of showing an empty state", async () => {
@@ -280,7 +280,7 @@ describe("why a request ended", () => {
     h.booking = { ...base(), ...ended(9), totalPrice: 2500, paymentTransaction: { amount: 3050, serviceFee: 0, managerRevenue: 0, status: "canceled" } };
     render(<BookingDetailsPage />);
     const card = await screen.findByTestId("payment-card");
-    expect(within(card).getByText("The chef’s card hold was released. Nothing was charged.")).toBeInTheDocument();
+    expect(within(card).getByText("The customer’s card hold was released. Nothing was charged.")).toBeInTheDocument();
     expect(within(card).getByTestId("not-charged-line")).toHaveTextContent("Not charged$30.50");
     expect(within(card).queryByText("Original Quote")).not.toBeInTheDocument();
     expect(within(card).queryByText("View cancellation and refund details")).not.toBeInTheDocument();
@@ -324,8 +324,8 @@ describe("payout after closeout on the payment card", () => {
     // ONE status line about this money (P6): the payout line replaces the payment message.
     expect(within(card).getByTestId("kitchen-payout-status")).toHaveTextContent(/^Paid after the visit\. Finish the inspection after Ada Lovelace checks out to get it sooner\.$/);
     expect(within(card).queryByTestId("payment-status-line")).not.toBeInTheDocument();
-    expect(card).not.toHaveTextContent("The chef has paid.");
-    expect(card).not.toHaveTextContent("Payment collected from the chef.");
+    expect(card).not.toHaveTextContent("The customer has paid.");
+    expect(card).not.toHaveTextContent("Payment collected from the customer.");
     // The headline, then once more as the statement's bottom line (the statement adds up to it).
     expect(document.body.textContent!.split("$27.32").length - 1).toBe(2);
     expect(within(card).getByTestId("statement-payout")).toHaveTextContent("Your payout$27.32");
@@ -335,7 +335,7 @@ describe("payout after closeout on the payment card", () => {
     render(<BookingDetailsPage />);
     const card = await screen.findByTestId("payment-card");
     expect(within(card).queryByTestId("kitchen-payout-status")).not.toBeInTheDocument();
-    expect(card).toHaveTextContent("Payment collected from the chef.");
+    expect(card).toHaveTextContent("Payment collected from the customer.");
   });
   it("offers the chef the final invoice once the booking is completed, in one place", async () => {
     h.manager = false; h.booking = paid({}, { status: "completed", payout: undefined });
@@ -430,7 +430,7 @@ describe("after the booked end, the chef is still checked in (overstay)", () => 
     h.manager = true; h.booking = overstay();
     render(<BookingDetailsPage />);
     expect(await screen.findByTestId("booking-next-step")).toHaveTextContent("Ada Lovelace’s booking ended at 12:30 p.m. Newfoundland Time and they haven’t checked out yet.");
-    expect(within(screen.getByTestId("header-actions")).getByRole("button", { name: "Message chef" })).toBeInTheDocument();
+    expect(within(screen.getByTestId("header-actions")).getByRole("button", { name: "Message Ada" })).toBeInTheDocument();
     expect(screen.getByTestId("overstay-hint")).toHaveTextContent("After you record when they left, you can charge for the extra time.");
     fireEvent.click(within(screen.getByTestId("now-secondary")).getByRole("button", { name: "Record when they left" }));
     expect(h.attendance).toMatchObject({ fixOpen: true, fixAction: "departure" });
@@ -721,7 +721,7 @@ describe("payment card: card holds and the true total (round 3)", () => {
     // $61.00 − $3.50 service fee − $2.56 card fee − $27.47 share of refunds = the $27.47 payout.
     expect(screen.getByTestId('statement-payout')).toHaveTextContent('Your share of refunds−$27.47');
     expect(screen.getByTestId('statement-payout')).not.toHaveTextContent('Other adjustments');
-    expect(screen.getByTestId('statement-refunded')).toHaveTextContent('Refunded to the chef−$29.22');
+    expect(screen.getByTestId('statement-refunded')).toHaveTextContent('Refunded to the customer−$29.22');
   });
   it("chef: Total paid includes extra time and the claim payment, each listed, with an honest receipt note", async () => {
     h.manager = false; h.booking = withMoney({ status: "completed", paymentStatus: "paid" });
