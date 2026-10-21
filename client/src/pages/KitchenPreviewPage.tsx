@@ -1952,7 +1952,7 @@ export function GuestHoursCard({
   // A range only for back-to-back days; Mon, Wed, Fri as a range would read like a continuous stay.
   const consecutiveDays = selectedDays.every((day, i) => i === 0 || Date.parse(`${day}T12:00:00Z`) - Date.parse(`${selectedDays[i - 1]}T12:00:00Z`) === 86400000);
   const daysRange = selectedDays.length > 1
-    ? consecutiveDays ? `${dayLabel(selectedDays[0])} – ${dayLabel(selectedDays[selectedDays.length - 1])}` : selectedDays.map(dayLabel).join(", ")
+    ? consecutiveDays ? `${dayLabel(selectedDays[0])} – ${dayLabel(selectedDays[selectedDays.length - 1])}` : selectedDays.map(day => dayLabel(day).replace(/ /g, " ")).join(" · ")
     : selectedDays[0] ? dayLabel(selectedDays[0]) : "";
 
   const handleProceed = () => {

@@ -1463,7 +1463,7 @@
   "mdDayNotOffered": "The kitchen can’t host this day",
   "mdOpenVisit": "Check in",
   "mdCheckOut": "Check out",
-  "mdFullDayUnavailable": "Full day unavailable: {reason}. You can still choose available hours.",
+  "mdFullDayUnavailable": "A full day isn’t available: {reason}. You can still pick open hours.",
   "bpsExtraTimeRate": "Extra time: {amount}/hour if you ask for more time or stay past the end.",
   "invWhenDays": "{count, plural, one {# day · {days}, {zone}} other {# days · {days}, {zone}}}",
   "invFullDay": "Full day",

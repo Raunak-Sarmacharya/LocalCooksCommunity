@@ -129,7 +129,7 @@ export function BookingDayHoursRow({ title, slots, value, onChange, hourlyRate, 
             </div>
           )}
           {!daily && minimum > 1 && <p className="text-xs text-muted-foreground">{t("bkMinimumHours", { count: minimum })}</p>}
-          {offerDaily && !fullDayAllowed && fullDayReason && <p className="text-xs text-muted-foreground">{t("mdFullDayUnavailable", { reason: fullDayReason })}</p>}
+          {offerDaily && !fullDayAllowed && fullDayReason && <p className="text-xs text-muted-foreground">{t("mdFullDayUnavailable", { reason: fullDayReason.charAt(0).toLocaleLowerCase() + fullDayReason.slice(1) })}</p>}
 
           {(daily || length > 0) && <p className="text-sm font-medium text-gray-900" data-testid="day-cost">
             {daily ? t("bkFullDayCost", { amount: money(cost) }) : t("bkHoursCost", { count: length, amount: money(cost) })}
