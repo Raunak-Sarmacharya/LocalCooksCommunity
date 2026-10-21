@@ -48,15 +48,18 @@ router.post('/admin/bookings/:id/cancel-authorization', requireFirebaseAuthWithU
 });
 router.get('/manager/booking-lifecycle', requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   try {
+    // The kitchen's own wording when the event has one (the default title is often the chef's, e.g. "The kitchen can't host you").
     const events = await db.select({ id: bookingLifecycleEvents.id, bookingId: bookingLifecycleEvents.bookingId,
-      title: bookingLifecycleEvents.title, kind: bookingLifecycleEvents.kind, createdAt: bookingLifecycleEvents.createdAt,
+      title: sql<string>`COALESCE(${bookingLifecycleEvents.metadata}->'roleText'->'manager'->>'title', ${bookingLifecycleEvents.title})`, kind: bookingLifecycleEvents.kind, createdAt: bookingLifecycleEvents.createdAt,
       kitchenId: kitchenBookings.kitchenId, locationId: locations.id, kitchenName: kitchens.name,
       bookingDate: kitchenBookings.bookingDate, startTime: kitchenBookings.startTime, endTime: kitchenBookings.endTime })
       .from(bookingLifecycleEvents).innerJoin(kitchenBookings, eq(kitchenBookings.id, bookingLifecycleEvents.bookingId))
       .innerJoin(kitchens, eq(kitchens.id, kitchenBookings.kitchenId)).innerJoin(locations, eq(locations.id, kitchens.locationId))
       .where(and(eq(locations.managerId, req.neonUser!.id),
         // Private feedback and its operator flags belong to their scoped endpoints/notices.
-        sql`${bookingLifecycleEvents.kind} NOT IN ('feedback_flagged', 'feedback_requested')`))
+        sql`${bookingLifecycleEvents.kind} NOT IN ('feedback_flagged', 'feedback_requested')`,
+        // Local Cooks-only notices (internal money summaries) never reach the kitchen.
+        sql`COALESCE(${bookingLifecycleEvents.metadata}->>'recipientPolicy', '') <> 'admins'`))
       .orderBy(desc(bookingLifecycleEvents.id)).limit(100);
     res.json(events);
   } catch (error) { logger.error('Booking activity unavailable', error); res.status(503).json({ error: 'Booking activity is unavailable' }); }
