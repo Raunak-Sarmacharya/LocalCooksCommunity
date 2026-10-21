@@ -3682,7 +3682,7 @@
   "bnManagerNoCheckinAsk": "Aucune arrivée enregistrée pour {chef}. Est-ce que la personne est venue? Dites-le-nous d’ici le {time}.",
   "bnManagerNoCheckinClosed": "Aucune arrivée n’a été enregistrée pour {chef}. La visite s’est fermée sans réponse; votre versement n’est pas modifié.",
   "bnTheyCame": "La personne est venue",
-  "bnTheyDidntCome": "La personne n’est pas venue",
+  "bnTheyDidntCome": "Signaler une absence",
   "bnIWasThere": "J’étais là",
   "bnDidTheyCome": "Cette personne est-elle venue ?",
   "bnChefNoCheckinNoTime": "Nous n’avons vu aucune arrivée enregistrée pour votre réservation chez {kitchen}. Si vous étiez là, dites-le-nous.",

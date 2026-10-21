@@ -3682,7 +3682,7 @@
   "bnManagerNoCheckinAsk": "No check-in from {chef}. Did they come? Tell us by {time}.",
   "bnManagerNoCheckinClosed": "No check-in was recorded for {chef}. The visit closed without an answer; nothing changes for your payout.",
   "bnTheyCame": "They came",
-  "bnTheyDidntCome": "They didn’t come",
+  "bnTheyDidntCome": "Report no-show",
   "bnIWasThere": "I was there",
   "bnDidTheyCome": "Did they come?",
   "bnChefNoCheckinNoTime": "We didn’t see a check-in for your booking at {kitchen}. If you were there, let us know.",

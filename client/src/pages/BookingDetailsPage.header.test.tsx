@@ -437,7 +437,7 @@ describe("no check-in recorded", () => {
       attendance: "unknown", scheduledStartAt: "2030-01-15T13:30:00Z", scheduledEndAt: "2030-01-15T15:30:00Z",
       inspection: { outcome: canRespond ? "due" : "auto_closed_uninspected", dueAt: "2030-01-15T15:30:00Z", deadline: "2030-01-16T15:30:00Z",
         closedAt: canRespond ? null : "2030-01-16T15:30:00Z", canRespond } }] } });
-  it("kitchen: not Completed; asks Did they come? with They came / They didn't come as an equal pair under the question", async () => {
+  it("kitchen: not Completed; asks Did they come? with They came / Report no-show as an equal pair under the question", async () => {
     vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(START + 4 * 3_600_000);
     h.manager = true; h.booking = missed();
     render(<BookingDetailsPage />);
@@ -449,8 +449,18 @@ describe("no check-in recorded", () => {
     const pair = screen.getByTestId("attendance-answer");
     fireEvent.click(within(pair).getByRole("button", { name: "They came" }));
     expect(h.attendance).toMatchObject({ fixOpen: true, fixAction: "report_attended" });
-    fireEvent.click(within(pair).getByRole("button", { name: "They didn’t come" }));
+    fireEvent.click(within(pair).getByRole("button", { name: "Report no-show" }));
     expect(h.attendance).toMatchObject({ fixOpen: true, fixAction: "report_no_show" });
+  });
+  it("kitchen: the dashboard's Did they come? link opens the visit record on that answer and day, still to be confirmed", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(START + 4 * 3_600_000);
+    h.manager = true; h.booking = missed();
+    window.history.replaceState({}, "", "?visitId=157&attendance=no_show");
+    try {
+      render(<BookingDetailsPage />);
+      await screen.findByTestId("booking-next-step");
+      await waitFor(() => expect(h.attendance).toMatchObject({ fixOpen: true, fixAction: "report_no_show", fixVisitId: 157 }));
+    } finally { window.history.replaceState({}, "", "/"); }
   });
   it("kitchen: after the window closes it simply reads No check-in recorded, with no question", async () => {
     vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(START + 30 * 3_600_000);

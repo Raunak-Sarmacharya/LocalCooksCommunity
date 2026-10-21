@@ -3682,7 +3682,7 @@
   "bnManagerNoCheckinAsk": "{chef} не зареєстрував(-ла) прибуття. Чи був(-ла) шеф? Повідомте нам до {time}.",
   "bnManagerNoCheckinClosed": "Прибуття {chef} не зафіксовано. Візит закрито без відповіді; ваша виплата не змінюється.",
   "bnTheyCame": "Шеф був",
-  "bnTheyDidntCome": "Шефа не було",
+  "bnTheyDidntCome": "Повідомити про неявку",
   "bnIWasThere": "Я був(-ла) там",
   "bnDidTheyCome": "Чи прийшли вони?",
   "bnChefNoCheckinNoTime": "Ми не бачимо реєстрації прибуття на ваше бронювання в {kitchen}. Якщо ви там були, повідомте нам.",

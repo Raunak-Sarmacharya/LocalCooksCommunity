@@ -176,3 +176,10 @@ it('does not offer a late departure once the inspection window has closed', asyn
   const dialog = await open();
   expect(within(dialog).queryByRole('button', { name: /left without/ })).not.toBeInTheDocument();
 });
+it('opens on the visit and answer named by the dashboard link, and only saves on confirm', async () => {
+  const two = { ...record, visits: [record.visits[0], { ...record.visits[0], id: 6, startTime: '13:00', endTime: '14:00' }] };
+  const { fetcher } = mount({ data: two, fixOpen: true, onFixOpenChange: vi.fn(), fixAction: 'report_attended', fixVisitId: 6 });
+  const dialog = await screen.findByRole('dialog');
+  expect(await within(dialog).findByRole('button', { name: 'Mark as attended' })).toBeInTheDocument();
+  expect(posts(fetcher)).toHaveLength(0);
+});

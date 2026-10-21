@@ -333,6 +333,20 @@ export default function BookingDetailsPage() {
   const [fixOpen, setFixOpen] = useState(false);
   // "Record when they left" opens Fix the visit record straight on the departure choice.
   const [fixAction, setFixAction] = useState<'departure' | 'report_attended' | 'report_no_show' | undefined>();
+  const [fixVisitId, setFixVisitId] = useState<number | undefined>();
+  // The dashboard's Did they come? buttons (`?attendance=came|no_show&visitId=`) open the record on that answer; the kitchen still confirms.
+  const attendanceFromLink = useRef(false);
+  useEffect(() => {
+    if (!isManagerView || !booking || attendanceFromLink.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const answer = params.get('attendance');
+    if (answer !== 'came' && answer !== 'no_show') return;
+    attendanceFromLink.current = true;
+    const visit = Number(params.get('visitId'));
+    setFixVisitId(Number.isInteger(visit) && visit > 0 ? visit : undefined);
+    setFixAction(answer === 'came' ? 'report_attended' : 'report_no_show');
+    setFixOpen(true);
+  }, [isManagerView, booking]);
   // Each "I was there" tap opens the booking's problem report, framed for a disputed no-show.
   const [iWasThereOpen, setIWasThereOpen] = useState(0);
   const [lateOpen, setLateOpen] = useState(false);
@@ -1794,7 +1808,7 @@ export default function BookingDetailsPage() {
       evidence={visitEvidence}
       attendance={<BookingAttendancePanel key={`${booking.id}-${isManagerView}`} bookingId={booking.id} manager={isManagerView} onSaved={reloadBookingDetails} timezone={booking.location?.timezone}
         chefName={chefName} closeout={booking.closeout} embedded
-        {...(isManagerView ? { fixOpen, onFixOpenChange: setFixOpen, fixAction } : {})}
+        {...(isManagerView ? { fixOpen, onFixOpenChange: setFixOpen, fixAction, fixVisitId } : {})}
         visitDetails={booking.visits?.length ? booking.visits : [{ ...booking, id: undefined }]} />}
       fixLabel={isManagerView && !visibleKeys.has('fix_record') && !visibleKeys.has('record_left') ? t('fixTitle') : undefined}
       onFix={isManagerView ? () => openFix() : undefined} />

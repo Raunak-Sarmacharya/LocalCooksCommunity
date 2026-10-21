@@ -27,7 +27,7 @@ type Attendance = { bookingId: number; status: string; checkinStatus: string | n
 type Action = 'arrival' | 'departure' | 'report_no_show' | 'report_attended' | 'withdraw_attendance' | 'support';
 type VisitDetails = Parameters<typeof hasBookingAttendanceEvidence>[0] & { id?: number; checkedInAt?: string | null; checkoutRequestedAt?: string | null; checkedOutAt?: string | null };
 
-export function BookingAttendancePanel({ bookingId, manager, localCooks = false, onSaved, timezone, chefName, closeout, visitDetails = [], embedded = false, hideArrivalStatus = false, fixOpen, onFixOpenChange, fixAction }: {
+export function BookingAttendancePanel({ bookingId, manager, localCooks = false, onSaved, timezone, chefName, closeout, visitDetails = [], embedded = false, hideArrivalStatus = false, fixOpen, onFixOpenChange, fixAction, fixVisitId }: {
   bookingId: number; manager: boolean; localCooks?: boolean; onSaved: () => Promise<void>; managerVisitHref?: string;
   timezone?: string | null; chefName?: string; closeout?: BookingCloseout; visitDetails?: VisitDetails[];
   /** Inside the booking page's Visit details: no card chrome, heading, zone line, status text or extra Message button (the Now card has them). */
@@ -36,8 +36,10 @@ export function BookingAttendancePanel({ bookingId, manager, localCooks = false,
   hideArrivalStatus?: boolean;
   /** Controls "Fix the visit record" from the page's overflow menu; the in-card trigger is then hidden. */
   fixOpen?: boolean; onFixOpenChange?: (open: boolean) => void;
-  /** Opens "Fix the visit record" straight on this choice when it applies ("Record when they left", "They came", "They didn't come"). */
+  /** Opens "Fix the visit record" straight on this choice when it applies ("Record when they left", "They came", "Report no-show"). */
   fixAction?: 'departure' | 'report_attended' | 'report_no_show';
+  /** The visit "Fix the visit record" opens on (the dashboard's Did they come? link names the day). */
+  fixVisitId?: number;
 }) {
   const { t, i18n } = useTranslation('chef');
   const locale = i18n?.resolvedLanguage || 'en-CA';
@@ -50,7 +52,8 @@ export function BookingAttendancePanel({ bookingId, manager, localCooks = false,
   const controlled = fixOpen !== undefined;
   const open = controlled ? fixOpen : internalOpen;
   const setOpen = (value: boolean) => { setInternalOpen(value); onFixOpenChange?.(value); };
-  const [visitId, setVisitId] = useState<number | undefined>(), [saving, setSaving] = useState(false), [error, setError] = useState('');
+  const [visitId, setVisitId] = useState<number | undefined>(fixVisitId), [saving, setSaving] = useState(false), [error, setError] = useState('');
+  useEffect(() => { if (fixVisitId != null) setVisitId(fixVisitId); }, [fixVisitId]);
   const endpoint = `/api/${localCooks ? 'admin' : manager ? 'manager' : 'chef'}/bookings/${bookingId}/attendance`;
   const request = async (body?: unknown) => {
     const token = await auth.currentUser?.getIdToken();
@@ -121,7 +124,7 @@ export function BookingAttendancePanel({ bookingId, manager, localCooks = false,
     if (!open) { setPresetApplied(false); return; }
     if (!presetApplied && fixAction && presetVisible) { setAction(fixAction); setPresetApplied(true); }
   }, [open, fixAction, presetVisible, presetApplied]);
-  // Opened from "They came" / "They didn't come": the kitchen already chose, so no chooser intro and no Back.
+  // Opened from "They came" / "Report no-show": the kitchen already chose, so no chooser intro and no Back.
   const preset = presetApplied && action === fixAction && (action === 'report_no_show' || action === 'report_attended');
   const visitPicker = data && data.visits.length > 1 && <label className="block text-sm">{t('bookingAttendanceVisit')}
     <Select value={visitId == null ? EMPTY : String(visitId)} disabled={saving} onValueChange={value => { setVisitId(value === EMPTY ? undefined : Number(value)); reset(); }}>
