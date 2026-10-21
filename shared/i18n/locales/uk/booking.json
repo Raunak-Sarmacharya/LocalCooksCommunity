@@ -150,6 +150,7 @@
   "sheetStorageOptionsTitle": "Варіанти зберігання",
   "sheetStorageReservationsItem": "{count, plural, one {# бронювання зберігання} few {# бронювання зберігання} many {# бронювань зберігання} other {# бронювання зберігання}}",
   "sheetTapDateToContinue": "Торкніться доступної дати, щоб продовжити",
+  "bkCheckDaysThenHours": "Перевірте свої дні, потім виберіть години. Торкніться дати, щоб додати або прибрати її.",
   "sheetTaxLabel": "Податок",
   "sheetTotalLabel": "Разом",
   "storageSelAddStorage": "Додати зберігання",

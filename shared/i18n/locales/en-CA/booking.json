@@ -150,6 +150,7 @@
   "sheetStorageOptionsTitle": "Storage Options",
   "sheetStorageReservationsItem": "{count, plural, one {# storage reservation} other {# storage reservations}}",
   "sheetTapDateToContinue": "Tap an available date to continue",
+  "bkCheckDaysThenHours": "Check your days, then choose hours. Tap a date to add or remove it.",
   "sheetTaxLabel": "Tax",
   "sheetTotalLabel": "Total",
   "storageSelAddStorage": "Add Storage",

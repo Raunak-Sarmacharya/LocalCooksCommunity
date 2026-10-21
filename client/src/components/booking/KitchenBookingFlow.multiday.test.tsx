@@ -82,6 +82,10 @@ describe('the existing flow with more days', () => {
     const yourDays = screen.getByRole('region', { name: 'Your days' });
     await waitFor(() => expect(within(yourDays).getAllByRole('listitem')).toHaveLength(3));
     expect(within(yourDays).getByText(/Wed, Oct 9/)).toBeInTheDocument();
+    // Days already chosen: the line says to check them (not "Tap an available date"), and the list leads the calendar.
+    expect(screen.getByText('Check your days, then choose hours. Tap a date to add or remove it.')).toBeInTheDocument();
+    expect(screen.queryByText('Tap an available date to continue')).toBeNull();
+    expect(yourDays.compareDocumentPosition(day(7)) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     await chooseDays();
     expect(row(11)).toBeInTheDocument();
   });

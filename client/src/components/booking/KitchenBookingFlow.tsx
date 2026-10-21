@@ -332,6 +332,9 @@ export default function KitchenBookingFlow({
   const [currentStep, setCurrentStep] = useState<BookingStep>("calendar");
   /** When true, date was prefilled — hide Date from the step rail and start after it. */
   const [hideDateStep, setHideDateStep] = useState(false);
+  /** Days handed over from the kitchen page: Your days leads the Date step so they're checked before the calendar. */
+  const [daysFirst, setDaysFirst] = useState(false);
+  const scrollToDays = useRef(false);
   /** False until kitchen + any restored prefs settle — avoids date-step flash. */
   const [isFlowReady, setIsFlowReady] = useState(false);
   const initRef = useRef(false);
@@ -999,6 +1002,8 @@ export default function KitchenBookingFlow({
         setSelectedDates(restore.dates ?? [restore.dateIso]);
         setCalendarMonth(new Date(y, m - 1, 1));
         if (restore.dates) {
+          setDaysFirst(true);
+          scrollToDays.current = true;
           setHideDateStep(false);
           setCurrentStep('calendar');
           return;
@@ -1419,6 +1424,44 @@ export default function KitchenBookingFlow({
 
     // Step: Date — kitchen-preview calendar (UICalendar + circular brand selection)
     if (currentStep === 'calendar' && selectedKitchen) {
+      const yourDays = selectedDate && (() => {
+            // One row per chosen day, each with its own availability (the old line counted one day's slots under all of them).
+            const days = isMultiDay ? selectedDates : [localDateKey(selectedDate)];
+            const dayLine = (date: string) => {
+              const slots = isMultiDay ? dayResources[date]?.slots : singleSlots;
+              if (!slots || (isMultiDay ? daysLoading : isLoadingSlots)) return { text: t("sheetLoadingSlotsText", "Loading time slots…"), tone: "muted" as const };
+              const free = slots.filter(slot => !slot.isFullyBooked).length;
+              const status = dateStatuses[date];
+              // Single day: today's past hours aren't in `slots`, so also honour the day status's reason a full day isn't possible.
+              const whole = isMultiDay ? !!dayResources[date]?.fullDay : free === slots.length && free > 0 && !status?.fullDayReason;
+              if (!free) return { text: t("bkDayNoHours"), tone: "bad" as const };
+              if (whole) return { text: t("bkDayOpenAllDay", { count: free }), tone: "good" as const };
+              const why = status?.fullDayReason === "weekly_limit" ? "bkDayWeeklyLimit" : status?.fullDayReason === "notice" ? "bkDayTooSoon" : "bkDayPartlyBooked";
+              return { text: t(why, { count: free }), tone: "limited" as const };
+            };
+            // Once, on arrival: on a phone the list sits under the kitchen card; bring it up clear of the sticky footer.
+            return <section aria-label={t("bkYourDays")} className="mx-auto w-full max-w-[640px] scroll-mb-48 rounded-2xl border border-gray-200 bg-white lg:scroll-mb-0"
+              ref={node => { if (node && scrollToDays.current) { scrollToDays.current = false; node.scrollIntoView?.({ block: "nearest" }); } }}>
+              <h4 className="border-b border-gray-100 px-4 py-2.5 text-sm font-semibold text-gray-900">{t("bkYourDays")}</h4>
+              <ul className="divide-y divide-gray-100">{days.map(date => {
+                const line = dayLine(date);
+                return <li key={date} className="flex min-h-12 items-center justify-between gap-3 px-4 py-2">
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium text-gray-900">{new Date(`${date}T12:00:00`).toLocaleDateString(i18n.language, { weekday: "short", month: "short", day: "numeric" })}</span>
+                    <span className={cn("flex items-center gap-1.5 text-xs", line.tone === "good" ? "text-emerald-700" : line.tone === "limited" ? "text-amber-700" : line.tone === "bad" ? "text-destructive" : "text-muted-foreground")}>
+                      {line.tone !== "muted" && <span aria-hidden="true" className={cn("h-1.5 w-1.5 rounded-full", line.tone === "good" ? "bg-emerald-500" : line.tone === "limited" ? "bg-amber-500" : "bg-destructive")} />}
+                      {line.text}
+                    </span>
+                  </span>
+                  <button type="button" aria-label={t("bkRemoveDay", { date: new Date(`${date}T12:00:00`).toLocaleDateString(i18n.language, { month: "short", day: "numeric" }) })}
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-gray-100 hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E10939]"
+                    onClick={() => multipleAllowed ? selectMultipleDates(selectedDates.filter(day => day !== date).map(day => new Date(`${day}T12:00:00`))) : (setSelectedDate(null), setSelectedDates([]), setSelectedSlots([]))}>
+                    <Icon icon="mdi:close" className="h-4 w-4" aria-hidden />
+                  </button>
+                </li>;
+              })}</ul>
+            </section>;
+          })();
       return (
         <div className="space-y-5">
           <div className="flex items-start justify-between gap-3">
@@ -1428,7 +1471,7 @@ export default function KitchenBookingFlow({
                 {t("sheetSelectDateTitle", "Choose your days")}
               </h3>
               <p className="text-sm text-muted-foreground mt-1">
-                {t("sheetTapDateToContinue", "Tap an available date to continue")}
+                {selectedDate ? t("bkCheckDaysThenHours") : t("sheetTapDateToContinue", "Tap an available date to continue")}
               </p>
             </div>
             {selectedDate && (
@@ -1446,6 +1489,7 @@ export default function KitchenBookingFlow({
             )}
           </div>
 
+          {daysFirst && yourDays}
           <div className="relative mx-auto w-full max-w-[640px] rounded-[1.35rem] border border-gray-100 bg-gray-50/40 p-2 sm:p-3">
             {isLoadingAvailability && (
               <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-white/60">
@@ -1482,42 +1526,7 @@ export default function KitchenBookingFlow({
             />}
           </div>
 
-          {selectedDate && (() => {
-            // One row per chosen day, each with its own availability (the old line counted one day's slots under all of them).
-            const days = isMultiDay ? selectedDates : [localDateKey(selectedDate)];
-            const dayLine = (date: string) => {
-              const slots = isMultiDay ? dayResources[date]?.slots : singleSlots;
-              if (!slots || (isMultiDay ? daysLoading : isLoadingSlots)) return { text: t("sheetLoadingSlotsText", "Loading time slots…"), tone: "muted" as const };
-              const free = slots.filter(slot => !slot.isFullyBooked).length;
-              const status = dateStatuses[date];
-              // Single day: today's past hours aren't in `slots`, so also honour the day status's reason a full day isn't possible.
-              const whole = isMultiDay ? !!dayResources[date]?.fullDay : free === slots.length && free > 0 && !status?.fullDayReason;
-              if (!free) return { text: t("bkDayNoHours"), tone: "bad" as const };
-              if (whole) return { text: t("bkDayOpenAllDay", { count: free }), tone: "good" as const };
-              const why = status?.fullDayReason === "weekly_limit" ? "bkDayWeeklyLimit" : status?.fullDayReason === "notice" ? "bkDayTooSoon" : "bkDayPartlyBooked";
-              return { text: t(why, { count: free }), tone: "limited" as const };
-            };
-            return <section aria-label={t("bkYourDays")} className="mx-auto w-full max-w-[640px] rounded-2xl border border-gray-200 bg-white">
-              <h4 className="border-b border-gray-100 px-4 py-2.5 text-sm font-semibold text-gray-900">{t("bkYourDays")}</h4>
-              <ul className="divide-y divide-gray-100">{days.map(date => {
-                const line = dayLine(date);
-                return <li key={date} className="flex min-h-12 items-center justify-between gap-3 px-4 py-2">
-                  <span className="min-w-0">
-                    <span className="block text-sm font-medium text-gray-900">{new Date(`${date}T12:00:00`).toLocaleDateString(i18n.language, { weekday: "short", month: "short", day: "numeric" })}</span>
-                    <span className={cn("flex items-center gap-1.5 text-xs", line.tone === "good" ? "text-emerald-700" : line.tone === "limited" ? "text-amber-700" : line.tone === "bad" ? "text-destructive" : "text-muted-foreground")}>
-                      {line.tone !== "muted" && <span aria-hidden="true" className={cn("h-1.5 w-1.5 rounded-full", line.tone === "good" ? "bg-emerald-500" : line.tone === "limited" ? "bg-amber-500" : "bg-destructive")} />}
-                      {line.text}
-                    </span>
-                  </span>
-                  <button type="button" aria-label={t("bkRemoveDay", { date: new Date(`${date}T12:00:00`).toLocaleDateString(i18n.language, { month: "short", day: "numeric" }) })}
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-gray-100 hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E10939]"
-                    onClick={() => multipleAllowed ? selectMultipleDates(selectedDates.filter(day => day !== date).map(day => new Date(`${day}T12:00:00`))) : (setSelectedDate(null), setSelectedDates([]), setSelectedSlots([]))}>
-                    <Icon icon="mdi:close" className="h-4 w-4" aria-hidden />
-                  </button>
-                </li>;
-              })}</ul>
-            </section>;
-          })()}
+          {!daysFirst && yourDays}
         </div>
       );
     }
@@ -2102,7 +2111,8 @@ export default function KitchenBookingFlow({
           </aside>
 
           {/* Main column */}
-          <div className={cn("flex min-w-0 flex-1 flex-col rounded-[1.35rem] border bg-white shadow-sm", currentStep !== "confirm" && "overflow-hidden lg:h-full lg:min-h-0")}>
+          {/* overflow-clip, not hidden: still clips the corners but isn't a scroll box, so the footer below stays stuck to the bottom on a phone. */}
+          <div className={cn("flex min-w-0 flex-1 flex-col rounded-[1.35rem] border bg-white shadow-sm", currentStep !== "confirm" && "overflow-clip lg:h-full lg:min-h-0")}>
             {/* Mobile kitchen context */}
             <div className="flex-shrink-0 border-b bg-gray-50/50 px-4 py-3 lg:hidden">
               {selectedKitchen ? (

@@ -150,6 +150,7 @@
   "sheetStorageOptionsTitle": "Options de stockage",
   "sheetStorageReservationsItem": "{count, plural, one {# réservation de stockage} other {# réservations de stockage}}",
   "sheetTapDateToContinue": "Touchez une date disponible pour continuer",
+  "bkCheckDaysThenHours": "Vérifiez vos jours, puis choisissez vos heures. Touchez une date pour l'ajouter ou la retirer.",
   "sheetTaxLabel": "Taxe",
   "sheetTotalLabel": "Total",
   "storageSelAddStorage": "Ajouter l'entreposage",
