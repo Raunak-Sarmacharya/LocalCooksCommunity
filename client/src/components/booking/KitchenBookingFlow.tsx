@@ -1490,7 +1490,8 @@ export default function KitchenBookingFlow({
               if (!slots || (isMultiDay ? daysLoading : isLoadingSlots)) return { text: t("sheetLoadingSlotsText", "Loading time slots…"), tone: "muted" as const };
               const free = slots.filter(slot => !slot.isFullyBooked).length;
               const status = dateStatuses[date];
-              const whole = isMultiDay ? !!dayResources[date]?.fullDay : free === slots.length && free > 0;
+              // Single day: today's past hours aren't in `slots`, so also honour the day status's reason a full day isn't possible.
+              const whole = isMultiDay ? !!dayResources[date]?.fullDay : free === slots.length && free > 0 && !status?.fullDayReason;
               if (!free) return { text: t("bkDayNoHours"), tone: "bad" as const };
               if (whole) return { text: t("bkDayOpenAllDay", { count: free }), tone: "good" as const };
               const why = status?.fullDayReason === "weekly_limit" ? "bkDayWeeklyLimit" : status?.fullDayReason === "notice" ? "bkDayTooSoon" : "bkDayPartlyBooked";
