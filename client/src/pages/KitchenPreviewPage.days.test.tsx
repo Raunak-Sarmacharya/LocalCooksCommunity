@@ -41,11 +41,19 @@ it('picks several days under the booking rules and saves them with the first day
   await waitFor(() => expect(day(9)).toHaveAccessibleName(/Not every hour is free/));
   expect(day(4)).toHaveAttribute('aria-disabled', 'true');
   fireEvent.click(day(7)); fireEvent.click(day(9)); fireEvent.click(day(11));
-  expect(screen.getByTestId('preview-days-field')).toHaveTextContent('3 days · Mon, Oct 7 – Fri, Oct 11');
+  // Not back to back, so each day is named; a range would read like a continuous stay.
+  expect(screen.getByTestId('preview-days-field')).toHaveTextContent(/3 days\s*Mon, Oct 7, Wed, Oct 9, Fri, Oct 11/);
   expect(day(12)).toHaveAccessibleName(/Up to 3 days per booking/);
   const saved = JSON.parse(sessionStorage.getItem('kitchen_dates_54')!);
   expect(saved.dates).toEqual(['2030-10-07', '2030-10-09', '2030-10-11']);
   expect(new Date(saved.from).getDate()).toBe(7);
+});
+
+it('back-to-back days read as a range', async () => {
+  renderCard();
+  await waitFor(() => expect(day(9)).toHaveAccessibleName(/Not every hour is free/));
+  fireEvent.click(day(7)); fireEvent.click(day(8));
+  expect(screen.getByTestId('preview-days-field')).toHaveTextContent(/2 days\s*Mon, Oct 7 – Tue, Oct 8/);
 });
 
 it('keeps the single typed date when the kitchen takes one day per booking', async () => {

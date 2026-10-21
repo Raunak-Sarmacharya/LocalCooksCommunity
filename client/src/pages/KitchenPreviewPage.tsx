@@ -1949,7 +1949,11 @@ export function GuestHoursCard({
     return reason && bt(reason, { count: maxDays });
   };
   const dayLabel = (day: string) => new Date(`${day}T12:00:00`).toLocaleDateString(i18n.language, { weekday: "short", month: "short", day: "numeric" });
-  const daysRange = selectedDays.length > 1 ? `${dayLabel(selectedDays[0])} – ${dayLabel(selectedDays[selectedDays.length - 1])}` : selectedDays[0] ? dayLabel(selectedDays[0]) : "";
+  // A range only for back-to-back days; Mon, Wed, Fri as a range would read like a continuous stay.
+  const consecutiveDays = selectedDays.every((day, i) => i === 0 || Date.parse(`${day}T12:00:00Z`) - Date.parse(`${selectedDays[i - 1]}T12:00:00Z`) === 86400000);
+  const daysRange = selectedDays.length > 1
+    ? consecutiveDays ? `${dayLabel(selectedDays[0])} – ${dayLabel(selectedDays[selectedDays.length - 1])}` : selectedDays.map(dayLabel).join(", ")
+    : selectedDays[0] ? dayLabel(selectedDays[0]) : "";
 
   const handleProceed = () => {
     if (selectedDate) {
@@ -2182,10 +2186,10 @@ export function GuestHoursCard({
                 <span className="block text-xs font-medium uppercase tracking-wider text-gray-500">
                   {t("selectYourDates", "Choose your dates")}
                 </span>
-                {/* A narrow card wraps after the count, never inside the date range. */}
+                {/* Count on its own line, then the days. */}
                 <span className={cn("mt-0.5 block text-sm", daysRange ? "text-gray-900" : "text-gray-500")}>
-                  {selectedDays.length > 1 && `${bt("mdSelectedDays", { count: selectedDays.length })} · `}
-                  {daysRange ? <span className="whitespace-nowrap">{daysRange}</span> : t("addDates", "Add dates")}
+                  {selectedDays.length > 1 && <span className="block font-medium">{bt("mdSelectedDays", { count: selectedDays.length })}</span>}
+                  {daysRange || t("addDates", "Add dates")}
                 </span>
               </button>
             ) : (
