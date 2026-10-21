@@ -130,7 +130,7 @@ router.post('/chef/bookings/:id/days/cancel', requireFirebaseAuthWithUser, requi
         if (!(booking.scheduleRevision > 0)) return res.status(409).json({ error: 'This booking has one day. Cancel the booking instead.' });
         const { cancelChefBooking } = await import('../services/booking-cancellation-refund');
         const result = await cancelChefBooking(id, req.neonUser!.id, req.body.operationKey, reason, req.neonUser!.id, expected, visitIds);
-        await (await import('../services/booking-lifecycle-delivery')).deliverBookingLifecycleEvents(10, 20_000, id).catch(error => logger.warn('Day cancellation notice pending retry', error));
+        (await import('../services/booking-lifecycle-delivery')).deliverBookingNoticesAfterResponse(id, 'Day cancellation notice pending retry');
         await import('../services/booking-documents').then(d => d.issueBookingDocumentsSafely(id, 'chef_cancelled')).catch(() => undefined);
         res.json(result);
     } catch (error) {
@@ -327,7 +327,7 @@ router.put('/chef/equipment-bookings/:id/cancel', requireChef, async (req, res) 
                 return res.status(400).json({ error: 'Invalid equipment removal request' });
             const { removeChefAddon } = await import('../services/booking-cancellation-refund');
             const result = await removeChefAddon(item.kitchenBookingId, req.neonUser!.id, { kind: 'equipment', id }, { operationKey, expectedRefundCents: expected, reason });
-            await (await import('../services/booking-lifecycle-delivery')).deliverBookingLifecycleEvents(10, 20_000, item.kitchenBookingId).catch(error => logger.warn('Add-on removal notice pending retry', error));
+            (await import('../services/booking-lifecycle-delivery')).deliverBookingNoticesAfterResponse(item.kitchenBookingId, 'Add-on removal notice pending retry');
             await import('../services/booking-documents').then(d => d.issueBookingDocumentsSafely(item.kitchenBookingId, 'addon_removed')).catch(() => undefined);
             return res.json(result);
         }
@@ -1380,8 +1380,7 @@ router.put("/chef/bookings/:id/cancel", requireChef, async (req: Request, res: R
             const result = await decideAuthorizedBooking(id, 'cancelled', [], [], req.neonUser!.id);
             await db.update(kitchenBookings).set({ cancellationEffectiveAt: new Date(), cancellationCause: 'chef', cancellationOperationKey: req.body.operationKey || `chef-withdraw-${id}-${req.neonUser!.id}` })
                 .where(and(eq(kitchenBookings.id, id), eq(kitchenBookings.status, 'cancelled')));
-            const { deliverBookingLifecycleEvents } = await import('../services/booking-lifecycle-delivery');
-            await deliverBookingLifecycleEvents(10, 20_000, id).catch(error => logger.warn('Booking email delivery pending retry', error));
+            (await import('../services/booking-lifecycle-delivery')).deliverBookingNoticesAfterResponse(id, 'Booking email delivery pending retry');
             return res.json({ ...result, action: 'cancelled', message: 'Booking cancelled. Stripe confirmed the payment authorization was cancelled.' });
         }
 
@@ -1405,7 +1404,7 @@ router.put("/chef/bookings/:id/cancel", requireChef, async (req: Request, res: R
         if (['confirmed', 'cancellation_requested'].includes(booking.status) && ['paid', 'partially_refunded'].includes(booking.paymentStatus || '')) {
             const { cancelChefBooking } = await import('../services/booking-cancellation-refund');
             const result = await cancelChefBooking(id, req.neonUser!.id, req.body.operationKey, reason, req.neonUser!.id, req.body.expectedRefundCents);
-            await (await import('../services/booking-lifecycle-delivery')).deliverBookingLifecycleEvents(10, 20_000, id).catch(error => logger.warn('Cancellation notice pending retry', error));
+            (await import('../services/booking-lifecycle-delivery')).deliverBookingNoticesAfterResponse(id, 'Cancellation notice pending retry');
             await import('../services/booking-documents').then(d => d.issueBookingDocumentsSafely(id, 'chef_cancelled')).catch(() => undefined);
             return res.json(result);
         }
@@ -1433,8 +1432,7 @@ router.post("/chef/bookings/:id/partial-acceptance", requireChef, async (req: Re
         if (!owner || owner.chefId !== req.neonUser!.id) return res.status(404).json({ error: 'Booking not found' });
         const { answerPartialAcceptance } = await import('../services/booking-payment-decision');
         const result = await answerPartialAcceptance(id, proposalId, answer, req.neonUser!.id);
-        const { deliverBookingLifecycleEvents } = await import('../services/booking-lifecycle-delivery');
-        await deliverBookingLifecycleEvents(10, 20_000, id).catch(error => logger.warn('Booking email delivery pending retry', error));
+        (await import('../services/booking-lifecycle-delivery')).deliverBookingNoticesAfterResponse(id, 'Booking email delivery pending retry');
         return res.json(result);
     } catch (error: any) {
         if (typeof error?.status === 'number' && error.code === 'BOOKING_PAYMENT_REVIEW_REQUIRED') return res.status(error.status).json({ error: error.message, code: error.code });

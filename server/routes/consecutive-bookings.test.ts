@@ -20,7 +20,7 @@ vi.mock('../services/stripe-service', () => ({ createPaymentIntent: state.paymen
 vi.mock('../services/booking-cancellation-refund', () => ({ readChefCancellationQuote: state.quote, cancelChefBooking: state.cancel, readChefAddonQuote: state.addonQuote, removeChefAddon: state.remove }));
 vi.mock('../services/booking-item-cancellation', async importOriginal => ({ ...(await importOriginal() as object), cancelBookingItem: state.legacy }));
 vi.mock('../services/booking-documents', () => ({ issueBookingDocumentsSafely: state.documents }));
-vi.mock('../services/booking-lifecycle-delivery', () => ({ deliverBookingLifecycleEvents: state.deliver, queueBookingLifecycleEvent: vi.fn() }));
+vi.mock('../services/booking-lifecycle-delivery', () => ({ deliverBookingLifecycleEvents: state.deliver, deliverBookingNoticesAfterResponse: (id: number) => state.deliver(10, 20_000, id), queueBookingLifecycleEvent: vi.fn() }));
 vi.mock('../firebase-auth-middleware', () => ({ requireFirebaseAuthWithUser: vi.fn(), hasVerifiedEmail: () => true }));
 vi.mock('./middleware', () => ({ requireChef: vi.fn(), requireNoUnpaidPenalties: vi.fn(), requirePortalUser: vi.fn() }));
 vi.mock('../r2-storage', () => ({ getPresignedUrl: vi.fn() }));

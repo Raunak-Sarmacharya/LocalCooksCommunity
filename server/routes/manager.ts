@@ -978,7 +978,7 @@ router.post('/bookings/:id/days/cancel', requireFirebaseAuthWithUser, requireMan
     if (!(booking?.scheduleRevision > 0)) return res.status(409).json({ error: 'This booking has one day. Cancel the booking instead.' });
     const { cancelKitchenCausedBooking } = await import('../services/booking-cancellation-refund');
     const result = await cancelKitchenCausedBooking(id, req.neonUser!.id, req.neonUser!.id, req.body.operationKey, req.body.reason, { visitIds, expectedRefundCents: req.body.expectedRefundCents });
-    await (await import('../services/booking-lifecycle-delivery')).deliverBookingLifecycleEvents(10, 20_000, id).catch(error => logger.warn('Day cancellation notice pending retry', error));
+    (await import('../services/booking-lifecycle-delivery')).deliverBookingNoticesAfterResponse(id, 'Day cancellation notice pending retry');
     await import('../services/booking-documents').then(d => d.issueBookingDocumentsSafely(id, 'kitchen_cancelled')).catch(() => undefined);
     res.json(result);
   } catch (error) { res.status((error as { status?: number }).status || 409).json({ error: error instanceof Error ? error.message : 'Kitchen cancellation needs review' }); }
@@ -992,7 +992,7 @@ router.post('/bookings/:id/days/:visitId/refund', requireFirebaseAuthWithUser, r
   try {
     const { refundDatedDay } = await import('../services/dated-booking-cancellation');
     const result = await refundDatedDay(id, req.neonUser!.id, { visitId, amountCents, reason: req.body.reason, operationKey: req.body.operationKey });
-    await (await import('../services/booking-lifecycle-delivery')).deliverBookingLifecycleEvents(10, 20_000, id).catch(error => logger.warn('Day refund notice pending retry', error));
+    (await import('../services/booking-lifecycle-delivery')).deliverBookingNoticesAfterResponse(id, 'Day refund notice pending retry');
     await import('../services/booking-documents').then(d => d.issueBookingDocumentsSafely(id, 'kitchen_day_refund')).catch(() => undefined);
     res.json(result);
   } catch (error) { res.status((error as { status?: number }).status || 409).json({ error: error instanceof Error ? error.message : 'The refund needs review' }); }
@@ -4754,8 +4754,7 @@ router.put(
       if (booking.status === 'pending' && booking.paymentStatus === 'authorized' && ['confirmed', 'cancelled'].includes(status)) {
         const { decideAuthorizedBooking } = await import('../services/booking-payment-decision');
         const result = await decideAuthorizedBooking(id, status, storageActions, equipmentActions, user.id, undefined, { message: status === 'cancelled' ? declineMessage : undefined, declinedVisitIds, suggestingOtherTimes: status === 'cancelled' && req.body.suggestOtherTimes === true });
-        const { deliverBookingLifecycleEvents } = await import('../services/booking-lifecycle-delivery');
-        await deliverBookingLifecycleEvents(10, 20_000, id).catch(error => logger.warn('Booking email delivery pending retry', error));
+        (await import('../services/booking-lifecycle-delivery')).deliverBookingNoticesAfterResponse(id, 'Booking email delivery pending retry');
         return res.json(result);
       }
 
@@ -4829,8 +4828,7 @@ router.put(
       const isCancellation = previousStatus === "confirmed" && status === "cancelled";
       const isFromPending = previousStatus === "pending";
 
-      const { deliverBookingLifecycleEvents } = await import("../services/booking-lifecycle-delivery");
-      await deliverBookingLifecycleEvents(10, 20_000, id).catch(error => logger.warn("Booking email delivery pending retry", error));
+      (await import("../services/booking-lifecycle-delivery")).deliverBookingNoticesAfterResponse(id, "Booking email delivery pending retry");
 
       // Build response with refund info if applicable
       const responseData: any = {

@@ -15,6 +15,7 @@ import { adminBookingTransactionsPath } from '@shared/admin-booking-link';
 import { getAppBaseUrl } from '../config';
 import { isE2eOutboundSuppressed } from '../e2e-outbound-guard';
 import { logger } from '../logger';
+import { waitUntil } from '@vercel/functions';
 import { deliveryReserve, deliveryLeaseMs } from './worker-context';
 import { isPermanentRecipientRejection } from './bounded-smtp';
 import { closeoutNoticeKinds, currentCloseoutEmail, type CloseoutNoticeKind } from './closeout-notice-email';
@@ -454,6 +455,12 @@ export async function requeueBookingNotice(bookingId: number, eventId: number, r
     wakeBookingNoticeDelivery(bookingId);
     return { success: true, eventId: replay.id };
   });
+}
+
+/** Sends a booking's queued notices after the response, so the person acting isn't kept waiting on mail (accept took
+ * 18 s on dev). Same invocation and work as before (no extra Vercel usage); the outbox and backstop stay authoritative. */
+export function deliverBookingNoticesAfterResponse(bookingId: number, pendingMessage: string) {
+  waitUntil(deliverBookingLifecycleEvents(10, 20_000, bookingId).catch(error => logger.warn(pendingMessage, error)));
 }
 
 export async function deliverBookingLifecycleEvents(limit = 10, budgetMs = 20_000, onlyBookingId?: number, onlyEventId?: number, replay = false) {

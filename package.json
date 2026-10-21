@@ -117,6 +117,7 @@
     "@types/memoizee": "^0.4.12",
     "@types/multer": "^1.4.12",
     "@types/pg": "^8.16.0",
+    "@vercel/functions": "^3.10.2",
     "@vidstack/react": "^1.12.13",
     "bcryptjs": "^3.0.2",
     "class-variance-authority": "^0.7.1",
