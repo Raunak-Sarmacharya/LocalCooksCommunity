@@ -2884,6 +2884,8 @@
   "fixRetry": "Try again",
   "fixSaving": "Saving…",
   "fixReportButton": "Report no-show",
+  "fixConfirmCame": "Confirm {chef} came",
+  "fixConfirmCameButton": "Yes, they came",
   "fixAttendedButton": "Mark as attended",
   "fixUndoButton": "Undo no-show report",
   "fixNoShowSaved": "No-show reported. {chef} has been notified.",

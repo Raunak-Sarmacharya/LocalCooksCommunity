@@ -2884,6 +2884,8 @@
   "fixRetry": "Réessayer",
   "fixSaving": "Enregistrement…",
   "fixReportButton": "Signaler l’absence",
+  "fixConfirmCame": "Confirmer que {chef} est venu",
+  "fixConfirmCameButton": "Oui, la personne est venue",
   "fixAttendedButton": "Marquer comme présent",
   "fixUndoButton": "Annuler le signalement",
   "fixNoShowSaved": "Absence signalée. {chef} a été avisé.",

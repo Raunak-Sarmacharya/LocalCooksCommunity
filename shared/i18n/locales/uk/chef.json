@@ -2884,6 +2884,8 @@
   "fixRetry": "Спробувати ще раз",
   "fixSaving": "Збереження…",
   "fixReportButton": "Повідомити про неявку",
+  "fixConfirmCame": "Підтвердіть, що {chef} був на місці",
+  "fixConfirmCameButton": "Так, шеф був",
   "fixAttendedButton": "Позначити як відвіданий",
   "fixUndoButton": "Скасувати повідомлення",
   "fixNoShowSaved": "Про неявку повідомлено. {chef} отримав сповіщення.",

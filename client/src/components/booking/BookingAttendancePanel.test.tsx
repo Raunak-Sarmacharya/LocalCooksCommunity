@@ -60,7 +60,7 @@ it('makes a personal attended note optional and shows the factual default before
   const { fetcher } = mount(); await open(); fireEvent.click(screen.getByRole('button', { name: /Alex did come/ }));
   expect(screen.getByLabelText('Note to Alex (optional)')).not.toBeRequired();
   expect(screen.getByText(/Without a note, we’ll share/)).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Mark as attended' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Yes, they came' }));
   await waitFor(() => expect(posts(fetcher)).toHaveLength(1));
   expect(JSON.parse(posts(fetcher)[0][1].body).sharedMessage).toBe('The kitchen confirms that the chef attended this visit.');
 });
@@ -131,7 +131,7 @@ it('labels support actions and keeps internal notes on the admin endpoint', asyn
   expect(screen.queryByRole('button', { name: /arrived but/ })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: /Alex did come/ }));
   fireEvent.change(screen.getByLabelText('Internal note (only Local Cooks sees this)'), { target: { value: 'Confirmed with the kitchen.' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Mark as attended' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Yes, they came' }));
   await waitFor(() => expect(posts(fetcher)).toHaveLength(1));
   expect(posts(fetcher)[0][0]).toBe('/api/admin/bookings/10/attendance');
   expect(JSON.parse(posts(fetcher)[0][1].body).internalNotes).toBe('Confirmed with the kitchen.');
@@ -180,6 +180,18 @@ it('opens on the visit and answer named by the dashboard link, and only saves on
   const two = { ...record, visits: [record.visits[0], { ...record.visits[0], id: 6, startTime: '13:00', endTime: '14:00' }] };
   const { fetcher } = mount({ data: two, fixOpen: true, onFixOpenChange: vi.fn(), fixAction: 'report_attended', fixVisitId: 6 });
   const dialog = await screen.findByRole('dialog');
-  expect(await within(dialog).findByRole('button', { name: 'Mark as attended' })).toBeInTheDocument();
+  expect(await within(dialog).findByRole('button', { name: 'Yes, they came' })).toBeInTheDocument();
+  expect(within(dialog).getByRole('heading', { name: 'Confirm Alex came' })).toBeInTheDocument();
+  expect(posts(fetcher)).toHaveLength(0);
+});
+it('keeps the correction wording when a no-show answer already exists, and Back closes a preset dialog', async () => {
+  const onFixOpenChange = vi.fn();
+  const answered = { ...record, visits: [{ ...record.visits[0], checkinStatus: 'no_show' }], history: [{ id: 1, visitId: 5, action: 'report_no_show', actorRole: 'manager', sharedMessage: 'We waited.', createdAt: '2026-10-04T12:00:00Z' }] };
+  const { fetcher } = mount({ data: answered, fixOpen: true, onFixOpenChange, fixAction: 'report_attended' });
+  const dialog = await screen.findByRole('dialog');
+  expect(await within(dialog).findByRole('heading', { name: 'Alex did come, the record is wrong' })).toBeInTheDocument();
+  expect(within(dialog).getByRole('button', { name: 'Mark as attended' })).toBeInTheDocument();
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Back' }));
+  expect(onFixOpenChange).toHaveBeenLastCalledWith(false);
   expect(posts(fetcher)).toHaveLength(0);
 });

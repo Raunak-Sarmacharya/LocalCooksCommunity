@@ -83,6 +83,9 @@ export function BookingAttendancePanel({ bookingId, manager, localCooks = false,
   const canReport = active && chosen && Date.now() >= Date.parse(selected?.scheduledEnd || data!.scheduledEnd);
   const arrived = !!arrival || clock?.arrivalRecorded || ['checked_in', 'checkout_requested', 'checked_out', 'checkout_claim_filed'].includes(status || '');
   const noShow = status === 'no_show' || latest?.action === 'report_no_show';
+  // Nobody has answered for this visit yet: "They came" confirms rather than corrects a record.
+  const unanswered = !noShow && events.length === 0;
+  const confirmCame = action === 'report_attended' && unanswered;
   const ended = !!chosen && (clock ? ['booked_time_ended', 'ended'].includes(clock.phase) : Date.now() >= Date.parse(selected?.scheduledEnd || data?.scheduledEnd || ''));
   // The visit is over and nobody checked in: one plain line instead of "No check-in yet".
   const missed = ended && !arrived && !noShow && latest?.action !== 'report_attended' && status !== 'checked_out';
@@ -142,7 +145,7 @@ export function BookingAttendancePanel({ bookingId, manager, localCooks = false,
       {(manager || localCooks) && data && <Dialog open={open} onOpenChange={value => { if (!saving) { setOpen(value); reset(); } }}>
         {!controlled && <DialogTrigger asChild><Button variant="outline" size="sm">{t(localCooks ? 'fixTitleSupport' : 'fixTitle')}</Button></DialogTrigger>}
         <DialogContent showCloseButton className="max-h-[85vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>{action ? t(labels[action], { chef }) : t('fixTitle')}</DialogTitle><DialogDescription>{t(preset ? 'fixIntroPreset' : 'fixIntro', { chef })}</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>{confirmCame ? t('fixConfirmCame', { chef }) : action ? t(labels[action], { chef }) : t('fixTitle')}</DialogTitle><DialogDescription>{t(preset ? 'fixIntroPreset' : 'fixIntro', { chef })}</DialogDescription></DialogHeader>
           {localCooks && <p className="text-sm text-muted-foreground">{t('fixActingFor')}</p>}
           {visitPicker}
           {!action ? <div className="space-y-2">{options.filter(option => option.visible).map(option => <button key={option.value} type="button" className="flex w-full items-start gap-3 rounded-xl border p-4 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => setAction(option.value)}>
@@ -160,7 +163,10 @@ export function BookingAttendancePanel({ bookingId, manager, localCooks = false,
               {localCooks && <div className="space-y-2"><label className="block text-sm" htmlFor={`attendance-internal-${bookingId}`}>{t('fixInternal')}</label><Textarea id={`attendance-internal-${bookingId}`} maxLength={2000} value={internalNotes} onChange={event => setInternalNotes(event.target.value)} disabled={saving} /></div>}
               {action === 'report_no_show' && <p className="rounded-lg bg-muted p-3 text-sm">{t('fixPolicy', { chef })}</p>}
               {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-              <Button type="submit" disabled={saving}>{t(saving ? 'fixSaving' : action === 'report_no_show' ? 'fixReportButton' : action === 'report_attended' ? 'fixAttendedButton' : 'fixUndoButton')}</Button>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button type="submit" disabled={saving}>{t(saving ? 'fixSaving' : action === 'report_no_show' ? 'fixReportButton' : confirmCame ? 'fixConfirmCameButton' : action === 'report_attended' ? 'fixAttendedButton' : 'fixUndoButton')}</Button>
+                {preset && <Button type="button" variant="ghost" disabled={saving} onClick={() => { setOpen(false); reset(); }}>{t('fixBack')}</Button>}
+              </div>
             </form>}
           </div>}
         </DialogContent>
