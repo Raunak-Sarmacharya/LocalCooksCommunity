@@ -14,7 +14,7 @@ vi.mock('./location-access-notices', () => ({ accessEndedMarker: 'Access ended b
 vi.mock('./lifecycle-settings', () => ({ getLifecycleSettings: vi.fn(async () => ({ managerResponseBufferHours: 1, inspectionAutoCloseHours: 24 })) }));
 vi.mock('../domains/locations/location.service', () => ({ locationService: { getLocationRequirementsWithDefaults: vi.fn(async () => ({})) } }));
 
-import { bookingOutcome, claimNextActor, getCustomerPage } from './manager-customer-page';
+import { bookingOutcome, bookingRentals, claimNextActor, getCustomerPage, lateCancellation } from './manager-customer-page';
 
 describe('past booking outcomes are explicit and never a guess', () => {
   const base = { status: 'completed', checkinStatus: 'checked_out', checkoutApprovedBy: null as number | null, cancellationCause: null as string | null };
@@ -57,5 +57,23 @@ describe('customer page access', () => {
   it('a person with no relationship to any of the manager’s locations is a 404', async () => {
     mocks.results.push(harbour, harbour, harbour);
     await expect(getCustomerPage(2, 7, 47)).rejects.toMatchObject({ statusCode: 404, message: 'Customer not found' });
+  });
+});
+
+describe('paid rentals and late cancellations', () => {
+  it('counts a paid listing once across its days; free, cancelled and rejected items do not count', () => {
+    expect(bookingRentals([
+      { equipmentListingId: 89, name: 'Oven', totalPrice: 2500 }, { equipmentListingId: 89, name: 'Oven', totalPrice: 2500 },
+      { equipmentListingId: 90, name: 'Range', totalPrice: 0 }, { equipmentListingId: 91, name: 'Mixer', totalPrice: 900, status: 'cancelled' },
+      { equipmentListingId: 92, name: 'Fryer', totalPrice: 900, status: 'rejected' },
+    ], [{ storageListingId: 5, name: 'Shelf', totalPrice: '1050' }], null)).toEqual([{ name: 'Oven', days: 2 }, { name: 'Shelf', days: 1 }]);
+  });
+  it('late only when the customer cancelled inside the booking’s own frozen window', () => {
+    const start = new Date('2026-10-12T16:30:00Z');
+    const row = { status: 'cancelled', cancellationCause: 'chef', cancellationEffectiveAt: new Date('2026-10-12T05:00:00Z'), cancellationPolicyHours: 24 };
+    expect(lateCancellation(row, start)).toBe(true);
+    expect(lateCancellation({ ...row, cancellationEffectiveAt: new Date('2026-10-11T16:00:00Z') }, start)).toBe(false);
+    expect(lateCancellation({ ...row, cancellationCause: 'kitchen' }, start)).toBe(false);
+    expect(lateCancellation({ ...row, cancellationPolicyHours: null }, start)).toBe(false);
   });
 });

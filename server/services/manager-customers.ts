@@ -85,22 +85,25 @@ export type CustomerListResponse = { customers: CustomerListRow[]; counts: Custo
 
 /* ───────────────────────────── pure assembly ───────────────────────────── */
 
-export function bookingBounds(booking: Pick<RawBooking, 'bookingDate' | 'startTime' | 'endTime' | 'operatingWindowStartTime' | 'selectedSlots' | 'visitDuties' | 'status'> & Pick<Partial<RawBooking>, 'cancellationPolicySnapshot'>, timezone: string) {
+/** Each visit's window (one per day for a multi-day booking), from the saved closeout clock when there is one. */
+export function bookingVisitWindows(booking: Pick<RawBooking, 'bookingDate' | 'startTime' | 'endTime' | 'operatingWindowStartTime' | 'selectedSlots' | 'visitDuties' | 'status'> & Pick<Partial<RawBooking>, 'cancellationPolicySnapshot'>, timezone: string) {
   try {
     const policy = booking.cancellationPolicySnapshot as { deadlineBasis?: string; sessions?: Array<{ startAt: string; endAt?: string }> } | null;
     // Pending dated requests have frozen session starts before confirmation saves their visit clock.
-    if (booking.status === 'pending' && policy?.deadlineBasis === 'booking_first_day') {
-      const starts = (policy.sessions ?? []).map(session => Date.parse(session.startAt)).filter(Number.isFinite);
-      const ends = (policy.sessions ?? []).map(session => Date.parse(session.endAt ?? session.startAt)).filter(Number.isFinite);
-      if (starts.length && ends.length) return { start: new Date(Math.min(...starts)), end: new Date(Math.max(...ends)) };
-      return null;
-    }
+    if (booking.status === 'pending' && policy?.deadlineBasis === 'booking_first_day')
+      return (policy.sessions ?? []).map(session => ({ start: new Date(session.startAt), end: new Date(session.endAt ?? session.startAt) }))
+        .filter(window => Number.isFinite(window.start.getTime()) && Number.isFinite(window.end.getTime()));
     const clock = savedCloseout(booking.visitDuties) ?? makeCloseoutSnapshot(booking as never, timezone, { serviceEndGraceMinutes: 0, inspectionAutoCloseHours: 0, checkinWindowMinutesBefore: 0 });
-    const starts = clock.visits.map(visit => Date.parse(visit.scheduledStartAt)).filter(Number.isFinite);
-    const ends = clock.visits.map(visit => Date.parse(visit.scheduledEndAt)).filter(Number.isFinite);
-    if (starts.length && ends.length) return { start: new Date(Math.min(...starts)), end: new Date(Math.max(...ends)) };
+    return clock.visits.map(visit => ({ start: new Date(visit.scheduledStartAt), end: new Date(visit.scheduledEndAt) }))
+      .filter(window => Number.isFinite(window.start.getTime()) && Number.isFinite(window.end.getTime()));
   } catch { /* A schedule that cannot be resolved is shown without a time rather than guessed. */ }
-  return null;
+  return [];
+}
+
+export function bookingBounds(booking: Parameters<typeof bookingVisitWindows>[0], timezone: string) {
+  const windows = bookingVisitWindows(booking, timezone);
+  if (!windows.length) return null;
+  return { start: new Date(Math.min(...windows.map(window => window.start.getTime()))), end: new Date(Math.max(...windows.map(window => window.end.getTime()))) };
 }
 
 const key = (chefId: number, locationId: number) => `${chefId}:${locationId}`;

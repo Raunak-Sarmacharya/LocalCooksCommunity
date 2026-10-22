@@ -69,16 +69,37 @@ beforeAll(async () => {
       (12, 7, 54, '2026-10-22', '09:00', '11:00', '06:00', '[{"startTime":"09:00","endTime":"10:00"},{"startTime":"10:00","endTime":"11:00"}]', 'pending', '2026-10-15T12:00:00Z', now(), 'not_checked_in', 'authorized', '[{"equipmentBookingId":1}]', '[{"storageBookingId":2}]', NULL),
       (13, 7, 54, '2026-10-08', '14:00', '16:00', '06:00', '[]', 'cancelled', now(), now(), 'not_checked_in', 'refunded', '[]', '[]', 'chef'),
       (14, 7, 55, '2026-10-22', '09:00', '11:00', '06:00', '[]', 'confirmed', now(), now(), 'not_checked_in', 'paid', '[]', '[]', NULL),
-      (15, NULL, 54, '2026-10-22', '12:00', '13:00', '06:00', '[]', 'confirmed', now(), now(), 'not_checked_in', 'paid', '[]', '[]', NULL);
+      (15, NULL, 54, '2026-10-22', '12:00', '13:00', '06:00', '[]', 'confirmed', now(), now(), 'not_checked_in', 'paid', '[]', '[]', NULL),
+      (16, 7, 54, '2026-10-10', '10:00', '12:00', '06:00', '[]', 'completed', now(), now(), 'checked_out', 'paid',
+        '[{"equipmentListingId":89,"name":"Commercial Oven","totalPrice":2500,"date":"2026-10-10"},{"equipmentListingId":90,"name":"Range","totalPrice":0},{"equipmentListingId":91,"name":"Mixer","totalPrice":900,"status":"cancelled","cancelledAt":"2026-10-09T12:00:00Z","cancelledBy":"kitchen","date":"2026-10-10"}]', '[]', NULL),
+      (17, 7, 54, '2026-10-12', '14:00', '16:00', '06:00', '[]', 'cancelled', now(), now(), 'not_checked_in', 'paid', '[]', '[]', 'chef'),
+      (18, 7, 54, '2026-10-09', '09:00', '10:00', '06:00', '[]', 'confirmed', now(), now(), 'no_show', 'paid', '[]', '[]', NULL),
+      (19, 7, 54, '2026-10-07', '09:00', '10:00', '06:00', '[]', 'completed', now(), now(), 'no_show', 'paid', '[]', '[]', NULL),
+      (20, 7, 54, '2026-10-20', '09:00', '11:00', '06:00', '[]', 'confirmed', now(), now(), 'not_checked_in', 'paid',
+        '[{"equipmentListingId":89,"name":"Commercial Oven","totalPrice":2500,"date":"2026-10-20"},{"equipmentListingId":89,"name":"Commercial Oven","totalPrice":2500,"date":"2026-10-21"}]', '[]', NULL);
+    -- Booking 17: cancelled 11.5 h before its 24 h window closed, so late; booking 13 has no effective time, so never late.
+    UPDATE kitchen_bookings SET cancellation_policy_hours = 24, cancellation_effective_at = '2026-10-12T05:00:00Z' WHERE id = 17;
+    UPDATE chef_kitchen_applications SET business_description = '{"businessType":"catering","usageFrequency":"weekly","sessionDuration":"4-8"}' WHERE id = 70;
+    INSERT INTO kitchen_booking_attendance_events (id, booking_id, actor_id, actor_role, action, evidence_snapshot, created_at) VALUES
+      (1, 18, 2, 'manager', 'report_no_show', '{}', '2026-10-09T14:00:00Z'), (2, 19, 2, 'manager', 'report_no_show', '{}', '2026-10-07T14:00:00Z');
+    INSERT INTO storage_listings (id, kitchen_id, storage_type, name) VALUES (5, 54, 'dry', 'Dry shelf'), (6, 55, 'dry', 'Other shelf');
+    INSERT INTO storage_bookings (id, reference_code, storage_listing_id, chef_id, start_date, end_date, status, total_price, pricing_model, rental_state, term_start, paid_through, created_at, updated_at) VALUES
+      (30, 'SB-ONE', 5, 7, '2026-10-14T05:00:00Z', '2026-10-21T05:00:00Z', 'confirmed', 1050, 'daily', 'reserved', '2026-10-14', '2026-10-20', '2026-10-13T12:00:00Z', now()),
+      (31, 'SB-ELSEWHERE', 6, 7, '2026-10-14T05:00:00Z', '2026-10-21T05:00:00Z', 'confirmed', 9999, 'daily', 'reserved', '2026-10-14', '2026-10-20', '2026-10-13T12:00:00Z', now());
     INSERT INTO payment_transactions (id, booking_id, booking_type, chef_id, manager_id, amount, base_amount, service_fee, manager_revenue, refund_amount, net_amount, status) VALUES
       (1, 11, 'kitchen', 7, 2, 41250, 40000, 1250, 39000, 0, 41250, 'succeeded'),
+      (5, 16, 'kitchen', 7, 2, 12000, 11500, 500, 11000, 0, 12000, 'succeeded'),
       (2, 13, 'kitchen', 7, 2, 5000, 4800, 200, 4600, 2843, 2157, 'partially_refunded'),
       (3, 12, 'kitchen', 7, 2, 6100, 5900, 200, 5700, 0, 6100, 'authorized'),
       (4, 14, 'kitchen', 7, 3, 99900, 99000, 900, 98000, 0, 99900, 'succeeded');
-    INSERT INTO damage_claims (id, booking_type, kitchen_booking_id, chef_id, manager_id, location_id, status, claim_title, claim_description, damage_date, claimed_amount_cents, chef_response_deadline, chef_owes) VALUES
-      (3, 'kitchen', 11, 7, 2, 47, 'submitted', 'Broken mixer lid', 'Lid cracked', '2026-10-12', 8500, '2026-10-19T15:00:00Z', true),
-      (4, 'kitchen', 14, 7, 3, 48, 'approved', 'Other manager claim', 'x', '2026-10-12', 77700, '2026-10-19T15:00:00Z', true);
-    INSERT INTO commitment_problems (id, source_key, kind, booking_id, reported_by, owner, status, description) VALUES (1, 'k1', 'live', 11, 7, 'local_cooks', 'reported', 'Oven not working');
+    INSERT INTO damage_claims (id, booking_type, kitchen_booking_id, chef_id, manager_id, location_id, status, claim_title, claim_description, damage_date, claimed_amount_cents, chef_response_deadline, chef_owes, created_at) VALUES
+      (3, 'kitchen', 11, 7, 2, 47, 'submitted', 'Broken mixer lid', 'Lid cracked', '2026-10-12', 8500, '2026-10-19T15:00:00Z', true, '2026-10-12T15:00:00Z'),
+      (4, 'kitchen', 14, 7, 3, 48, 'approved', 'Other manager claim', 'x', '2026-10-12', 77700, '2026-10-19T15:00:00Z', true, '2026-10-12T15:00:00Z');
+    INSERT INTO commitment_problems (id, source_key, kind, booking_id, reported_by, owner, status, description, category, created_at) VALUES
+      (1, 'k1', 'live', 11, 7, 'local_cooks', 'reported', 'Oven not working', NULL, '2026-10-16T13:00:00Z'),
+      (2, 'k2', 'live', 18, 7, 'local_cooks', 'reported', 'I was there', 'attendance', '2026-10-09T16:00:00Z');
+    UPDATE payment_transactions SET created_at = '2026-10-14T12:00:00Z';
+    UPDATE payment_transactions SET metadata = '{"paymentIntentId":"pi_hidden_1","chargeId":"ch_hidden_1"}', transfer_id = 'tr_hidden_1', paid_at = '2026-10-15T12:00:00Z' WHERE id = 1;
   `);
 });
 afterAll(async () => { await client?.close(); });
@@ -128,10 +149,10 @@ describe('Customers against real SQL', () => {
     expect(page.customer).toMatchObject({ name: 'Priya Sharma', businessName: 'Spice Route Catering', email: 'priya@example.com', phone: '+17095550142' });
     expect(page.locations.map(item => item.name)).toEqual(['Harbour Kitchens']);
     expect(page.status).toBe('approved');
-    expect(page.upcoming.map(booking => [booking.bookingId, booking.status, booking.equipmentCount + booking.storageCount])).toEqual([[12, 'pending', 2]]);
-    expect(page.upcoming[0].responseDeadlineAt).toEqual(expect.any(String));
-    expect(page.past.map(booking => [booking.bookingId, booking.outcome, booking.refundedCents])).toEqual([[11, 'visit_ended', 0], [13, 'cancelled_by_customer', 2843]]);
-    expect(page.money).toEqual({ paidCents: 46250, refundedCents: 2843, heldCents: 6100, outstandingCents: 0, currency: 'CAD' });
+    expect(page.upcoming.map(booking => [booking.bookingId, booking.status])).toEqual([[20, 'confirmed'], [12, 'pending']]);
+    expect(page.upcoming.find(booking => booking.bookingId === 12)!.responseDeadlineAt).toEqual(expect.any(String));
+    expect(page.past.slice(0, 2).map(booking => [booking.bookingId, booking.outcome, booking.refundedCents])).toEqual([[11, 'visit_ended', 0], [17, 'cancelled_by_customer', 0]]);
+    expect(page.money).toMatchObject({ paidCents: 58250, refundedCents: 2843, heldCents: 6100, outstandingCents: 0, currency: 'CAD', paymentCount: 3, holdCount: 1 });
     expect(page.claims).toEqual([expect.objectContaining({ id: 3, status: 'submitted', nextActor: 'customer', amountCents: 8500 })]);
     expect(page.application?.documents[0]).toMatchObject({ key: 'foodSafetyLicense', expiry: '2026-10-22', daysLeft: 6, stage: '7_day', url: '/api/files/documents/licence.pdf' });
     expect(JSON.stringify(page)).not.toMatch(/99900|77700|Elsewhere|West End|stripe|pi_/i);
@@ -141,6 +162,49 @@ describe('Customers against real SQL', () => {
     await expect(getCustomerPage(2, 7, 48, {}, NOW)).rejects.toMatchObject({ statusCode: 404, message: 'Location not found' });
     await expect(getCustomerPage(2, 8888, 47, {}, NOW)).rejects.toMatchObject({ statusCode: 404, message: 'Customer not found' });
     await expect(getCustomerPage(3, 8, 47, {}, NOW)).rejects.toMatchObject({ statusCode: 404 });
+    // Marc only applied to manager 2's kitchen: manager 3 gets no name, email or phone for him, with or without a location.
+    await expect(getCustomerPage(3, 8, undefined, {}, NOW)).rejects.toMatchObject({ statusCode: 404, message: 'Customer not found' });
+  });
+
+  it('counts paid rentals once per listing, not every included item or day', async () => {
+    const page = await getCustomerPage(2, 7, 47, { allPast: true }, NOW);
+    expect(page.past.find(booking => booking.bookingId === 16)!.rentals).toEqual([{ name: 'Commercial Oven', days: 1 }]);
+    expect(page.upcoming.find(booking => booking.bookingId === 20)!.rentals).toEqual([{ name: 'Commercial Oven', days: 2 }]);
+    expect(page.upcoming.find(booking => booking.bookingId === 12)!.rentals).toEqual([]);
+  });
+
+  it('phone: the verified account phone, else the application phone, with where it came from', async () => {
+    expect((await getCustomerPage(2, 7, 47, {}, NOW)).customer).toMatchObject({ phone: '+17095550142', phoneSource: 'account', businessType: 'catering', usageFrequency: 'weekly', sessionDuration: '4-8' });
+    expect((await getCustomerPage(2, 8, 47, {}, NOW)).customer).toMatchObject({ phone: '7095550143', phoneSource: 'application' });
+  });
+
+  it('reliability: late cancellations apart from early ones, no-shows counted or under review, visits and hours', async () => {
+    const page = await getCustomerPage(2, 7, 47, { allPast: true }, NOW);
+    const byId = Object.fromEntries(page.past.map(booking => [booking.bookingId, booking]));
+    expect(byId[17]).toMatchObject({ late: true, outcome: 'cancelled_by_customer' });
+    expect(byId[13]).toMatchObject({ late: false, outcome: 'cancelled_by_customer' });
+    expect(byId[18]).toMatchObject({ outcome: 'attendance_reported', noShow: 'under_review' });
+    expect(byId[19]).toMatchObject({ outcome: 'attendance_reported', noShow: 'counted' });
+    expect(page.reliability).toEqual({ visits: 2, hoursInKitchen: 4, lastVisitEndedAt: '2026-10-16T12:30:00.000Z',
+      nextVisit: { bookingId: 20, startsAt: '2026-10-20T11:30:00.000Z', endsAt: '2026-10-20T13:30:00.000Z' },
+      cancelledByCustomer: 2, lateCancellations: 1, noShowsCounted: 1, noShowsUnderReview: 1 });
+    expect(page.bookingCounts).toEqual({ upcoming: 2, past: 4, cancelled: 2 });
+    expect(page.locations).toEqual([expect.objectContaining({ id: 47, bookingCount: 8 })]);
+  });
+
+  it('storage, open items, payouts and activity come from this location only, with no provider identifiers', async () => {
+    const page = await getCustomerPage(2, 7, 47, { allPast: true }, NOW);
+    expect(page.storage).toEqual([expect.objectContaining({ id: 30, reference: 'SB-ONE', name: 'Dry shelf', state: 'reserved', moveInOverdue: true, totalCents: 1050 })]);
+    expect(page.open.map(item => [item.kind, item.owner])).toEqual([['storage_move_in', 'you'], ['booking_request', 'you'],
+      ['problem', 'local_cooks'], ['no_show_review', 'local_cooks'], ['claims', 'customer']]);
+    expect(page.open.find(item => item.kind === 'no_show_review')).toMatchObject({ bookingId: 18, startsAt: expect.any(String) });
+    const payment = page.payments.find(row => row.bookingId === 11)!;
+    expect(payment).toMatchObject({ amountCents: 41250, status: 'succeeded', payoutStatus: 'sent', payoutCents: expect.any(Number) });
+    const types = page.activity.map(item => `${item.type}:${item.actor}`);
+    expect(types).toEqual(expect.arrayContaining(['booked:customer', 'cancelled:customer', 'rental_day_cancelled:you', 'visit_ended:customer',
+      'no_show_reported:you', 'no_show_disputed:customer', 'claim_filed:you', 'storage_rented:customer', 'applied:customer']));
+    expect(page.activity.map(item => item.at)).toEqual(page.activity.map(item => item.at).slice().sort((a, b) => Date.parse(b) - Date.parse(a)));
+    expect(JSON.stringify(page)).not.toMatch(/pi_hidden|ch_hidden|tr_hidden|SB-ELSEWHERE|9999|Other shelf|99900|77700/);
   });
 
   it('notes: create, edit own, soft-delete, and the other manager cannot see or touch them', async () => {
