@@ -101,7 +101,7 @@ export default function ChefStorageRequestPage() {
         <h1 className="text-2xl font-semibold tracking-tight">{t("stcRentStorage")}</h1>
         <p className="text-sm text-muted-foreground">{t("stcPickListing", { kitchen: listings.data[0].kitchenName || t("stcTheKitchen") })}</p>
       </header>
-      <div className="rounded-2xl border px-4 sm:px-5">
+      <div className="rounded-2xl border bg-background px-4 pt-4 sm:px-5 sm:pt-5">
         <StorageRentCta kitchenId={kitchenId} canBook listings={listings.data} onApply={() => navigate("/dashboard?view=discover-kitchens")} />
       </div>
     </section> : pickListing && !listings.data && !listings.error ? <div role="status" aria-label={t("stcLoading")}><Skeleton className="h-64 w-full rounded-2xl" /></div>
