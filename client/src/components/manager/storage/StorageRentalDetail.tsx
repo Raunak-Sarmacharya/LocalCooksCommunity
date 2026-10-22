@@ -97,14 +97,19 @@ export function StorageRentalDetail({ rentalId }: { rentalId: number }) {
   ];
   const hasEvidence = evidence.some((group) => group.urls.length > 0);
 
-  const steps = [
+  // Cancelled before the start: no move-in or move-out happened, so the timeline ends at the cancellation.
+  const steps = rental.cancellation ? [
+    { key: "stTimelineRequested", at: rental.timeline?.requestedAt },
+    { key: "stTimelineApproved", at: rental.timeline?.approvedAt },
+    { key: "stStateCancelled", at: rental.cancellation.cancelledAt },
+  ] : [
     { key: "stTimelineRequested", at: rental.timeline?.requestedAt },
     { key: "stTimelineApproved", at: rental.timeline?.approvedAt },
     { key: "stTimelineMovedIn", at: rental.timeline?.movedInAt },
     { key: "stTimelineMovingOut", at: rental.timeline?.movingOutAt },
     { key: "stTimelineEnded", at: rental.timeline?.endedAt },
   ];
-  const currentStep = rental.state === "ended" ? 4 : rental.state === "move_out_requested" ? 3
+  const currentStep = rental.state === "ended" ? steps.length - 1 : rental.state === "move_out_requested" ? 3
     : ["active", "removal_review"].includes(rental.state) ? 2 : rental.state === "reserved" ? 1 : 0;
   const date = (value: string) => formatStorageDate(value, i18n.language, rental.timezone);
   const chef = rental.chef?.name || t('stTheChef');
@@ -159,7 +164,7 @@ export function StorageRentalDetail({ rentalId }: { rentalId: number }) {
       </Alert>
 
       <section aria-label={t("stTimeline")} className="rounded-xl border bg-card p-4">
-        <ol className="grid gap-4 sm:grid-cols-5">
+        <ol className={`grid gap-4 ${steps.length === 3 ? 'sm:grid-cols-3' : 'sm:grid-cols-5'}`}>
           {steps.map((step, index) => <li key={step.key} aria-current={index === currentStep ? "step" : undefined}
             className="relative flex gap-3 text-muted-foreground sm:flex-col">
             <span className={`relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border bg-card ${index === currentStep ? 'border-primary text-primary ring-2 ring-primary/25 ring-offset-2' : index < currentStep ? 'border-muted bg-muted' : 'border-border text-muted-foreground/50'}`}>
