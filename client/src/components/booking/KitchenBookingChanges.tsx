@@ -151,6 +151,8 @@ export function ChangeBookingDialog({ bookingId, kitchenId, kitchenName, timezon
   const minHours = data?.limits?.minHours ?? 1, lengthCap = data?.limits?.maxHours ?? 12;
   // Free consecutive hours from the chosen start, never beyond the kitchen's longest booking.
   const maxHours = useMemo(() => { let n = 0, at = start; while (at && free.has(at) && n < lengthCap) { n++; at = addHour(at); } return n; }, [free, start, lengthCap]);
+  // A start is offered only when the whole chosen length is free from it (like booking), not just its first hour.
+  const fits = (time: string) => { let at = time; for (let i = 0; i < hours; i++) { if (!at || !free.has(at)) return false; at = addHour(at); } return true; };
   const chosen = useMemo(() => { const out: ChangeSchedule['slots'] = []; let at = start;
     for (let i = 0; i < hours && at; i++) { const end = addHour(at); out.push({ startTime: at, endTime: end }); at = end; } return out; }, [start, hours]);
   const ready = !!data?.canRequest.allowed && !!date && chosen.length > 0 && hours <= maxHours && hours >= minHours;
@@ -203,9 +205,9 @@ export function ChangeBookingDialog({ bookingId, kitchenId, kitchenName, timezon
           <fieldset>
             <legend className="mb-2 text-sm font-medium">{t('chgStart')}</legend>
             {slots === null ? <Loader2 className="h-4 w-4 animate-spin" aria-label={t('chgLoading')} />
-              : !slots.some(slot => free.has(slot.time)) ? <p className="text-sm text-muted-foreground">{t('chgNoTimes')}</p>
+              : !slots.some(slot => fits(slot.time)) ? <p className="text-sm text-muted-foreground">{t('chgNoTimes')}</p>
               : <div className="flex flex-wrap gap-2">{slots.map(slot => <Button key={slot.time} type="button" size="sm" className="min-h-11"
-                  variant={slot.time === start ? 'default' : 'outline'} disabled={busy || !free.has(slot.time)} aria-pressed={slot.time === start}
+                  variant={slot.time === start ? 'default' : 'outline'} disabled={busy || (!fits(slot.time) && slot.time !== start)} aria-pressed={slot.time === start}
                   onClick={() => setStart(slot.time)}>{formatTime(slot.time, f.locale)}</Button>)}</div>}
           </fieldset>
           {start && slots !== null && maxHours > 0 && hours > maxHours && <p role="status" className="text-sm text-amber-800">{t('chgTooLong', { count: maxHours, time: formatTime(start, f.locale) })}</p>}
