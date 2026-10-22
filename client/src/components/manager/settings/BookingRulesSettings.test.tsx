@@ -109,7 +109,6 @@ describe("BookingRulesSettings", () => {
         minimumBookingWindowHours: 48,
         taxRatePercent: null,
         checkinWindowMinutesBefore: null,
-        noShowGraceMinutes: null,
       });
     });
   });

@@ -1277,12 +1277,6 @@ function StageHeader({
             </p>
             {/* Be active about why nothing is happening. A dashed panel and the
                 word "Off" explain the state but not the next step. */}
-            {stage === "checkin" && !enabled && (
-              <p className="mt-1 flex items-start gap-1 text-[10px] leading-snug text-muted-foreground/80">
-                <Info className="mt-0.5 size-3 shrink-0" />
-                {mt("checkinOffArrivalTimingNote")}
-              </p>
-            )}
           </div>
         </div>
         <Switch

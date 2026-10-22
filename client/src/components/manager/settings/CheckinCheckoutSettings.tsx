@@ -35,7 +35,7 @@ import { cn } from "@/lib/utils";
 import { NumericInput } from "@/components/ui/numeric-input";
 import { SettingsRow } from "./SettingsRow";
 import { SettingsContentSkeleton } from "@/components/manager/SettingsContentSkeleton";
-import { arrivalTimingsLocked, type ChecklistItem, type PhotoRequirement } from "./shared/ChecklistEditor";
+import { type ChecklistItem, type PhotoRequirement } from "./shared/ChecklistEditor";
 import { hasTrackingNotes } from "@shared/tracking-setup";
 import { kitchenChecklistSections, resolveKitchenChecklist, type KitchenChecklistSection, type KitchenChecklistOverride } from "@shared/kitchen-checklist";
 import {
@@ -74,12 +74,10 @@ interface CheckinCheckoutSettingsData {
  */
 interface TimeWindowSettings {
   checkinWindowMinutesBefore: number | null;
-  noShowGraceMinutes: number | null;
 }
 
 interface PlatformTimeWindowDefaults {
   checkinWindowMinutesBefore: number;
-  noShowGraceMinutes: number;
 }
 
 /** Imperative handle so the dashboard shell can trigger Save from its header. */
@@ -120,7 +118,6 @@ interface InstructionDraft {
   checkinInstructions: string | null;
   checkoutInstructions: string | null;
   checkinWindowMinutesBefore: number | null;
-  noShowGraceMinutes: number | null;
 }
 
 const savedItems = (data: SavedSettings) => unifyStorageToItems({
@@ -141,7 +138,6 @@ const savedInstructions = (data: SavedSettings): InstructionDraft => ({
   checkinInstructions: data.checkinInstructions || null,
   checkoutInstructions: data.checkoutInstructions || null,
   checkinWindowMinutesBefore: data.timeWindowSettings?.checkinWindowMinutesBefore ?? null,
-  noShowGraceMinutes: data.timeWindowSettings?.noShowGraceMinutes ?? null,
 });
 
 /** The fields of an instructions draft that differ from what is saved — and nothing else. */
@@ -152,7 +148,6 @@ function changedInstructions(draft: InstructionDraft, data: SavedSettings) {
   if ((draft.checkoutInstructions || null) !== saved.checkoutInstructions) patch.checkoutInstructions = draft.checkoutInstructions || null;
   const timing: Record<string, number | null> = {};
   if (draft.checkinWindowMinutesBefore !== saved.checkinWindowMinutesBefore) timing.checkinWindowMinutesBefore = draft.checkinWindowMinutesBefore;
-  if (draft.noShowGraceMinutes !== saved.noShowGraceMinutes) timing.noShowGraceMinutes = draft.noShowGraceMinutes;
   if (Object.keys(timing).length) patch.timeWindowSettings = timing;
   return patch;
 }
@@ -254,7 +249,6 @@ function CheckinCheckoutSettingsSurface({
 
   // Arrival timings (null = inherit the platform default).
   const [twCheckinWindow, setTwCheckinWindow] = useState<number | null>(null);
-  const [twNoShowGrace, setTwNoShowGrace] = useState<number | null>(null);
 
   // Memoized so the dirty comparison does not re-run the merge on every keystroke.
   const initialUnifiedItems = useMemo<UnifiedChecklistItem[]>(() => data ? savedItems(data) : [], [data]);
@@ -263,8 +257,7 @@ function CheckinCheckoutSettingsSurface({
     checkinInstructions,
     checkoutInstructions,
     checkinWindowMinutesBefore: twCheckinWindow,
-    noShowGraceMinutes: twNoShowGrace,
-  }), [checkinInstructions, checkoutInstructions, twCheckinWindow, twNoShowGrace]);
+  }), [checkinInstructions, checkoutInstructions, twCheckinWindow]);
   const draftRef = useRef({ items, instructions: instructionDraft });
   draftRef.current = { items, instructions: instructionDraft };
 
@@ -292,7 +285,6 @@ function CheckinCheckoutSettingsSurface({
     if (adopt("checkinInstructions")) setCheckinInstructions(saved.checkinInstructions);
     if (adopt("checkoutInstructions")) setCheckoutInstructions(saved.checkoutInstructions);
     if (adopt("checkinWindowMinutesBefore")) setTwCheckinWindow(saved.checkinWindowMinutesBefore);
-    if (adopt("noShowGraceMinutes")) setTwNoShowGrace(saved.noShowGraceMinutes);
     if (adoptItems) setItems(initialUnifiedItems);
     // Keep the baseline for edited fields until they have been saved.
     syncedRef.current = { ...data,
@@ -300,7 +292,6 @@ function CheckinCheckoutSettingsSurface({
       checkoutInstructions: adopt("checkoutInstructions") ? saved.checkoutInstructions : before!.checkoutInstructions,
       timeWindowSettings: {
         checkinWindowMinutesBefore: adopt("checkinWindowMinutesBefore") ? saved.checkinWindowMinutesBefore : before!.checkinWindowMinutesBefore,
-        noShowGraceMinutes: adopt("noShowGraceMinutes") ? saved.noShowGraceMinutes : before!.noShowGraceMinutes,
       },
       ...(!adoptItems && previous
         ? { checkinItems: previous.checkinItems, checkoutItems: previous.checkoutItems,
@@ -431,7 +422,6 @@ function CheckinCheckoutSettingsSurface({
         ...current, ...(kitchenContext && updated ? updated : patch),
         timeWindowSettings: {
           checkinWindowMinutesBefore: current.timeWindowSettings?.checkinWindowMinutesBefore ?? null,
-          noShowGraceMinutes: current.timeWindowSettings?.noShowGraceMinutes ?? null,
           ...(patch.timeWindowSettings as Partial<TimeWindowSettings> | undefined),
         },
       }));
@@ -567,11 +557,9 @@ function CheckinCheckoutSettingsSurface({
         ? mt("platformDefaultIs", { minutes: mt("minutesShort", { count: platformDefault }) })
         : undefined}
       help={help}
-      disabledReason={arrivalTimingsLocked(data) ? mt("enableStageToEditTimings") : undefined}
     >
       <NumericInput
         id={id}
-        disabled={arrivalTimingsLocked(data)}
         suffix={mt("minutesUnit")}
         value={value === null ? "" : String(value)}
         placeholder={platformDefault !== undefined ? String(platformDefault) : fallback}
@@ -588,12 +576,10 @@ function CheckinCheckoutSettingsSurface({
      manager decides things; they are the same query-cached fields as Booking
      Policies and save with the instructions. */
   const timing = embedded ? (
-    <SetupSection id="setup-timing" title={mt("arrivalTiming")} description={mt(arrivalTimingsLocked(data) ? "arrivalTimingLockedDescription" : "arrivalTimingDescription")}>
+    <SetupSection id="setup-timing" title={mt("arrivalTiming")} description={mt("arrivalTimingDescription")}>
       <div className="divide-y rounded-lg border">
         {timingRow("checkin-window", mt("checkinOpensLabel"), mt("checkinWindowHelp"), twCheckinWindow,
           data?.platformDefaults?.checkinWindowMinutesBefore, "15", setTwCheckinWindow)}
-        {timingRow("no-show-grace", mt("noShowGraceLabel"), mt("noShowGraceHelp"), twNoShowGrace,
-          data?.platformDefaults?.noShowGraceMinutes, "30", setTwNoShowGrace)}
       </div>
 
       {/* Soft cross-link to the rest of the booking rules, for managers

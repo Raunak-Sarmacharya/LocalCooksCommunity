@@ -34,7 +34,6 @@ import { SettingsRow } from "./SettingsRow";
 import { ManagerDamagePolicySection, PolicySection } from "./PolicySection";
 import { KitchenTermsSection } from "./KitchenTermsSection";
 import { LocationCancellationPolicyEditor } from "./CancellationPolicyEditor";
-import { arrivalTimingsLocked } from "./shared/ChecklistEditor";
 
 const SELECT_CLASS = "h-11 w-full min-w-[12rem] sm:w-56";
 
@@ -143,16 +142,11 @@ type ImpactField = {
 
 /** Shape of the arrival-timing values, which are owned by the check-in/check-out endpoint. */
 interface ArrivalTimings {
-  /** Present on the same payload; drives whether the timings below are editable. */
-  checkinEnabled?: boolean;
-  checkoutEnabled?: boolean;
   timeWindowSettings?: {
     checkinWindowMinutesBefore: number | null;
-    noShowGraceMinutes: number | null;
   };
   platformDefaults?: {
     checkinWindowMinutesBefore: number;
-    noShowGraceMinutes: number;
   };
 }
 
@@ -219,7 +213,6 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
     });
 
     const [checkinWindow, setCheckinWindow] = useState<number | null>(null);
-    const [noShowGrace, setNoShowGrace] = useState<number | null>(null);
 
     const effectiveWeeklyLimit = weeklyLimitEnabled ? weeklyLimitHours : null;
     const effectiveDailyLimit = longestEnabled ? dailyBookingLimit : null;
@@ -234,8 +227,7 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
     };
     const taxChanged = !isKitchenMode && taxRate !== savedTax;
     const rulesChanged = Object.values(changed).some(Boolean) || cancellationHours !== (location.cancellationPolicyHours ?? 24) || taxChanged;
-    const timingChanged = !hideArrivalTimings && (checkinWindow !== (arrivalSettings?.timeWindowSettings?.checkinWindowMinutesBefore ?? null)
-      || noShowGrace !== (arrivalSettings?.timeWindowSettings?.noShowGraceMinutes ?? null));
+    const timingChanged = !hideArrivalTimings && checkinWindow !== (arrivalSettings?.timeWindowSettings?.checkinWindowMinutesBefore ?? null);
     const isRulesDirty = rulesChanged || timingChanged;
 
     // Suffix follows the value: "1 hour" vs "24 hours". Uses ICU plurals so
@@ -267,14 +259,12 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
     useEffect(() => {
       if (!arrivalSettings) return;
       setCheckinWindow(arrivalSettings.timeWindowSettings?.checkinWindowMinutesBefore ?? null);
-      setNoShowGrace(arrivalSettings.timeWindowSettings?.noShowGraceMinutes ?? null);
     }, [arrivalSettings]);
 
     const discard = () => {
       resetLocalEdits();
       setMinimumDuration(minimumBookingHours ?? 0);
       setCheckinWindow(arrivalSettings?.timeWindowSettings?.checkinWindowMinutesBefore ?? null);
-      setNoShowGrace(arrivalSettings?.timeWindowSettings?.noShowGraceMinutes ?? null);
     };
 
     // Let the shell warn before navigating away with unsaved edits.
@@ -310,7 +300,6 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
         } : {}),
         // null clears the per-location override so the platform default applies.
         checkinWindowMinutesBefore: checkinWindow,
-        noShowGraceMinutes: noShowGrace,
       });
       // The timings are served by the check-in/check-out endpoint, so refresh that
       // cache too or the page would keep rendering the pre-save values.
@@ -318,13 +307,12 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
     }, [
       onSave, location.id, cancellationHours, effectiveDailyLimit, minimumBookingWindowHours, minimumBookingHours,
       minimumDuration, hasWindow, windowDays, hasBuffer, bufferMinutes, hasMultiDay, allowMultiDay, maxBookingDays,
-      hasWeeklyLimit, effectiveWeeklyLimit, checkinWindow, noShowGrace, queryClient, isKitchenMode, taxRate,
+      hasWeeklyLimit, effectiveWeeklyLimit, checkinWindow, queryClient, isKitchenMode, taxRate,
     ]);
 
     const saveRulesAction = useStatusButton(saveRules);
     const timingPreview = <SettingChangePreview
-      whatChanges={<>{checkinWindow !== (arrivalSettings?.timeWindowSettings?.checkinWindowMinutesBefore ?? null) && <span className="block">{mt('scpWindowWhat', { minutes: checkinWindow ?? arrivalSettings?.platformDefaults?.checkinWindowMinutesBefore, current: arrivalSettings?.timeWindowSettings?.checkinWindowMinutesBefore ?? arrivalSettings?.platformDefaults?.checkinWindowMinutesBefore })}</span>}
-        {noShowGrace !== (arrivalSettings?.timeWindowSettings?.noShowGraceMinutes ?? null) && <span className="block">{mt('scpGraceWhat', { minutes: noShowGrace ?? arrivalSettings?.platformDefaults?.noShowGraceMinutes, current: arrivalSettings?.timeWindowSettings?.noShowGraceMinutes ?? arrivalSettings?.platformDefaults?.noShowGraceMinutes })}</span>}</>}
+      whatChanges={<>{checkinWindow !== (arrivalSettings?.timeWindowSettings?.checkinWindowMinutesBefore ?? null) && <span className="block">{mt('scpWindowWhat', { minutes: checkinWindow ?? arrivalSettings?.platformDefaults?.checkinWindowMinutesBefore, current: arrivalSettings?.timeWindowSettings?.checkinWindowMinutesBefore ?? arrivalSettings?.platformDefaults?.checkinWindowMinutesBefore })}</span>}</>}
       appliesTo={mt('scpTimingWhen', { kitchen: kitchenName || location.name })} impact={impact} impactFetching={impactFetching} impactError={impactError}
       rightNow={impact ? mt(impact.upcoming ? 'scpTimingImpact' : 'scpNone', { upcoming: impact.upcoming }) : undefined}
       undo={mt('scpTimingUndo')} confirm actionLabel={mt('scpSave')} disabled={saveRulesAction.status === 'loading'} onSave={saveRulesAction.execute} />;
@@ -561,33 +549,18 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
         {!isKitchenMode && <LocationCancellationPolicyEditor locationId={location.id} />}
 
         {!hideArrivalTimings && (
-          /* Arrival timing. These two values also appear on the check-in/check-out
-             page, which is intentional — both pages read and write the same
-             query-cached field. Locked (and explained) on both pages whenever
-             neither flow is switched on. */
-          <PolicySection title={mt("arrivalTiming")} testId="arrival-timing-section"
-            description={arrivalTimingsLocked(arrivalSettings ?? undefined) ? mt("arrivalTimingLockedDescription") : mt("arrivalTimingDescription")}>
+          /* Arrival timing. Also on the check-in/check-out page, which is intentional —
+             both pages read and write the same query-cached field. */
+          <PolicySection title={mt("arrivalTiming")} testId="arrival-timing-section" description={mt("arrivalTimingDescription")}>
             <div className="divide-y divide-border">
               <SettingsRow id="checkin-window" label={mt("checkinOpensLabel")}
-                disabledReason={arrivalTimingsLocked(arrivalSettings ?? undefined) ? mt("enableStageToEditTimings") : undefined}
                 hint={arrivalSettings?.platformDefaults ? mt("platformDefaultIs", { minutes: mt("minutesShort", { count: arrivalSettings.platformDefaults.checkinWindowMinutesBefore }) }) : undefined}
                 help={mt("checkinWindowHelp")}>
-                <NumericInput id="checkin-window" disabled={arrivalTimingsLocked(arrivalSettings ?? undefined)} suffix={mt("minutesUnit")}
+                <NumericInput id="checkin-window" suffix={mt("minutesUnit")}
                   value={checkinWindow === null ? "" : String(checkinWindow)} className="h-11 w-32"
                   onValueChange={(val) => {
                     const parsed = parseInt(val, 10);
                     setCheckinWindow(val.trim() === "" || isNaN(parsed) ? null : Math.min(120, Math.max(0, parsed)));
-                  }} />
-              </SettingsRow>
-              <SettingsRow id="no-show-grace" label={mt("noShowGraceLabel")}
-                disabledReason={arrivalTimingsLocked(arrivalSettings ?? undefined) ? mt("enableStageToEditTimings") : undefined}
-                hint={arrivalSettings?.platformDefaults ? mt("platformDefaultIs", { minutes: mt("minutesShort", { count: arrivalSettings.platformDefaults.noShowGraceMinutes }) }) : undefined}
-                help={mt("noShowGraceHelp")}>
-                <NumericInput id="no-show-grace" disabled={arrivalTimingsLocked(arrivalSettings ?? undefined)} suffix={mt("minutesUnit")}
-                  value={noShowGrace === null ? "" : String(noShowGrace)} className="h-11 w-32"
-                  onValueChange={(val) => {
-                    const parsed = parseInt(val, 10);
-                    setNoShowGrace(val.trim() === "" || isNaN(parsed) ? null : Math.min(120, Math.max(0, parsed)));
                   }} />
               </SettingsRow>
               {onNavigate && (

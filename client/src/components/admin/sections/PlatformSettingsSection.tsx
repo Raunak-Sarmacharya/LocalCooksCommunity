@@ -168,7 +168,6 @@ export function PlatformSettingsSection() {
     setIsSavingTimeWindows(true);
     timeWindowMutation.mutate({
       checkinWindowMinutesBefore: parseInt(twDefaults.checkinWindowMinutesBefore, 10),
-      noShowGraceMinutes: parseInt(twDefaults.noShowGraceMinutes, 10),
     });
   };
 
@@ -588,7 +587,7 @@ export function PlatformSettingsSection() {
             <div>
               <CardTitle>Kitchen Time Window Defaults</CardTitle>
               <CardDescription>
-                Platform-wide defaults for kitchen check-in/out time windows. Managers can only override the check-in window and no-show grace; the checkout review window is fixed platform-wide.
+                Platform-wide defaults for kitchen check-in/out time windows. Managers can only override the check-in window; the checkout review window is fixed platform-wide.
               </CardDescription>
             </div>
           </div>
@@ -604,16 +603,6 @@ export function PlatformSettingsSection() {
                 className="max-w-32"
               />
               <p className="text-xs text-muted-foreground">How early before start time arrival can be recorded</p>
-            </div>
-            <div className="space-y-2">
-              <Label>No-Show Grace (minutes after start)</Label>
-              <NumericInput
-                suffix="min"
-                value={twDefaults.noShowGraceMinutes}
-                onValueChange={(val) => setTwDefaults({ ...twDefaults, noShowGraceMinutes: val })}
-                className="max-w-32"
-              />
-              <p className="text-xs text-muted-foreground">Arrival reminder grace. Missing arrival never marks a no-show automatically.</p>
             </div>
             <p className="text-sm text-muted-foreground">Service end grace and the kitchen inspection window are configured in Lifecycle timing. Unanswered inspections close without manager approval.</p>
           </div>

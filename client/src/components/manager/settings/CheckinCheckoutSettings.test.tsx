@@ -223,11 +223,11 @@ it('places timing before preview and sends only changed timing keys', async () =
   expect(state.put.mock.lastCall?.[1]).toEqual({ timeWindowSettings: { checkinWindowMinutesBefore: 22 } });
 });
 
-it('retains the existing timing lock when location check-in is off', () => {
+it('keeps the check-in window editable with the legacy check-in flag off, and has no no-show grace field', () => {
+  // Kitchen check-in always runs (resolveKitchenTracking), so the window always applies.
   setup({ checkinEnabled: false, checkoutEnabled: false }, { mode: 'instructions' });
-  expect(screen.getByRole('textbox', { name: 'checkinOpensLabel' })).toBeDisabled();
-  expect(screen.getByRole('textbox', { name: 'noShowGraceLabel' })).toBeDisabled();
-  expect(screen.getByText('arrivalTimingLockedDescription')).toBeInTheDocument();
+  expect(screen.getByRole('textbox', { name: 'checkinOpensLabel' })).toBeEnabled();
+  expect(screen.queryByRole('textbox', { name: 'noShowGraceLabel' })).not.toBeInTheDocument();
 });
 
 it('preserves new tasks from another surface while instructions are dirty', async () => {
