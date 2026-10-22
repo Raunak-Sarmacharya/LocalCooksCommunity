@@ -19,10 +19,12 @@ type Props = {
 
 export default function KitchenJourneyLayout({ eyebrow, title, description, onBack, backLabel = "Cancel", showCancel = true, compactContent = false, children, aside }: Props) {
   const inChefShell = useIsChefShell();
+  const Main = inChefShell ? "div" : "main";
   return (
     <div className={inChefShell ? "min-w-0 [overflow-wrap:anywhere] bg-[#FFF8F5]" : "min-h-screen min-w-0 [overflow-wrap:anywhere] bg-gradient-to-b from-[#FFF8F5] via-white to-white"}>
       {!inChefShell && <Header />}
-      <main className={inChefShell ? "mx-auto max-w-4xl px-4 pb-12 pt-4 sm:px-6 sm:pt-6" : "mx-auto max-w-4xl px-4 pb-16 pt-[calc(var(--header-total)_+_1.5rem)] sm:px-6 sm:pt-[calc(var(--header-total)_+_2rem)]"}>
+      {/* Inside the chef shell the layout already owns <main>. */}
+      <Main className={inChefShell ? "mx-auto max-w-4xl px-4 pb-12 pt-4 sm:px-6 sm:pt-6" : "mx-auto max-w-4xl px-4 pb-16 pt-[calc(var(--header-total)_+_1.5rem)] sm:px-6 sm:pt-[calc(var(--header-total)_+_2rem)]"}>
         <header className="flex items-start justify-between gap-6 border-b border-[#2C2C2C]/10 pb-5">
           <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">{eyebrow}</p>
@@ -44,7 +46,7 @@ export default function KitchenJourneyLayout({ eyebrow, title, description, onBa
             </div>}
           </div>
         </div>
-      </main>
+      </Main>
     </div>
   );
 }

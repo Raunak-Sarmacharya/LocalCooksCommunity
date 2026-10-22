@@ -313,10 +313,11 @@ SidebarRail.displayName = "SidebarRail"
 
 const SidebarInset = React.forwardRef<
   HTMLDivElement,
-  React.ComponentProps<"main">
+  React.ComponentProps<"div">
 >(({ className, ...props }, ref) => {
+  // A div, not <main>: each layout puts its own <main> around the page content, so a page has one main landmark.
   return (
-    <main
+    <div
       ref={ref}
       className={cn(
         // min-w-0: flex child must shrink — longer FR/UK labels otherwise push past the viewport
