@@ -197,3 +197,21 @@ it('adds the kitchen payout line on extension when payout facts are passed', asy
   await queueStorageRentalNotice(tx(), 5, 'extended', { ...facts, amountCents: 1282, payoutCents: 1108, payoutDate: '2026-10-28' });
   expect(notice(2)!.message).toBe("Maya Chen extended Shelf 2 to Oct 27, 2026 · $12.82 charged. You'll be paid $11.08 on Oct 28, 2026, less the card processing fee.");
 });
+
+it('tells the chef, the kitchen and every admin about a cancellation once, email only to admins with the toggle on', async () => {
+  expect(storageNoticeAudiences('cancelled')).toEqual(['chef', 'manager', 'admins']);
+  expect(storageAdminKind('cancelled')).toBe('storage_cancelled');
+  await queueStorageRentalNotice(tx(), 5, 'cancelled', { ...facts, amountCents: 1709, payoutCents: 1658 });
+  expect(notice(5)!.message).toBe('Your rental of Shelf 2 at Harbour Kitchen is cancelled. Your refund of $17.09 is on its way. Banks usually show it within 5–10 business days.');
+  expect(notice(2)!.title).toBe('Maya Chen cancelled · Shelf 2');
+  expect(notice(2)!.message).toContain('Refunded $17.09 · your payout: $16.58.');
+  expect(notice(1)!.title).toBe('Storage cancelled by the chef · Maya Chen');
+  expect(notice(4)).toBeDefined();
+  expect(email(1)).toBeDefined();
+  expect(email(4)).toBeUndefined();
+  state.notices = []; state.emails = [];
+  locale('fr-CA');
+  await queueStorageRentalNotice(tx(), 5, 'cancelled', { ...facts, amountCents: 0, payoutCents: 3317 });
+  expect(notice(5)!.message).toContain('Aucun remboursement');
+  expect(notice(2)!.message).toContain('Aucun remboursement selon votre politique');
+});

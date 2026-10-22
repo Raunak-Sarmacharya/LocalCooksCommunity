@@ -4835,5 +4835,6 @@
   "ovrLegendNoCheckin": "No check-in recorded",
   "ovrLegendFinished": "Finished",
   "ovrLegendCancelled": "Cancelled",
-  "ovrLegendNow": "Now"
+  "ovrLegendNow": "Now",
+  "activityStorageCancelled": "{name} cancelled their storage rental"
 }

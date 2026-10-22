@@ -159,6 +159,12 @@ export function unusedRefundSplit(terms: PaidTerm[], fromDate: string) {
   });
 }
 
+/** The chef's own cancellation before the start (kept in the rental's assistance history): what was refunded and what the kitchen keeps. */
+export type ChefCancel = { action: 'chef_cancel'; actorId: number; operationKey: string; cancelAt: string; reason: string | null; refundCents: number;
+  kitchenPayoutCents: number; complete: true };
+export const chefCancellation = (rental: { assistanceHistory: unknown }) =>
+  (Array.isArray(rental.assistanceHistory) ? rental.assistanceHistory as ChefCancel[] : []).find(entry => entry?.action === 'chef_cancel');
+
 /** The kitchen's booking cancellation policy (owner §7 item 2), measured from the start of the rental's first day. */
 export function storageCancellationSnapshot(policy: Pick<CancellationPolicySnapshot, 'policyId' | 'version' | 'noticeHours' | 'lateChargePercent' | 'disclosureVersion' | 'acceptedAt'>,
   termStart: string, timezone: string): CancellationPolicySnapshot {

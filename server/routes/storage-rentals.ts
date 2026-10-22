@@ -10,7 +10,8 @@ import { payExtension, quoteExtension, syncStorageTerm } from '../services/stora
 
 import { storageRentalVisitAction } from '../services/storage-checkout-service';
 import { previewStorageTool, runStorageTool, setStorageUnitService, storageToolInput } from '../services/storage-rental-actions';
-import { StorageRefundError } from '../services/storage-rental-money';
+import { cancelStorageRental, previewStorageCancellation, StorageRefundError } from '../services/storage-rental-money';
+import { attemptOutcomeDeliveryAfterResponse } from '../services/outcome-delivery';
 import { BookingMoneyFrozen } from '../services/booking-money-guard';
 import { isAllowedR2Url } from '../utils/upload-url';
 import { and, desc, eq } from 'drizzle-orm';
@@ -29,6 +30,8 @@ const decline = z.object({ reason: z.string().trim().min(1).max(500) });
 const holdoverCharge = z.object({ amountCents: z.number().int().positive().safe(), note: z.string().trim().max(500).optional() });
 const holdoverWaive = z.object({ reason: z.string().trim().min(1).max(500) });
 const removal = z.object({ itemIndexes: z.array(z.number().int().min(0).max(99)).max(100).optional(), all: z.boolean().optional(), note: z.string().trim().max(500).optional() });
+const cancel = z.object({ operationKey: z.string().min(8).max(100).regex(/^[\w:-]+$/), reason: z.string().trim().max(500).optional(),
+  expectedRefundCents: z.number().int().nonnegative().safe().optional() });
 const extensionQuote = z.object({ days: z.number().int().min(1).max(30) });
 const extensionPayment = extensionQuote.extend({ expectedTotalCents: z.number().int().nonnegative().safe(),
   requestKey: z.string().min(8).max(100).regex(/^[a-zA-Z0-9_-]+$/), useSavedCard: z.boolean() });
@@ -83,6 +86,15 @@ router.post('/chef/storage-rentals/:id/withdraw', endpoint(async req => {
   const rentalId = id.parse(req.params.id);
   await withdrawRental(rentalId, req.neonUser!.id);
   return readRental(rentalId, { id: req.neonUser!.id, role: 'chef' });
+}));
+
+// Approved, not started: the kitchen's booking cancellation policy (policy §5b). After the start it's a move-out instead.
+router.get('/chef/storage-rentals/:id/cancel/preview', endpoint(req => previewStorageCancellation(id.parse(req.params.id), req.neonUser!.id)));
+router.post('/chef/storage-rentals/:id/cancel', endpoint(async req => {
+  const rentalId = id.parse(req.params.id), actor = { id: req.neonUser!.id, role: 'chef' as const };
+  const result = await cancelStorageRental(rentalId, actor.id, cancel.parse(req.body ?? {}));
+  attemptOutcomeDeliveryAfterResponse();
+  return { ...(await readRental(rentalId, actor)), refundPending: result.refunds.some(refund => refund.status !== 'succeeded') };
 }));
 
 for (const action of ['move-in', 'move-out'] as const) router.post(`/chef/storage-rentals/:id/${action}`, endpoint(async req => {

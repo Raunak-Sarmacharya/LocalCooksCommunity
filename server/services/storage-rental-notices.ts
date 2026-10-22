@@ -27,7 +27,7 @@ type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export type StorageNoticeEvent = 'requested' | 'approved' | 'declined' | 'expired' | 'withdrawn' | 'authorization_lapsed' | 'move_in_due' | 'moved_in'
   | 'ending' | 'extended' | 'grace_started' | 'holdover_started' | 'holdover_charge' | 'holdover_paid' | 'holdover_waived' | 'not_moved_in' | 'removal_recorded' | 'reclaim'
   | 'move_out_requested' | 'cleared' | 'auto_cleared' | 'reopened' | 'removal_review' | 'final_notice' | 'refund_issued'
-  | 'payout_scheduled' | 'payout_released' | 'payout_on_hold' | 'payout_overdue' | 'kitchen_debt' | 'offer_extension' | 'support_flag';
+  | 'payout_scheduled' | 'payout_released' | 'payout_on_hold' | 'payout_overdue' | 'kitchen_debt' | 'offer_extension' | 'support_flag' | 'cancelled';
 
 export type StorageNoticeFacts = {
   /** Stable key for this occurrence (a date, term id or variant) so retries never queue a second email. */
@@ -83,7 +83,7 @@ export function storageNoticeAudiences(event: StorageNoticeEvent): Array<'chef' 
     case 'move_out_requested': case 'cleared': case 'auto_cleared': case 'reopened': return ['chef', 'manager'];
     case 'removal_review': case 'final_notice': return ['chef', 'manager', 'admins'];
     case 'removal_recorded': return ['chef', 'manager'];
-    case 'refund_issued': return ['chef', 'manager', 'admins'];
+    case 'refund_issued': case 'cancelled': return ['chef', 'manager', 'admins'];
     case 'payout_scheduled': return ['manager'];
     case 'payout_released': case 'payout_on_hold': return ['manager', 'admins'];
     case 'payout_overdue': case 'support_flag': return ['admins'];
@@ -100,7 +100,7 @@ const ADMIN_EVENT_KIND: Partial<Record<StorageNoticeEvent, string>> = {
   payout_released: 'storage_payout_released', payout_on_hold: 'storage_payout_on_hold', payout_overdue: 'storage_payout_on_hold', support_flag: 'storage_payment_recovery',
   holdover_charge: 'storage_holdover_raised', holdover_paid: 'storage_holdover_paid', holdover_waived: 'storage_holdover_waived', reclaim: 'storage_reclaim_served',
   removal_review: 'storage_removal_review', final_notice: 'storage_final_notice',
-  kitchen_debt: 'storage_kitchen_debt',
+  kitchen_debt: 'storage_kitchen_debt', cancelled: 'storage_cancelled',
 };
 
 export function storageAdminKind(event: StorageNoticeEvent): string | undefined {
@@ -196,7 +196,7 @@ export async function queueStorageRentalNotice(tx: Tx, rentalId: number, event: 
           holdReason: facts.holdReason ?? null, message: facts.message }) : undefined)
       : { title: tLocale(locale, `${prefix}_${chef ? 'Chef' : 'Kitchen'}_Title`, { ns: 'storage', ...values }),
           message: (() => {
-            const body = tLocale(locale, `${prefix}_${chef ? 'Chef' : 'Kitchen'}_Body`, { ns: 'storage', ...values });
+            const body = tLocale(locale, `${prefix}_${chef ? 'Chef' : 'Kitchen'}_Body${event === 'cancelled' && !facts.amountCents ? 'NoRefund' : ''}`, { ns: 'storage', ...values });
             if (!chef && event === 'extended' && facts.payoutCents != null && facts.payoutDate)
               return `${body} ${tLocale(locale, 'stExtended_Kitchen_Payout', { ns: 'storage', ...values })}`;
             return body;

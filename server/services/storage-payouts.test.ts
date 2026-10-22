@@ -38,7 +38,8 @@ vi.mock('./stripe-service', () => ({
   } }));
 
 import { releaseDueStoragePayouts, releaseStorageTermPayout, scheduleStorageTermPayout, storageTermPayout, storageTermStillEligible } from './storage-payouts';
-import { recoverStorageRefund, refundRentalUnused, storageRefundShares } from './storage-rental-money';
+import { cancelStorageRental, previewStorageCancellation, recoverStorageRefund, refundRentalUnused, storageRefundShares } from './storage-rental-money';
+import { chefCancellation } from '@shared/storage-rental';
 import { assertBookingMoneyWritable } from './booking-money-guard';
 import { changeStorageFlag, handleBookingSupportWebhook } from './booking-support-flags';
 
@@ -303,5 +304,68 @@ describe('storage refunds', () => {
     expect(await recoverStorageRefund(7, 'receipt-review', false)).toMatchObject({ success: true, verifiedOperationKeys: ['lost-receipt'] });
     expect(h.refunds).toHaveLength(1);
     expect(h.reverse).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('chef cancels an approved rental before the start (policy §5b)', () => {
+  const snapshot = { policyId: 1, version: 1, noticeHours: 24, lateChargePercent: 50,
+    tiers: [{ minHoursBeforeStart: 24, refundPercent: 100 }, { minHoursBeforeStart: 0, refundPercent: 50 }], timezone: 'America/St_Johns',
+    sessions: [{ startAt: '2026-10-17T02:30:00Z' }], disclosureVersion: 'storage-v1', acceptedAt: null };
+  const early = new Date('2026-10-15T12:00:00Z'), late = new Date('2026-10-16T12:00:00Z'), started = new Date('2026-10-17T02:30:00Z');
+  const rentalRow = async () => (await h.db.select().from(storageBookings).where(eq(storageBookings.id, 7)))[0];
+  beforeEach(async () => {
+    await h.db.update(storageBookings).set({ rentalState: 'reserved', approvedAt: new Date('2026-10-14T12:00:00Z'), occupancy: '[2026-10-17,2026-10-25)',
+      rentalTerms: { version: 'storage-v1', cancellationPolicySnapshot: snapshot } });
+  });
+  it('refunds exactly the previewed amount, ends the rental, frees the unit and tells everyone once', async () => {
+    const quote = await previewStorageCancellation(7, 3, early);
+    expect(quote).toMatchObject({ paidCents: 3550, refundCents: 3417, cardFeeCents: 133, lateChargeCents: 0, freeUntil: '2026-10-16T02:30:00.000Z' });
+    const result = await cancelStorageRental(7, 3, { operationKey: 'chef-cancel-1', reason: ' Plans changed ', expectedRefundCents: quote.refundCents }, early);
+    expect(result.refunds).toEqual([{ sourceId: 1, status: 'succeeded', customerRefund: 3417, kitchenDebtCents: 0 }]);
+    const rental = await rentalRow();
+    expect(rental).toMatchObject({ rentalState: 'ended', endReason: 'cancelled', status: 'cancelled', occupancy: null, releasedOn: '2026-10-15' });
+    expect(chefCancellation(rental)).toMatchObject({ refundCents: 3417, kitchenPayoutCents: 0, reason: 'Plans changed', cancelAt: early.toISOString() });
+    expect(events().filter(event => event === 'cancelled')).toHaveLength(1);
+    expect(h.notices.mock.calls.find(call => call[2] === 'cancelled')![3]).toMatchObject({ amountCents: 3417, payoutCents: 0 });
+    expect(events()).not.toContain('refund_issued'); // the cancellation notice already states the refund
+    // Same key (a lost response): nothing new is refunded or announced. Another key is refused.
+    await cancelStorageRental(7, 3, { operationKey: 'chef-cancel-1' }, new Date('2026-10-20T12:00:00Z'));
+    await expect(cancelStorageRental(7, 3, { operationKey: 'chef-cancel-2' }, early)).rejects.toThrow('not_cancellable');
+    expect(h.refunds).toHaveLength(1);
+    expect(events().filter(event => event === 'cancelled')).toHaveLength(1);
+    // Fully refunded: the kitchen's term pays nothing at its end.
+    expect(await releaseStorageTermPayout(1, 'test', endOfTerm)).toMatchObject({ notApplicable: true });
+    expect(h.createTransfer).not.toHaveBeenCalled();
+  });
+  it('after the notice period keeps the late charge and pays the kitchen its share of it', async () => {
+    const quote = await previewStorageCancellation(7, 3, late);
+    expect(quote).toMatchObject({ refundCents: 1709, cardFeeCents: 133, lateChargeCents: 1708 });
+    await cancelStorageRental(7, 3, { operationKey: 'chef-cancel-late', expectedRefundCents: 1709 }, late);
+    expect(chefCancellation(await rentalRow())).toMatchObject({ refundCents: 1709, kitchenPayoutCents: 3317 - 1659 });
+    await releaseStorageTermPayout(1, 'test', endOfTerm);
+    expect(h.createTransfer.mock.calls[0][0].amount).toBe(3450 - 133 - 1659);
+  });
+  it('refuses another chef, a started rental and a changed amount without moving money or state', async () => {
+    await expect(previewStorageCancellation(7, 99, early)).rejects.toMatchObject({ status: 404 });
+    await expect(cancelStorageRental(7, 99, { operationKey: 'not-mine' }, early)).rejects.toMatchObject({ status: 404 });
+    await expect(previewStorageCancellation(7, 3, started)).rejects.toThrow('not_cancellable');
+    await expect(cancelStorageRental(7, 3, { operationKey: 'too-late' }, started)).rejects.toThrow('not_cancellable');
+    await expect(cancelStorageRental(7, 3, { operationKey: 'stale', expectedRefundCents: 3550 }, early)).rejects.toThrow('refund_changed');
+    await h.db.update(storageBookings).set({ rentalState: 'active' });
+    await expect(cancelStorageRental(7, 3, { operationKey: 'moved-in' }, early)).rejects.toThrow('not_cancellable');
+    expect(h.refunds).toHaveLength(0);
+    expect((await payment()).metadata.cancellationRefundOperation).toBeUndefined();
+    expect((await rentalRow()).endReason).toBeNull();
+    expect(events()).not.toContain('cancelled');
+  });
+  it('cancels with no refund when the policy keeps everything, and a replay is a no-op', async () => {
+    await h.db.update(storageBookings).set({ rentalTerms: { version: 'storage-v1', cancellationPolicySnapshot: { ...snapshot, lateChargePercent: 100,
+      tiers: [{ minHoursBeforeStart: 24, refundPercent: 100 }, { minHoursBeforeStart: 0, refundPercent: 0 }] } } });
+    expect(await previewStorageCancellation(7, 3, late)).toMatchObject({ refundCents: 0, lateChargeCents: 3417 });
+    expect((await cancelStorageRental(7, 3, { operationKey: 'no-refund', expectedRefundCents: 0 }, late)).refunds).toEqual([]);
+    expect(await cancelStorageRental(7, 3, { operationKey: 'no-refund' }, late)).toMatchObject({ refunds: [] });
+    expect(chefCancellation(await rentalRow())).toMatchObject({ refundCents: 0, kitchenPayoutCents: 3317 });
+    expect(h.notices.mock.calls.filter(call => call[2] === 'cancelled').map(call => call[3].amountCents)).toEqual([0]);
+    expect(h.refunds).toHaveLength(0);
   });
 });

@@ -6,7 +6,7 @@ import Stripe from 'stripe';
 import { and, asc, eq, inArray, isNotNull, lte, or, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { kitchens, locations, storageListings, storageBookings, storageRentalTerms, paymentTransactions, platformSettings, kitchenCheckoutIncidents, users } from '@shared/schema';
-import { addDays, approvedTermDates, GRACE_DAYS, localDayStart, localToday, MAX_LEAD_DAYS, occupancyRange, pickFreeUnit,
+import { addDays, approvedTermDates, chefCancellation, GRACE_DAYS, localDayStart, localToday, MAX_LEAD_DAYS, occupancyRange, pickFreeUnit,
   rentalPhase, REMOVAL_REVIEW_DAYS, responseDeadline, STORAGE_TERMS_VERSION, storageCancellationSnapshot, termPayoutEligibleAt,
   termPrice, toDateRange, daysBetween, EXTEND_WINDOW_DAYS, type RentalDates } from '@shared/storage-rental';
 import type { CancellationPolicySnapshot } from '@shared/cancellation-policy';
@@ -17,7 +17,7 @@ import { hasChefUnpaidPenalties } from './overstay-penalty-service';
 import { calculateCheckoutFeesAsync } from './stripe-checkout-fee-service';
 import { publishedCancellationPolicy, cancellationSnapshotMetadata } from './cancellation-policy-settings';
 import { queueStorageRentalNotice } from './storage-rental-notices';
-import { scheduleStorageTermPayout } from './storage-payouts';
+import { expectedStoragePayoutCents, scheduleStorageTermPayout } from './storage-payouts';
 import { scheduleDeadlineTimer } from './deadline-timer';
 import { registerKitchenCheckout, resolveCheckoutConflict, updateCheckoutIncident } from './kitchen-checkout-incidents';
 import { generateReferenceCode } from '../reference-code';
@@ -392,6 +392,7 @@ export async function readRental(id: number, actor: RentalActor, now = new Date(
     : [];
   const payoutById = new Map(payments.map(payment => [payment.id, payment]));
   const chefName = resolvedChefName ?? (rental.chefId ? await getUserDisplayName(rental.chefId) : '');
+  const cancelled = chefCancellation(rental);
   const { storageRentalVisitActions, storageRentalRelet } = await import('./storage-checkout-service');
   actions.push(...storageRentalVisitActions(rental, actor.role, now, rental.rentalState === 'ended' && await storageRentalRelet(rental)));
   let lifecycle: { actions: string[]; holdoverChargeCents: number; removalItemIndexes: number[] } = { actions: [], holdoverChargeCents: 0, removalItemIndexes: [] };
@@ -420,6 +421,7 @@ export async function readRental(id: number, actor: RentalActor, now = new Date(
     }
   }
   if (actor.role === 'chef' && rental.termStart! <= localToday(now, rental.timezone!) && !['requested', 'declined', 'expired', 'withdrawn'].includes(rental.rentalState!)) actions.push('report_problem');
+  if (actor.role === 'chef' && !pending && rental.rentalState === 'reserved' && !rental.checkinCompletedAt && now < localDayStart(rental.termStart!, rental.timezone!)) actions.push('cancel');
   // The extend sheet quotes the exact limit (max term, reclaim, next renter); this only gates the button.
   if (actor.role === 'chef' && !pending && ['reserved', 'active'].includes(rental.rentalState!)
     && daysBetween(localToday(now, rental.timezone!), rental.paidThrough!) <= EXTEND_WINDOW_DAYS) actions.push('extend');
@@ -448,13 +450,16 @@ export async function readRental(id: number, actor: RentalActor, now = new Date(
     graceEndsOn: phase?.graceEndsOn ?? addDays(rental.paidThrough!, GRACE_DAYS), holdoverDays: phase?.holdoverDays ?? 0,
     accruedCents: phase?.accruedCents ?? 0, holdoverChargeCents: lifecycle.holdoverChargeCents, removalItemIndexes: lifecycle.removalItemIndexes,
     responseDeadline: rental.responseDeadline, declineReason: rental.declineReason, rentalTerms: frozen, actions,
+    cancellation: cancelled ? { cancelledAt: cancelled.cancelAt, refundCents: cancelled.refundCents, reason: cancelled.reason,
+      ...(actor.role === 'manager' ? { kitchenPayoutCents: cancelled.kitchenPayoutCents } : {}) } : null,
     terms: terms.map(({ id, seq, kind, startsOn, endsOn, days, dailyPriceCents, subtotalCents, taxCents, serviceFeeCents, totalCents, status, paidAt, paymentTransactionId }) => {
       const payout = paymentTransactionId ? payoutById.get(paymentTransactionId) : undefined;
       return { id, seq, kind, startsOn, endsOn, days, dailyPriceCents, subtotalCents, taxCents, serviceFeeCents, totalCents, status, paidAt,
         payoutEligibleAt: payout?.payoutEligibleAt ?? null, payoutReleasedAt: payout?.payoutReleasedAt ?? null, payoutHoldReason: payout?.payoutHoldReason ?? null,
-        // Same net the transfer uses: kitchen-funded refunds (reclaim, kitchen refund) come out of the payout.
-        payoutCents: payout ? Math.round(Number(payout.managerRevenue)
-          - ((payout.metadata as { refunds?: Array<{ managerDebited?: number }> } | null)?.refunds ?? []).reduce((sum, receipt) => sum + Number(receipt.managerDebited || 0), 0)) : null };
+        // Same net the transfer uses: kitchen-funded refunds (reclaim, kitchen refund) come out of the payout; after a chef's
+        // cancellation the card fee does too, since most of the share went back and the fee is all that's left to net out.
+        payoutCents: payout && cancelled && !payout.transferId ? expectedStoragePayoutCents(payout) : (payout ? Math.round(Number(payout.managerRevenue)
+          - ((payout.metadata as { refunds?: Array<{ managerDebited?: number }> } | null)?.refunds ?? []).reduce((sum, receipt) => sum + Number(receipt.managerDebited || 0), 0)) : null) };
     }),
     noBaseline: (rental.rentalTerms as { noBaseline?: boolean })?.noBaseline ?? false, needsCleaning: rental.needsCleaning, releasedOn: rental.releasedOn,
     evidence: { checkinPhotoUrls: rental.checkinPhotoUrls, handoverPhotoUrls: rental.handoverPhotoUrls, checkoutPhotoUrls: rental.checkoutPhotoUrls } };

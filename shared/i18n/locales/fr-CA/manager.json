@@ -4835,5 +4835,6 @@
   "ovrLegendNoCheckin": "Aucune arrivée enregistrée",
   "ovrLegendFinished": "Terminée",
   "ovrLegendCancelled": "Annulée",
-  "ovrLegendNow": "Maintenant"
+  "ovrLegendNow": "Maintenant",
+  "activityStorageCancelled": "{name} a annulé sa location d’entreposage"
 }

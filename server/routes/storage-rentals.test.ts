@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 const h = vi.hoisted(() => ({ quote: vi.fn(), checkout: vi.fn(), read: vi.fn(), list: vi.fn(), decide: vi.fn(), withdraw: vi.fn(),
-  adminAction: vi.fn(), visit: vi.fn(), extensionQuote: vi.fn(), extensionPay: vi.fn(), extensionSync: vi.fn(), raise: vi.fn(), waive: vi.fn(), record: vi.fn(), notice: vi.fn(), open: vi.fn() }));
+  adminAction: vi.fn(), visit: vi.fn(), extensionQuote: vi.fn(), extensionPay: vi.fn(), extensionSync: vi.fn(), raise: vi.fn(), waive: vi.fn(), record: vi.fn(), notice: vi.fn(), open: vi.fn(),
+  cancelPreview: vi.fn(), cancel: vi.fn(), deliver: vi.fn() }));
+vi.mock('../services/storage-rental-money', () => ({ previewStorageCancellation: h.cancelPreview, cancelStorageRental: h.cancel,
+  StorageRefundError: class extends Error { constructor(public code: string, public status = 409) { super(code); } } }));
+vi.mock('../services/outcome-delivery', () => ({ attemptOutcomeDeliveryAfterResponse: h.deliver }));
 vi.mock('../services/storage-checkout-service', () => ({ storageRentalVisitAction: h.visit }));
 vi.mock('../services/storage-extensions', () => ({ quoteExtension: h.extensionQuote, payExtension: h.extensionPay, syncStorageTerm: h.extensionSync }));
 vi.mock('../firebase-auth-middleware', () => ({ requireFirebaseAuthWithUser: vi.fn(), requireManager: vi.fn(), requireAdmin: vi.fn() }));
@@ -12,6 +16,7 @@ vi.mock('../services/storage-rentals', () => ({ quoteRental: h.quote, createRent
 vi.mock('../services/admin-storage', async importOriginal => ({ ...await importOriginal<any>(), runAdminStorageAction: h.adminAction }));
 import router from './storage-rentals';
 import { StorageRentalError } from '../services/storage-rentals';
+import { StorageRefundError } from '../services/storage-rental-money';
 const user = { id: 3, preferredLocale: 'fr-CA' };
 const details = { listingId: 1, startOn: '2026-10-18', days: 7 };
 const body = { ...details, requestKey: 'request_123', expectedTotalCents: 7000, acceptedTermsVersion: 'storage-v1', cancellationPolicyVersion: 1, disclosureVersion: 'storage-v1', quotedAt: '2026-10-16T12:00:00Z' };
@@ -23,6 +28,24 @@ async function call(method: string, path: string, data: unknown = body, param = 
 }
 beforeEach(() => { vi.resetAllMocks(); h.read.mockResolvedValue({ id: 7, actions: [] }); });
 describe('storage rental API contract', () => {
+  it('cancels for the authenticated chef with a validated key, then delivers notices after the response', async () => {
+    h.cancel.mockResolvedValue({ rentalId: 7, refunds: [{ status: 'succeeded' }] });
+    const res = await call('post', '/chef/storage-rentals/:id/cancel', { operationKey: 'cancel-key-1', reason: ' Moved ', expectedRefundCents: 3417, chefId: 99, amountCents: 1 });
+    expect(h.cancel).toHaveBeenCalledWith(7, 3, { operationKey: 'cancel-key-1', reason: 'Moved', expectedRefundCents: 3417 });
+    expect(h.deliver).toHaveBeenCalledTimes(1);
+    expect(res.json).toHaveBeenCalledWith({ id: 7, actions: [], refundPending: false });
+    h.cancel.mockResolvedValue({ rentalId: 7, refunds: [{ status: 'recovery_required' }] });
+    expect((await call('post', '/chef/storage-rentals/:id/cancel', { operationKey: 'cancel-key-1' })).json).toHaveBeenCalledWith({ id: 7, actions: [], refundPending: true });
+    for (const data of [{}, { operationKey: 'short' }, { operationKey: 'cancel key with spaces' }, { operationKey: 'cancel-key-1', expectedRefundCents: -1 }])
+      expect((await call('post', '/chef/storage-rentals/:id/cancel', data)).status).toHaveBeenCalledWith(400);
+    expect(h.cancel).toHaveBeenCalledTimes(2);
+    h.cancelPreview.mockRejectedValue(new StorageRefundError('not_cancellable'));
+    const started = await call('get', '/chef/storage-rentals/:id/cancel/preview', {});
+    expect(h.cancelPreview).toHaveBeenCalledWith(7, 3);
+    expect(started.status).toHaveBeenCalledWith(409);
+    expect(started.json.mock.calls[0][0]).toMatchObject({ code: 'not_cancellable' });
+    expect(started.json.mock.calls[0][0].error).not.toContain('stError_');
+  });
   it('extends for the authenticated chef without an unpaid-penalty gate, and syncs a validated term', async () => {
     h.extensionPay.mockResolvedValue({ requiresAction: true, clientSecret: 'secret_fixture', termId: 9 });
     const extension = { days: 3, expectedTotalCents: 3550, requestKey: 'extension_key', useSavedCard: true };

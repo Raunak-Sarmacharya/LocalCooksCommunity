@@ -22,7 +22,7 @@ vi.mock('../email', () => ({ renderTransactionalEmail: vi.fn() }));
 vi.mock('../reference-code', () => ({ generateReferenceCode: async () => `SB-${randomUUID()}` }));
 vi.mock('../config', () => ({ getAppBaseUrl: () => 'https://example.invalid' }));
 vi.mock('./booking-money-guard', () => ({ assertBookingMoneyWritable: vi.fn() }));
-vi.mock('./storage-payouts', () => ({ storageTermStillEligible: async () => false, scheduleStorageTermPayout: vi.fn() }));
+vi.mock('./storage-payouts', () => ({ storageTermStillEligible: async () => false, scheduleStorageTermPayout: vi.fn(), expectedStoragePayoutCents: () => 0 }));
 
 import { assertRentalAcceptance, createRentalCheckout, decideRental, expireRental, fulfillRentalCheckout, quoteRental,
   readRental, rentalIntentCanceled, storageRentalStripe, storageTermStillEligible, sweepStorageRentalRequests, withdrawRental } from './storage-rentals';
@@ -257,6 +257,17 @@ describe('storage decisions and exact expiry', () => {
     expect((await readRental(id, approveActor, now)).actions).not.toContain('extend');
     await h.db.update(storageBookings).set({ paidThrough: '2026-11-05' }).where(eq(storageBookings.id, id));
     expect((await readRental(id, { id: 3, role: 'chef' }, now)).actions).not.toContain('extend');
+    // Cancel: the chef only, an approved rental only, until its first day starts in the kitchen's zone.
+    await h.db.update(storageBookings).set({ rentalState: 'reserved', termStart: '2026-10-17' }).where(eq(storageBookings.id, id));
+    expect((await readRental(id, { id: 3, role: 'chef' }, now)).actions).toContain('cancel');
+    expect((await readRental(id, approveActor, now)).actions).not.toContain('cancel');
+    expect((await readRental(id, { id: 3, role: 'chef' }, new Date('2026-10-17T02:30:00Z'))).actions).not.toContain('cancel');
+    await h.db.update(storageBookings).set({ rentalState: 'ended', endReason: 'cancelled', assistanceHistory: [{ action: 'chef_cancel', operationKey: 'k', cancelAt: now.toISOString(),
+      reason: 'Moved', refundCents: 3417, kitchenPayoutCents: 0, actorId: 3, complete: true }] }).where(eq(storageBookings.id, id));
+    const cancelled = await readRental(id, { id: 3, role: 'chef' }, now);
+    expect(cancelled.actions).not.toContain('cancel');
+    expect(cancelled.cancellation).toEqual({ cancelledAt: now.toISOString(), refundCents: 3417, reason: 'Moved' });
+    expect((await readRental(id, approveActor, now)).cancellation).toMatchObject({ kitchenPayoutCents: 0 });
   });
   it('refuses live keys before any Stripe request', () => {
     vi.stubEnv('STRIPE_SECRET_KEY', 'sk_live_not_a_secret');

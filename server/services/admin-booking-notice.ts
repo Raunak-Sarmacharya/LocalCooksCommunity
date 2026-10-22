@@ -21,7 +21,7 @@ export const ADMIN_STORAGE_KINDS = new Set([
   'storage_requested', 'storage_expired', 'storage_confirmed', 'storage_extension_paid',
   'storage_refund_issued', 'storage_payout_released', 'storage_payout_on_hold',
   'storage_holdover_raised', 'storage_holdover_paid', 'storage_holdover_waived', 'storage_holdover_disputed',
-  'storage_reclaim_served', 'storage_removal_review', 'storage_final_notice', 'storage_kitchen_debt', 'storage_payment_recovery',
+  'storage_reclaim_served', 'storage_removal_review', 'storage_final_notice', 'storage_kitchen_debt', 'storage_payment_recovery', 'storage_cancelled',
 ]);
 
 type Cancellation = { cause?: 'chef' | 'kitchen'; refundCents?: number; feeCents?: number; kitchenShareRetainedCents?: number; feePending?: boolean };
@@ -159,6 +159,8 @@ function storageNoticeCopy(kind: string, facts: AdminStorageFacts): { title: str
       return { title: `Final notice sent · ${facts.chef}`, message: `${who}. Final notice sent; perishables may be removed after ${facts.perishablesAfter || 'the perishable deadline'}, other items after ${facts.othersAfter || 'the other-items deadline'}.` };
     case 'storage_kitchen_debt':
       return { title: `Kitchen debt recorded · ${facts.kitchen}`, message: `${who}. A refund of ${money(facts.amountCents)} couldn't be recovered from the kitchen's balance; the kitchen owes Local Cooks.` };
+    case 'storage_cancelled':
+      return { title: `Storage cancelled by the chef · ${facts.chef}`, message: `${who}. ${facts.when}. Cancelled before the start under the kitchen's policy; refunded ${money(facts.amountCents)}.` };
     case 'storage_payment_recovery':
       return { title: `Storage payment needs attention · ${facts.reference}`, message: `${who}. ${facts.message || 'Verify the current state before retrying any money movement.'}` };
   }
