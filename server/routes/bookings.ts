@@ -884,6 +884,8 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
 
         // Get payment transaction if exists
         let paymentTransaction = null;
+        // The captured metadata feeds the price reconciliation below; only the response leaves it out.
+        let capturedPaymentMetadata: any = null;
         try {
             const [txn] = await db
                 .select({
@@ -916,6 +918,7 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
                 )
                 .limit(1);
             if (txn) {
+                capturedPaymentMetadata = txn.metadata;
                 paymentTransaction = {
                     ...txn,
                     amount: txn.amount ? parseFloat(txn.amount) : null,
@@ -956,7 +959,7 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
             kitchenOnlyPrice
             + addonSubtotal
         );
-        const capturedMetadata: any = paymentTransaction?.metadata || {};
+        const capturedMetadata: any = capturedPaymentMetadata || {};
         const metadataTaxRate = capturedMetadata.taxRatePercent ?? capturedMetadata.tax_rate_percent;
         const fallbackTaxRatePercent = metadataTaxRate != null
             ? Number(metadataTaxRate)
