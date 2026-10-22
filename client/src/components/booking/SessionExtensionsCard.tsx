@@ -300,18 +300,19 @@ export function SessionExtensionsCard({ bookingId, manager, chefName, onChanged,
           </div>}
         </>
       })()}
-      {pick && <fieldset className="space-y-2 border-t pt-2">
+      {pick && <div className="space-y-3 border-t pt-3">
         <p className="text-sm font-medium tabular-nums" data-testid="extension-pick-summary">{pick.kind === "early_start"
           ? t("sxbSummaryStart", { defaultValue: "Starts at {time} · {amount}", time: clock(pick.at), amount: pick.free ? t("sxbFree", { defaultValue: "Free" }) : cash(pick.amountCents) })
           : t("sxbSummaryUntil", { defaultValue: "Until {time} · {amount}", time: clock(pick.at), amount: pick.free ? t("sxbFree", { defaultValue: "Free" }) : cash(pick.amountCents) })}</p>
         {/* Extra time is billed in 30-minute blocks (Peerspace): say so when the pick is shorter than its billed length. */}
         {!pick.free && pick.minutes % 30 !== 0 && <p className="text-xs text-muted-foreground" data-testid="extension-billed-note">
           {t("sxbBilledAs", { defaultValue: "Billed as {minutes} minutes (extra time is billed in 30-minute blocks).", minutes: Math.ceil(pick.minutes / 30) * 30 })}</p>}
-        <legend className="text-sm font-medium">{t("sxbChargeChoice", { defaultValue: "Free, or charge {chef}?", chef: chefName })}</legend>
-        <label className="flex min-h-11 items-center gap-2 text-sm"><input type="radio" name="extra-time-charge" checked={pick.free} onChange={() => setPick({ ...pick, free: true })} />
-          {t("sxbFree", { defaultValue: "Free" })}</label>
-        <label className="flex min-h-11 items-center gap-2 text-sm"><input type="radio" name="extra-time-charge" checked={!pick.free} onChange={() => setPick({ ...pick, free: false })} />
-          {t("sxbChargeFor", { defaultValue: "Charge for the extra time · {amount}", amount: cash(pick.amountCents) })}</label>
+        <fieldset className="space-y-2">
+          <legend className="mb-2 text-sm font-medium">{t("sxbChargeChoice", { defaultValue: "Free, or charge {chef}?", chef: chefName })}</legend>
+          {([true, false] as const).map(free => <label key={String(free)} className={"flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border px-3 py-2 text-sm " + (pick.free === free ? "border-primary bg-primary/5" : "")}>
+            <input className="accent-[hsl(var(--primary))]" type="radio" name="extra-time-charge" checked={pick.free === free} onChange={() => setPick({ ...pick, free })} />
+            {free ? t("sxbFree", { defaultValue: "Free" }) : t("sxbChargeFor", { defaultValue: "Charge for the extra time · {amount}", amount: cash(pick.amountCents) })}</label>)}
+        </fieldset>
         <p className="text-xs text-muted-foreground">{pick.free
           ? pick.kind === "early_start" ? t("sxbFreeStartHint", { defaultValue: "{chef} can start at {time} right away — we’ll let them know.", chef: chefName, time: clock(pick.at) })
             : t("sxbFreeEndHint", { defaultValue: "{chef} gets until {time} right away — we’ll let them know.", chef: chefName, time: clock(pick.at) })
@@ -322,7 +323,7 @@ export function SessionExtensionsCard({ bookingId, manager, chefName, onChanged,
           pick.free ? t("sxbGranted", { defaultValue: "Done. We let {chef} know.", chef: chefName }) : t("sxbOfferDone", { defaultValue: "Offer sent to {chef}.", chef: chefName }))
           .then(closeTools)}>
           {pick.free ? t("sxbGiveFree", { defaultValue: "Give it free" }) : t("sxbSendOffer", { defaultValue: "Send offer · {amount}", amount: cash(pick.amountCents) })}</Button>
-      </fieldset>}
+      </div>}
       <Button type="button" variant="ghost" className={tap} onClick={closeTools}>{t("sxbCancel", { defaultValue: "Cancel" })}</Button>
     </div>
   )
