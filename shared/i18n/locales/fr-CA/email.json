@@ -268,6 +268,8 @@
   "sxExtraTimeChefBody": "Vous êtes resté {stayed} après votre réservation à {kitchen}. La cuisine demande {amount} pour {billed} de temps supplémentaire. Ouvrez votre réservation pour payer, ou dites-nous si ce n’est pas juste. Rien n’est débité avant votre choix.",
   "sxPaidChefTitle": "Temps supplémentaire payé",
   "sxPaidChefBody": "Vous avez payé {amount} pour {billed} de temps supplémentaire à {kitchen}. Merci!",
+  "sxWithdrawnChefTitle": "{kitchen} a retiré sa demande pour le temps supplémentaire",
+  "sxWithdrawnChefBody": "{kitchen} a retiré la demande de {amount} pour le temps supplémentaire. Vous ne devez rien pour ce temps.",
   "sxPaidManagerTitle": "{chef} a payé le temps supplémentaire",
   "sxPaidManagerBody": "{chef} a payé {amount} pour {billed} de temps supplémentaire · vous recevriez {payout}. Le versement suit cette réservation.",
   "sxDisputedChefTitle": "Nous vérifions",

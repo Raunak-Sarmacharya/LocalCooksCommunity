@@ -303,6 +303,18 @@ describe('chef asks for more time (approval mode, the default)', () => {
       expect(notices().filter(notice => notice === 'escalated')).toHaveLength(1);
       expect(stripe.paymentIntents.cancel).not.toHaveBeenCalled();
     });
+    it('the kitchen can withdraw its unpaid extra-time charge; the chef is told and nothing is owed', async () => {
+      state.tables.kitchen_booking_extensions.push({ id: 8, bookingId: 10, kind: 'extra_time', status: 'offered', expiresAt: new Date('2026-10-16T19:00:00Z'), blockIndex: 0,
+        amountCents: 1000, minutes: 30, quote: { amountCents: 1000, kitchenGrossCents: 930, minutes: 30, actualMinutes: 28 }, originalEndAt: new Date(END), endAt: new Date(END), originalEndTime: "16:00", endTime: "16:00", createdAt: new Date(END), updatedAt: new Date(END), operation: null, paidAt: null, escalatedAt: null, appliedAt: null });
+      await expect(decideSessionExtension(stripe, 10, 8, chef, { action: 'withdraw' }, IN_FINAL_HOUR)).rejects.toMatchObject({ status: 403 });
+      await decideSessionExtension(stripe, 10, 8, manager, { action: 'withdraw' }, IN_FINAL_HOUR);
+      expect(extensions().find(row => row.id === 8)).toMatchObject({ status: 'cancelled' });
+      expect(notices()).toContain('withdrawn');
+      // Paid is final: it can't be withdrawn (a refund is a separate, Local Cooks-reviewed step).
+      state.tables.kitchen_booking_extensions.push({ id: 9, bookingId: 10, kind: 'extra_time', status: 'paid', expiresAt: new Date('2026-10-16T19:00:00Z'), blockIndex: 0,
+        amountCents: 1000, minutes: 30, operation: null, paidAt: new Date(), escalatedAt: null, appliedAt: null });
+      await expect(decideSessionExtension(stripe, 10, 9, manager, { action: 'withdraw' }, IN_FINAL_HOUR)).rejects.toThrow(/already paid/);
+    });
     it('lazy-on-write: a chef who asks again is never blocked by their own stale hold', async () => {
       const first = await ask();
       stripe.paymentIntents.cancel.mockClear();

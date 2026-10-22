@@ -7,7 +7,7 @@ export type ExtensionOption = { minutes: number; endTime: string; endAt: string;
 /** For "early_start", originalEndAt/endAt are the original and new START. */
 export type ExtensionItem = { id: number; kind: "request" | "offer" | "extra_time" | "early_start"; minutes: number; amountCents: number; free: boolean; kitchenGrossCents: number | null
   actualMinutes: number | null; maximumAmountCents: number | null
-  status: "requested" | "offered" | "approved" | "declined" | "expired" | "paid" | "cancelled" | "disputed"
+  status: "requested" | "offered" | "approved" | "declined" | "expired" | "paid" | "cancelled" | "disputed" | "waived"
   authorized: boolean; paid: boolean; confirmed: boolean; originalEndAt: string; endAt: string; expiresAt: string; note: string | null
   autoApprove: boolean; createdAt: string; processing: boolean; escalated: boolean; cardFailedAt?: string | null; refundedAt?: string | null; checkoutPending?: boolean; refundPending?: boolean }
 export type EarlyOption = { minutes: number; startTime: string; startAt: string; defaultFree: boolean; billedMinutes: number; amountCents: number; kitchenGrossCents: number; startNow?: boolean }

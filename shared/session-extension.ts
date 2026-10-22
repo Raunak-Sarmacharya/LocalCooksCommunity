@@ -7,7 +7,7 @@ import type { CloseoutSnapshot } from './clock-closeout';
 export const SESSION_EXTENSION_MINUTES = [30, 60, 120] as const;
 /** early_start: a manager's earlier start (free, or charged and paid by the chef); it moves the START boundary. */
 export type ExtensionKind = 'request' | 'offer' | 'extra_time' | 'early_start';
-export type ExtensionStatus = 'requested' | 'offered' | 'approved' | 'declined' | 'expired' | 'paid' | 'cancelled' | 'disputed';
+export type ExtensionStatus = 'requested' | 'offered' | 'approved' | 'declined' | 'expired' | 'paid' | 'cancelled' | 'disputed' | 'waived';
 export type ExtensionQuote = { subtotalCents: number; taxCents: number; commissionCents: number; amountCents: number; kitchenGrossCents: number };
 export type ExtensionOption = ExtensionQuote & { minutes: number; endTime: string; endAt: string };
 export type ExtensionOperation = { action: 'authorize' | 'pay' | 'capture' | 'release' | 'refund'; state: 'pending' | 'done'; key: string; target?: 'declined' | 'expired' | 'cancelled'; decidedAt: string;

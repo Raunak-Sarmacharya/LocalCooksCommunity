@@ -268,6 +268,8 @@
   "sxExtraTimeChefBody": "You stayed {stayed} past your booking at {kitchen}. They’ve asked for {amount} for {billed} of extra time. Open your booking to pay, or tell us if it isn’t right. Nothing is charged until you choose.",
   "sxPaidChefTitle": "Extra time paid",
   "sxPaidChefBody": "You paid {amount} for {billed} of extra time at {kitchen}. Thank you!",
+  "sxWithdrawnChefTitle": "{kitchen} withdrew its extra-time charge",
+  "sxWithdrawnChefBody": "{kitchen} withdrew the {amount} extra-time charge. You don’t owe anything for the extra time.",
   "sxPaidManagerTitle": "{chef} paid for extra time",
   "sxPaidManagerBody": "{chef} paid {amount} for {billed} of extra time · you’d get {payout}. It’s paid out with this booking.",
   "sxDisputedChefTitle": "We’re looking into it",

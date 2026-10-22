@@ -268,6 +268,8 @@
   "sxExtraTimeChefBody": "Ви залишалися на {stayed} довше за бронювання у {kitchen}. Кухня просить {amount} за {billed} додаткового часу. Відкрийте бронювання, щоб оплатити, або повідомте нам, якщо це неправильно. Нічого не списується без вашого вибору.",
   "sxPaidChefTitle": "Додатковий час оплачено",
   "sxPaidChefBody": "Ви оплатили {amount} за {billed} додаткового часу у {kitchen}. Дякуємо!",
+  "sxWithdrawnChefTitle": "{kitchen} скасувала запит на оплату додаткового часу",
+  "sxWithdrawnChefBody": "{kitchen} скасувала запит на {amount} за додатковий час. Ви нічого не винні за цей час.",
   "sxPaidManagerTitle": "{chef} оплатив(ла) додатковий час",
   "sxPaidManagerBody": "{chef} оплатив(ла) {amount} за {billed} додаткового часу · ви отримаєте {payout}. Виплата йде разом із цим бронюванням.",
   "sxDisputedChefTitle": "Ми перевіряємо",

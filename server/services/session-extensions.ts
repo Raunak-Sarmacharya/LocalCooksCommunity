@@ -336,9 +336,9 @@ const notify = (tx: Tx, extension: Extension, event: SessionExtensionNoticeEvent
 export async function createSessionExtension(stripe: ExtensionStripe, bookingId: number, actor: ExtensionActor,
   input: { kind: ExtensionKind; minutes?: number; amountCents?: number; note?: string; requestKey: string; visitId?: number; expectedEndAt: string;
     expectedAmountCents: number; free?: boolean }, now = new Date()) {
-  // Free is a manager choice for offers and early starts only; the platform never decides it.
+  // Free is a manager choice for offers, early starts and (as "No charge") a late checkout; the platform never decides it.
   const free = input.free === true;
-  if (free && !['offer', 'early_start'].includes(input.kind)) throw new SessionExtensionError('Only the kitchen can give time for free');
+  if (free && !['offer', 'early_start', 'extra_time'].includes(input.kind)) throw new SessionExtensionError('Only the kitchen can give time for free');
   // Lazy-on-write: close anything overdue first so a stale hold or unanswered offer never blocks this decision.
   await expireOverdueForBooking(stripe, bookingId, now);
   const extension = await db.transaction(async tx => {
@@ -366,7 +366,7 @@ export async function createSessionExtension(stripe: ExtensionStripe, bookingId:
       if (!option) throw new SessionExtensionError('That start time was just booked or has passed — pick another.');
       quote = { ...option, endAt: option.startAt, endTime: option.startTime };
     } else if (input.kind === 'extra_time') {
-      if (!input.note?.trim()) throw new SessionExtensionError('Please include a note to the chef');
+      if (!free && !input.note?.trim()) throw new SessionExtensionError('Please include a note to the chef');
       if (!extraTimeChargeOpen(now, clock.checkout, clock.visit.scheduledEndAt, overstayGraceMinutes(row)))
         throw new SessionExtensionError('Extra-time charges need a checkout recorded after the booked end plus the grace period, and must be sent within 24 hours');
       if (prior.some(ext => ext.blockIndex === clock.visit.blockIndex && ext.kind === 'extra_time' && !['declined', 'cancelled'].includes(ext.status)))
@@ -387,9 +387,11 @@ export async function createSessionExtension(stripe: ExtensionStripe, bookingId:
     const autoApprove = input.kind === 'offer' || input.kind === 'early_start' || input.kind === 'request' && (row.kitchen.sessionExtensionsAdminOverride ?? row.kitchen.autoApproveSessionExtensions);
     const [created] = await tx.insert(kitchenBookingExtensions).values({ bookingId, visitId: clock.visit.visitId, blockIndex: clock.visit.blockIndex,
       requestKey: input.requestKey, kind: input.kind, minutes: quote.minutes, amountCents: quote.amountCents, free, quote,
-      status: free ? 'approved' : input.kind === 'request' ? 'requested' : 'offered', requestedBy: actor.id, decidedBy: free ? actor.id : null, note: input.note?.trim() || null,
+      status: free ? input.kind === 'extra_time' ? 'waived' : 'approved' : input.kind === 'request' ? 'requested' : 'offered', requestedBy: actor.id, decidedBy: free ? actor.id : null, note: input.note?.trim() || null,
       originalEndAt: new Date(boundary.at), originalEndTime: boundary.time, endAt: new Date(quote.endAt), endTime: quote.endTime,
       autoApprove, expiresAt: extensionDeadline(input.kind, now, boundary.at) }).returning();
+    // "No charge" for a late checkout: recorded (history, and no later charge for this visit); nothing to apply or tell the chef.
+    if (free && input.kind === 'extra_time') return created;
     if (free) {
       // The manager gave the time: it applies now (no payment), is recorded with who gave it, and the chef is told.
       await applyBoundary(tx, row, created, now);
@@ -450,7 +452,7 @@ async function commitCapture(tx: Tx, row: Context, extension: Extension, now: Da
     operation: { ...extension.operation, ...extensionOperation(extension.id, 'capture', now) }, updatedAt: now }).where(eq(kitchenBookingExtensions.id, extension.id));
 }
 export async function decideSessionExtension(stripe: ExtensionStripe, bookingId: number, id: number, actor: ExtensionActor,
-  input: { action: 'approve' | 'approve_free' | 'decline' | 'accept' | 'pay' | 'dispute'; expectedAmountCents?: number; note?: string }, now = new Date()) {
+  input: { action: 'approve' | 'approve_free' | 'decline' | 'accept' | 'pay' | 'dispute' | 'withdraw'; expectedAmountCents?: number; note?: string }, now = new Date()) {
   let provider = false;
   await db.transaction(async tx => {
     const row = await lockedContext(tx, bookingId, actor), extension = await savedExtension(tx, bookingId, id);
@@ -458,8 +460,18 @@ export async function decideSessionExtension(stripe: ExtensionStripe, bookingId:
     const allowed = input.action === 'approve' || input.action === 'approve_free' ? manager && extension.kind === 'request'
       : input.action === 'decline' ? manager && extension.kind === 'request' || chef && ['offer', 'early_start'].includes(extension.kind)
       : input.action === 'accept' ? chef && ['offer', 'early_start'].includes(extension.kind)
+      : input.action === 'withdraw' ? manager && extension.kind === 'extra_time'
       : chef && extension.kind === 'extra_time';
     if (!allowed) throw new SessionExtensionError('This extra-time action is unavailable for your role', 403);
+    if (input.action === 'withdraw') {
+      // The kitchen takes back its extra-time charge while the chef hasn't paid (or disputed): nothing is owed.
+      if (extension.status === 'cancelled') return;
+      if (extension.paidAt || extension.operation?.state === 'pending' || extension.status !== 'offered')
+        throw new SessionExtensionError('This charge is already paid, being processed or with Local Cooks. Contact Local Cooks.');
+      await tx.update(kitchenBookingExtensions).set({ status: 'cancelled', decidedBy: actor.id, updatedAt: now }).where(eq(kitchenBookingExtensions.id, id));
+      await notify(tx, { ...extension, status: 'cancelled' }, 'withdrawn', actor.id);
+      return;
+    }
     if (input.action === 'dispute') {
       if (extension.status === 'disputed') return;
       if (extension.paidAt || extension.operation?.state === 'pending' || extension.status !== 'offered')

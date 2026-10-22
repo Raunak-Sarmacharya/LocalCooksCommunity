@@ -302,6 +302,32 @@ describe("booking page: extra time", () => {
     fireEvent.change(amount, { target: { value: "15" } });
     expect(screen.getByRole("button", { name: /Send \$15\.00 to Maya Chen/ })).toBeDisabled(); // note required
   });
+  it("a late checkout is a decision with a default: what happened, Charge or No charge, and free if nothing is sent", async () => {
+    const overstay = { inSession: false, checkoutAt: "2026-10-14T18:58:00.000Z", extraTime: { actualMinutes: 28, minutes: 30, maximumAmountCents: 1373, amountCents: 1373, kitchenGrossCents: 1294 } }
+    responses.push({ match: /\/extensions$/, method: "GET", body: state(overstay) });
+    responses.push({ match: /\/extensions$/, method: "POST", body: { extension: item({ kind: "extra_time", status: "waived", amountCents: 0 }) } });
+    const view = render(<SessionExtensionsCard bookingId={10} manager chefName="Maya Chen" />);
+    const block = await screen.findByTestId("overstay-decision");
+    expect(block).toHaveTextContent(/^Maya Chen left 28 minutes after the booked end/);
+    expect(block).toHaveTextContent(/If you don’t charge by .+, the extra time is free\./);
+    expect(within(block).getByRole("button", { name: "Charge for extra time" })).toBeEnabled();
+    fireEvent.click(within(block).getByRole("button", { name: "No charge" }));
+    await waitFor(() => expect(posts()[0].body).toMatchObject({ kind: "extra_time", free: true, expectedAmountCents: 0 }));
+    // Recorded: both sides read it, and there is nothing left to decide.
+    view.unmount(); responses.length = 0;
+    responses.push({ match: /\/extensions$/, method: "GET", body: state({ inSession: false, history: [item({ id: 9, kind: "extra_time", status: "waived", amountCents: 0 })] }) });
+    const after = render(<SessionExtensionsCard bookingId={10} manager chefName="Maya Chen" />);
+    expect(await screen.findByText("You didn’t charge Maya Chen for the extra time.")).toBeInTheDocument();
+    after.unmount();
+    render(<SessionExtensionsCard bookingId={10} manager={false} chefName="" />);
+    expect(await screen.findByText("Harbour Kitchen didn’t charge you for the extra time.")).toBeInTheDocument();
+  });
+  it("the kitchen can withdraw a sent, unpaid charge", async () => {
+    responses.push({ match: /\/extensions$/, method: "GET", body: state({ inSession: false, history: [item({ id: 8, kind: "extra_time", status: "offered", amountCents: 1373 })] }) });
+    render(<SessionExtensionsCard bookingId={10} manager chefName="Maya Chen" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Withdraw charge" }));
+    await waitFor(() => expect(posts()[0].body).toEqual({ action: "withdraw" }));
+  });
   it("shows free grants in history with who gave them", async () => {
     responses.push({ match: /\/extensions$/, method: "GET", body: state({ inSession: false, history: [item({ kind: "early_start", free: true, minutes: 30, status: "approved", confirmed: true, amountCents: 0 })] }) });
     render(<SessionExtensionsCard bookingId={10} manager={false} chefName="" />);

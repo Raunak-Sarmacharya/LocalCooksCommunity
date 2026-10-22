@@ -18,6 +18,7 @@ import { SmartImage } from '@/components/ui/smart-image';
 import { VisitAssistancePanel } from '@/components/booking/VisitAssistancePanel';
 import { ManagerInSessionBadge, inSessionEnds } from '@/components/manager/bookings/ManagerInSessionBadge';
 import { DamageClaimSheet } from '@/components/booking/DamageClaimSheet';
+import { SessionExtensionsCard } from '@/components/booking/SessionExtensionsCard';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { claimMoney, claimRequest, type DamageClaimCardData } from '@/lib/damage-claims';
 import { claimFilingWindow } from '@shared/damage-claims';
@@ -313,6 +314,8 @@ function InspectionTask({ booking, evidence, visitId, formatEvent, refresh, bloc
         <summary className="flex min-h-11 cursor-pointer items-center text-sm text-muted-foreground underline-offset-4 hover:underline">{t('inspHowThisWorks', 'How this works')}</summary>
         <p className="pb-2 text-sm text-muted-foreground motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200">{t('inspectCopy53')}</p>
       </details>
+      {/* A late checkout's extra-time decision sits where the kitchen reviews the departure (it hides itself otherwise). */}
+      <SessionExtensionsCard variant="now" bookingId={booking.id} manager chefName={chef} onChanged={() => void refresh()} />
       {!booking.inspection && <p role="alert">{t('inspectCopy54')}</p>}
       {booking.inspection && !booking.inspection.dutiesSaved && <p>{t('inspectCopy55')}</p>}
       {!(inspectionClosed && !canClear) && <>

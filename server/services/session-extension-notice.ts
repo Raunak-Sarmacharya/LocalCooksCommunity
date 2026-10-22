@@ -15,7 +15,7 @@ import { kitchenClockWithZone } from './kitchen-payout-notice';
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type Extension = typeof kitchenBookingExtensions.$inferSelect;
 export type SessionExtensionNoticeEvent = 'requested' | 'instant' | 'confirmed' | 'declined' | 'expired' | 'offered'
-  | 'extra_time' | 'paid' | 'disputed' | 'escalated' | 'card_failed' | 'granted' | 'early_offered' | 'refunded';
+  | 'extra_time' | 'paid' | 'disputed' | 'escalated' | 'card_failed' | 'granted' | 'early_offered' | 'refunded' | 'withdrawn';
 type Audience = 'chef' | 'manager' | 'admins';
 type Facts = { chef: string; kitchen: string; reference: string; end: string; originalEnd: string; expires: string; amount: string;
   payout: string; duration: string; billed: string; stayed: string; early: string; note: string | null };
@@ -42,6 +42,7 @@ export function sessionExtensionAudiences(event: SessionExtensionNoticeEvent, ki
     case 'expired': return kind === 'offer' ? [['manager', 'sxOfferExpiredManager']] : [['chef', 'sxRequestExpiredChef'], ['manager', 'sxRequestExpiredManager']];
     case 'offered': return [['chef', 'sxOfferedChef']];
     case 'extra_time': return [['chef', 'sxExtraTimeChef']];
+    case 'withdrawn': return [['chef', 'sxWithdrawnChef']];
     case 'paid': return [['chef', 'sxPaidChef'], ['manager', 'sxPaidManager']];
     case 'disputed': return [['chef', 'sxDisputedChef'], ['manager', 'sxDisputedManager'], ['admins', 'sxSupportDisputed']];
     case 'escalated': return [['chef', 'sxEscalatedChef'], ['manager', 'sxEscalatedManager'], ['admins', 'sxSupportUnanswered']];

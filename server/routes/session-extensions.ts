@@ -26,7 +26,7 @@ const create = z.object({ kind: z.enum(['request', 'offer', 'extra_time', 'early
   expectedEndAt: z.string().datetime(), expectedAmountCents: z.number().int().nonnegative().max(10_000_000), free: z.boolean().optional() }).strict()
   .refine(input => input.kind === 'extra_time' || input.minutes !== undefined, { message: 'Choose how much time' })
   .refine(input => input.free ? input.expectedAmountCents === 0 : input.expectedAmountCents > 0, { message: 'Review the price' });
-const decision = z.object({ action: z.enum(['approve', 'approve_free', 'decline', 'accept', 'pay', 'dispute']), expectedAmountCents: cents.optional(),
+const decision = z.object({ action: z.enum(['approve', 'approve_free', 'decline', 'accept', 'pay', 'dispute', 'withdraw']), expectedAmountCents: cents.optional(),
   note: z.string().max(1000).optional() }).strict();
 
 function stripeClient() {

@@ -87,13 +87,15 @@ export function SessionExtensionsCard({ bookingId, manager, chefName, onChanged,
       failed: history.filter(item => item.kind === "request" && (!!item.cardFailedAt || item.checkoutPending && !item.authorized) && !item.refundedAt && Date.parse(item.expiresAt) > now),
       refunded: history.filter(item => !!item.refundedAt),
       refunding: history.filter(item => !!item.refundPending),
-      done: history.filter(item => item.confirmed) }
+      done: history.filter(item => item.confirmed),
+      waived: history.filter(item => item.kind === "extra_time" && item.status === "waived") }
   }, [state, now, only, variant])
   const hasOpen = view.requests.length > 0 || view.offers.length > 0 || view.waiting.length > 0
   const showOffer = !!state && !only && manager && state.enabled && state.inSession && state.options.length > 0 && !hasOpen
   const showEarly = !!state && !only && manager && state.enabled && !!state.beforeStart && (state.earlyOptions?.length ?? 0) > 0 && !hasOpen
   const showCharge = !!state && !only && manager && state.enabled && !!state.extraTime
-  const toolKey = [showEarly && "early_start", showOffer && "offer", showCharge && "charge"].filter(Boolean).join("|")
+  // Charging for a late checkout is offered in its own decision block (with "No charge"), not as a bare header tool.
+  const toolKey = [showEarly && "early_start", showOffer && "offer"].filter(Boolean).join("|")
   useEffect(() => {
     if (variant !== "now") return
     onToolsChange?.(toolKey ? toolKey.split("|") as ExtensionTool[] : [])
@@ -110,6 +112,9 @@ export function SessionExtensionsCard({ bookingId, manager, chefName, onChanged,
   if (!state) return null
   const zone = state.timezone, currency = state.currency, kitchen = state.kitchenName
   const clock = (at: string) => kitchenClock(at, zone, locale)
+  // Extra-time charges can be sent for 24 hours after the checkout; after that the late checkout stays free.
+  const freeBy = state?.checkoutAt ? new Intl.DateTimeFormat(locale, { timeZone: zone, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
+    .format(new Date(Date.parse(state.checkoutAt) + 24 * 3_600_000)) : null
   const cash = (cents: number) => money(cents, currency, locale)
   const length = (minutes: number) => lengthText(minutes, (key, options) => String(t(key as never, options as never)), "sxb")
   const duration = (minutes: number) => isQuickPick(minutes)
@@ -238,7 +243,11 @@ export function SessionExtensionsCard({ bookingId, manager, chefName, onChanged,
         {item.note && <p className="text-sm whitespace-pre-wrap">{manager ? t("sxbYourNote", { defaultValue: "Your note: {note}", note: item.note }) : t("sxbKitchenNote", { defaultValue: "Note from {kitchen}: {note}", kitchen, note: item.note })}</p>}
         {item.status === "disputed" ? <p className="text-sm" role="status">{t("sxbDisputed", { defaultValue: "Local Cooks is reviewing this charge. Nothing was charged." })}</p>
           : manager ? <p className="text-xs text-muted-foreground">{item.escalated ? t("sxbEscalated", { defaultValue: "No answer after 48 hours, so Local Cooks is following up. Nothing has been charged." })
-            : t("sxbChargeWaiting", { defaultValue: "Waiting for {chef}. Their card is only charged if they pay.", chef: chefName })}</p>
+            : t("sxbChargeWaiting", { defaultValue: "Waiting for {chef}. Their card is only charged if they pay.", chef: chefName })}
+            {/* Taking it back is always the kitchen's call while it's unpaid; the customer is told nothing is owed. */}
+            {item.status === "offered" && !item.escalated && <Button type="button" variant="link" size="sm" className="h-auto px-1 text-xs" disabled={!!busy}
+              onClick={() => void act(`withdraw-${item.id}`, () => decide(item, "withdraw"), t("sxbWithdrawn", { defaultValue: "Charge withdrawn. We let {chef} know.", chef: chefName }))}>
+              {t("sxbWithdrawCharge", { defaultValue: "Withdraw charge" })}</Button>}</p>
           : <>
             {item.cardFailedAt && <p role="alert" className="text-sm">{t("sxbCardFailed")}</p>}
             <div className="flex flex-wrap gap-2">
@@ -357,12 +366,33 @@ export function SessionExtensionsCard({ bookingId, manager, chefName, onChanged,
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
   </>
 
+  // A late checkout is a decision with a default: say what happened, offer both answers, and say doing nothing is free.
+  const overstayDecision = showCharge && !charging && state.extraTime && (
+<NowAttentionRow as={nowMode ? undefined : "plain"} tone="info" className={nowMode ? undefined : "space-y-2 rounded-xl border p-3"} data-testid="overstay-decision">
+        <p className="text-sm font-medium">{t("sxbOverstayFact", { defaultValue: "{chef} left {stayed} after the booked end ({end}).", chef: chefName,
+          stayed: minutesText(state.extraTime.actualMinutes), end: state.endAt ? clock(state.endAt) : "" })}</p>
+        {freeBy && <p className="text-xs text-muted-foreground">{t("sxbOverstayFreeBy", { defaultValue: "If you don’t charge by {time}, the extra time is free.", time: freeBy })}</p>}
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" className={tap} disabled={!!busy} onClick={() => { setCharging(true); setAmount((maxCharge / 100).toFixed(2)); setNote("") }}>
+            {t("sxbChargeExtra", { defaultValue: "Charge for extra time" })}</Button>
+          <Button type="button" variant="outline" className={tap} disabled={!!busy} onClick={() => void act("waive", () => createExtension(bookingId, { kind: "extra_time", free: true, requestKey,
+              expectedEndAt: state.endAt, expectedAmountCents: 0, ...(state.visitId ? { visitId: state.visitId } : {}) }),
+            t("sxbNoChargeDone", { defaultValue: "No charge. Nothing is sent to {chef}.", chef: chefName }))}>
+            {t("sxbNoCharge", { defaultValue: "No charge" })}</Button>
+        </div>
+      </NowAttentionRow>)
+  const waivedLines = view.waived.map(item => <p key={item.id} className="text-sm text-muted-foreground" data-testid="extension-waived">{manager
+    ? t("sxbWaivedManager", { defaultValue: "You didn’t charge {chef} for the extra time.", chef: chefName })
+    : t("sxbWaivedChef", { defaultValue: "{kitchen} didn’t charge you for the extra time.", kitchen })}</p>)
+
   if (nowMode) {
     const sheetOpen = !!picker || !!chargeForm
-    const hasItems = view.requests.length + view.offers.length + view.charges.length + view.waiting.length + view.failed.length + view.refunded.length + view.refunding.length + (view.closed ? 1 : 0) > 0
+    const hasItems = view.waived.length + (overstayDecision ? 1 : 0) + view.requests.length + view.offers.length + view.charges.length + view.waiting.length + view.failed.length + view.refunded.length + view.refunding.length + (view.closed ? 1 : 0) > 0
     if (!hasItems && !sheetOpen && !notice && !error) return null
     return <div className="space-y-3" data-testid="session-extensions" data-variant="now">
+      {overstayDecision}
       {openItems}
+      {waivedLines}
       {!sheetOpen && feedback}
       <Sheet open={sheetOpen} onOpenChange={open => { if (!open && !busy) closeTools() }}>
         <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
@@ -377,7 +407,7 @@ export function SessionExtensionsCard({ bookingId, manager, chefName, onChanged,
     </div>
   }
 
-  const nothing = !view.closed && !view.requests.length && !view.offers.length && !view.charges.length && !view.waiting.length && !view.failed.length && !view.refunded.length && !view.refunding.length && !view.done.length && !showOffer && !showEarly && !showCharge
+  const nothing = !view.waived.length && !view.closed && !view.requests.length && !view.offers.length && !view.charges.length && !view.waiting.length && !view.failed.length && !view.refunded.length && !view.refunding.length && !view.done.length && !showOffer && !showEarly && !showCharge
   if (nothing && !error && !notice) return null
 
   return (
@@ -387,9 +417,9 @@ export function SessionExtensionsCard({ bookingId, manager, chefName, onChanged,
       {showOffer && !offering && <Button type="button" variant="outline" className={tap} onClick={() => { setOffering("offer"); setPick(null); setChoosing(false) }}>{t("sxbOfferMore", { defaultValue: "Offer more time" })}</Button>}
       {showEarly && !offering && <Button type="button" variant="outline" className={tap} onClick={() => { setOffering("early_start"); setPick(null); setChoosing(false) }}>{t("sxbLetStartEarly", { defaultValue: "Let them start early" })}</Button>}
       {picker}
-      {showCharge && !charging && <Button type="button" variant="outline" className={tap} onClick={() => { setCharging(true); setAmount((maxCharge / 100).toFixed(2)); setNote("") }}>
-        {t("sxbChargeExtra", { defaultValue: "Charge for extra time" })}</Button>}
+      {overstayDecision}
       {chargeForm}
+      {waivedLines}
       {historyList}
       {!state.enabled && manager && <p className="text-xs text-muted-foreground">{t("sxbPaused", { defaultValue: "Extra time is paused on Local Cooks right now." })}</p>}
       {feedback}

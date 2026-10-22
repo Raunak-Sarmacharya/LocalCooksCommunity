@@ -3,7 +3,7 @@ const kinds = ['requested', 'confirmed', 'cancelled', 'cancellation_requested', 
   'checkin_recorded', 'checkout_requested', 'checkout_cleared', 'checkout_claim_filed',
   'report_no_show', 'report_attended', 'withdraw_attendance', 'kitchen_change_requested', 'kitchen_change_applied',
   'kitchen_change_declined', 'kitchen_change_withdrawn', 'kitchen_change_expired',
-  'ext_requested', 'ext_offered', 'ext_approved', 'ext_accepted', 'ext_paid', 'ext_declined', 'ext_expired', 'ext_withdrawn', 'ext_refunded',
+  'ext_requested', 'ext_offered', 'ext_approved', 'ext_accepted', 'ext_paid', 'ext_declined', 'ext_expired', 'ext_withdrawn', 'ext_waived', 'ext_refunded',
   'replaced_by', 'replaces'] as const;
 /** Same-instant events read in lifecycle order (requested before confirmed), then by key. */
 export function compareHistoryEvents(a: { kind: string; recordedAt: string; key: string }, b: { kind: string; recordedAt: string; key: string }): number {
@@ -52,6 +52,8 @@ export function extensionHistoryEvents(rows: ExtensionRow[]): BookingHistoryEven
       const at = instant(value), recordedAt = at && created && Date.parse(at) < Date.parse(created) ? created : at;
       if (recordedAt) events.push({ key: `ext-${row.id}-${kind}`, kind, recordedAt, ...base, ...extra });
     };
+    // The kitchen chose "No charge" for a late checkout: one line, nothing was asked for.
+    if (extFlow === 'charge' && row.status === 'waived') { add('ext_waived', row.createdAt); continue; }
     add(extFlow === 'ask' || extFlow === 'charge' ? 'ext_requested' : 'ext_offered', row.createdAt, extFlow === 'charge' && paid ? { amountCents: row.amountCents } : {});
     const decidedAt = row.operation?.decidedAt ?? row.updatedAt;
     if (['approved', 'paid'].includes(row.status) && extFlow !== 'charge') {
