@@ -1556,9 +1556,10 @@ export default function BookingDetailsPage() {
         : [{ key, label: policyT('dcV2Report'), onSelect: () => setClaimOpen(true) }];
     }
   });
-  // "I was there" is the chef's one action after a no-show report: a real button in the header, not a quiet link.
+  // "I was there" (after a no-show report) and "Find another time" (after a closed request) are the chef's one action: a real button in the header, not a quiet link.
   const iWasThere = secondaryLinks.find(link => link.key === 'i_was_there');
-  const linkSecondary = secondaryLinks.filter(link => link.key !== 'i_was_there');
+  const headerButtons = secondaryLinks.filter(link => link.key === 'i_was_there' || (!isManagerView && link.key === 'find_another_time'));
+  const linkSecondary = secondaryLinks.filter(link => !headerButtons.includes(link));
   const visibleSecondary = linkSecondary.slice(0, NOW_SECONDARY_VISIBLE);
   const overflowSecondary = linkSecondary.slice(NOW_SECONDARY_VISIBLE);
   const visibleKeys = new Set(visibleSecondary.map(link => link.key));
@@ -1703,7 +1704,8 @@ export default function BookingDetailsPage() {
   const nowCard = booking && (
     <BookingNowCard
       reference={bookingReference(booking.referenceCode, booking.id)}
-      bookedOn={t('bdBookedOn', { date: formatShortDate(booking.createdAt) })}
+      // A request that closed before the kitchen confirmed it was never booked.
+      bookedOn={t(cancelCause && !['cancelled_after_confirmation', 'cancelled'].includes(cancelCause) ? 'bdRequestedOn' : 'bdBookedOn', { date: formatShortDate(booking.createdAt) })}
       title={isManagerView ? chefName : kitchenName}
       heroImage={heroSrc}
       leading={isManagerView ? <Avatar className="h-12 w-12 shrink-0"><AvatarFallback className="bg-muted text-sm font-semibold">{initials(chefName)}</AvatarFallback></Avatar> : undefined}
@@ -1766,7 +1768,7 @@ export default function BookingDetailsPage() {
         )}
       </>}
       body={<>
-        {iWasThere && <div><Button type="button" variant="outline" className="min-h-11" data-testid={iWasThere.testId} onClick={iWasThere.onSelect}>{iWasThere.label}</Button></div>}
+        {headerButtons.map(link => <div key={link.key}><Button type="button" variant="outline" className="min-h-11" data-testid={link.testId} onClick={link.onSelect}>{link.label}</Button></div>)}
         {primary === 'answer_attendance' && (
           <div className="flex flex-wrap gap-2" role="group" aria-label={t('bnDidTheyCome')} data-testid="attendance-answer">
             <Button type="button" variant="outline" className="min-h-11" data-testid="they-came" onClick={() => openFix('report_attended')}>{t('bnTheyCame')}</Button>

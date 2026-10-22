@@ -253,6 +253,9 @@ describe("why a request ended", () => {
       const header = await screen.findByTestId("booking-header");
       expect(within(header).getByTestId("booking-status-pill")).toHaveTextContent(chefPill);
       expect(within(header).getByTestId("booking-next-step").textContent).toMatch(role === "chef" ? chefNext : managerNext);
+      // Never confirmed, so never booked (live, Oct 21: the eyebrow said "Booked").
+      expect(header).toHaveTextContent(/Requested Jan 10/);
+      expect(header).not.toHaveTextContent(/Booked Jan/);
     }
   });
   it("offers the chef a way to find another time after a decline or an expiry, not after their own withdrawal", async () => {
@@ -262,8 +265,14 @@ describe("why a request ended", () => {
       h.booking = { ...base(), ...ended(actorId) };
       render(<BookingDetailsPage />);
       await screen.findByTestId("booking-header");
-      if (offered) expect(screen.getByTestId("find-another-time")).toHaveAttribute("href", "/book/3?kitchenId=2");
-      else expect(screen.queryByTestId("find-another-time")).not.toBeInTheDocument();
+      if (offered) {
+        // The chef's one next step: a real button, not a quiet link.
+        const button = screen.getByTestId("find-another-time");
+        expect(button.tagName).toBe("BUTTON");
+        h.navigate.mockClear();
+        fireEvent.click(button);
+        expect(h.navigate).toHaveBeenCalledWith("/book/3?kitchenId=2");
+      } else expect(screen.queryByTestId("find-another-time")).not.toBeInTheDocument();
     }
   });
   it("offers the kitchen an invitation to another time after it declined (spec row 5)", async () => {

@@ -2844,6 +2844,7 @@
   "kciAcModeChanged": "Les détails d’arrivée ont changé. Consultez les instructions actuelles.",
   "bookingAttendanceNotEndedManager": "Le client confirme son arrivée à son arrivée et son départ lorsqu’il quitte.",
   "bdBookedOn": "Réservé le {date}",
+  "bdRequestedOn": "Demandé le {date}",
   "bdRequestSentBanner": "Demande envoyée. {kitchen} a jusqu’au {deadline} pour répondre. Votre carte est mise en attente; vous n’êtes débité que si la cuisine accepte.",
   "bdManagerRespondBy": "Répondez avant le {deadline}. Sinon, la demande expire et la retenue sur la carte du client est levée.",
   "bdPaymentHeldSummaryManager": "Le paiement du client est en attente.",

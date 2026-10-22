@@ -3820,6 +3820,7 @@
   "inSessionLeftHM": "En cours · {hours} h {minutes} min restantes · se termine à {time}",
   "inSessionOver": "En cours · le temps réservé s’est terminé à {time}",
   "bdBookedOn": "Réservé le {date}",
+  "bdRequestedOn": "Demandé le {date}",
   "bdRequestSentBanner": "Demande envoyée. {kitchen} a jusqu’au {deadline} pour répondre. Votre carte est mise en attente; vous n’êtes débité que si la cuisine accepte.",
   "bdManagerRespondBy": "Répondez avant le {deadline}. Sinon, la demande expire et la retenue sur la carte du client est levée.",
   "bdPaymentHeldSummaryManager": "Le paiement du client est en attente.",

@@ -2844,6 +2844,7 @@
   "kciAcModeChanged": "Arrival details changed. Review the current instructions.",
   "bookingAttendanceNotEndedManager": "The customer checks in on arrival and checks out when they leave.",
   "bdBookedOn": "Booked {date}",
+  "bdRequestedOn": "Requested {date}",
   "bdRequestSentBanner": "Request sent. {kitchen} has until {deadline} to respond. Your card is on hold; you’re only charged if they accept.",
   "bdManagerRespondBy": "Respond by {deadline}. If you don’t, the request expires and the customer’s payment hold is released.",
   "bdPaymentHeldSummaryManager": "The customer’s payment is on hold.",
