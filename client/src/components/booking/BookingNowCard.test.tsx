@@ -69,7 +69,7 @@ describe("claims in the Now card (§1.5)", () => {
   });
   it("chef: an upheld claim says what happens if it stays unpaid, without a Dispute button", () => {
     render(<NowClaimRows claims={[claim({ status: "approved", upheldAt: "2030-01-19T00:00:00Z" })]} manager={false} chefName="Ada" timezone="America/St_Johns" onChanged={vi.fn()} />);
-    expect(screen.getByTestId("claim-attention")).toHaveTextContent("Pay by Jan 25 to keep booking.");
+    expect(screen.getByTestId("claim-attention")).toHaveTextContent("Pay by Jan 25 so you can keep making new bookings.");
     expect(screen.queryByRole("button", { name: "Dispute" })).not.toBeInTheDocument();
   });
   it("chef: Pay opens the payment step", async () => {

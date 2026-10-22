@@ -26,7 +26,7 @@ export async function requireNoDamageClaimBookingHold(req: Request, res: Respons
   try {
     const hold = await readClaimBookingHold(req.neonUser.id);
     if (hold.held) return res.status(403).json({ code: 'DAMAGE_CLAIM_BOOKING_HOLD',
-      error: 'You have an unpaid charge. Pay it or contact Local Cooks to keep booking.', ...hold });
+      error: 'You have an unpaid charge. Pay it or contact Local Cooks to keep making new bookings.', ...hold });
     next();
   } catch { return res.status(503).json({ error: 'We cannot check your booking eligibility right now. Please try again.' }); }
 }

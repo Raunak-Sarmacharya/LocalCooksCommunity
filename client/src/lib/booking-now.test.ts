@@ -162,7 +162,7 @@ it.each(['checkout_review', 'completed'] as const)('chef %s reflects a visible c
   expect(content({ settledClaim: { outcome: 'closed', amount: '' } })).toContain('nothing to pay');
   // The header follows the claim state instead of repeating "Pay or dispute by".
   expect(content({ claimDeadline: 'Oct 18 at 3:30 p.m.', claimStage: 'reviewing' })).toBe('Local Cooks is reviewing your response. Nothing is due while they look.');
-  expect(content({ claimDeadline: 'Oct 18 at 3:30 p.m.', claimStage: 'decided', claimAmount: '$25.00', claimPayBy: 'Oct 22' })).toBe('Local Cooks decided $25.00 is due. Pay by Oct 22 to keep booking.');
+  expect(content({ claimDeadline: 'Oct 18 at 3:30 p.m.', claimStage: 'decided', claimAmount: '$25.00', claimPayBy: 'Oct 22' })).toBe('Local Cooks decided $25.00 is due. Pay by Oct 22 so you can keep making new bookings.');
 });
 
 describe('booked time ended with no check-in recorded (WP-N)', () => {
@@ -215,6 +215,6 @@ describe('a decided claim after its pay-by date', () => {
     const paused = bookingNowContent({ phase: 'completed', role: 'chef', facts: { ...facts, claimStage: 'decided', claimAmount: '$40.00', claimPayBy: 'Oct 16', claimPaused: true }, t });
     expect(paused.sentence).toBe('$40.00 is due. New bookings are paused until it’s paid.');
     const before = bookingNowContent({ phase: 'completed', role: 'chef', facts: { ...facts, claimStage: 'decided', claimAmount: '$40.00', claimPayBy: 'Oct 16' }, t });
-    expect(before.sentence).toMatch(/Pay by Oct 16 to keep booking/);
+    expect(before.sentence).toMatch(/Pay by Oct 16 so you can keep making new bookings/);
   });
 });

@@ -3611,7 +3611,7 @@
   "bnMoreForNow": "Quick actions",
   "bnGetDirections": "Get directions",
   "bnClaimSeeDetails": "See details",
-  "bnClaimUpheldChef": "Local Cooks upheld this charge. Pay by {date} to keep booking.",
+  "bnClaimUpheldChef": "Local Cooks upheld this charge. Pay by {date} so you can keep making new bookings.",
   "bnClaimAwaitingKitchen": "Local Cooks asked for more information about your claim.",
   "bnClaimInReview": "Local Cooks is reviewing your claim for {amount}. We’ll update you within 2 business days.",
   "bnClaimSentToChef": "Sent to {chef}. They have until {when} to pay or dispute. Your payout isn’t affected.",

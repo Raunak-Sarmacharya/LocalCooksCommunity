@@ -647,7 +647,7 @@
   "dcV2Filed": "Подано {date}",
   "dcV2OpenClaims": "Відкриті ({count})",
   "dcV2ClosedClaims": "Закриті ({count})",
-  "dcV2HoldBanner": "У вас є неоплачена сума від {kitchen}. Оплатіть її або зверніться до Local Cooks, щоб продовжити бронювання.",
+  "dcV2HoldBanner": "У вас є неоплачена сума від {kitchen}. Оплатіть її або зверніться до Local Cooks, щоб і далі бронювати.",
   "dcV2ExistingBookingsSafe": "Ваші наявні бронювання не змінюються.",
   "dcV2View": "Відкрити заяву",
   "dcV2Refresh": "Оновити",
