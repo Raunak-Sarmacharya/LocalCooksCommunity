@@ -732,7 +732,7 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
         // The manager account supplies the confirmed email. Never expose an
         // unverified phone through the chef booking response.
         const [kitchenContact] = kitchen?.locationId ? await db
-            .select({ managerId: users.id, email: users.username, phone: users.phoneNumber, phoneVerifiedAt: users.phoneVerifiedAt })
+            .select({ managerId: users.id, email: users.username, phone: users.phoneNumber, phoneVerifiedAt: users.phoneVerifiedAt, businessPhone: locations.contactPhone })
             .from(locations)
             .innerJoin(users, eq(users.id, locations.managerId))
             .where(eq(locations.id, kitchen.locationId))
@@ -1020,7 +1020,8 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
             noShowGraceMinutes: checkinSettings.noShowGraceMinutes,
             kitchenContact: kitchenContact ? {
                 email: kitchenContact.email,
-                phone: kitchenContact.phoneVerifiedAt ? kitchenContact.phone : null,
+                // The kitchen's public business number first (owner, Oct 21); else the manager's verified phone.
+                phone: kitchenContact.businessPhone || (kitchenContact.phoneVerifiedAt ? kitchenContact.phone : null),
                 hostName: await (await import('../services/booking-people')).readKitchenHostName(kitchenContact.managerId, kitchenContact.email),
             } : null,
             visits: derived.visits,
