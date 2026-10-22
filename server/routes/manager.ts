@@ -1436,8 +1436,7 @@ router.post(
         transferReversalId: refund.transferReversalId,
       } };
       });
-      const { attemptOutcomeDelivery } = await import('../services/outcome-delivery');
-      await attemptOutcomeDelivery();
+      (await import('../services/outcome-delivery')).attemptOutcomeDeliveryAfterResponse();
       res.json(result.response);
     } catch (error: any) {
       if (refundAttemptKey) {
@@ -1546,8 +1545,7 @@ router.post(
 
       return { success: true, request: fullRefundRequest };
       });
-      const { attemptOutcomeDelivery } = await import('../services/outcome-delivery');
-      await attemptOutcomeDelivery();
+      (await import('../services/outcome-delivery')).attemptOutcomeDeliveryAfterResponse();
       return res.status(201).json(result);
     } catch (error) {
       logger.error("[Full Refund Request] Error:", error);

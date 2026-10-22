@@ -13,7 +13,7 @@ vi.mock('../r2-storage', () => ({ getPresignedUrl: vi.fn(), deleteFromR2: vi.fn(
 vi.mock('../domains/users/user.service', () => ({ userService: {} }));
 vi.mock('../services/payment-transactions-service', () => ({ findPaymentTransactionById: async () => state.transaction, updatePaymentTransaction: state.update, addPaymentHistory: vi.fn() }));
 vi.mock('../services/stripe-service', () => ({ reverseTransferAndRefund: state.refund }));
-vi.mock('../services/outcome-delivery', () => ({ attemptOutcomeDelivery: vi.fn(), recordRefundRecovery: state.recovery }));
+vi.mock('../services/outcome-delivery', () => ({ attemptOutcomeDelivery: vi.fn(), attemptOutcomeDeliveryAfterResponse: vi.fn(), recordRefundRecovery: state.recovery }));
 import manager from './manager';
 const route = (manager as any).stack.find((entry: any) => entry.route?.path === '/revenue/transactions/:transactionId/refund').route;
 async function refund(amount = 2300) {

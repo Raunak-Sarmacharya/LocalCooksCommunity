@@ -241,9 +241,12 @@ export async function attemptOutcomeDelivery() {
   catch { /* Committed intent remains queued; existing worker/admin replay recovers it. */ }
 }
 
-/** Same attempt, run after the response so the person acting isn't kept waiting on mail (it never rejects). */
+/**
+ * Run after the response so the person acting isn't kept waiting on mail (it never rejects). Oldest first and up to 10:
+ * one action queues a notice per person (customer, kitchen, each admin) and the worker sends only one per tick.
+ */
 export function attemptOutcomeDeliveryAfterResponse() {
-  waitUntil(attemptOutcomeDelivery());
+  waitUntil(deliverOutcomeEmails(10, 15_000).catch(() => undefined));
 }
 
 /** Called with payment history and the recorded provider result in their transaction. */
