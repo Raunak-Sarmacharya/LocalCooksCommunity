@@ -39,7 +39,7 @@ import { addDaysKey, kitchenTodayKey, spanMinutes, weekStartKey, weekStats, type
 import { revenueSummaryFromCurrent, revenueSummaryFromLedger } from "@/lib/manager-revenue-summary";
 import { useManagerRevenue } from "@/components/manager/revenue/hooks/use-manager-revenue";
 import { chipForRental, chipNeedsAction, occupiesUnit, pendingRequests, type StorageRental, type UnitChip } from "@/lib/storage-board";
-import { storageDay } from "@/lib/storage-rentals";
+import { cad, storageDay } from "@/lib/storage-rentals";
 import { StatusPill } from "@/components/booking/BookingNowCard";
 import { bookingCancelCause } from "@/lib/booking-cancel-cause";
 import { bookingListBounds, bookingListPhase, bookingListPill, listWhenLine, openAttendanceAnswers, type BookingListRow } from "@/lib/booking-list-status";
@@ -299,7 +299,7 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
   const status = liveKitchens.length > 0 ? "live" : publishedButUnavailable ? "unavailable" : locationKitchens.length > 0 ? "draft" : "empty";
   const applicationJourney = status === "live" && bookings.length === 0;
   const journeyView = applicationJourney ? "applications" : primaryKitchen ? "listing-review" : "kitchens";
-  interface Task { id: string; title: string; detail?: string; view: string; href?: string; param?: string; locationId?: number; booking?: Booking; action?: string }
+  interface Task { id: string; title: string; detail?: string; view: string; href?: string; param?: string; locationId?: number; booking?: Booking; rental?: StorageRental; action?: string }
   const groups = new Map<string, Task[]>();
   const addTask = (label: string, task: Task) => groups.set(label, [...(groups.get(label) ?? []), task]);
   const recordTitle = (record: { id?: number; chefName?: string; kitchenName?: string; storageName?: string; claimTitle?: string; referenceCode?: string }) =>
@@ -358,7 +358,7 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
   for (const checkout of activity.storageCheckouts) addTask("overviewStorageCheckoutReviews", { id: String(checkout.storageBookingId ?? checkout.id), title: recordTitle(checkout), view: "storage-bookings" });
   const rentalTitle = (rental: StorageRental) => [rental.chef?.name && !rental.chef.name.includes("@") ? rental.chef.name : mt("guestChef"), rental.listing?.name].filter(Boolean).join(" · ");
   for (const rental of pendingRequests(locationRentals)) addTask("overviewStorageRequests", { id: `rental-${rental.id}`, title: rentalTitle(rental),
-    detail: [inKitchen(rental.kitchen?.id, rental.kitchen?.name), mt("ovrStorageStarts", { date: storageDay(rental.startOn, i18n.language) })].filter(Boolean).join(" · "), view: "storage-bookings", href: `/manager/storage/${rental.id}` });
+    detail: [inKitchen(rental.kitchen?.id, rental.kitchen?.name), mt("ovrStorageStarts", { date: storageDay(rental.startOn, i18n.language) })].filter(Boolean).join(" · "), view: "storage-bookings", href: `/manager/storage/${rental.id}`, rental });
   for (const rental of locationRentals) {
     const chip = chipForRental(rental);
     if (occupiesUnit(rental) && chipNeedsAction(chip)) addTask("ovrStorageToAction", { id: `rental-${rental.id}`, title: rental.listing?.name || rentalTitle(rental),
@@ -503,8 +503,9 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
   const attentionError = isErrorBookings || isErrorViewings || isErrorApplications || activity.isError;
   const todoCount = attentionCount + attendanceAnswers.length;
   const requestGroup = attentionGroups.find(group => group.label === "overviewPendingBookings");
+  const storageRequestGroup = attentionGroups.find(group => group.label === "overviewStorageRequests");
   const storageGroup = attentionGroups.find(group => group.label === "ovrStorageToAction");
-  const otherGroups = attentionGroups.filter(group => group !== requestGroup && group !== storageGroup);
+  const otherGroups = attentionGroups.filter(group => group !== requestGroup && group !== storageRequestGroup && group !== storageGroup);
   const groupSection = (key: string, label: string, count: number, children: ReactNode, note?: ReactNode) => (
     <section key={key} aria-labelledby={`attention-${key}`} className="border-t border-stone-100 pt-4 first:border-t-0 first:pt-0 [&+&]:mt-4">
       <h3 id={`attention-${key}`} className={cn(groupLabel, "sm:px-4")}>{label}<span className={groupCount}>{count}</span></h3>
@@ -529,17 +530,33 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
     const due = deadline && formatResponseDeadline(deadline, i18n.language, booking.timezone || timezone, false);
     const facts = [Number.isFinite(hours) && hours > 0 ? mt("ovrHoursValue", { hours: hoursText(hours * 60, i18n.language) }) : "",
       typeof booking.totalPrice === "number" ? formatCurrency(booking.totalPrice, "CAD", i18n.language) : ""].filter(Boolean);
+    return tintedRequest({ key: task.id, testId: "booking-request", chef, href: `/manager/booking/${booking.id}/review`, due, facts,
+      when: [listWhenLine(days[0].row, i18n.language, words), days.length > 1 ? mt("ovrDayCount", { count: days.length }) : ""].filter(Boolean).join(" · "),
+      who: [chef, kitchenName(booking.kitchenId, booking.kitchenName)].filter(Boolean).join(" · ") });
+  };
+  // A storage request reads like a booking request: what and when, who and where, the total, the answer-by time, one Review button.
+  const storageRequestRow = (task: Task) => {
+    const rental = task.rental!;
+    const chef = rental.chef?.name && !rental.chef.name.includes("@") ? rental.chef.name : mt("guestChef");
+    const total = rental.terms?.[0]?.totalCents;
+    return tintedRequest({ key: task.id, testId: "storage-request", chef, href: `/manager/storage/${rental.id}`,
+      due: rental.responseDeadline ? formatResponseDeadline(new Date(rental.responseDeadline), i18n.language, rental.timezone || timezone, false) : null,
+      when: [rental.listing?.name, `${storageDay(rental.startOn.slice(0, 10), i18n.language)} – ${storageDay(rental.paidThrough.slice(0, 10), i18n.language)}`].filter(Boolean).join(" · "),
+      who: [chef, kitchenName(rental.kitchen?.id, rental.kitchen?.name)].filter(Boolean).join(" · "),
+      facts: typeof total === "number" ? [cad(total, i18n.language)] : [] });
+  };
+  function tintedRequest({ key, testId, chef, when, who, facts, due, href }: { key: string; testId: string; chef: string; when: string; who: string; facts: string[]; due: string | null | undefined; href: string }) {
     const initials = chef.split(/\s+/).map(part => part[0]).slice(0, 2).join("").toUpperCase();
-    return <div key={task.id} className="grid gap-3 rounded-[10px] bg-[#fef3f5] px-4 py-3.5 lg:grid-cols-[36px_minmax(0,1fr)_auto] lg:items-center lg:gap-x-4 [&+&]:mt-2" data-testid="booking-request">
+    return <div key={key} className="grid gap-3 rounded-[10px] bg-[#fef3f5] px-4 py-3.5 lg:grid-cols-[36px_minmax(0,1fr)_auto] lg:items-center lg:gap-x-4 [&+&]:mt-2" data-testid={testId}>
       <span aria-hidden="true" className="hidden size-9 items-center justify-center rounded-full bg-white text-xs font-semibold text-[#8f0a2b] ring-1 ring-[#fbcbd6] lg:flex">{initials}</span>
       <div className="min-w-0">
-        <p className="break-words font-medium text-stone-900">{[listWhenLine(days[0].row, i18n.language, words), days.length > 1 ? mt("ovrDayCount", { count: days.length }) : ""].filter(Boolean).join(" · ")}</p>
-        <p className={cn("mt-0.5", sub)}>{[chef, kitchenName(booking.kitchenId, booking.kitchenName)].filter(Boolean).join(" · ")}{facts.length > 0 && <><span className="hidden sm:inline"> · </span><span className="block sm:inline">{facts.join(" · ")}</span></>}</p>
+        <p className="break-words font-medium text-stone-900">{when}</p>
+        <p className={cn("mt-0.5", sub)}>{who}{facts.length > 0 && <><span className="hidden sm:inline"> · </span><span className="block sm:inline">{facts.join(" · ")}</span></>}</p>
         {due && <p className="mt-1.5 flex items-center gap-1.5 text-[13px] font-medium text-[#8f0a2b]"><Clock className="size-3.5 shrink-0" aria-hidden="true" />{mt("ovrRespondBy", { when: due })}</p>}
       </div>
-      <Link href={`/manager/booking/${booking.id}/review`} className={cn(btnPrimary, "sm:h-11 sm:w-full lg:h-9 lg:w-auto")}>{mt("ovrReviewRequest")}</Link>
+      <Link href={href} className={cn(btnPrimary, "sm:h-11 sm:w-full lg:h-9 lg:w-auto")}>{mt("ovrReviewRequest")}</Link>
     </div>;
-  };
+  }
   // Two equal answers share the row width until the column is wide enough to sit them beside the visit.
   const answerButton = cn(btnSecondary, "sm:h-10 sm:flex-1 lg:h-8 lg:flex-none");
   const answerRow = ({ booking, answer }: typeof attendanceAnswers[number]) => {
@@ -568,6 +585,7 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
       {attentionError && <p role="status" className="mb-3 text-sm text-destructive">{mt("overviewActivityPartialError")}</p>}
       {attentionLoading && <Skeleton className="h-12 rounded-lg" />}
       {requestGroup && groupSection("requests", mt(requestGroup.label), requestGroup.items.length, requestGroup.items.map(task => task.booking ? requestRow(task) : rowLink(task)))}
+      {storageRequestGroup && groupSection("storage-requests", mt(storageRequestGroup.label), storageRequestGroup.items.length, storageRequestGroup.items.map(task => task.rental ? storageRequestRow(task) : rowLink(task)))}
       {attendanceAnswers.length > 0 && groupSection("attendance", mt("ovrDidTheyCome"), attendanceAnswers.length, attendanceAnswers.map(answerRow),
         <p className={cn("mt-1.5 flex gap-1.5 sm:px-4", sub)}><Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />{mt("ovrDidTheyComeNote")}</p>)}
       {storageGroup && groupSection("storage", mt(storageGroup.label), storageGroup.items.length, storageGroup.items.map(rowLink))}

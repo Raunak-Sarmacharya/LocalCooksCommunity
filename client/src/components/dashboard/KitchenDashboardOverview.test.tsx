@@ -271,13 +271,28 @@ describe("revamped overview (R3)", () => {
     const html = render();
     const attention = html.slice(html.indexOf('aria-label="overviewNeedsAttention"'), html.indexOf('data-testid="overview-today"'));
     expect(attention).toContain('href="/manager/storage/61"');
-    expect(attention).toContain("ovrStorageStarts");
+    expect(attention).toContain('data-testid="storage-request"');
     expect(attention).toContain('href="/manager/storage/62"');
     expect(attention).toContain("ovrStorageToAction");
     expect(attention).not.toContain("/manager/storage/63");
     expect(attention).toContain('href="/manager/booking/90/inspection?visitId=902"');
     expect(attention).toContain("mdDayOf · ");
     expect(attention).not.toContain("overviewAllCaughtUp");
+  });
+
+  it("puts storage requests right after booking requests, tinted, with the answer-by time and one Review request button", () => {
+    live();
+    state.rentals = [
+      { id: 61, kitchen: { id: 10, name: "Kitchen East" }, listing: { id: 5, name: "Dry shelf" }, chef: { id: 2, name: "Sam" }, state: "requested", startOn: plus(4), paidThrough: plus(10),
+        responseDeadline: "2030-01-02T15:00:00.000Z", timezone: "America/St_Johns", actions: [], terms: [{ totalCents: 10248 }] },
+      { id: 62, kitchen: { id: 10, name: "Kitchen East" }, listing: { id: 6, name: "Cooler" }, chef: { id: 3, name: "Ana" }, state: "move_out_requested", startOn: plus(-9), paidThrough: plus(1), responseDeadline: null, actions: [], terms: [] },
+    ];
+    const html = render();
+    const attention = html.slice(html.indexOf('aria-label="overviewNeedsAttention"'), html.indexOf('data-testid="overview-today"'));
+    const row = attention.slice(attention.indexOf('data-testid="storage-request"'));
+    expect(attention.indexOf("overviewStorageRequests")).toBeLessThan(attention.indexOf("ovrStorageToAction"));
+    const card = row.slice(0, row.indexOf("</a>"));
+    for (const part of ["Dry shelf", "Sam · Kitchen East", "$102.48", "ovrRespondBy", 'href="/manager/storage/61"', "ovrReviewRequest"]) expect(card).toContain(part);
   });
 
   it("counts this week's bookings and utilisation of open hours (closures removed) against last week", () => {
