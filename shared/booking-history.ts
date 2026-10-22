@@ -46,15 +46,18 @@ export function extensionHistoryEvents(rows: ExtensionRow[]): BookingHistoryEven
     if (!extFlow) continue;
     const base = { extFlow, ...(Number.isSafeInteger(row.minutes) && row.minutes > 0 ? { minutes: row.minutes } : {}) };
     const paid = row.amountCents > 0 && !row.free;
+    const created = instant(row.createdAt);
     const add = (kind: BookingHistoryEvent['kind'], value: unknown, extra: Partial<BookingHistoryEvent> = {}) => {
-      const recordedAt = instant(value);
+      // Server and database clocks can differ by a moment; a step never reads as earlier than the request it answers.
+      const at = instant(value), recordedAt = at && created && Date.parse(at) < Date.parse(created) ? created : at;
       if (recordedAt) events.push({ key: `ext-${row.id}-${kind}`, kind, recordedAt, ...base, ...extra });
     };
     add(extFlow === 'ask' || extFlow === 'charge' ? 'ext_requested' : 'ext_offered', row.createdAt, extFlow === 'charge' && paid ? { amountCents: row.amountCents } : {});
     const decidedAt = row.operation?.decidedAt ?? row.updatedAt;
     if (['approved', 'paid'].includes(row.status) && extFlow !== 'charge') {
       // An auto-approved request has no kitchen decision to show; the payment line says it all.
-      if (!(extFlow === 'ask' && row.autoApprove)) add(extFlow === 'ask' ? 'ext_approved' : 'ext_accepted', row.authorizedAt ?? row.paidAt ?? row.appliedAt ?? decidedAt);
+      // A free offer applies at once: nothing to accept, so the offer line says it all.
+      if (!(extFlow === 'ask' && row.autoApprove) && !(extFlow === 'offer' && row.free)) add(extFlow === 'ask' ? 'ext_approved' : 'ext_accepted', row.authorizedAt ?? row.paidAt ?? row.appliedAt ?? decidedAt);
     }
     if (paid && (row.paidAt || (row.status === 'paid' || (row.status === 'approved' && row.appliedAt)))) add('ext_paid', row.paidAt ?? row.appliedAt ?? row.updatedAt, { amountCents: row.amountCents });
     if (row.status === 'declined') add('ext_declined', decidedAt);

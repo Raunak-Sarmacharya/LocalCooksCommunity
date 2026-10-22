@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildBookingHistory } from './booking-history';
+import { buildBookingHistory, extensionHistoryEvents } from './booking-history';
 
 describe('public booking history from recorded evidence', () => {
   it('orders recorded events and omits internal messages, actors and payment identifiers', () => {
@@ -145,5 +145,18 @@ describe('day cancellations in the history', () => {
       { id: 2, kind: 'day_cancelled', createdAt: '2026-10-21T12:00:00Z', metadata: { noticeDay: { date: '2026-11-05' }, dayCancellation: { cause: 'kitchen', visitIds: [7, 8], refundCents: 50000 } } },
     ]);
     expect(history.events.at(-1)).toEqual({ key: 'event-2', kind: 'day_cancelled', recordedAt: '2026-10-21T12:00:00.000Z', cancelledBy: 'kitchen', amountCents: 50000 });
+  });
+});
+
+describe('extra time in the history', () => {
+  const row = (extra: Record<string, unknown>) => ({ id: 1, kind: 'offer', status: 'approved', minutes: 30, amountCents: 1526, free: false, autoApprove: false,
+    createdAt: '2026-10-22T12:40:00.500Z', updatedAt: '2026-10-22T12:40:00.500Z', authorizedAt: null, paidAt: null, appliedAt: '2026-10-22T12:40:00.200Z', refundedAt: null, operation: null, ...extra });
+  it('never shows a decision before the offer it answers, even when the clocks differ', () => {
+    const events = extensionHistoryEvents([row({}) as never]);
+    const offered = events.find(event => event.kind === 'ext_offered')!, accepted = events.find(event => event.kind === 'ext_accepted')!;
+    expect(Date.parse(accepted.recordedAt)).toBeGreaterThanOrEqual(Date.parse(offered.recordedAt));
+  });
+  it('a free offer applies at once, so there is no "accepted" line', () => {
+    expect(extensionHistoryEvents([row({ free: true, amountCents: 0 }) as never]).map(event => event.kind)).toEqual(['ext_offered']);
   });
 });

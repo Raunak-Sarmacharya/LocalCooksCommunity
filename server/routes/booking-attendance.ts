@@ -63,7 +63,9 @@ router.get('/manager/booking-lifecycle', requireFirebaseAuthWithUser, requireMan
         sql`${bookingLifecycleEvents.kind} NOT IN ('replacement_status', 'replaced_by')`,
         sql`COALESCE(${bookingLifecycleEvents.metadata}->>'requestOutcome', '') <> 'replaced'`,
         // Local Cooks-only notices (internal money summaries) never reach the kitchen.
-        sql`COALESCE(${bookingLifecycleEvents.metadata}->>'recipientPolicy', '') <> 'admins'`))
+        sql`COALESCE(${bookingLifecycleEvents.metadata}->>'recipientPolicy', '') <> 'admins'`,
+        // Per-reader copies (booking changes write one for each side): the kitchen sees its own, not the customer's.
+        sql`COALESCE(${bookingLifecycleEvents.metadata}->>'audience', 'manager') = 'manager'`))
       .orderBy(desc(bookingLifecycleEvents.id)).limit(100);
     res.json(events);
   } catch (error) { logger.error('Booking activity unavailable', error); res.status(503).json({ error: 'Booking activity is unavailable' }); }
