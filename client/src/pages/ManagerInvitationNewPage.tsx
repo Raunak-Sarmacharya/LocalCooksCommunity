@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearch } from 'wouter';
-import { ArrowLeft, CheckCircle2, Loader2 } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, ChevronDown, Loader2 } from 'lucide-react';
 import ManagerBookingLayout from '@/layouts/ManagerBookingLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -115,11 +115,6 @@ export default function ManagerInvitationNewPage() {
         [...value.equipment!.included.map(item => ({ id: item.id, included: true, cents: 0, name: [item.brand, item.equipmentType].filter(Boolean).join(' ') })),
           ...value.equipment!.rental.map(item => ({ id: item.id, included: false, cents: Math.round(Number(item.sessionRate ?? 0)),
             name: [item.brand, item.equipmentType].filter(Boolean).join(' ') }))]])) }));
-      setDayEquipment(current => {
-        const next = { ...current };
-        for (const [date, value] of withEquipment) if (!next[date]) next[date] = value.equipment!.included.map(item => item.id);
-        return next;
-      });
     }).catch(() => { if (!stale) setPreviewError(t('mdLoadDays')); });
     return () => { stale = true; };
   }, [kitchenId, multiAllowed, selectedDates.join(','), daySlots]);
@@ -225,8 +220,9 @@ export default function ManagerInvitationNewPage() {
 
   const days: InvitationDayDraft[] = useMemo(() => [...selectedDates].sort().map(date => ({
     date, pricingMode: editFor(date).pricingMode, slots: daySlotsFor(date),
-    equipmentIds: dayEquipment[date] ?? [],
-  })), [selectedDates.join(','), dayEdits, daySlots, dayEquipment]);
+    // Included equipment always comes with the day (as in the chef's own booking); only rentals are chosen.
+    equipmentIds: Array.from(new Set([...(dayEquipmentOptions[date] ?? []).filter(item => item.included).map(item => item.id), ...(dayEquipment[date] ?? [])])),
+  })), [selectedDates.join(','), dayEdits, daySlots, dayEquipment, dayEquipmentOptions]);
 
   const amount = Number(discountValue);
   const discount = discountType === 'none' || !(amount > 0) ? undefined
@@ -287,7 +283,7 @@ export default function ManagerInvitationNewPage() {
   const backHref = chefId && locationId ? `/manager/customers/${chefId}?location=${locationId}` : '/manager/dashboard?view=bookings';
 
   const field = 'block space-y-1.5 text-sm font-medium';
-  const box = 'mt-1 block min-h-11 w-full rounded-md border bg-background px-3 text-sm';
+  const box = 'mt-1';
   const pricing = preview?.pricing ?? null;
   const dateSetError = multiAllowed && selectedDates.length > maxDays ? t('mdCountLimit', { count: maxDays })
     : multiAllowed && selectedDates.length > 1 && dateSelectionReason(selectedDates[selectedDates.length - 1], selectedDates.slice(0, -1), MAX_SPAN)
@@ -299,6 +295,7 @@ export default function ManagerInvitationNewPage() {
     const start = slots.some(slot => slot.time === edit.start) ? edit.start : (slots[0]?.time ?? '');
     const free = Math.max(1, freeFrom(date, start));
     const options = dayEquipmentOptions[date] ?? [];
+    const paid = options.filter(item => !item.included), included = options.filter(item => item.included);
     const chosen = dayEquipment[date] ?? [];
     return <div key={date} className="space-y-3 rounded-xl border bg-background p-3" data-testid={`invitation-day-${date}`}>
       <p className="text-sm font-medium">{dayLabel(date)}</p>
@@ -327,11 +324,18 @@ export default function ManagerInvitationNewPage() {
       </div>
       <fieldset className="space-y-2">
         <legend className="text-sm font-medium">{t('invPerDayEquipment')}</legend>
-        {options.length ? options.map(item => <label key={item.id} className="flex min-h-11 items-center gap-3 text-sm">
+        {paid.map(item => <label key={item.id} className="flex min-h-11 items-center gap-3 text-sm">
           <Checkbox checked={chosen.includes(item.id)} onCheckedChange={on => setDayEquipment(current => ({ ...current,
             [date]: on ? [...chosen, item.id] : chosen.filter(id => id !== item.id) }))} />
-          {item.included ? t('invEquipmentIncluded', { name: item.name }) : t('invEquipmentLine', { name: item.name, price: money(item.cents) })}
-        </label>) : <p className="text-sm text-muted-foreground">{t('invNoEquipmentDay')}</p>}
+          {t('invEquipmentLine', { name: item.name, price: money(item.cents) })}
+        </label>)}
+        {included.length > 0 && <details className="group" data-testid={`invitation-included-${date}`}>
+          <summary className="flex min-h-11 cursor-pointer list-none items-center gap-1.5 text-sm text-muted-foreground [&::-webkit-details-marker]:hidden">
+            {t('invIncludedEquipment', { count: included.length })}<ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" aria-hidden />
+          </summary>
+          <ul className="mt-1 space-y-1.5 pl-1 text-sm">{included.map(item => <li key={item.id}>{item.name}</li>)}</ul>
+        </details>}
+        {!options.length && <p className="text-sm text-muted-foreground">{t('invNoEquipmentDay')}</p>}
       </fieldset>
     </div>;
   };
@@ -393,7 +397,8 @@ export default function ManagerInvitationNewPage() {
                 <p role="status" aria-live="polite" className="text-sm">{dateAnnouncement || t('mdSelectedDays', { count: selectedDates.length })}</p>
                 {dateSetError && <p role="alert" className="text-sm text-destructive">{dateSetError}</p>}
                 {!!selectedDates.length && <div className="space-y-3">
-                  <div className="grid gap-3 rounded-xl bg-muted/40 p-3 sm:grid-cols-3">
+                  {/* One day: its own row already holds these controls. */}
+                  {selectedDates.length > 1 && <div className="grid gap-3 rounded-xl bg-muted/40 p-3 sm:grid-cols-3">
                     <label className={field}>{t('mdSameHours')}
                       <Select value={shared.pricingMode} onValueChange={value => setShared(current => ({ ...current, pricingMode: value as 'hourly' | 'daily' }))}>
                         <SelectTrigger className={box}><SelectValue /></SelectTrigger>
@@ -411,7 +416,7 @@ export default function ManagerInvitationNewPage() {
                             <SelectItem key={n} value={String(n)}>{t('chgHoursOption', { count: n })}</SelectItem>)}</SelectContent>
                         </Select></label>
                     </>}
-                  </div>
+                  </div>}
                   {[...selectedDates].sort().map(dayEditor)}
                 </div>}
               </> : <div className="grid gap-4 sm:grid-cols-3">

@@ -119,12 +119,22 @@ describe('kitchen: invite to book', () => {
       [/\/api\/manager\/invitations$/, invitation({ dayCount: 2, dated: true, date: '2026-10-27' })]];
     mount(<ManagerInvitationNewPage />);
     await waitFor(() => expect(screen.getByLabelText('Customer')).toHaveTextContent('Sam Chef'));
+    // twMerge let a 'block' class beat the trigger's 'flex' (value centred, chevron wrapped below it; live, Oct 21).
+    expect(screen.getByLabelText('Customer').className).toMatch(/\bflex\b/);
+    expect(screen.getByLabelText('Customer').className).not.toMatch(/\bblock\b/);
     fireEvent.click(await screen.findByRole('gridcell', { name: /Tuesday, October 27, 2026/ }));
+    // One day: only its own row, not a duplicate "Same hours every day" row.
+    await screen.findByTestId('invitation-day-2026-10-27');
+    expect(screen.queryByText('Same hours every day')).not.toBeInTheDocument();
     fireEvent.click(await screen.findByRole('gridcell', { name: /Thursday, October 29, 2026/ }));
+    expect(await screen.findByText('Same hours every day')).toBeInTheDocument();
     const first = await screen.findByTestId('invitation-day-2026-10-27');
     const second = screen.getByTestId('invitation-day-2026-10-29');
     expect(first).toHaveTextContent('Rational Convection oven · $25.00 per day');
     expect(second).toHaveTextContent('Rational Convection oven · $25.00 per day');
+    // Included equipment is folded, not offered as a choice, and still sent with every day.
+    await waitFor(() => expect(within(first).getByTestId('invitation-included-2026-10-27')).toHaveTextContent('Included with the kitchen (1)Prep table'));
+    expect(within(first).queryByRole('checkbox', { name: /Prep table/ })).not.toBeInTheDocument();
     fireEvent.click(within(first).getByRole('checkbox', { name: /Rational Convection oven/ }));
     const preview = screen.getByTestId('invitation-preview');
     await waitFor(() => expect(preview).toHaveTextContent('Sam Chef pays$121.50'));

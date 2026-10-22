@@ -1496,6 +1496,7 @@
   "invStartFor": "Start time for {day}",
   "invEquipmentIncluded": "{name} (included)",
   "invEquipmentLine": "{name} · {price} per day",
+  "invIncludedEquipment": "Included with the kitchen ({count})",
   "cpCancelWhole": "Cancel the whole booking",
   "cpCancelWholeHint": "Every remaining day of this booking",
   "cpCancelSomeDays": "Cancel some days",

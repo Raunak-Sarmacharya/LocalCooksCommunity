@@ -1496,6 +1496,7 @@
   "invStartFor": "Час початку на {day}",
   "invEquipmentIncluded": "{name} (включено)",
   "invEquipmentLine": "{name} · {price} за день",
+  "invIncludedEquipment": "Входить до оренди кухні ({count})",
   "cpCancelWhole": "Скасувати все бронювання",
   "cpCancelWholeHint": "Усі дні, що залишилися в цьому бронюванні",
   "cpCancelSomeDays": "Скасувати окремі дні",
