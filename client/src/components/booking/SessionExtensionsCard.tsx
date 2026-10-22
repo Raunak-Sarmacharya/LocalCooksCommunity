@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { cn } from "@/lib/utils"
 import { NowAttentionRow } from "@/components/booking/BookingNowCard"
 import { MessageKitchenButton } from "./MessageKitchenButton"
 import { checkoutExtension, syncCheckoutReturn, createExtension, decideExtension, defaultFreeChoice, isExtensionState, isQuickPick, kitchenClock, lapsedAt, lengthText, money, newRequestKey, readExtensions, useServerNow, withCardAction,
@@ -242,12 +243,12 @@ export function SessionExtensionsCard({ bookingId, manager, chefName, onChanged,
             stayed: minutesText(item.actualMinutes ?? item.minutes), kitchen, amount: cash(item.amountCents) })}</p>
         {item.note && <p className="text-sm whitespace-pre-wrap">{manager ? t("sxbYourNote", { defaultValue: "Your note: {note}", note: item.note }) : t("sxbKitchenNote", { defaultValue: "Note from {kitchen}: {note}", kitchen, note: item.note })}</p>}
         {item.status === "disputed" ? <p className="text-sm" role="status">{t("sxbDisputed", { defaultValue: "Local Cooks is reviewing this charge. Nothing was charged." })}</p>
-          : manager ? <p className="text-xs text-muted-foreground">{item.escalated ? t("sxbEscalated", { defaultValue: "No answer after 48 hours, so Local Cooks is following up. Nothing has been charged." })
-            : t("sxbChargeWaiting", { defaultValue: "Waiting for {chef}. Their card is only charged if they pay.", chef: chefName })}
+          : manager ? <><p className="text-xs text-muted-foreground">{item.escalated ? t("sxbEscalated", { defaultValue: "No answer after 48 hours, so Local Cooks is following up. Nothing has been charged." })
+            : t("sxbChargeWaiting", { defaultValue: "Waiting for {chef}. Their card is only charged if they pay.", chef: chefName })}</p>
             {/* Taking it back is always the kitchen's call while it's unpaid; the customer is told nothing is owed. */}
-            {item.status === "offered" && !item.escalated && <Button type="button" variant="link" size="sm" className="h-auto px-1 text-xs" disabled={!!busy}
+            {item.status === "offered" && !item.escalated && <Button type="button" variant="outline" size="sm" className="mt-2 flex min-h-11 sm:min-h-9" disabled={!!busy}
               onClick={() => void act(`withdraw-${item.id}`, () => decide(item, "withdraw"), t("sxbWithdrawn", { defaultValue: "Charge withdrawn. We let {chef} know.", chef: chefName }))}>
-              {t("sxbWithdrawCharge", { defaultValue: "Withdraw charge" })}</Button>}</p>
+              {t("sxbWithdrawCharge", { defaultValue: "Withdraw charge" })}</Button>}</>
           : <>
             {item.cardFailedAt && <p role="alert" className="text-sm">{t("sxbCardFailed")}</p>}
             <div className="flex flex-wrap gap-2">
@@ -373,9 +374,9 @@ export function SessionExtensionsCard({ bookingId, manager, chefName, onChanged,
           stayed: minutesText(state.extraTime.actualMinutes), end: state.endAt ? clock(state.endAt) : "" })}</p>
         {freeBy && <p className="text-xs text-muted-foreground">{t("sxbOverstayFreeBy", { defaultValue: "If you don’t charge by {time}, the extra time is free.", time: freeBy })}</p>}
         <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="outline" className={tap} disabled={!!busy} onClick={() => { setCharging(true); setAmount((maxCharge / 100).toFixed(2)); setNote("") }}>
+          <Button type="button" variant="outline" className={cn(tap, "w-full sm:w-auto")} disabled={!!busy} onClick={() => { setCharging(true); setAmount((maxCharge / 100).toFixed(2)); setNote("") }}>
             {t("sxbChargeExtra", { defaultValue: "Charge for extra time" })}</Button>
-          <Button type="button" variant="outline" className={tap} disabled={!!busy} onClick={() => void act("waive", () => createExtension(bookingId, { kind: "extra_time", free: true, requestKey,
+          <Button type="button" variant="outline" className={cn(tap, "w-full sm:w-auto")} disabled={!!busy} onClick={() => void act("waive", () => createExtension(bookingId, { kind: "extra_time", free: true, requestKey,
               expectedEndAt: state.endAt, expectedAmountCents: 0, ...(state.visitId ? { visitId: state.visitId } : {}) }),
             t("sxbNoChargeDone", { defaultValue: "No charge. Nothing is sent to {chef}.", chef: chefName }))}>
             {t("sxbNoCharge", { defaultValue: "No charge" })}</Button>
