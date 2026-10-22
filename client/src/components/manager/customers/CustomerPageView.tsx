@@ -104,7 +104,7 @@ function Profile({ data }: { data: CustomerPageData }) {
         <ChevronLeft className="size-5" aria-hidden />{mt('cuBreadcrumbCustomers')}
       </Link>
 
-      <section aria-labelledby="customer-name" className="mb-4 grid grid-cols-[48px_minmax(0,1fr)] items-start gap-3 sm:mb-6 sm:grid-cols-[56px_minmax(0,1fr)_auto] sm:gap-4">
+      <section aria-labelledby="customer-name" className="mb-4 grid grid-cols-[48px_minmax(0,1fr)] items-start gap-3 sm:mb-6 sm:grid-cols-[56px_minmax(0,1fr)] sm:gap-4 lg:grid-cols-[56px_minmax(0,1fr)_auto]">
         <span aria-hidden className="grid size-12 place-items-center rounded-full bg-[#fde7ec] text-base font-semibold text-[#8f0a2b] sm:size-14 sm:text-lg">{initials(name)}</span>
         <div className="min-w-0">
           <div className="flex min-w-0 items-center gap-2 sm:gap-2.5">
@@ -144,7 +144,7 @@ function Profile({ data }: { data: CustomerPageData }) {
             )}
           </div>
         </div>
-        <div className="col-span-2 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_44px] gap-2 sm:col-span-1 sm:flex sm:items-center sm:pt-1">
+        <div className="col-span-2 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_44px] gap-2 sm:flex sm:items-center lg:col-span-1 lg:pt-1">
           <button type="button" className={cn(btnPrimary, 'gap-1.5', !actions.canInvite && !actions.canReview && 'col-span-2')} onClick={() => void openConversation()} disabled={messageBusy}>
             <MessageSquare className="size-4" aria-hidden />{mt('cuActionMessage')}
           </button>
@@ -226,8 +226,6 @@ function Profile({ data }: { data: CustomerPageData }) {
               {phone && <><dt className="text-[13px] leading-5 text-stone-600">{mt('cpAboutPhone')}</dt>
                 <dd className="min-w-0"><a href={telHref(customer.phone!)} className={cn('font-medium hover:underline', focusRing)}>{phone}</a>
                   <small className="block text-xs text-stone-500">{mt(customer.phoneSource === 'account' ? 'cpPhoneFromAccount' : 'cpPhoneFromApplication')}</small></dd></>}
-              {customer.email && <><dt className="text-[13px] leading-5 text-stone-600">{mt('cpAboutEmail')}</dt>
-                <dd className="min-w-0 [overflow-wrap:anywhere]"><a href={`mailto:${customer.email}`} className={cn('font-medium hover:underline', focusRing)}>{customer.email}</a></dd></>}
               {customer.usageFrequency && <><dt className="text-[13px] leading-5 text-stone-600">{mt('cpAboutPlans')}</dt>
                 <dd className="min-w-0">{FREQUENCIES[customer.usageFrequency] ? mt(FREQUENCIES[customer.usageFrequency]) : customer.usageFrequency}
                   {customer.sessionDuration && <small className="block text-xs text-stone-500">{DURATIONS[customer.sessionDuration] ? mt(DURATIONS[customer.sessionDuration]) : customer.sessionDuration}</small>}</dd></>}
@@ -271,7 +269,7 @@ function Strip({ data, locale }: { data: CustomerPageData; locale: string }) {
     <div key={key} className={cn('min-w-0 bg-white px-4 py-3 xl:px-5 xl:py-0', className)}>
       <div className="truncate text-[13px] text-stone-600">{label}</div>
       <div className="mt-0.5 whitespace-nowrap text-lg font-semibold leading-[26px] tracking-[-0.015em] tabular-nums text-stone-900 sm:text-[22px] sm:leading-[30px]">{value}</div>
-      <div className="mt-0.5 text-xs leading-4 text-stone-500 sm:truncate">{caption}</div>
+      <div className="mt-0.5 text-xs leading-4 text-stone-500 xl:truncate">{caption}</div>
     </div>
   );
   const small = (text: string) => <small className="ml-0.5 text-[13px] font-medium tracking-normal text-stone-500 sm:text-sm">{text}</small>;

@@ -218,7 +218,9 @@ function FeedItem({ item, data, locale, full }: { item: ActivityItem; data: Cust
 export function ActivityTab({ data, locale }: TabProps) {
   const [category, setCategory] = useState<'all' | 'booking' | 'money' | 'access'>('all');
   const tz = data.location.timezone, name = data.customer.name;
-  const list = data.activity.filter(item => category === 'all' || item.category === category);
+  const [all, setAll] = useState(false);
+  const matching = data.activity.filter(item => category === 'all' || item.category === category);
+  const list = all ? matching : matching.slice(0, 30);
   const days: { day: string; items: ActivityItem[] }[] = [];
   for (const item of list) {
     const day = relativeDay(mt, item.at, tz, locale);
@@ -234,7 +236,8 @@ export function ActivityTab({ data, locale }: TabProps) {
           <div className="pb-0.5 pt-2.5 text-xs font-semibold text-stone-500 first:pt-0">{group.day}</div>
           <ul>{group.items.map((item, index) => <FeedItem key={index} item={item} data={data} locale={locale} full />)}</ul>
         </div>)}
-        <div className={cn('mt-1 flex items-center justify-between gap-3 border-t pt-3', rule)}><span className="text-xs text-stone-500">{mt('cpShowingOf', { shown: list.length, total: list.length })}</span></div>
+        <div className={cn('mt-1 flex items-center justify-between gap-3 border-t pt-3', rule)}><span className="text-xs text-stone-500">{mt('cpShowingOf', { shown: list.length, total: matching.length })}</span>
+          {!all && matching.length > list.length && <button type="button" className={btnSecondary} onClick={() => setAll(true)}>{mt('cpShowAll')}</button>}</div>
       </> : <Empty title={mt('cpNothingHereYet')} text={mt(emptyKey, { name })} />}
     </Card>
   );
@@ -380,6 +383,10 @@ export function MoneyTab({ data, locale }: TabProps) {
   const { money, location } = data, tz = location.timezone, name = data.customer.name;
   const cad = (cents: number) => formatMoney(cents, locale, money.currency);
   const empty = !money.paymentCount && !money.holdCount && !money.refundedCents;
+  const [allPayments, setAllPayments] = useState(false);
+  // Failed or voided attempts are not money that moved; the list keeps payments and open holds.
+  const payments = data.payments.filter(row => ['succeeded', 'partially_refunded', 'refunded', 'authorized'].includes(row.status));
+  const shownPayments = allPayments ? payments : payments.slice(0, PAGE);
   const summary: [string, number, string][] = [
     [mt('cuMoneyPaid'), money.paidCents, money.paymentCount ? mt('cpPaymentsCount', { count: money.paymentCount }) : mt('cpNoPaymentsYet')],
     [mt('cuMoneyRefunded'), money.refundedCents, money.refundedCents ? mt('cpFullAndPartRefunds') : mt('cpNoRefunds')],
@@ -402,14 +409,14 @@ export function MoneyTab({ data, locale }: TabProps) {
         </div>
       </Card>
 
-      <Card id="cp-payments" title={mt('cpPayments')} action={data.payments.length ? <TertiaryLink href="/manager/dashboard?view=revenue">{mt('cpOpenInRevenue')}</TertiaryLink> : undefined}>
-        {data.payments.length ? <>
+      <Card id="cp-payments" title={mt('cpPayments')} action={payments.length ? <TertiaryLink href="/manager/dashboard?view=revenue">{mt('cpOpenInRevenue')}</TertiaryLink> : undefined}>
+        {payments.length ? <>
           <table className="w-full border-collapse text-sm">
             <thead><tr className="text-left text-xs font-medium text-stone-500">
               <th className="hidden pb-2 pr-3 font-medium sm:table-cell">{mt('cpColPaidOn')}</th><th className="pb-2 pr-3 font-medium">{mt('cpColFor')}</th>
               <th className="hidden pb-2 pr-3 text-right font-medium sm:table-cell">{mt('cuMoneyPaid')}</th><th className="hidden pb-2 pr-3 text-right font-medium sm:table-cell">{mt('cuMoneyRefunded')}</th>
               <th className="pb-2 text-right font-medium">{mt('cpColYourPayout')}</th></tr></thead>
-            <tbody>{data.payments.map(row => (
+            <tbody>{shownPayments.map(row => (
               <tr key={row.id} className={cn('border-t align-top', rule)}>
                 <td className="hidden whitespace-nowrap py-2.5 pr-3 sm:table-cell">{shortMoment(row.paidAt, tz, locale)}</td>
                 <td className="py-2.5 pr-3">
@@ -423,6 +430,10 @@ export function MoneyTab({ data, locale }: TabProps) {
               </tr>
             ))}</tbody>
           </table>
+          <div className={cn('mt-1 flex items-center justify-between gap-3 border-t pt-3', rule)}>
+            <span className="text-xs text-stone-500">{mt('cpShowingOf', { shown: shownPayments.length, total: payments.length })}</span>
+            {!allPayments && payments.length > PAGE && <button type="button" className={btnSecondary} onClick={() => setAllPayments(true)}>{mt('cpShowAll')}</button>}
+          </div>
           <p className="mt-3 text-pretty text-xs leading-4 text-stone-500">{mt('cpPayoutFootnote')}</p>
         </> : <Empty title={mt('cpNoPayments')} text={mt('cpNoPaymentsText', { name })} />}
       </Card>
