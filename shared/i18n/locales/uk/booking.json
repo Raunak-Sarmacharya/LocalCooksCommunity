@@ -581,6 +581,7 @@
   "dcV2Before": "Під час прибуття",
   "dcV2After": "Під час виходу",
   "dcV2VisitPhoto": "Фото відвідування {number}",
+  "dcV2NoPhotos": "Немає фото",
   "dcV2AddPhoto": "Додати фото (необов’язково)",
   "dcV2CostLine": "Витрата {number}",
   "dcV2Type": "Тип",

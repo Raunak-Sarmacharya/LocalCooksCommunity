@@ -581,6 +581,7 @@
   "dcV2Before": "À l’arrivée",
   "dcV2After": "Au départ",
   "dcV2VisitPhoto": "Photo de la visite {number}",
+  "dcV2NoPhotos": "Aucune photo",
   "dcV2AddPhoto": "Ajouter une photo (facultatif)",
   "dcV2CostLine": "Coût {number}",
   "dcV2Type": "Type",

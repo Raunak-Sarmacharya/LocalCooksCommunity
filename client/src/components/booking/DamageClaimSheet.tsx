@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { useSessionFileUpload } from '@/hooks/useSessionFileUpload';
 import { claimRequest, claimMoney, claimWhen, type FilingContext } from '@/lib/damage-claims';
+import { Loader2, Upload } from 'lucide-react';
 import { CLAIM_CAP_CENTS, type ClaimLine } from '@shared/damage-claims';
 
 type CostDraft = { id: string; type: ClaimLine['type']; description: string; amount: string; document?: ClaimLine['document'] };
@@ -105,9 +106,10 @@ function ClaimForm({ bookingId, storageRentalId, visitId, chefName, onDone, loca
       <div className="grid grid-cols-2 gap-3">{['before', 'after'].map(side => <section key={side}><h3 className="text-sm font-medium mb-2">{storage
         ? t(side === 'before' ? 'stClaimBefore' : 'stClaimAfter', { ns: 'storage' })
         : t(side === 'before' ? 'dcV2Before' : 'dcV2After')}</h3>
+        {ctx[side as 'before' | 'after'].length === 0 && <p className="text-sm text-muted-foreground">{t('dcV2NoPhotos')}</p>}
         {ctx[side as 'before' | 'after'].map((url, index) => <div key={url}><PrivateFileLink url={url}><SmartImage className="mb-2 aspect-square w-full rounded-lg object-cover" src={url} alt={t('dcV2VisitPhoto', { number: index + 1 })} /></PrivateFileLink>
           <label className="flex items-center gap-2 text-xs mb-2"><input type="checkbox" checked={selectedPhotoUrls.includes(url)} onChange={event => setSelectedPhotos(current => event.target.checked ? [...current, url] : current.filter(photo => photo !== url))} />{t('dcV2UsePhoto', { number: index + 1 })}</label></div>)}</section>)}</div>
-      <label className="block space-y-2"><span>{t('dcV2AddPhoto')}</span><Input type="file" accept="image/*" disabled={isUploading} onChange={event => { const file = event.target.files?.[0]; if (file) void upload(file); }} /></label>
+      <FilePick label={t('dcV2AddPhoto')} accept="image/*" busy={isUploading} onFile={file => void upload(file)} />
       {photos.map(photo => <p key={photo.fileUrl} className="text-sm">{photo.fileName}</p>)}
     </>}
     {step === 2 && <>
@@ -116,7 +118,7 @@ function ClaimForm({ bookingId, storageRentalId, visitId, chefName, onDone, loca
           <SelectItem value="damage">{t('dcV2Damage')}</SelectItem><SelectItem value="extra_cleaning">{t('dcV2Cleaning')}</SelectItem></SelectContent></Select></label>
         <label className="block space-y-1"><span>{t('dcV2CostDescription')}</span><Input value={line.description} maxLength={500} onChange={event => update(line.id, { description: event.target.value })} /></label>
         <label className="block space-y-1"><span>{t('dcV2CostAmount')}</span><Input inputMode="decimal" value={line.amount} onChange={event => update(line.id, { amount: event.target.value })} /></label>
-        <label className="block space-y-1"><span>{t('dcV2CostDocument')}</span><Input type="file" accept="image/*,application/pdf" disabled={isUploading} onChange={event => { const file = event.target.files?.[0]; if (file) void upload(file, line.id); }} /></label>
+        <FilePick label={t('dcV2CostDocument')} accept="image/*,application/pdf" busy={isUploading} onFile={file => void upload(file, line.id)} />
         {line.document && <p className="text-sm">{line.document.fileName}</p>}
         {lines.length > 1 && <Button variant="ghost" onClick={() => setLines(current => current.filter(item => item.id !== line.id))}>{t('dcV2RemoveLine')}</Button>}
       </fieldset>)}
@@ -136,4 +138,13 @@ function ClaimForm({ bookingId, storageRentalId, visitId, chefName, onDone, loca
         : <Button disabled={busy || isUploading} onClick={() => void submit()}>{t(busy ? 'dcV2Sending' : 'dcV2Submit')}</Button>}
     </div>
   </div>;
+}
+
+/** The app's dashed upload button (as in check-in/out photos) instead of the browser's raw file input. */
+function FilePick({ label, accept, busy, onFile }: { label: string; accept: string; busy: boolean; onFile: (file: File) => void }) {
+  return <label className={'flex min-h-11 items-center justify-center gap-2 rounded-xl border-2 border-dashed px-3 text-sm transition-colors '
+    + (busy ? 'cursor-wait border-primary text-primary' : 'cursor-pointer border-border hover:border-primary/50')}>
+    <input type="file" accept={accept} className="sr-only" disabled={busy} onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) onFile(file); }} />
+    {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Upload className="h-4 w-4" aria-hidden />}{label}
+  </label>;
 }

@@ -82,8 +82,12 @@ export const storageDay = (day: string, locale: string, withYear = false) =>
 export const cad = (cents: number, locale: string) => new Intl.NumberFormat(locale, { style: "currency", currency: "CAD" }).format(cents / 100)
 export const can = (rental: Pick<StorageRental, "actions"> & Partial<Pick<StorageRental, "state">>, action: RentalAction) => rental.actions.includes(action) && (action !== "extend" || rental.state !== "removal_review")
 /** A moment (the kitchen's answer-by time) in the kitchen's own clock and zone. */
-export const kitchenMoment = (at: string, timezone: string, locale: string) =>
-  `${new Intl.DateTimeFormat(locale, { timeZone: timezone, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(at))} (${friendlyTimezoneName(timezone, locale)})`
+export const kitchenMoment = (at: string, timezone: string, locale: string) => {
+  let moment = new Date(at)
+  // A deadline at the kitchen's midnight reads as the end of the day before ("Wed, 11:59 p.m."), not "Thu, 12:00 a.m.".
+  if (new Intl.DateTimeFormat("en-GB", { timeZone: timezone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(moment) === "00:00") moment = new Date(moment.getTime() - 60_000)
+  return `${new Intl.DateTimeFormat(locale, { timeZone: timezone, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(moment)} (${friendlyTimezoneName(timezone, locale)})`
+}
 export const rentalTimezone = (rental: StorageRental) => rental.timezone || rental.rentalTerms?.cancellationPolicySnapshot?.timezone || "America/St_Johns"
 export const CURRENT_STATES: StorageRental["state"][] = ["requested", "reserved", "active", "move_out_requested", "removal_review"]
 

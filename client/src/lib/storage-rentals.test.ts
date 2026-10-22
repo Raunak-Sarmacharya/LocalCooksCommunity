@@ -96,3 +96,9 @@ it("does not promise an answer or extension by a past deadline", () => {
   expect(rentalStatus(base, t, "en-CA", now).sentence).toBe("stcStatusRequestedElapsed");
   expect(rentalStatus({ ...base, state: "active", phase: "grace" }, t, "en-CA", now).sentence).toBe("stcStatusGraceEnded");
 });
+
+it('kitchenMoment: a midnight deadline reads as the end of the day before', async () => {
+  const { kitchenMoment } = await import('./storage-rentals')
+  expect(kitchenMoment('2026-10-29T02:30:00.000Z', 'America/St_Johns', 'en-CA')).toMatch(/^Wed, Oct\.? 28, 11:59/)
+  expect(kitchenMoment('2026-10-29T15:30:00.000Z', 'America/St_Johns', 'en-CA')).toMatch(/^Thu, Oct\.? 29, 1:00/)
+})
