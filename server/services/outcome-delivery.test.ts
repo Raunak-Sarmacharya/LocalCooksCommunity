@@ -76,6 +76,9 @@ function matches(table: string, condition: any, rows: any[]) {
     rows = rows.filter(row => row.category === 'lifecycle_outcome' && ['queued', 'failed'].includes(row.status));
     const excluded = /NOT IN \(([^)]+)\)/.exec(query.sql)?.[1];
     if (excluded) { const ids = [...excluded.matchAll(/\$(\d+)/g)].map(match => query.params[Number(match[1]) - 1]); rows = rows.filter(row => !ids.includes(row.id)); }
+    const cap = /"email_logs"\."retry_count" < \$(\d+)/.exec(query.sql);
+    if (cap) rows = rows.filter(row => (row.retryCount ?? 0) < query.params[Number(cap[1]) - 1]);
+    rows = [...rows].sort((a, b) => (a.retryCount ?? 0) - (b.retryCount ?? 0) || a.id - b.id);
   }
   return rows;
 }
@@ -304,6 +307,18 @@ describe('actual producer → persisted intent → worker → admin replay', () 
     expect(state.send).not.toHaveBeenCalled();
     expect(state.tables.email_logs[0].status).toBe('skipped_preference');
     expect(state.tables.damage_claims[0].status).toBe('draft');
+  });
+  it('sends a never-tried notice before older retries and stops retrying after four refusals', async () => {
+    const row = (id: number, retryCount: number, email: string) => ({ id, recipientEmail: email, recipientUserId: null, recipientRole: 'manager',
+      category: 'lifecycle_outcome', status: retryCount ? 'failed' : 'queued', subject: `Notice ${id}`, trackingId: `claim-outcome:7:${id}:2`, retryCount, retriedAt: null });
+    state.tables.email_logs.push(row(1, 2, 'old@example.test'), row(2, 4, 'gone@example.test'), row(3, 0, 'new@example.test'), row(4, 3, 'last@example.test'));
+    const tries = () => state.tables.email_logs.filter(item => item.id <= 4).map(item => item.retryCount);
+    await deliverOutcomeEmails(1);
+    expect(tries()).toEqual([2, 4, 1, 3]);
+    await deliverOutcomeEmails(10);
+    expect(tries()).toEqual([3, 4, 2, 4]);
+    expect(state.tables.email_logs.find(item => item.id === 4)).toMatchObject({ status: 'failed', errorMessage: expect.stringContaining('automatic retries stopped') });
+    expect(state.tables.email_logs.find(item => item.id === 2)!.retryCount).toBe(4);
   });
   it('commits clearance with its chef notice and rolls back when the outbox fails', async () => {
     // Clearance now runs through clock-closeout.recordKitchenInspection, which reads the booking joined to its

@@ -1,5 +1,5 @@
 import { waitUntil } from '@vercel/functions';
-import { and, asc, eq, inArray, or, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, lt, or, sql } from 'drizzle-orm';
 import { kitchenCheckoutIncidents, damageClaims, damageClaimHistory, emailLogs, users, storageOverstayRecords, storageOverstayHistory, storageBookings, storageListings, kitchens, locations, commitmentProblems } from '@shared/schema';
 import { db } from '../db';
 import { getAppBaseUrl } from '../config';
@@ -52,6 +52,9 @@ export async function queueClaimOutcome(tx: Transaction, history: typeof damageC
 
 /** Row lock coordinates automatic and manual delivery. SMTP cannot be atomic with DB:
  * acceptance followed by a crash before durable evidence may duplicate on retry. */
+/** Automatic sends per notice. After that it stays failed for an admin to retry from Email logs (they were alerted on the first failure). */
+export const OUTCOME_MAX_ATTEMPTS = 4;
+
 export async function deliverOutcomeEmails(limit = 10, budgetMs = 20_000, onlyLogId?: number) {
   if (isE2eOutboundSuppressed()) return { completed: 0 };
   const deadline = Date.now() + budgetMs;
@@ -63,8 +66,10 @@ export async function deliverOutcomeEmails(limit = 10, budgetMs = 20_000, onlyLo
         inArray(emailLogs.status, ['queued', 'failed']), onlyLogId ? eq(emailLogs.id, onlyLogId) : undefined,
         sql`(${emailLogs.trackingId} LIKE 'checkout-outcome:%' OR ${emailLogs.trackingId} LIKE 'claim-outcome:%' OR ${emailLogs.trackingId} LIKE 'payment-outcome:%' OR ${emailLogs.trackingId} LIKE 'overstay-outcome:%' OR ${emailLogs.trackingId} LIKE 'storage-outcome:%' OR ${emailLogs.trackingId} LIKE 'storage-rental:%' OR ${emailLogs.trackingId} LIKE 'problem-outcome:%')`,
         attempted.length ? sql`${emailLogs.id} NOT IN (${sql.join(attempted.map(id => sql`${id}`), sql`,`)})` : undefined,
-        onlyLogId ? undefined : sql`(${emailLogs.retriedAt} IS NULL OR ${emailLogs.retriedAt} < CURRENT_TIMESTAMP - interval '1 minute')`))
-        .orderBy(sql`${emailLogs.retriedAt} ASC NULLS FIRST`, asc(emailLogs.id)).limit(1).for('update', { skipLocked: true });
+        onlyLogId ? undefined : sql`(${emailLogs.retriedAt} IS NULL OR ${emailLogs.retriedAt} < CURRENT_TIMESTAMP - interval '1 minute')`,
+        onlyLogId ? undefined : lt(emailLogs.retryCount, OUTCOME_MAX_ATTEMPTS)))
+        // Never-tried notices first: a new urgent report must not wait behind retries to addresses that keep refusing.
+        .orderBy(asc(emailLogs.retryCount), sql`${emailLogs.retriedAt} ASC NULLS FIRST`, asc(emailLogs.id)).limit(1).for('update', { skipLocked: true });
       if (!intent) return null;
       if (isPlatformEmailRecipientBlocked(intent.recipientEmail)) {
         // Expand pending legacy support copies once. A stable per-admin key prevents
@@ -182,7 +187,9 @@ export async function deliverOutcomeEmails(limit = 10, budgetMs = 20_000, onlyLo
           actionUrl: '/admin?section=email-log', actionLabel: 'Review delivery', metadata: { emailLogId: intent.id, recoveryOwnerId: owner.id } }, tx);
       }
       await tx.update(emailLogs).set({ status: sent ? 'sent' : 'failed', retryCount: intent.retryCount + 1, retriedAt: new Date(),
-        errorMessage: sent ? null : 'Not accepted; Local Cooks must verify contact, retry and review missed response opportunity.' })
+        errorMessage: sent ? null : intent.retryCount + 1 >= OUTCOME_MAX_ATTEMPTS
+          ? `Not accepted after ${OUTCOME_MAX_ATTEMPTS} attempts; automatic retries stopped. Verify the contact, then retry from Email logs.`
+          : 'Not accepted; Local Cooks must verify contact, retry and review missed response opportunity.' })
         .where(eq(emailLogs.id, intent.id));
       return { id: intent.id, sent };
     });

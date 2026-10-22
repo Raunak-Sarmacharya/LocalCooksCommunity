@@ -3,7 +3,7 @@ import { requireFirebaseAuthWithUser } from '../firebase-auth-middleware';
 import { errorResponse } from '../api-response';
 import { canReportProblem, listProblems, problemContext, problemReportingOpensAt, reportProblem, updateProblem } from '../services/commitment-problems';
 import { db } from '../db';
-import { attemptOutcomeDelivery } from '../services/outcome-delivery';
+import { attemptOutcomeDeliveryAfterResponse } from '../services/outcome-delivery';
 
 const router = Router();
 router.use(requireFirebaseAuthWithUser);
@@ -30,7 +30,7 @@ router.post('/:kind/:id', async (req, res) => {
   if (!['booking', 'tour', 'storage'].includes(req.params.kind)) return res.status(400).json({ error: 'Choose booking, tour or storage' });
   try {
     const result = await reportProblem(req.params.kind as 'booking' | 'tour' | 'storage', Number(req.params.id), req.neonUser!, req.body.description, req.body.requestKey, req.body.category, req.body.visitId);
-    await attemptOutcomeDelivery();
+    attemptOutcomeDeliveryAfterResponse();
     res.json(result);
   } catch (error) { return errorResponse(res, error); }
 });
@@ -38,7 +38,7 @@ router.patch('/:id', async (req, res) => {
   if (!Number.isSafeInteger(Number(req.params.id)) || Number(req.params.id) <= 0) return res.status(400).json({ error: 'Choose a valid problem' });
   try {
     const result = await updateProblem(Number(req.params.id), req.neonUser!, req.body);
-    await attemptOutcomeDelivery();
+    attemptOutcomeDeliveryAfterResponse();
     res.json(result);
   } catch (error) { return errorResponse(res, error); }
 });
