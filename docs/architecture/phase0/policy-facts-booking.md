@@ -135,3 +135,4 @@ Status: `verified` (live on dev with real sandbox money) · `built` (code + test
   pre-acceptance hold release (true 100%); the refund after acceptance always names the card fee. Details open the same timeline as the kitchen
   page and policy dialog. Policy facts are unchanged; the disclosure version stays `food-corridor-v3` / `food-corridor-booking-first-day-v1`
   (wording only). Counsel to confirm with the rest of the clickwrap wording.
+| No-show reporting window (owner, Oct 21): the kitchen can report a no-show only after the visit ends and while its inspection window is open (before it finishes the inspection or the window closes and the payout goes). A report never moves money. On the customer's profile a reported no-show counts; a contested one ("I was there") shows "under review" until Local Cooks decides. | `booking-attendance-service.ts`, customer profile | to verify (build in progress) |
