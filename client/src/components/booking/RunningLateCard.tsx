@@ -100,7 +100,7 @@ export function RunningLateCard({ bookingId, visitId, kitchenName, startAt, endA
           {canUpdate && !open && <Button type="button" variant="link" size="sm" className="mt-1 h-auto p-0" onClick={() => setOpen(true)}>{t("rlChange")}</Button>}
         </div>
       ) : !open && (
-        <Button type="button" variant="outline" size="sm" onClick={() => setOpen(true)}>
+        <Button type="button" variant="outline" className="min-h-11" onClick={() => setOpen(true)}>
           <Clock className="mr-1.5 h-4 w-4" aria-hidden />{t("rlAction")}
         </Button>
       )}
