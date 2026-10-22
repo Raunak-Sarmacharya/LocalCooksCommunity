@@ -32,7 +32,7 @@ import { cn } from "@/lib/utils";
 import { Clock, Info } from "lucide-react";
 import { RevenuePayoutsCard } from "./RevenuePayoutsCard";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { HAPPENING_NOW, managerDatedListDay, managerListDays } from "@/lib/booking-list-status";
+import { managerDatedListDay, managerListDays } from "@/lib/booking-list-status";
 import { kitchenBookingBlocks } from "@/lib/kitchen-booking-blocks";
 import type { BookingPillTone } from "@/lib/booking-header-state";
 import { addDaysKey, kitchenTodayKey, spanMinutes, weekStartKey, weekStats, type DateOverride, type WeeklyHours } from "@/lib/manager-week-stats";
@@ -44,6 +44,7 @@ import { StatusPill } from "@/components/booking/BookingNowCard";
 import { bookingCancelCause } from "@/lib/booking-cancel-cause";
 import { bookingListBounds, bookingListPhase, bookingListPill, listWhenLine, openAttendanceAnswers, type BookingListRow } from "@/lib/booking-list-status";
 import { ct } from "@/i18n/chef-ns";
+import { useCommitmentProblems } from "@/components/support/CommitmentProblems";
 
 interface Location { id: number; name: string; address: string; kitchenLicenseUrl?: string | null; kitchenLicenseStatus?: string | null; kitchenLicenseExpiry?: string | null; timezone?: string; kitchenLicensePendingUrl?: string | null; kitchenLicensePendingExpiry?: string | null }
 interface Kitchen { id: number; locationId: number; name: string; isActive: boolean; listingStatus?: string }
@@ -98,6 +99,7 @@ const hoursText = (minutes: number, locale: string) => new Intl.NumberFormat(loc
 /** "HH:MM" of an instant in a zone (24-hour), for placing a tour on the calendar. */
 const clockIn = (at: number, timeZone: string) => new Intl.DateTimeFormat("en-GB", { timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(at);
 const FINISHED_PHASES = ["completed", "visit_ended", "no_show", "issue", "cancelled"];
+const IN_KITCHEN = ["in_session", "time_ended_in_session"];
 /** Needs-attention groups about a day that has ended: each item names that day and opens its inspection. */
 const FOLLOW_UP_ACTIONS = ["overviewKitchenCheckoutReviews", "overviewBookingOutcomes"];
 /** The storage board's own chip words ("Move-in overdue"), one key per chip, so a new chip can't arrive without a reason. */
@@ -186,6 +188,8 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
   const kitchenName = (id?: number | null, name?: string | null) => name || locationKitchens.find(kitchen => kitchen.id === id)?.name;
   const inKitchen = (id?: number | null, name?: string | null) => multiKitchen ? kitchenName(id, name) : undefined;
   const activity = useManagerOverviewActivity(selectedLocation?.id, locationKitchens.map((kitchen) => kitchen.id));
+  // shortcut: reads every problem this kitchen can see, then filters here; add a server-side open-only filter if lists grow large.
+  const problems = useCommitmentProblems(undefined, undefined, "manager");
   const licenseForKitchen = (kitchen: Kitchen) => locations.find((location) => location.id === kitchen.locationId);
   const liveKitchens = locationKitchens.filter((kitchen) => kitchenIsVisibleToChefs(kitchen, licenseForKitchen(kitchen)));
   const draftKitchens = locationKitchens.filter((kitchen) => kitchen.listingStatus !== "active");
@@ -319,6 +323,16 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
   const addTask = (label: string, task: Task) => groups.set(label, [...(groups.get(label) ?? []), task]);
   const recordTitle = (record: { id?: number; chefName?: string; kitchenName?: string; storageName?: string; claimTitle?: string; referenceCode?: string }) =>
     record.claimTitle || [chefDisplayName(record), record.storageName || record.kitchenName, record.storageName && multiKitchen ? record.kitchenName : undefined].filter(Boolean).join(" · ") || record.referenceCode || `#${record.id}`;
+  // A live "can't get in" or safety report from the customer comes first: access until they're inside, safety until resolved.
+  for (const problem of problems.data?.problems ?? []) {
+    const booking = bookings.find(item => item.id === problem.bookingId);
+    const phase = booking && bookingListPhase(booking);
+    if (!booking || !phase || FINISHED_PHASES.includes(phase) || problem.kind !== "live" || problem.status === "resolved"
+      || problem.history.find(entry => entry.action === "report")?.actorRole !== "chef"
+      || !(problem.category === "safety" || problem.category === "access" && !IN_KITCHEN.includes(phase))) continue;
+    addTask("ovrCustomerReports", { id: `problem-${problem.id}`, title: ct(problem.category === "safety" ? "opaKitchenSafetyTitle" : "opaKitchenAccessTitle", { chef: chefDisplayName(booking) }),
+      detail: problem.description, view: "bookings", href: `/manager/booking/${booking.id}` });
+  }
   if (activity.paymentsNeedAttention) addTask("overviewPaymentsAttention", { id: "payments", title: mt(activity.paymentsAction ?? "overviewPaymentsUpdate"), view: "payments" });
   const unreadThreads = activity.unreadThreads ?? [];
   for (const thread of unreadThreads) addTask("overviewUnreadMessages", { id: thread.id, title: applications.find((application) => application.id === thread.applicationId)?.fullName || mt("overviewConversationTitle", { id: thread.applicationId }), detail: mt("overviewUnreadThreadCount", { count: thread.unreadManagerCount }), view: "messages", param: "conversation" });
@@ -467,7 +481,7 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
       return kitchenBookingBlocks(row).map((block, index) => ({ key: `booking-${row.id}-${day.visitId ?? 0}-${index}`, kind: "booking" as const, date: day.dayKey,
         start: block.startTime, end: block.endTime, sortAt: startAt === undefined ? undefined : startAt + spanMinutes(row.startTime, block.startTime) % 1440 * 60_000,
         title: chefDisplayName(row), detail: [dayLabel(day), row.kitchenName].filter(Boolean).join(" · "), kitchenId: row.kitchenId, kitchen: kitchenName(row.kitchenId, row.kitchenName), label, tone: pill.tone, state,
-        muted: FINISHED_PHASES.includes(phase), cancelled: phase === "cancelled", now: HAPPENING_NOW.includes(phase), href: `/manager/booking/${row.id}` }));
+        muted: FINISHED_PHASES.includes(phase), cancelled: phase === "cancelled", now: IN_KITCHEN.includes(phase), href: `/manager/booking/${row.id}` }));
     }),
     ...locationViewings.filter(({ viewing }) => ["pending", "confirmed", "completed"].includes(viewing.status) && Number.isFinite(Date.parse(viewing.scheduledAt))).map(item => {
       const at = Date.parse(item.viewing.scheduledAt);
@@ -522,7 +536,8 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
   const storageRequestGroup = attentionGroups.find(group => group.label === "overviewStorageRequests");
   const changeGroup = attentionGroups.find(group => group.label === "ovrChangeRequests");
   const storageGroup = attentionGroups.find(group => group.label === "ovrStorageToAction");
-  const otherGroups = attentionGroups.filter(group => group !== requestGroup && group !== storageRequestGroup && group !== changeGroup && group !== storageGroup);
+  const reportGroup = attentionGroups.find(group => group.label === "ovrCustomerReports");
+  const otherGroups = attentionGroups.filter(group => group !== reportGroup && group !== requestGroup && group !== storageRequestGroup && group !== changeGroup && group !== storageGroup);
   const groupSection = (key: string, label: string, count: number, children: ReactNode, note?: ReactNode) => (
     <section key={key} aria-labelledby={`attention-${key}`} className="border-t border-stone-100 pt-4 first:border-t-0 first:pt-0 [&+&]:mt-4">
       <h3 id={`attention-${key}`} className={cn(groupLabel, "sm:px-4")}>{label}<span className={groupCount}>{count}</span></h3>
@@ -610,6 +625,7 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
     const body = <>
       {attentionError && <p role="status" className="mb-3 text-sm text-destructive">{mt("overviewActivityPartialError")}</p>}
       {attentionLoading && <Skeleton className="h-12 rounded-lg" />}
+      {reportGroup && groupSection("reports", mt(reportGroup.label), reportGroup.items.length, reportGroup.items.map(rowLink))}
       {requestGroup && groupSection("requests", mt(requestGroup.label), requestGroup.items.length, requestGroup.items.map(task => task.booking ? requestRow(task) : rowLink(task)))}
       {changeGroup && groupSection("change-requests", mt(changeGroup.label), changeGroup.items.length, changeGroup.items.map(changeRow))}
       {storageRequestGroup && groupSection("storage-requests", mt(storageRequestGroup.label), storageRequestGroup.items.length, storageRequestGroup.items.map(task => task.rental ? storageRequestRow(task) : rowLink(task)))}

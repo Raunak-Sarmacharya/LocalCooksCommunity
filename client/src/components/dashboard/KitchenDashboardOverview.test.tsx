@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const state = vi.hoisted(() => ({
   kitchens: [] as Array<{ id: number; locationId: number; name: string; isActive: boolean; listingStatus: string }>,
   bookings: [] as Array<Record<string, unknown>>,
+  problems: [] as Array<Record<string, unknown>>,
   viewings: [] as Array<Record<string, unknown>>,
   applications: [] as Array<Record<string, unknown>>,
   rentals: [] as Array<Record<string, unknown>>,
@@ -26,7 +27,7 @@ vi.mock("@/hooks/use-manager-overview-activity", () => ({ useManagerOverviewActi
 vi.mock("@/components/manager/revenue/hooks/use-manager-revenue", () => ({ useManagerRevenue: () => ({ data: undefined, isLoading: false }) }));
 vi.mock("@tanstack/react-query", () => ({
   useQuery: ({ queryKey }: { queryKey: string[] }) => ({ data: queryKey[0] === "managerViewings" ? state.viewings : queryKey[0] === "/api/manager/kitchen-applications" ? state.applications
-    : queryKey[0] === "/api/manager/storage-rentals" ? state.rentals : queryKey[0] === "/api/manager/revenue/upcoming-payouts" ? state.payouts : { totalRevenue: 0 }, isLoading: false, isError: false }),
+    : queryKey[0] === "/api/manager/storage-rentals" ? state.rentals : queryKey[0] === "/api/manager/revenue/upcoming-payouts" ? state.payouts : queryKey[0] === "commitment-problems" ? { problems: state.problems, reportingAvailable: false } : { totalRevenue: 0 }, isLoading: false, isError: false }),
   useQueries: ({ queries }: { queries: Array<{ queryKey: unknown[] }> }) => queries.map(({ queryKey }) => ({ data: queryKey[0] === "/api/manager/availability" ? state.hours : state.overrides, isLoading: false, isError: false })),
 }));
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ i18n: { language: "en-CA" } }) }));
@@ -58,6 +59,7 @@ const render = () => renderToStaticMarkup(
 beforeEach(() => {
   state.kitchens = [];
   state.bookings = [];
+  state.problems = [];
   state.viewings = [];
   state.applications = [];
   state.rentals = [];
@@ -319,6 +321,20 @@ describe("revamped overview (R3)", () => {
     const row = attention.slice(attention.indexOf('data-testid="change-request"'));
     const card = row.slice(0, row.indexOf("</a>"));
     for (const part of ["ovrChangeRequests", "Morgan · Kitchen East", "ovrWantsChange", "ovrRespondBy", 'href="/manager/booking/95"', "ovrReviewRequest"]) expect(attention.includes(part) && (part === "ovrChangeRequests" || card.includes(part))).toBe(true);
+  });
+
+  it("puts a customer's live can't-get-in report first under Needs your attention, not a resolved or kitchen-filed one", () => {
+    live();
+    state.bookings = [{ id: 96, kitchenId: 10, locationId: 1, chefName: "Morgan", kitchenName: "Kitchen East", bookingDate: plus(3), createdAt: "2025-01-01",
+      startTime: "09:00", endTime: "10:00", status: "confirmed", timezone: "America/St_Johns" }];
+    const report = (id: number, actorRole: string, status = "reported") => ({ id, bookingId: 96, viewingId: null, kind: "live", status, category: "access", claimedBy: null, revision: 1,
+      description: `Door locked ${id}`, history: [{ revision: 1, at: "2025-01-01T00:00:00Z", actorId: 1, actorRole, action: "report", note: "" }] });
+    state.problems = [report(1, "chef"), report(2, "chef", "resolved"), report(3, "manager")];
+    const attention = render().split('aria-label="overviewNeedsAttention"')[1];
+    expect(attention).toContain("ovrCustomerReports");
+    for (const part of ["opaKitchenAccessTitle", "Door locked 1", 'href="/manager/booking/96"']) expect(attention).toContain(part);
+    expect(attention).not.toContain("Door locked 2");
+    expect(attention).not.toContain("Door locked 3");
   });
 
   it("counts this week's bookings and utilisation of open hours (closures removed) against last week", () => {

@@ -4813,6 +4813,7 @@
   "ovrReviewRequest": "Переглянути запит",
   "ovrChangeRequests": "Запити на зміну",
   "ovrWantsChange": "хоче інший час",
+  "ovrCustomerReports": "Повідомлення клієнтів",
   "ovrBookingCount": "{count, plural, one {# бронювання} few {# бронювання} many {# бронювань} other {# бронювання}}",
   "ovrNowAt": "Зараз {time}",
   "ovrNoOneInKitchen": "На кухні нікого",

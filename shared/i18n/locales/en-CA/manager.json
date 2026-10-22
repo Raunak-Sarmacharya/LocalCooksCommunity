@@ -4813,6 +4813,7 @@
   "ovrReviewRequest": "Review request",
   "ovrChangeRequests": "Change requests",
   "ovrWantsChange": "wants a different time",
+  "ovrCustomerReports": "Customer reports",
   "ovrBookingCount": "{count, plural, one {# booking} other {# bookings}}",
   "ovrNowAt": "Now {time}",
   "ovrNoOneInKitchen": "No one in the kitchen",

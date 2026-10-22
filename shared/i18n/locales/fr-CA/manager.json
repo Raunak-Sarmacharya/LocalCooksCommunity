@@ -4813,6 +4813,7 @@
   "ovrReviewRequest": "Examiner la demande",
   "ovrChangeRequests": "Demandes de modification",
   "ovrWantsChange": "souhaite un autre horaire",
+  "ovrCustomerReports": "Signalements des clients",
   "ovrBookingCount": "{count, plural, one {# réservation} other {# réservations}}",
   "ovrNowAt": "Maintenant {time}",
   "ovrNoOneInKitchen": "Personne en cuisine",
