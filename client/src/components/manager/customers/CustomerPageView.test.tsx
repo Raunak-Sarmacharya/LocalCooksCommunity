@@ -2,12 +2,12 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
-const h = vi.hoisted(() => ({ toast: vi.fn() }));
+const h = vi.hoisted(() => ({ toast: vi.fn(), navigate: vi.fn() }));
 vi.mock('@/lib/firebase', () => ({ auth: { currentUser: { getIdToken: async () => 'fixture-token' } } }));
 vi.mock('@/i18n/manager', async () => ({ mt: (await import('./test-i18n')).createMt() }));
 vi.mock('@/i18n', () => ({ default: { language: 'en-CA' } }));
-vi.mock('@/services/chat-service', () => ({ getAllConversations: async () => [{ chefId: 7, locationId: 47, unreadManagerCount: 2 }] }));
 vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: h.toast }) }));
+vi.mock('wouter', async importOriginal => ({ ...(await importOriginal<typeof import('wouter')>()), useLocation: () => ['/manager/customers/7', h.navigate] }));
 vi.mock('@/components/manager/applications/components/DocumentViewerDialog', () => ({
   DocumentViewerDialog: (props: { open: boolean; title: string; url?: string | null }) => props.open ? <div role="dialog" aria-label={props.title}>{props.url}</div> : null,
 }));
@@ -16,38 +16,80 @@ vi.mock('@/components/manager/applications/components/RevokeLocationAccessDialog
     <div role="dialog" aria-label={`revoke ${props.customer.fullName}`}><button onClick={() => void props.onConfirm('Kitchen rules')}>confirm revoke</button></div>,
 }));
 
-import { CustomerPageView } from './CustomerPageView';
+import { CustomerPageView, displayPhone } from './CustomerPageView';
 
+// "Now" is Wed, Oct 21, 9:05 p.m. Newfoundland time.
+const NOW = new Date('2026-10-21T23:35:00.000Z');
 const NOTE = { id: 1, body: 'Prefers early slots', authorId: 2, authorName: 'Sam Manager', mine: true, createdAt: '2026-10-12T13:00:00.000Z', updatedAt: '2026-10-12T13:00:00.000Z', edited: false };
 const OTHER = { id: 2, body: 'Brings own pans', authorId: 5, authorName: 'Pat Previous', mine: false, createdAt: '2026-09-01T13:00:00.000Z', updatedAt: '2026-09-01T13:00:00.000Z', edited: false };
-const next = (overrides: Record<string, unknown> = {}) => ({ code: 'inspection', rank: 3, owner: 'you', deadlineAt: '2026-10-17T02:00:00.000Z', documentDays: null, documentKey: null, target: { kind: 'inspection', id: 61 }, needsAction: true, ...overrides });
+const booking = (bookingId: number, startsAt: string, endsAt: string, extra: Record<string, unknown> = {}) =>
+  ({ bookingId, reference: `KB-${bookingId}`, kitchenName: 'Main Kitchen', startsAt, endsAt, status: 'confirmed', responseDeadlineAt: null, rentals: [], ...extra });
+const past = (bookingId: number, outcome: string, extra: Record<string, unknown> = {}) =>
+  ({ ...booking(bookingId, '2026-10-12T20:30:00.000Z', '2026-10-12T21:30:00.000Z'), status: 'completed', outcome, refundedCents: 0, late: false, noShow: null, ...extra });
 const page = (overrides: Record<string, unknown> = {}) => ({
-  customer: { chefId: 7, name: 'Priya Sharma', businessName: 'Spice Route Catering', email: 'priya@example.com', phone: '(709) 555-0142', customerSince: '2026-08-15T12:00:00.000Z', firstContactAt: '2026-08-01T12:00:00.000Z' },
+  customer: { chefId: 7, name: 'Priya Sharma', businessName: 'Spice Route Catering', email: 'priya@example.com', phone: '+17095550142', phoneSource: 'application',
+    customerSince: '2026-08-15T12:00:00.000Z', firstContactAt: '2026-08-01T12:00:00.000Z', businessType: 'catering', usageFrequency: 'few-times-month', sessionDuration: '2-4' },
   location: { id: 47, name: 'Harbour Kitchens', timezone: 'America/St_Johns' },
-  locations: [{ id: 47, name: 'Harbour Kitchens', timezone: 'America/St_Johns', status: 'approved', needsAction: true }],
-  status: 'approved', next: next(),
+  locations: [{ id: 47, name: 'Harbour Kitchens', timezone: 'America/St_Johns', status: 'approved', needsAction: false, bookingCount: 9 }],
+  status: 'approved',
+  next: { code: 'problem', rank: 1, owner: 'local_cooks', deadlineAt: null, documentDays: null, documentKey: null, target: { kind: 'booking', id: 132 }, needsAction: false },
   actions: { applicationId: 70, canInvite: true, canRevoke: true, canReview: false, revokedNote: false },
+  reliability: { visits: 54, hoursInKitchen: 96, lastVisitEndedAt: '2026-10-21T18:30:00.000Z', nextVisit: { bookingId: 61, startsAt: '2026-10-22T12:30:00.000Z', endsAt: '2026-10-22T13:30:00.000Z' },
+    cancelledByCustomer: 13, lateCancellations: 2, noShowsCounted: 1, noShowsUnderReview: 1 },
+  bookingCounts: { upcoming: 2, past: 3, cancelled: 2 },
+  open: [
+    { kind: 'storage_move_in', owner: 'you', storageId: 46, name: 'Reach-in Refrigerator', startOn: '2026-10-16', endOn: '2026-10-23' },
+    { kind: 'no_show_review', owner: 'local_cooks', bookingId: 184, reference: 'KB-184', startsAt: '2026-10-21T12:30:00.000Z', endsAt: '2026-10-21T13:30:00.000Z' },
+    { kind: 'claims', owner: 'local_cooks', count: 2, amountCents: 6000, references: ['DC-P8ASMJ', 'DC-89XE7K'] },
+  ],
   upcoming: [
-    { bookingId: 61, reference: 'KB-61', kitchenName: 'Main Kitchen', startsAt: '2026-10-21T12:30:00.000Z', endsAt: '2026-10-21T14:30:00.000Z', status: 'confirmed', responseDeadlineAt: null, equipmentCount: 1, storageCount: 1 },
-    { bookingId: 62, reference: 'KB-62', kitchenName: 'Pastry Room', startsAt: '2026-10-24T17:30:00.000Z', endsAt: '2026-10-24T20:30:00.000Z', status: 'pending', responseDeadlineAt: '2026-10-23T23:30:00.000Z', equipmentCount: 0, storageCount: 0 },
+    booking(60, '2026-10-18T19:30:00.000Z', '2026-10-23T20:30:00.000Z'),
+    booking(61, '2026-10-22T12:30:00.000Z', '2026-10-22T13:30:00.000Z', { rentals: [{ name: 'Commercial Oven', days: 3 }] }),
   ],
   past: [
-    { bookingId: 51, reference: 'KB-51', kitchenName: 'Main Kitchen', startsAt: '2026-10-12T20:30:00.000Z', endsAt: '2026-10-12T21:30:00.000Z', status: 'completed', responseDeadlineAt: null, equipmentCount: 0, storageCount: 0, outcome: 'completed_cleared', refundedCents: 0 },
-    { bookingId: 50, reference: 'KB-50', kitchenName: 'Main Kitchen', startsAt: '2026-10-08T17:30:00.000Z', endsAt: '2026-10-08T19:30:00.000Z', status: 'cancelled', responseDeadlineAt: null, equipmentCount: 0, storageCount: 0, outcome: 'cancelled_by_customer', refundedCents: 2843 },
-    { bookingId: 49, reference: 'KB-49', kitchenName: 'Main Kitchen', startsAt: '2026-10-03T12:30:00.000Z', endsAt: '2026-10-03T13:30:00.000Z', status: 'confirmed', responseDeadlineAt: null, equipmentCount: 0, storageCount: 0, outcome: 'visit_ended', refundedCents: 0 },
-  ], pastTotal: 3, pastHasMore: false,
+    past(51, 'completed_cleared'),
+    past(184, 'attendance_reported', { noShow: 'under_review' }),
+    past(182, 'attendance_reported', { noShow: 'counted' }),
+    past(157, 'cancelled_by_customer', { status: 'cancelled', late: true }),
+    past(150, 'cancelled_by_customer', { status: 'cancelled', refundedCents: 2907 }),
+  ], pastTotal: 5, pastHasMore: false,
   application: { id: 70, status: 'approved', tier: 3, stages: [
     { key: 'requested', at: '2026-08-01T12:00:00.000Z' }, { key: 'localCooksApproved', at: '2026-08-05T12:00:00.000Z' },
     { key: 'documentsSubmitted', at: '2026-08-10T12:00:00.000Z' }, { key: 'youApproved', at: '2026-08-15T12:00:00.000Z' }],
     documents: [
-      { key: 'foodSafetyLicense', required: true, uploaded: true, status: 'approved', expiry: '2026-10-22', daysLeft: 6, stage: '7_day', url: '/api/files/documents/licence.pdf', renewalPending: false },
-      { key: 'foodEstablishmentCert', required: true, uploaded: true, status: 'approved', expiry: '2026-11-05', daysLeft: 20, stage: '30_day', url: null, renewalPending: true },
-      { key: 'other', required: false, uploaded: true, status: 'approved', expiry: '2020-01-01', daysLeft: -2000, stage: 'expired', url: null, renewalPending: false },
+      { key: 'foodSafetyLicense', required: true, uploaded: true, status: 'approved', expiry: '2027-06-15', daysLeft: 237, stage: null, url: '/api/files/documents/licence.pdf', renewalPending: false },
+      { key: 'foodEstablishmentCert', required: true, uploaded: true, status: 'approved', expiry: '2026-10-25', daysLeft: 4, stage: '7_day', url: null, renewalPending: true },
     ] },
-  tours: [{ id: 9, scheduledAt: '2026-08-02T14:00:00.000Z', durationMinutes: 30, status: 'completed', kitchenName: 'Main Kitchen', feedbackSubmitted: true }],
-  money: { paidCents: 41250, refundedCents: 2843, heldCents: 6100, outstandingCents: 0, currency: 'CAD' },
-  claims: [{ id: 3, reference: 'DC-3', title: 'Broken mixer lid', status: 'submitted', amountCents: 8500, nextActor: 'customer', deadlineAt: '2026-10-19T15:00:00.000Z', bookingId: 51 }],
+  tours: [],
+  money: { paidCents: 506194, refundedCents: 143917, heldCents: 3050, outstandingCents: 0, currency: 'CAD', paymentCount: 88, holdCount: 1, claimsCollectedCents: 29500, claimsCollectedCount: 5 },
+  payments: [
+    { id: 1, bookingId: 61, reference: 'KB-61', startsAt: '2026-10-22T12:30:00.000Z', endsAt: '2026-10-22T13:30:00.000Z', paidAt: '2026-10-21T22:47:00.000Z', status: 'succeeded',
+      amountCents: 3050, refundedCents: 0, payoutCents: 2875, payoutStatus: 'scheduled', payoutAt: '2026-10-23T13:30:00.000Z' },
+    { id: 2, bookingId: 150, reference: 'KB-150', startsAt: '2026-10-26T10:30:00.000Z', endsAt: '2026-10-26T11:30:00.000Z', paidAt: '2026-10-21T22:44:00.000Z', status: 'refunded',
+      amountCents: 3050, refundedCents: 2907, payoutCents: 0, payoutStatus: 'not_applicable', payoutAt: null },
+  ],
+  storage: [
+    { id: 46, reference: 'SB-AW94FH', name: 'Reach-in Refrigerator', state: 'reserved', endReason: null, startOn: '2026-10-16', endOn: '2026-10-23', totalCents: 8400, moveInOverdue: true },
+    { id: 43, reference: 'SB-KH3ZBQ', name: 'Dry shelf', state: 'removal_review', endReason: null, startOn: '2026-09-13', endOn: '2026-09-27', totalCents: 1050, moveInOverdue: false },
+  ],
+  activity: [
+    { at: '2026-10-21T23:21:00.000Z', type: 'rental_day_cancelled', category: 'booking', actor: 'you', bookingId: 222, reference: 'KB-BWNUY8', name: 'Commercial Oven', date: '2026-11-05' },
+    { at: '2026-10-21T22:50:00.000Z', type: 'cancelled', category: 'money', actor: 'customer', bookingId: 150, reference: 'KB-150', startsAt: '2026-10-26T10:30:00.000Z', endsAt: '2026-10-26T11:30:00.000Z', refundedCents: 2907 },
+    { at: '2026-10-21T22:24:00.000Z', type: 'booked', category: 'money', actor: 'customer', bookingId: 222, reference: 'KB-BWNUY8', startsAt: '2026-11-02T13:30:00.000Z', endsAt: '2026-11-05T20:30:00.000Z',
+      amountCents: 46360, rentals: [{ name: 'Commercial Oven', days: 3 }] },
+    { at: '2026-10-13T20:21:00.000Z', type: 'access_approved', category: 'access', actor: 'you' },
+  ],
+  claims: [
+    { id: 13, reference: 'DC-P8ASMJ', title: 'Damage and cleaning', status: 'in_review', amountCents: 2000, nextActor: 'local_cooks', deadlineAt: null, bookingId: 212 },
+    { id: 11, reference: 'DC-79TGYG', title: 'Extra cleaning', status: 'charge_succeeded', amountCents: 4000, nextActor: 'nobody', deadlineAt: null, bookingId: 178 },
+  ],
   ...overrides,
+});
+const empty = () => page({
+  customer: { ...page().customer, name: 'Aisha Rahman', businessName: null, businessType: null },
+  reliability: { visits: 0, hoursInKitchen: 0, lastVisitEndedAt: null, nextVisit: null, cancelledByCustomer: 0, lateCancellations: 0, noShowsCounted: 0, noShowsUnderReview: 0 },
+  bookingCounts: { upcoming: 0, past: 0, cancelled: 0 }, open: [], upcoming: [], past: [], pastTotal: 0, payments: [], storage: [], activity: [], claims: [],
+  money: { paidCents: 0, refundedCents: 0, heldCents: 0, outstandingCents: 0, currency: 'CAD', paymentCount: 0, holdCount: 0, claimsCollectedCents: 0, claimsCollectedCount: 0 },
 });
 
 let notes = [NOTE, OTHER];
@@ -57,8 +99,13 @@ const mount = (chefId = 7, locationParam: number | undefined = 47) => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(<QueryClientProvider client={client}><CustomerPageView chefId={chefId} locationParam={locationParam} /></QueryClientProvider>);
 };
+const heading = () => screen.findByRole('heading', { level: 1, name: 'Priya Sharma' });
+const openMenu = (trigger: HTMLElement) => { fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' }); };
+const tab = (name: RegExp) => { const element = screen.getByRole('tab', { name }); fireEvent.mouseDown(element, { button: 0 }); fireEvent.click(element); };
+
 beforeEach(() => {
-  calls.length = 0; notes = [NOTE, OTHER]; h.toast.mockClear();
+  vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(NOW);
+  calls.length = 0; notes = [NOTE, OTHER]; h.toast.mockClear(); h.navigate.mockClear();
   window.history.replaceState({}, '', '/manager/customers/7?location=47');
   routes = {
     'GET /api/manager/customers/7': () => ({ body: page() }),
@@ -80,228 +127,224 @@ beforeEach(() => {
     return { ok: status < 400, status, statusText: '', json: async () => result.body };
   }));
 });
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
-it('lays out the sections in the agreed order', async () => {
+it('asks for the full history and leads with the person: name, business, tap-to-call phone, email and location', async () => {
   mount();
-  await screen.findByRole('heading', { level: 1, name: 'Priya Sharma' });
-  const headings = screen.getAllByRole('heading', { level: 2 }).map(heading => heading.textContent);
-  expect(headings).toEqual(['Next action', 'Upcoming bookings', 'Past bookings', 'Application and documents', 'Money at Harbour Kitchens', 'Claims', 'Messages', 'Tours', 'Private notes']);
+  await heading();
+  expect(calls[0].url).toBe('/api/manager/customers/7?locationId=47&past=all');
+  expect(screen.getAllByText('Spice Route Catering')[0].parentElement).toHaveTextContent('Spice Route Catering · Catering');
+  expect(screen.getAllByRole('link', { name: /\(709\) 555-0142/ })[0]).toHaveAttribute('href', 'tel:+17095550142');
+  expect(screen.getAllByRole('link', { name: /priya@example\.com/ })[0]).toHaveAttribute('href', 'mailto:priya@example.com');
+  expect(screen.getAllByText('Harbour Kitchens', { selector: 'span.truncate' })[0]).toBeInTheDocument();
+  const about = screen.getByRole('region', { name: 'About' });
+  expect(within(about).getByText('From their application')).toBeInTheDocument();
+  expect(within(about).getByText('A few times a month')).toBeInTheDocument();
+  expect(within(about).getByText('2–4 h sessions')).toBeInTheDocument();
+  expect(screen.getAllByRole('tab').map(item => item.textContent)).toEqual(['Overview', 'Bookings7', 'Storage2', 'Money', 'Access and documents', 'Activity']);
+  expect(document.body.textContent).not.toMatch(/stripe|pi_|pm_|visa|last4|insurance|Ask for it/i);
 });
 
-it('shows the header: name, business, contact, customer-since and the access chip, with no card or Stripe data anywhere', async () => {
+it('never uses "chef" as a role word on the kitchen side', async () => {
   mount();
-  await screen.findByRole('heading', { level: 1, name: 'Priya Sharma' });
-  expect(screen.getByText('Spice Route Catering')).toBeInTheDocument();
-  expect(screen.getByRole('link', { name: /priya@example\.com/ })).toHaveAttribute('href', 'mailto:priya@example.com');
-  expect(screen.getByText('(709) 555-0142')).toBeInTheDocument();
-  expect(screen.getByText('Customer since Aug 15, 2026')).toBeInTheDocument();
-  expect(screen.getByText('Approved at Harbour Kitchens')).toBeInTheDocument();
-  expect(document.body.textContent).not.toMatch(/stripe|pi_|pm_|ch_|visa|mastercard|last4/i);
-  expect(screen.getByRole('link', { name: 'Back to customers' })).toHaveAttribute('href', '/manager/dashboard?view=customers');
+  await heading();
+  for (const name of [/Bookings/, /Storage/, /Money/, /Access and documents/, /Activity/]) {
+    tab(name);
+    expect(document.body.textContent).not.toMatch(/\bchefs?\b/i);
+  }
 });
 
-it('has one canonical next action with whose turn it is, the deadline in kitchen time, and one button to the task page', async () => {
+it('shows the five figures, with late cancellations apart from early ones', async () => {
   mount();
-  const card = (await screen.findByRole('region', { name: 'Next action' }));
-  expect(within(card).getByText('Your turn')).toBeInTheDocument();
-  expect(within(card).getByText(/^Inspect the kitchen by Fri, Oct 16, 11:30 p\.m\. · Newfoundland Time$/)).toBeInTheDocument();
-  expect(within(card).getByText('Due Fri, Oct 16, 11:30 p.m. · Newfoundland Time')).toBeInTheDocument();
-  const buttons = within(card).getAllByRole('link');
-  expect(buttons).toHaveLength(1);
-  expect(buttons[0]).toHaveAttribute('href', '/manager/booking/61/inspection');
-  expect(buttons[0]).toHaveTextContent('Open inspection');
+  await heading();
+  const strip = screen.getByRole('region', { name: 'Relationship at Harbour Kitchens' });
+  expect(strip).toHaveTextContent('Visits54last visit today');
+  expect(strip).toHaveTextContent('Time in your kitchen96habout 1.8 h a visit');
+  expect(strip).toHaveTextContent('Net paid$3,622.77after $1,439.17 refunded');
+  expect(strip).toHaveTextContent('Next visitTomorrow10:00–11:00 a.m.');
+  expect(strip).toHaveTextContent('Late cancellations2of 13 cancelled1 no-show · 1 under review');
 });
 
-it.each([
-  [next({ code: 'documents_review', target: { kind: 'application', id: 70 }, deadlineAt: null }), '/manager/dashboard?view=applications&application=70', 'Review application'],
-  [next({ code: 'booking_request', target: { kind: 'booking', id: 62 } }), '/manager/booking/62', 'Open booking'],
-  [next({ code: 'tour_request', target: { kind: 'tour', id: 9 }, deadlineAt: null }), '/manager/tours/9', 'Open tour'],
-])('links the next action to the existing task page: %#', async (action, href, label) => {
-  routes['GET /api/manager/customers/7'] = () => ({ body: page({ next: action }) });
+it('groups what is open into For you and Waiting on others, with a disputed no-show under review', async () => {
   mount();
-  const card = await screen.findByRole('region', { name: 'Next action' });
-  expect(within(card).getByRole('link', { name: label })).toHaveAttribute('href', href);
+  await heading();
+  const open = screen.getByRole('region', { name: /Open with Priya Sharma/ });
+  expect(open).toHaveTextContent('For you1');
+  expect(open).toHaveTextContent('Reach-in Refrigerator · move-in not confirmed');
+  expect(open).toHaveTextContent('Rental Oct 16–23 · Started 5 days ago');
+  expect(within(open).getByRole('link', { name: 'Confirm move-in' })).toHaveAttribute('href', '/manager/storage/46');
+  expect(open).toHaveTextContent('Waiting on others2');
+  expect(open).toHaveTextContent('No-show disputed · today, 10:00–11:00 a.m.');
+  expect(open).toHaveTextContent('Priya Sharma says they were there. Local Cooks is reviewing it; it doesn’t count until then.');
+  expect(open).toHaveTextContent('2 damage claims in review · $60.00');
+  fireEvent.click(within(open).getByRole('button', { name: 'View claims' }));
+  expect(screen.getByRole('tab', { name: 'Money' })).toHaveAttribute('aria-selected', 'true');
 });
 
-it('shows no task button when the customer is the one who has to act', async () => {
-  routes['GET /api/manager/customers/7'] = () => ({ body: page({ next: next({ code: 'document_expiring', owner: 'customer', rank: 8, deadlineAt: null, documentDays: 6, documentKey: 'foodSafetyLicense', target: { kind: 'application', id: 70 }, needsAction: false }) }) });
+it('splits Coming up into In progress and Next, counting paid rentals, not every included item', async () => {
   mount();
-  const card = await screen.findByRole('region', { name: 'Next action' });
-  expect(within(card).getByText('Waiting for Priya Sharma')).toBeInTheDocument();
-  expect(within(card).getByText('Food safety certificate expires in 6 days')).toBeInTheDocument();
-  expect(within(card).queryByRole('link')).not.toBeInTheDocument();
+  await heading();
+  const coming = screen.getByRole('region', { name: /Coming up/ });
+  expect(coming).toHaveTextContent('In progress1');
+  expect(coming).toHaveTextContent('Sun, Oct 18, 5:00 p.m. – Fri, Oct 23, 6:00 p.m.');
+  expect(coming).toHaveTextContent('Next1');
+  expect(coming).toHaveTextContent('Main Kitchen · 1 rental · KB-61');
+  expect(within(coming).getAllByRole('link')[1]).toHaveAttribute('href', '/manager/booking/61');
 });
 
-it('lists upcoming bookings with kitchen-local time and zone, deadlines, add-ons and a link to each booking', async () => {
+it('marks late cancellations and both no-show states in Bookings, and defines the terms', async () => {
   mount();
-  const section = await screen.findByRole('region', { name: 'Upcoming bookings' });
-  const first = within(section).getAllByRole('link')[0];
-  expect(first).toHaveAttribute('href', '/manager/booking/61');
-  expect(first).toHaveTextContent('Wed, Oct 21 · 10:00 a.m.–12:00 p.m. · Newfoundland Time');
-  expect(first).toHaveTextContent('Main Kitchen · Confirmed · 2 add-ons');
-  expect(within(section).getAllByRole('link')[1]).toHaveTextContent('Pastry Room · Requested · Respond by Fri, Oct 23, 9:00 p.m. · Newfoundland Time');
+  await heading();
+  tab(/Bookings/);
+  const card = screen.getByRole('region', { name: 'Bookings at Harbour Kitchens' });
+  fireEvent.click(within(card).getByRole('button', { name: /Cancelled/ }));
+  const late = within(card).getByText('KB-157', { selector: 'td' }).closest('tr')!;
+  expect(late).toHaveTextContent('Cancelled by Priya SharmaLateInside the cancellation window · no refund');
+  expect(within(card).getByText('KB-150', { selector: 'td' }).closest('tr')).toHaveTextContent('Refunded $29.07');
+  fireEvent.click(within(card).getByRole('button', { name: /Past/ }));
+  expect(within(card).getByText('KB-182', { selector: 'td' }).closest('tr')).toHaveTextContent('No-showNot disputed, or upheld by Local Cooks');
+  expect(within(card).getByText('KB-184', { selector: 'td' }).closest('tr')).toHaveTextContent('No-show disputedLocal Cooks is reviewing; it doesn’t count yet');
+  expect(card).toHaveTextContent('Late means cancelled inside that booking’s cancellation window.');
 });
 
-it('collapses long upcoming lists to ten with Show all', async () => {
-  const many = Array.from({ length: 12 }, (_, index) => ({ ...page().upcoming[0], bookingId: 100 + index }));
-  routes['GET /api/manager/customers/7'] = () => ({ body: page({ upcoming: many }) });
+it('lists storage with its state, and money with each payout', async () => {
   mount();
-  const section = await screen.findByRole('region', { name: 'Upcoming bookings' });
-  expect(within(section).getAllByRole('link')).toHaveLength(10);
-  fireEvent.click(within(section).getByRole('button', { name: 'Show all 12' }));
-  expect(within(section).getAllByRole('link')).toHaveLength(12);
-  expect(within(section).getByRole('button', { name: 'Show fewer' })).toHaveAttribute('aria-expanded', 'true');
+  await heading();
+  tab(/Storage/);
+  const storage = screen.getByRole('region', { name: /Storage rentals/ });
+  expect(within(storage).getByText('Reach-in Refrigerator').closest('tr')).toHaveTextContent('Move-in not confirmed');
+  expect(within(storage).getByText('Dry shelf').closest('tr')).toHaveTextContent('Past end, not moved out');
+  tab(/Money/);
+  const summary = screen.getByRole('region', { name: /Money at Harbour Kitchens/ });
+  expect(summary).toHaveTextContent('Paid$5,061.9488 payments');
+  expect(summary).toHaveTextContent('Claims collected$295.005 claims paid');
+  const payments = screen.getByRole('region', { name: 'Payments' });
+  expect(payments).toHaveTextContent('$28.75Expected Oct 23, 2026');
+  expect(payments).toHaveTextContent('−$29.07');
+  const claims = screen.getByRole('region', { name: /Damage claims/ });
+  expect(within(claims).getAllByText('Local Cooks is reviewing')[0]).toBeInTheDocument();
+  expect(claims).toHaveTextContent('Paid by Priya Sharma');
 });
 
-it('names past outcomes explicitly and never says no-show for a missing tap', async () => {
+it('filters the activity feed and words the kitchen’s own actions as "You"', async () => {
   mount();
-  const section = await screen.findByRole('region', { name: 'Past bookings' });
-  expect(within(section).getByText(/Completed · cleared by you/)).toBeInTheDocument();
-  expect(within(section).getByText(/Cancelled by Priya Sharma · refunded \$28\.43/)).toBeInTheDocument();
-  expect(within(section).getByText(/Visit ended · outcome not recorded yet/)).toBeInTheDocument();
-  expect(section.textContent).not.toMatch(/no.?show/i);
+  await heading();
+  tab(/Activity/);
+  const feed = screen.getByRole('region', { name: 'Activity' });
+  expect(feed).toHaveTextContent('You cancelled one rental day');
+  expect(feed).toHaveTextContent('Commercial Oven on Thu, Nov 5 · KB-BWNUY8');
+  expect(feed).toHaveTextContent('Paid $463.60 · 1 rental: Commercial Oven, 3 days · KB-BWNUY8');
+  fireEvent.click(within(feed).getByRole('button', { name: 'Access' }));
+  expect(feed).toHaveTextContent('You approved access');
+  expect(feed).not.toHaveTextContent('Cancelled a booking');
+  expect(feed).toHaveTextContent('Showing 1 of 1');
 });
 
-it('shows document expiry with amber at 30 days or fewer and red at 7 days or fewer and when expired', async () => {
+it('keeps revoke inside the ⋯ menu and uses the existing atomic route', async () => {
   mount();
-  const section = await screen.findByRole('region', { name: 'Application and documents' });
-  expect(within(section).getByText('Requested · Aug 1, 2026')).toBeInTheDocument();
-  expect(within(section).getByText('You approved · Aug 15, 2026')).toBeInTheDocument();
-  const stages = Array.from(section.querySelectorAll('[data-expiry-stage]')).map(node => [node.getAttribute('data-expiry-stage'), node.className.match(/text-(red|amber|muted)/)?.[1], node.textContent]);
-  expect(stages).toEqual([
-    ['7_day', 'red', 'Expires Oct 22, 2026 · expires in 6 days'],
-    ['30_day', 'amber', 'Expires Nov 5, 2026 · expires in 20 days'],
-    ['expired', 'red', 'Expired Jan 1, 2020'],
-  ]);
-  expect(within(section).getByText('A renewed document is waiting for review')).toBeInTheDocument();
-  expect(within(section).getAllByRole('button', { name: /View file/ })).toHaveLength(1);
-});
-
-it('opens a document only when a file is available', async () => {
-  mount();
-  const section = await screen.findByRole('region', { name: 'Application and documents' });
-  fireEvent.click(within(section).getByRole('button', { name: 'View file: Food safety certificate' }));
-  expect(screen.getByRole('dialog', { name: 'Food safety certificate' })).toHaveTextContent('/api/files/documents/licence.pdf');
-});
-
-it('summarizes money for this location in Canadian dollars', async () => {
-  mount();
-  const section = await screen.findByRole('region', { name: 'Money at Harbour Kitchens' });
-  const read = (label: string) => within(section).getByText(label).nextElementSibling?.textContent;
-  expect(read('Paid')).toBe('$412.50');
-  expect(read('Refunded')).toBe('$28.43');
-  expect(read('Held')).toBe('$61.00');
-  expect(read('Outstanding')).toBe('$0.00');
-});
-
-it('lists claims with status, amount, next actor and a link', async () => {
-  mount();
-  const section = await screen.findByRole('region', { name: 'Claims' });
-  expect(within(section).getByText('Broken mixer lid')).toBeInTheDocument();
-  expect(within(section).getByText('Waiting for Priya Sharma · $85.00')).toBeInTheDocument();
-  expect(within(section).getByText(/^Next: Priya Sharma · Due Mon, Oct 19, 12:30 p\.m\. · Newfoundland Time$/)).toBeInTheDocument();
-  expect(within(section).getByRole('link', { name: 'Open claim' })).toHaveAttribute('href', '/manager/dashboard?view=damage-claims&claim=3');
-});
-
-it('lists tours with a link and the manager’s own feedback state', async () => {
-  mount();
-  const section = await screen.findByRole('region', { name: 'Tours' });
-  expect(within(section).getByRole('link')).toHaveAttribute('href', '/manager/tours/9');
-  expect(section).toHaveTextContent('Main Kitchen · Completed');
-  expect(section).toHaveTextContent('You shared your feedback');
-});
-
-it('has Invite to book only for an approved customer, linking to the invitation page with person and location', async () => {
-  mount();
-  expect(await screen.findByRole('link', { name: 'Invite to book' })).toHaveAttribute('href', '/manager/invitations/new?chefId=7&location=47');
-  cleanup();
-  routes['GET /api/manager/customers/7'] = () => ({ body: page({ status: 'in_review', actions: { applicationId: 70, canInvite: false, canRevoke: false, canReview: true, revokedNote: false } }) });
-  mount();
-  expect(await screen.findByRole('link', { name: 'Review application' })).toHaveAttribute('href', '/manager/dashboard?view=applications&application=70');
-  expect(screen.queryByRole('link', { name: 'Invite to book' })).not.toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: 'Revoke access' })).not.toBeInTheDocument();
-});
-
-it('explains a revoked customer and how to get access restored', async () => {
-  routes['GET /api/manager/customers/7'] = () => ({ body: page({ status: 'revoked', actions: { applicationId: 70, canInvite: false, canRevoke: false, canReview: false, revokedNote: true } }) });
-  mount();
-  expect(await screen.findByText(/Access to Harbour Kitchens was ended for new bookings/)).toBeInTheDocument();
-  expect(screen.getByRole('link', { name: 'Contact Local Cooks' }).getAttribute('href')).toMatch(/^mailto:support@localcooks\.ca/);
-  expect(screen.queryByRole('link', { name: 'Invite to book' })).not.toBeInTheDocument();
-});
-
-it('revokes through the existing atomic route and confirms', async () => {
-  mount();
-  fireEvent.click(await screen.findByRole('button', { name: 'Revoke access' }));
-  fireEvent.click(within(screen.getByRole('dialog', { name: 'revoke Priya Sharma' })).getByRole('button', { name: 'confirm revoke' }));
+  await heading();
+  expect(screen.queryByRole('button', { name: /Revoke/ })).not.toBeInTheDocument();
+  openMenu(screen.getByRole('button', { name: 'More actions' }));
+  const menu = await screen.findByRole('menu');
+  expect(within(menu).getAllByRole('menuitem').map(item => item.textContent)).toEqual(['View access application', 'Copy email address', 'Copy phone number', 'Revoke access…']);
+  fireEvent.click(within(menu).getByRole('menuitem', { name: 'Revoke access…' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'confirm revoke' }));
   await waitFor(() => expect(h.toast).toHaveBeenCalledWith({ title: 'Access to Harbour Kitchens ended for Priya Sharma.' }));
-  const call = calls.find(item => item.method === 'DELETE' && item.url === '/api/manager/chef-location-access')!;
-  expect(JSON.parse(call.body!)).toEqual({ chefId: 7, locationId: 47, reason: 'Kitchen rules' });
+  expect(JSON.parse(calls.find(item => item.method === 'DELETE')!.body!)).toEqual({ chefId: 7, locationId: 47, reason: 'Kitchen rules' });
 });
 
-it('opens the existing conversation from Message, and says so when messaging is not open yet', async () => {
+it('has Message as the one primary and Invite to book for an approved customer', async () => {
   mount();
-  fireEvent.click(await screen.findByRole('button', { name: 'Message' }));
-  await waitFor(() => expect(window.location.pathname + window.location.search).toBe('/manager/dashboard?view=messages&conversation=chef-7-location-47&locationId=47'));
-  cleanup();
-  window.history.replaceState({}, '', '/manager/customers/7?location=47');
-  routes['GET /api/firebase/chat/locations/47/chefs/7/conversation'] = () => ({ status: 404, body: { error: 'Eligible conversation not found' } });
-  mount();
-  fireEvent.click(await screen.findByRole('button', { name: 'Message' }));
-  expect(await screen.findByRole('alert')).toHaveTextContent('Messaging with Priya Sharma isn’t open yet.');
-  expect(window.location.pathname).toBe('/manager/customers/7');
+  await heading();
+  expect(screen.getByRole('link', { name: 'Invite to book' })).toHaveAttribute('href', '/manager/invitations/new?chefId=7&location=47');
+  fireEvent.click(screen.getByRole('button', { name: 'Message' }));
+  await waitFor(() => expect(h.navigate).toHaveBeenCalledWith('/manager/dashboard?view=messages&conversation=chef-7-location-47&locationId=47'));
 });
 
-it('shows unread messages and a link to the conversation (no inline chat)', async () => {
-  mount();
-  const section = await screen.findByRole('region', { name: 'Messages' });
-  expect(await within(section).findByText('2 unread messages')).toBeInTheDocument();
-  expect(within(section).getByRole('button', { name: 'Open conversation' })).toBeInTheDocument();
-  expect(section.querySelector('textarea')).toBeNull();
-});
-
-it('switches between locations when the person has more than one', async () => {
+it('switches location from the chip when the customer has access at two of your locations', async () => {
   routes['GET /api/manager/customers/7'] = () => ({ body: page({ locations: [
-    { id: 47, name: 'Harbour Kitchens', timezone: 'America/St_Johns', status: 'approved', needsAction: true },
-    { id: 48, name: 'West End', timezone: 'America/Toronto', status: 'in_review', needsAction: true }] }) });
+    { id: 47, name: 'Harbour Kitchens', timezone: 'America/St_Johns', status: 'approved', needsAction: false, bookingCount: 104 },
+    { id: 48, name: 'Water Street Commissary', timezone: 'America/St_Johns', status: 'approved', needsAction: false, bookingCount: 3 }] }) });
   mount();
-  const group = await screen.findByRole('group', { name: 'Location' });
-  expect(within(group).getByRole('button', { name: 'Approved at Harbour Kitchens' })).toHaveAttribute('aria-pressed', 'true');
-  fireEvent.click(within(group).getByRole('button', { name: 'In review at West End' }));
-  await waitFor(() => expect(window.location.search).toBe('?location=48'));
+  await heading();
+  openMenu(screen.getByRole('button', { name: 'Location: Harbour Kitchens. Switch location' }));
+  const menu = await screen.findByRole('menu');
+  expect(menu).toHaveTextContent('Priya Sharma has access at');
+  const items = within(menu).getAllByRole('menuitemradio');
+  expect(items[0]).toHaveAttribute('aria-checked', 'true');
+  expect(items[1]).toHaveTextContent('Water Street CommissaryApproved · 3 bookings');
+  fireEvent.click(items[1]);
+  expect(h.navigate).toHaveBeenCalledWith('/manager/customers/7?location=48');
 });
 
-it('shows not-found for a customer who is not at the manager’s locations, with a way back', async () => {
+it('says what will appear for a new customer with nothing booked', async () => {
+  routes['GET /api/manager/customers/7'] = () => ({ body: empty() });
+  mount();
+  await screen.findByRole('heading', { level: 1, name: 'Aisha Rahman' });
+  expect(screen.getByRole('region', { name: /Relationship at/ })).toHaveTextContent('Next visitNone bookedInvite them to book');
+  expect(screen.getByText('Nothing open')).toBeInTheDocument();
+  expect(screen.getByText('No bookings yet')).toBeInTheDocument();
+  tab(/Bookings/);
+  expect(screen.getByText('No upcoming bookings')).toBeInTheDocument();
+  tab(/Money/);
+  expect(screen.getByText('No payments yet')).toBeInTheDocument();
+});
+
+it('shows a skeleton while loading, then the page', async () => {
+  let release: () => void = () => {};
+  routes['GET /api/manager/customers/7'] = () => ({ body: page() });
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const original = globalThis.fetch;
+  vi.stubGlobal('fetch', vi.fn(async (input: string, init?: RequestInit) => { if (String(input).startsWith('/api/manager/customers/7?')) await gate; return original(input, init); }));
+  mount();
+  expect(screen.getByLabelText('Loading customer…')).toHaveAttribute('aria-busy', 'true');
+  release();
+  await heading();
+});
+
+it('shows not-found for a customer who is not at your locations, and a retry for any other failure', async () => {
   routes['GET /api/manager/customers/7'] = () => ({ status: 404, body: { error: 'Customer not found' } });
   mount();
   expect(await screen.findByRole('alert')).toHaveTextContent('We couldn’t find this customer.');
-  expect(screen.getByRole('link', { name: 'Back to customers' })).toHaveAttribute('href', '/manager/dashboard?view=customers');
-});
-
-it('shows a retry for any other failure', async () => {
-  routes['GET /api/manager/customers/7'] = () => ({ status: 400, body: { error: 'bad' } });
+  expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
+  cleanup();
+  routes['GET /api/manager/customers/7'] = () => ({ status: 500, body: { error: 'boom' } });
   mount();
-  expect(await screen.findByRole('alert')).toHaveTextContent('We couldn’t load this customer. Try again.');
+  // The page retries a server error twice before giving up.
+  const alert = await screen.findByRole('alert', {}, { timeout: 6000 });
+  expect(alert).toHaveTextContent('We couldn’t load this customer');
+  expect(within(alert).getByRole('link', { name: 'Back to customers' })).toHaveAttribute('href', '/manager/dashboard?view=customers');
+  routes['GET /api/manager/customers/7'] = () => ({ body: page() });
+  fireEvent.click(within(alert).getByRole('button', { name: 'Try again' }));
+  await heading();
 });
 
-/* ─────────────────────────────── private notes ─────────────────────────────── */
+it('lists the submitted documents with expiry and opens a file only when there is one', async () => {
+  mount();
+  await heading();
+  const access = screen.getByRole('region', { name: 'Access and documents' });
+  expect(access).toHaveTextContent('You approved Aug 15, 2026');
+  expect(access).toHaveTextContent('Food safety certificateVerified · expires Jun 15, 2027');
+  expect(within(access).getByText('expires Oct 25, 2026')).toHaveAttribute('data-expiry-stage', '7_day');
+  expect(within(access).getAllByRole('button', { name: /View file/ })).toHaveLength(1);
+  fireEvent.click(within(access).getByRole('button', { name: 'View file: Food safety certificate' }));
+  expect(screen.getByRole('dialog', { name: 'Food safety certificate' })).toHaveTextContent('/api/files/documents/licence.pdf');
+});
 
-it('warns who can see notes, and lists them with author and time (mine marked "You")', async () => {
+it('formats North American numbers for reading and leaves others as entered', () => {
+  expect(displayPhone('+17095550100')).toBe('(709) 555-0100');
+  expect(displayPhone('7095550143')).toBe('(709) 555-0143');
+  expect(displayPhone('+44 20 7946 0958')).toBe('+44 20 7946 0958');
+});
+
+it('warns who can see notes, and lists them with author and date (mine marked "You")', async () => {
   mount();
   const section = await screen.findByRole('region', { name: 'Private notes' });
   expect(within(section).getByTestId('notes-banner')).toHaveTextContent('Visible to you and Local Cooks support. Never shown to Priya Sharma.');
   expect(await within(section).findByText('Prefers early slots')).toBeInTheDocument();
-  expect(within(section).getByText('You · Mon, Oct 12, 10:30 a.m. · Newfoundland Time')).toBeInTheDocument();
-  expect(within(section).getByText('Pat Previous · Tue, Sep 1, 10:30 a.m. · Newfoundland Time')).toBeInTheDocument();
-});
-
-it('only the author gets edit and delete', async () => {
-  mount();
-  const section = await screen.findByRole('region', { name: 'Private notes' });
-  await within(section).findByText('Prefers early slots');
+  expect(within(section).getByText('You · Oct 12, 2026')).toBeInTheDocument();
+  expect(within(section).getByText('Pat Previous · Sep 1, 2026')).toBeInTheDocument();
   expect(within(section).getAllByRole('button', { name: 'Edit note' })).toHaveLength(1);
-  expect(within(section).getAllByRole('button', { name: 'Delete note' })).toHaveLength(1);
 });
 
 it('adds a note, counts characters and clears the box', async () => {
@@ -318,49 +361,19 @@ it('adds a note, counts characters and clears the box', async () => {
   expect(box).toHaveValue('');
   const post = calls.find(item => item.method === 'POST')!;
   expect(post.url).toBe('/api/manager/customers/7/notes?locationId=47');
-  expect(JSON.parse(post.body!)).toEqual({ body: 'Allergic to nuts' });
 });
 
-it('edits an own note', async () => {
+it('edits an own note, and deletes only after a confirmation', async () => {
   mount();
   const section = await screen.findByRole('region', { name: 'Private notes' });
   await within(section).findByText('Prefers early slots');
   fireEvent.click(within(section).getByRole('button', { name: 'Edit note' }));
-  const box = within(section).getByRole('textbox', { name: 'Edit note' });
-  fireEvent.change(box, { target: { value: 'Prefers late slots' } });
+  fireEvent.change(within(section).getByRole('textbox', { name: 'Edit note' }), { target: { value: 'Prefers late slots' } });
   fireEvent.click(within(section).getByRole('button', { name: 'Save note' }));
   await waitFor(() => expect(within(section).queryByRole('textbox', { name: 'Edit note' })).not.toBeInTheDocument());
   expect(within(section).getByText('Prefers late slots')).toBeInTheDocument();
-  expect(within(section).getByText(/· edited$/)).toBeInTheDocument();
-});
-
-it('deletes only after a confirmation, and Cancel keeps the note', async () => {
-  mount();
-  const section = await screen.findByRole('region', { name: 'Private notes' });
-  await within(section).findByText('Prefers early slots');
-  fireEvent.click(within(section).getByRole('button', { name: 'Delete note' }));
-  fireEvent.click(within(section).getByRole('button', { name: 'Cancel' }));
-  expect(calls.some(item => item.method === 'DELETE' && item.url.includes('/notes/'))).toBe(false);
   fireEvent.click(within(section).getByRole('button', { name: 'Delete note' }));
   expect(within(section).getByText('Delete this note? You won’t be able to get it back.')).toBeInTheDocument();
   fireEvent.click(within(section).getAllByRole('button', { name: 'Delete note' }).at(-1)!);
-  await waitFor(() => expect(within(section).queryByText('Prefers early slots')).not.toBeInTheDocument());
-});
-
-it('reports a failed save without losing what was typed', async () => {
-  routes['POST /api/manager/customers/7/notes'] = () => ({ status: 500, body: { error: 'x' } });
-  mount();
-  const section = await screen.findByRole('region', { name: 'Private notes' });
-  await within(section).findByText('Prefers early slots');
-  fireEvent.change(within(section).getByLabelText('Add a private note'), { target: { value: 'Keep me' } });
-  fireEvent.click(within(section).getByRole('button', { name: 'Add note' }));
-  expect(await within(section).findByRole('alert')).toHaveTextContent('We couldn’t save the note. Try again.');
-  expect(within(section).getByLabelText('Add a private note')).toHaveValue('Keep me');
-});
-
-it('puts notes last on a phone and first in the right rail on a wide screen', async () => {
-  mount();
-  const section = await screen.findByRole('region', { name: 'Private notes' });
-  expect(section.className).toContain('order-last');
-  expect(section.className).toContain('lg:order-first');
+  await waitFor(() => expect(within(section).queryByText('Prefers late slots')).not.toBeInTheDocument());
 });

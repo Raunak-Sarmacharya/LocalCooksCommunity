@@ -12,10 +12,10 @@ export default function ManagerCustomerPage() {
   const requested = Number(new URLSearchParams(search).get('location'));
   const locationParam = Number.isSafeInteger(requested) && requested > 0 ? requested : undefined;
   // The same query the page body uses, so the breadcrumb and sidebar scope cost no extra request.
-  const { data } = useCustomerPage(chefId, locationParam, false);
+  const { data, isError } = useCustomerPage(chefId, locationParam, true);
   return (
     <ManagerBookingLayout activeView="customers" bookingLocationId={data?.location.id}
-      breadcrumbs={[{ label: mt('cuBreadcrumbCustomers'), href: '/manager/dashboard?view=customers' }, { label: data?.customer.name ?? '…' }]}>
+      breadcrumbs={[{ label: mt('cuBreadcrumbCustomers'), href: '/manager/dashboard?view=customers' }, ...(isError ? [] : [{ label: data?.customer.name ?? '…' }])]}>
       <div className="mx-auto w-full max-w-6xl">
         <CustomerPageView chefId={chefId} locationParam={locationParam} />
       </div>

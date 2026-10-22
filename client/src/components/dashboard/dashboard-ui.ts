@@ -21,5 +21,6 @@ export const badge = {
   positive: `${badgeBase} bg-emerald-50 text-emerald-700 ring-emerald-200`,
   attention: `${badgeBase} bg-amber-50 text-amber-800 ring-amber-200`,
   brand: `${badgeBase} bg-[#fef3f5] text-[#8f0a2b] ring-[#fbcbd6]`,
+  negative: `${badgeBase} bg-red-50 text-red-700 ring-red-200`,
 } as const;
 export type BadgeTone = keyof typeof badge;
