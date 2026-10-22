@@ -57,7 +57,9 @@ export function extensionHistoryEvents(rows: ExtensionRow[]): BookingHistoryEven
     if (['approved', 'paid'].includes(row.status) && extFlow !== 'charge') {
       // An auto-approved request has no kitchen decision to show; the payment line says it all.
       // A free offer applies at once: nothing to accept, so the offer line says it all.
-      if (!(extFlow === 'ask' && row.autoApprove) && !(extFlow === 'offer' && row.free)) add(extFlow === 'ask' ? 'ext_approved' : 'ext_accepted', row.authorizedAt ?? row.paidAt ?? row.appliedAt ?? decidedAt);
+      if (!(extFlow === 'ask' && row.autoApprove) && !(extFlow === 'offer' && row.free)) add(extFlow === 'ask' ? 'ext_approved' : 'ext_accepted', extFlow === 'ask' ? row.operation?.decidedAt ?? row.paidAt ?? row.appliedAt ?? decidedAt ?? row.authorizedAt
+        // The customer accepting an offer is their card authorization.
+        : row.authorizedAt ?? row.paidAt ?? row.appliedAt ?? decidedAt);
     }
     if (paid && (row.paidAt || (row.status === 'paid' || (row.status === 'approved' && row.appliedAt)))) add('ext_paid', row.paidAt ?? row.appliedAt ?? row.updatedAt, { amountCents: row.amountCents });
     if (row.status === 'declined') add('ext_declined', decidedAt);

@@ -156,6 +156,11 @@ describe('extra time in the history', () => {
     const offered = events.find(event => event.kind === 'ext_offered')!, accepted = events.find(event => event.kind === 'ext_accepted')!;
     expect(Date.parse(accepted.recordedAt)).toBeGreaterThanOrEqual(Date.parse(offered.recordedAt));
   });
+  it("the kitchen's approval of a request shows when the kitchen decided, not when the customer's card was held", () => {
+    const events = extensionHistoryEvents([row({ kind: 'request', authorizedAt: '2026-10-22T11:36:31.000Z', createdAt: '2026-10-22T11:36:31.000Z',
+      operation: { decidedAt: '2026-10-22T11:38:43.000Z' } }) as never]);
+    expect(events.find(event => event.kind === 'ext_approved')!.recordedAt).toBe('2026-10-22T11:38:43.000Z');
+  });
   it('a free offer applies at once, so there is no "accepted" line', () => {
     expect(extensionHistoryEvents([row({ free: true, amountCents: 0 }) as never]).map(event => event.kind)).toEqual(['ext_offered']);
   });
