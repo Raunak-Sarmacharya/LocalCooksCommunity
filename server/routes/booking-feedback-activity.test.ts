@@ -23,4 +23,11 @@ describe('private feedback activity isolation', () => {
     expect(dialect.sqlToQuery(state.fields.title).sql).toContain("->'roleText'->'manager'->>'title'");
     expect(dialect.sqlToQuery(state.condition).sql).toContain("->>'recipientPolicy', '') <> 'admins'");
   });
+  it('shows a changed request once: no replacement status, no replaced-by link, no chef-only withdrawal of the old request', async () => {
+    await new Promise<void>((resolve, reject) => router.handle({ method: 'GET', url: '/manager/booking-lifecycle' } as any,
+      { json: () => resolve(), status: () => ({ json: reject }) } as any, reject));
+    const sql = new PgDialect().sqlToQuery(state.condition).sql;
+    expect(sql).toContain("NOT IN ('replacement_status', 'replaced_by')");
+    expect(sql).toContain("->>'requestOutcome', '') <> 'replaced'");
+  });
 });

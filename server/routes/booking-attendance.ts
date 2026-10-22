@@ -58,6 +58,10 @@ router.get('/manager/booking-lifecycle', requireFirebaseAuthWithUser, requireMan
       .where(and(eq(locations.managerId, req.neonUser!.id),
         // Private feedback and its operator flags belong to their scoped endpoints/notices.
         sql`${bookingLifecycleEvents.kind} NOT IN ('feedback_flagged', 'feedback_requested')`,
+        // A changed request is one row (the new request's 'replaces'), not its bookkeeping: the status trail, the old
+        // request's 'replaced_by' link and its chef-only withdrawal notice.
+        sql`${bookingLifecycleEvents.kind} NOT IN ('replacement_status', 'replaced_by')`,
+        sql`COALESCE(${bookingLifecycleEvents.metadata}->>'requestOutcome', '') <> 'replaced'`,
         // Local Cooks-only notices (internal money summaries) never reach the kitchen.
         sql`COALESCE(${bookingLifecycleEvents.metadata}->>'recipientPolicy', '') <> 'admins'`))
       .orderBy(desc(bookingLifecycleEvents.id)).limit(100);

@@ -207,6 +207,21 @@ it("lists payout work once in Needs attention",()=>{state.activity.paymentsNeedA
 
 it("shows only payment recovery work for a linked item with an unfinished parent decision",()=>{state.bookings=[{id:90,kitchenId:10,locationId:1,status:"pending",paymentStatus:"authorized",paymentDecision:{state:"pending"},bookingDate:"2099-01-01",startTime:"09:00",endTime:"10:00"}];state.activity.storageBookings=[{id:91,kitchenBookingId:90,status:"pending",storageName:"Held shelf",createdAt:"2025-01-01"}];const html=render();expect(html).toContain("overviewPaymentRecovery");expect(html).not.toContain("overviewStorageRequests");expect(html).not.toContain("overviewBookingRequests");});
 
+it("shows a changed request as one row, not the new request and its replacement bookkeeping", () => {
+  state.bookings = [{ id: 91, kitchenId: 10, locationId: 1, chefName: "Morgan", kitchenName: "Kitchen East", bookingDate: "2025-01-01", createdAt: "2024-12-01T12:00:00Z", startTime: "11:00", endTime: "13:00", status: "pending" }];
+  (state.activity as Record<string, unknown>).bookingEvents = [
+    { id: 3, bookingId: 91, kind: "replaces", title: "Replaces an earlier request", createdAt: "2024-12-01T12:00:01Z", kitchenName: "Kitchen East" },
+  ];
+  try {
+    const html = render();
+    const history = html.slice(html.indexOf('data-testid="overview-activity"'));
+    expect(history.match(/activityRequestChanged/g)).toHaveLength(1);
+    expect(history).not.toContain("Replaces an earlier request");
+    expect(history).not.toContain("activityBookingRequested");
+    expect(history).toMatch(/Kitchen East · [^<]*11:00/);
+  } finally { delete (state.activity as Record<string, unknown>).bookingEvents; }
+});
+
 it("lists a booking request once in Recent activity, not as both the booking and its 'requested' event", () => {
   state.bookings = [{ id: 90, kitchenId: 10, locationId: 1, chefName: "Morgan", kitchenName: "Kitchen East", bookingDate: "2025-01-01", createdAt: "2024-12-01T12:00:00Z", startTime: "09:00", endTime: "12:00", status: "pending" }];
   (state.activity as Record<string, unknown>).bookingEvents = [

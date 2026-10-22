@@ -44,6 +44,7 @@
   "overviewKitchenCount": "{count, plural, =0 {Aucune cuisine ajoutée} one {# cuisine} other {# cuisines}}",
   "activityBooking": "Réservation de cuisine",
   "activityBookingRequested": "Réservation demandée",
+  "activityRequestChanged": "{name} a modifié sa demande",
   "activityBookingConfirmed": "Réservation confirmée",
   "activityBookingCancelled": "Réservation annulée",
   "activityBookingCompleted": "Réservation terminée",

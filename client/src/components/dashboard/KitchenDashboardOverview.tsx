@@ -281,12 +281,20 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
     return name?.trim() || mt("guestChef");
   };
   const financialActivityStatus: Record<string,string> = {draft:"overviewDraft",submitted:"overviewAwaitingAdmin",under_review:"overviewAwaitingAdmin",chef_disputed:"overviewAwaitingAdmin",chef_accepted:"chefAccepted",approved:"approved",partially_approved:"partiallyApproved",charge_pending:"overviewPaymentProcessing",charge_failed:"chargeFailed",charge_succeeded:"overviewPaymentCollected",resolved:"overviewResolved",rejected:"rejected",expired:"overviewExpired",escalated:"overviewEscalated",pending_review:"overviewAwaitingReview",penalty_approved:"approved",penalty_waived:"overviewWaived"};
+  // A changed request reads as one row ("{name} changed their request"), so the new request's own "Booking requested" row steps aside.
+  const changedRequests = new Set((activity.bookingEvents || []).filter(event => event.kind === "replaces").map(event => event.bookingId));
+  const whenLine = (booking: Booking) => { const days = managerListDays(booking); return [listWhenLine(days[0].row, i18n.language, words), days.length > 1 ? mt("ovrDayCount", { count: days.length }) : ""].filter(Boolean).join(" · "); };
   const recent = [
-    ...bookings.map((booking) => ({ kind: "booking" as const, id: booking.id, activityKey: `created:${booking.id}`, date: booking.createdAt, title: mt("activityBookingRequested"), person: chefDisplayName(booking), kitchen: booking.kitchenName || locationKitchens.find(kitchen => kitchen.id === booking.kitchenId)?.name, scheduled: (() => { const days = managerListDays(booking); return [listWhenLine(days[0].row, i18n.language, words), days.length > 1 ? mt("ovrDayCount", { count: days.length }) : ""].filter(Boolean).join(" · "); })(), time: "", href: `/manager/booking/${booking.id}` })),
+    ...bookings.filter(booking => !changedRequests.has(booking.id)).map((booking) => ({ kind: "booking" as const, id: booking.id, activityKey: `created:${booking.id}`, date: booking.createdAt, title: mt("activityBookingRequested"), person: chefDisplayName(booking), kitchen: booking.kitchenName || locationKitchens.find(kitchen => kitchen.id === booking.kitchenId)?.name, scheduled: whenLine(booking), time: "", href: `/manager/booking/${booking.id}` })),
     // The booking row above already says "Booking requested"; its own "requested" lifecycle event is the same moment.
-    ...(activity.bookingEvents || []).filter(event => !(event.kind === "requested" && bookings.some(booking => booking.id === event.bookingId))).map(event => ({ kind: "booking" as const, id: event.bookingId!, activityKey: `event:${event.id}`, date: event.createdAt!,
-      title: event.title || mt("activityBooking"), person: chefDisplayName(bookings.find(booking => booking.id === event.bookingId) || {}),
-      kitchen: event.kitchenName, scheduled: "", time: "", href: `/manager/booking/${event.bookingId}` })),
+    ...(activity.bookingEvents || []).filter(event => !(event.kind === "requested" && bookings.some(booking => booking.id === event.bookingId))).map(event => {
+      const booking = bookings.find(row => row.id === event.bookingId);
+      const person = chefDisplayName(booking || {});
+      const changed = event.kind === "replaces";
+      return { kind: "booking" as const, id: event.bookingId!, activityKey: `event:${event.id}`, date: event.createdAt!,
+        title: changed ? mt("activityRequestChanged", { name: person }) : event.title || mt("activityBooking"), person: changed ? "" : person,
+        kitchen: event.kitchenName, scheduled: changed && booking ? whenLine(booking) : "", time: "", href: `/manager/booking/${event.bookingId}` };
+    }),
     ...locationViewings.flatMap((item) => tourActivity(item.viewing).map(event => ({ kind: "tour" as const, id: item.viewing.id, activityKey: event.key, date: event.recordedAt,
       title: mt(event.corrected ? "activityTourCorrected" : event.disruptionReason ? "activityTourDisrupted" : event.status === 'cancelled' && (item.viewing.adminReviewDecision === 'denied' || item.viewing.cancelledBy === 'manager_declined') ? "activityTourDeclined" : tourActivityLabel[event.status] ?? "kitchenTours"),
       person: chefDisplayName(item), kitchen: item.kitchenName || item.locationName, scheduled: displayDate(item.viewing.scheduledAt), time: tourTime(item) }))),

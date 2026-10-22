@@ -52,6 +52,7 @@
   "overviewKitchenCount": "{count, plural, =0 {Кухні ще не додано} one {# кухня} few {# кухні} many {# кухонь} other {# кухні}}",
   "activityBooking": "Бронювання кухні",
   "activityBookingRequested": "Надійшов запит на бронювання",
+  "activityRequestChanged": "{name}: запит змінено",
   "activityBookingConfirmed": "Бронювання підтверджено",
   "activityBookingCancelled": "Бронювання скасовано",
   "activityBookingCompleted": "Бронювання завершено",
