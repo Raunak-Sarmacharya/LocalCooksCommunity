@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-const state = vi.hoisted(() => ({ storage: {} as any, managerId: 2, writes: [] as any[], queue: vi.fn(), capture: vi.fn() }));
+const state = vi.hoisted(() => ({ storage: {} as any, managerId: 2, writes: [] as any[], queue: vi.fn(), capture: vi.fn(), after: vi.fn() }));
 vi.mock('../db', () => {
   const db: any = { execute: async () => [], select: (projection: any) => { const query: any = {
     from: () => query, innerJoin: () => query, where: () => query,
@@ -8,7 +8,7 @@ vi.mock('../db', () => {
   db.transaction = async (run: any) => run(db); return { db };
 });
 vi.mock('./visit-duties', () => ({ storageDuties: state.capture }));
-vi.mock('./outcome-delivery', () => ({ queueStorageVisitAction: state.queue, attemptOutcomeDelivery: async () => {} }));
+vi.mock('./outcome-delivery', () => ({ queueStorageVisitAction: state.queue, attemptOutcomeDeliveryAfterResponse: state.after }));
 vi.mock('./booking-lifecycle-delivery', () => ({}));
 import { assistStorageVisit } from './visit-assistance';
 const input = { action: 'departure' as const, reason: 'Manager witnessed storage removal after parent visit', actualAt: '2026-10-02T19:30:00Z',
@@ -25,6 +25,8 @@ describe('independent storage assistance', () => {
     expect(state.writes[0]).toMatchObject({ checkoutStatus: 'checkout_requested', assistanceHistory: [expect.anything(), expect.objectContaining({ actorId: 2, action: 'departure' })] });
     for (const key of ['status', 'paymentStatus', 'checkoutApprovedBy', 'checkinStatus', 'checkoutPhotoUrls', 'checkoutNotes']) expect(state.writes[0]).not.toHaveProperty(key);
     expect(state.queue).toHaveBeenCalledWith(expect.anything(), 30, 'departure', 2, expect.objectContaining({ reason: input.reason }));
+    // Delivery is handed off after the response, never awaited by the request.
+    expect(state.after).toHaveBeenCalledTimes(1);
   });
   it('records physical removal after automatic inspection without changing inspection or financial state', async () => {
     Object.assign(state.storage, { status: 'completed', checkoutStatus: 'completed', checkoutApprovedBy: null, checkoutApprovedAt: new Date('2026-10-02T18:10:00Z') });

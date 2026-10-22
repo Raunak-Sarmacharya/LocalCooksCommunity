@@ -6,7 +6,7 @@ const state = vi.hoisted(() => ({ conditions: [] as any[], won: false, rows: [] 
 vi.mock('./booking-lifecycle-delivery', () => ({ queueBookingLifecycleEvent: state.queue }));
 vi.mock('./visit-duties', () => ({ storageDuties: async () => ({ arrival: { enabled: true }, departure: { enabled: true, items: [],
   photos: state.photosValid ? [] : [{ id: 'removal', required: true }] } }) }));
-vi.mock('./outcome-delivery', () => ({ queueStorageVisitAction: state.queue, queueStorageClearance: async () => {}, attemptOutcomeDelivery: async () => {} }));
+vi.mock('./outcome-delivery', () => ({ queueStorageVisitAction: state.queue, queueStorageClearance: async () => {}, attemptOutcomeDeliveryAfterResponse: () => {} }));
 vi.mock('./kitchen-checkout-service', () => ({
   validateRequiredPhotos: async () => ({ valid: state.photosValid, error: 'Required removal photos missing' }),
   validateRequiredChecklistItems: async () => ({ valid: true }),

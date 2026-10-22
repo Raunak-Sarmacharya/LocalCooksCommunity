@@ -1,3 +1,4 @@
+import { waitUntil } from '@vercel/functions';
 import { and, asc, eq, inArray, or, sql } from 'drizzle-orm';
 import { kitchenCheckoutIncidents, damageClaims, damageClaimHistory, emailLogs, users, storageOverstayRecords, storageOverstayHistory, storageBookings, storageListings, kitchens, locations, commitmentProblems } from '@shared/schema';
 import { db } from '../db';
@@ -238,6 +239,11 @@ export async function queueStorageVisitAction(tx: Transaction, bookingId: number
 export async function attemptOutcomeDelivery() {
   try { await deliverOutcomeEmails(2); }
   catch { /* Committed intent remains queued; existing worker/admin replay recovers it. */ }
+}
+
+/** Same attempt, run after the response so the person acting isn't kept waiting on mail (it never rejects). */
+export function attemptOutcomeDeliveryAfterResponse() {
+  waitUntil(attemptOutcomeDelivery());
 }
 
 /** Called with payment history and the recorded provider result in their transaction. */

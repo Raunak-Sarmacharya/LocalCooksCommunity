@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { workerAfter, workerBatch, workerRecord, workerPageEnd } from './worker-context';
-import { queueStorageClearance, attemptOutcomeDelivery } from './outcome-delivery';
+import { queueStorageClearance, attemptOutcomeDeliveryAfterResponse } from './outcome-delivery';
 import { queueBookingLifecycleEvent } from './booking-lifecycle-delivery';
 /** Storage move-in/out: rental transitions plus legacy dialog compatibility. Damage claims use the v2 review flow. */
 
@@ -340,7 +340,7 @@ export async function requestStorageCheckout(
       photoCount: checkoutPhotoUrls?.length || 0,
     });
 
-    await attemptOutcomeDelivery();
+    attemptOutcomeDeliveryAfterResponse();
 
     return {
       success: true,
@@ -914,7 +914,7 @@ export async function processCheckoutClear(
   });
 
   logger.info(`[StorageCheckout] Manager ${managerId} cleared storage for booking ${storageBookingId} — no issues`);
-  await attemptOutcomeDelivery();
+  attemptOutcomeDeliveryAfterResponse();
 
   return {
     success: true,

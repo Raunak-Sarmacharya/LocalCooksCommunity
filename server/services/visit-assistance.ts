@@ -3,7 +3,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { kitchenBookings, kitchenBookingVisits, kitchens, locations, storageBookings, storageListings } from '@shared/schema';
 import { kitchenDuties, storageDuties } from './visit-duties';
-import { queueStorageVisitAction, attemptOutcomeDelivery } from './outcome-delivery';
+import { queueStorageVisitAction, attemptOutcomeDeliveryAfterResponse } from './outcome-delivery';
 import { queueBookingLifecycleEvent, deliverBookingLifecycleEvents } from './booking-lifecycle-delivery';
 import { DEFAULT_TIMEZONE } from '@shared/timezone-utils';
 import { consumeForAssistedArrival } from './visit-code-challenge';
@@ -128,6 +128,6 @@ export async function assistStorageVisit(bookingId: number, managerId: number, i
     await queueStorageVisitAction(tx, bookingId, input.action === 'confirm_removal' ? 'removal' : input.action, managerId,
       { reason: input.reason.trim(), actualAt: actual.toISOString() });
   });
-  await attemptOutcomeDelivery();
+  attemptOutcomeDeliveryAfterResponse();
   return { success: true };
 }
