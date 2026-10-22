@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 const state = vi.hoisted(() => ({ receipt: null as any }));
 vi.mock('../chat-service', () => ({ getAdminDb: async () => ({ collection: () => ({ doc: () => ({ get: async () => ({ exists: !!state.receipt, data: () => state.receipt }) }) }) }) }));
-vi.mock('../db', () => ({ db: { select: () => {
+vi.mock('../db', () => ({ db: { execute: async () => ({ rows: [] }), select: () => {
   const chain: any = { from: () => chain, where: () => chain, limit: () => chain, innerJoin: () => chain, then: (resolve: any) => resolve([]) }; return chain;
 } } }));
 import { authorizeChatAttachment, storedFileUrl } from './chat-file-access';
