@@ -4250,8 +4250,6 @@
   "cpAboutPlans": "Prévoit de réserver",
   "cpAboutSince": "Client depuis",
   "cpAboutFirstContact": "Premier contact",
-  "cpPhoneFromAccount": "Téléphone vérifié du compte",
-  "cpPhoneFromApplication": "Tiré de sa demande",
   "cpRelationshipAt": "Relation à {location}",
   "cpKpiVisits": "Visites",
   "cpLastVisit": "dernière visite : {day}",

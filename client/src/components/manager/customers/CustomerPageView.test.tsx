@@ -27,7 +27,7 @@ const booking = (bookingId: number, startsAt: string, endsAt: string, extra: Rec
 const past = (bookingId: number, outcome: string, extra: Record<string, unknown> = {}) =>
   ({ ...booking(bookingId, '2026-10-12T20:30:00.000Z', '2026-10-12T21:30:00.000Z'), status: 'completed', outcome, refundedCents: 0, late: false, noShow: null, ...extra });
 const page = (overrides: Record<string, unknown> = {}) => ({
-  customer: { chefId: 7, name: 'Priya Sharma', businessName: 'Spice Route Catering', email: 'priya@example.com', phone: '+17095550142', phoneSource: 'application',
+  customer: { chefId: 7, name: 'Priya Sharma', businessName: 'Spice Route Catering', email: 'priya@example.com', phone: '+17095550142',
     customerSince: '2026-08-15T12:00:00.000Z', firstContactAt: '2026-08-01T12:00:00.000Z', businessType: 'catering', usageFrequency: 'few-times-month', sessionDuration: '2-4' },
   location: { id: 47, name: 'Harbour Kitchens', timezone: 'America/St_Johns' },
   locations: [{ id: 47, name: 'Harbour Kitchens', timezone: 'America/St_Johns', status: 'approved', needsAction: false, bookingCount: 9 }],
@@ -138,7 +138,7 @@ it('asks for the full history and leads with the person: name, business, tap-to-
   expect(screen.getAllByRole('link', { name: /priya@example\.com/ })[0]).toHaveAttribute('href', 'mailto:priya@example.com');
   expect(screen.getAllByText('Harbour Kitchens', { selector: 'span.truncate' })[0]).toBeInTheDocument();
   const about = screen.getByRole('region', { name: 'About' });
-  expect(within(about).getByText('From their application')).toBeInTheDocument();
+  expect(within(about).queryByText(/application|account phone/i)).toBeNull();
   expect(within(about).getByText('A few times a month')).toBeInTheDocument();
   expect(within(about).getByText('2–4 h sessions')).toBeInTheDocument();
   expect(screen.getAllByRole('tab').map(item => item.textContent)).toEqual(['Overview', 'Bookings7', 'Storage2', 'Money', 'Access and documents', 'Activity']);

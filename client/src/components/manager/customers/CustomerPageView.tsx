@@ -224,8 +224,7 @@ function Profile({ data }: { data: CustomerPageData }) {
               {customer.businessName && <><dt className="text-[13px] leading-5 text-stone-600">{mt('cpAboutBusiness')}</dt>
                 <dd className="min-w-0 [overflow-wrap:anywhere]">{customer.businessName}{typeLabel && <small className="block text-xs text-stone-500">{typeLabel}</small>}</dd></>}
               {phone && <><dt className="text-[13px] leading-5 text-stone-600">{mt('cpAboutPhone')}</dt>
-                <dd className="min-w-0"><a href={telHref(customer.phone!)} className={cn('font-medium hover:underline', focusRing)}>{phone}</a>
-                  <small className="block text-xs text-stone-500">{mt(customer.phoneSource === 'account' ? 'cpPhoneFromAccount' : 'cpPhoneFromApplication')}</small></dd></>}
+                <dd className="min-w-0"><a href={telHref(customer.phone!)} className={cn('font-medium hover:underline', focusRing)}>{phone}</a></dd></>}
               {customer.usageFrequency && <><dt className="text-[13px] leading-5 text-stone-600">{mt('cpAboutPlans')}</dt>
                 <dd className="min-w-0">{FREQUENCIES[customer.usageFrequency] ? mt(FREQUENCIES[customer.usageFrequency]) : customer.usageFrequency}
                   {customer.sessionDuration && <small className="block text-xs text-stone-500">{DURATIONS[customer.sessionDuration] ? mt(DURATIONS[customer.sessionDuration]) : customer.sessionDuration}</small>}</dd></>}

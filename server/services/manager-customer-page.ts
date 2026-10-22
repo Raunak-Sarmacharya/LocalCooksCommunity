@@ -285,9 +285,8 @@ export async function getCustomerPage(managerId: number, chefId: number, request
   const firstContact = [app?.createdAt, ...tourRows.map(tour => tour.scheduledAt)].filter((value): value is Date => value instanceof Date);
   const youApprovedAt = app && app.status === 'approved' && app.currentTier >= 3 ? app.reviewedAt : null;
 
-  // The verified account phone first; else the one they gave on this location's application.
-  const accountPhone = user?.phoneVerifiedAt ? user.phoneNumber : null;
-  const phone = accountPhone || app?.phone || null;
+  // One phone per account (owner, Oct 22): only the verified account phone.
+  const phone = user?.phoneVerifiedAt ? user.phoneNumber : null;
   const name = app?.fullName?.trim() || selectedName(input, chefId);
 
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
@@ -351,7 +350,7 @@ export async function getCustomerPage(managerId: number, chefId: number, request
     customer: {
       chefId, name,
       businessName: app?.shopName && app.shopName !== 'Shop Not Named' ? app.shopName : null,
-      email: app?.email || user?.username || null, phone, phoneSource: !phone ? null : accountPhone ? 'account' as const : 'application' as const,
+      email: app?.email || user?.username || null, phone,
       customerSince: customerSince?.toISOString() ?? null,
       firstContactAt: firstContact.length ? new Date(Math.min(...firstContact.map(value => value.getTime()))).toISOString() : null,
       ...plansToBook(app?.businessDescription ?? null),

@@ -173,9 +173,9 @@ describe('Customers against real SQL', () => {
     expect(page.upcoming.find(booking => booking.bookingId === 12)!.rentals).toEqual([]);
   });
 
-  it('phone: the verified account phone, else the application phone, with where it came from', async () => {
-    expect((await getCustomerPage(2, 7, 47, {}, NOW)).customer).toMatchObject({ phone: '+17095550142', phoneSource: 'account', businessType: 'catering', usageFrequency: 'weekly', sessionDuration: '4-8' });
-    expect((await getCustomerPage(2, 8, 47, {}, NOW)).customer).toMatchObject({ phone: '7095550143', phoneSource: 'application' });
+  it('phone: only the verified account phone, never the application phone', async () => {
+    expect((await getCustomerPage(2, 7, 47, {}, NOW)).customer).toMatchObject({ phone: '+17095550142', businessType: 'catering', usageFrequency: 'weekly', sessionDuration: '4-8' });
+    expect((await getCustomerPage(2, 8, 47, {}, NOW)).customer).toMatchObject({ phone: null });
   });
 
   it('reliability: late cancellations apart from early ones, no-shows counted or under review, visits and hours', async () => {

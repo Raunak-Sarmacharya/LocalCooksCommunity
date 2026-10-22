@@ -4250,8 +4250,6 @@
   "cpAboutPlans": "Plans to book",
   "cpAboutSince": "Customer since",
   "cpAboutFirstContact": "First contact",
-  "cpPhoneFromAccount": "Verified account phone",
-  "cpPhoneFromApplication": "From their application",
   "cpRelationshipAt": "Relationship at {location}",
   "cpKpiVisits": "Visits",
   "cpLastVisit": "last visit {day}",

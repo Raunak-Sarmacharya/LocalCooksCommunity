@@ -732,7 +732,7 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
         // The manager account supplies the confirmed email. Never expose an
         // unverified phone through the chef booking response.
         const [kitchenContact] = kitchen?.locationId ? await db
-            .select({ managerId: users.id, email: users.username, phone: users.phoneNumber, phoneVerifiedAt: users.phoneVerifiedAt, businessPhone: locations.contactPhone })
+            .select({ managerId: users.id, email: users.username, phone: users.phoneNumber, phoneVerifiedAt: users.phoneVerifiedAt })
             .from(locations)
             .innerJoin(users, eq(users.id, locations.managerId))
             .where(eq(locations.id, kitchen.locationId))
@@ -1023,9 +1023,8 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
             checkinWindowMinutesBefore: checkinSettings.checkinWindowMinutesBefore,
             noShowGraceMinutes: checkinSettings.noShowGraceMinutes,
             kitchenContact: kitchenContact ? {
-                // The kitchen's public business number first (owner, Oct 21); else the manager's verified phone.
-                // The manager's personal phone only once booked (contactVisible states); the business number is public.
-                phone: kitchenContact.businessPhone || (kitchenContact.phoneVerifiedAt && ['confirmed', 'cancellation_requested', 'completed'].includes(booking.status) ? kitchenContact.phone : null),
+                // One phone per account (owner, Oct 22): the manager's verified phone, only once booked (contactVisible states).
+                phone: (kitchenContact.phoneVerifiedAt && ['confirmed', 'cancellation_requested', 'completed'].includes(booking.status) ? kitchenContact.phone : null),
                 hostName: await (await import('../services/booking-people')).readKitchenHostName(kitchenContact.managerId, kitchenContact.email),
             } : null,
             visits: derived.visits,

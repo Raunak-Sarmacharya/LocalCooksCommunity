@@ -56,7 +56,7 @@ export type PaymentRow = VisitRef & {
 };
 export type CustomerPageData = {
   customer: {
-    chefId: number; name: string; businessName: string | null; email: string | null; phone: string | null; phoneSource: 'account' | 'application' | null;
+    chefId: number; name: string; businessName: string | null; email: string | null; phone: string | null;
     customerSince: string | null; firstContactAt: string | null; businessType: string | null; usageFrequency: string | null; sessionDuration: string | null;
   };
   location: { id: number; name: string; timezone: string };

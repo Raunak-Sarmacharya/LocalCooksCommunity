@@ -4269,10 +4269,9 @@ router.get(
             id: chefUser.id,
             // No login email to the kitchen; the display name never falls back to it.
             fullName: chefApp?.fullName || await getUserDisplayName(chefUser.id, 'chef'),
-            // Their verified phone, else the one on their access application to this location (the kitchen approved it);
-            // only once booked, the same states the page shows contact in (contactVisible).
+            // One phone per account (owner, Oct 22): their verified account phone, only once booked (contactVisible states).
             phone: ['confirmed', 'cancellation_requested', 'completed'].includes(booking.status)
-              ? (chefUser.phoneVerifiedAt ? chefUser.phoneNumber : null) || chefApp?.phone || null : null,
+              ? (chefUser.phoneVerifiedAt ? chefUser.phoneNumber : null) : null,
             // People card: "Member since" and visits completed at this manager's kitchens.
             ...await (await import('../services/booking-people')).readChefCardFacts(user.id, booking.chefId),
           };
