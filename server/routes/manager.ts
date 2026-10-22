@@ -4255,6 +4255,7 @@ router.get(
           const [chefApp] = await db
             .select({
               fullName: chefKitchenApplications.fullName,
+              phone: chefKitchenApplications.phone,
             })
             .from(chefKitchenApplications)
             .where(
@@ -4269,7 +4270,8 @@ router.get(
             id: chefUser.id,
             username: chefUser.username,
             fullName: chefApp?.fullName || chefUser.username,
-            phone: chefUser.phoneVerifiedAt ? chefUser.phoneNumber : null,
+            // Their verified phone, else the one on their access application to this location (the kitchen approved it).
+            phone: (chefUser.phoneVerifiedAt ? chefUser.phoneNumber : null) || chefApp?.phone || null,
             // People card: "Member since" and visits completed at this manager's kitchens.
             ...await (await import('../services/booking-people')).readChefCardFacts(user.id, booking.chefId),
           };
