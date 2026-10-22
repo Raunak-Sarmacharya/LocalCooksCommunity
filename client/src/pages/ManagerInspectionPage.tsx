@@ -96,7 +96,7 @@ function EvidenceSummary({ chef, title, section, photos, checklist, notes, times
         {section.enabled && section.photos.map(photo => <p key={photo.id}>{photo.label} · {photo.required === false ? t('inspectCopy10') : t('inspectCopy11')}</p>)}
       </>}
       {photos == null ? <p>{t('inspectCopy18')}</p> : photos.length === 0 ? <p>{t('inspectCopy19')}</p> : <>
-        <p>{t('inspectSubmittedPhotos', { count: photos.length })}</p>
+        <p>{t('inspectSubmittedPhotos', { count: photos.length })}{requiredPhotos > 0 && ` ${t('inspectComparePhotos')}`}</p>
         <div className="grid grid-cols-2 gap-2">{photos.map((url, index) => <SmartImage key={`${url}-${index}`} src={url}
           className="aspect-square w-full rounded-lg object-cover" alt={t('inspectPhotoAlt', { title, number: index + 1 })} />)}</div>
       </>}

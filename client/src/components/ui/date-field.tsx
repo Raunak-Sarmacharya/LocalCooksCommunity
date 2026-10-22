@@ -1,5 +1,6 @@
 import * as React from "react";
 import { format } from "date-fns";
+import i18n from "i18next";
 
 import { Calendar as CalendarIcon } from "@/components/ui/manager-icons";
 import { Calendar } from "@/components/ui/calendar";
@@ -83,7 +84,7 @@ export function DateField({
               value ? "text-foreground" : "text-muted-foreground",
             )}
           >
-            {selected ? format(selected, "PPP") : placeholder}
+            {selected ? new Intl.DateTimeFormat(i18n.language || "en-CA", { weekday: "short", month: "short", day: "numeric", year: "numeric" }).format(selected) : placeholder}
           </span>
           <CalendarIcon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
         </button>
