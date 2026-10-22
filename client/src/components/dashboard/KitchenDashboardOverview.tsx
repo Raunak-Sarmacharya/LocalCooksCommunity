@@ -50,6 +50,8 @@ interface Kitchen { id: number; locationId: number; name: string; isActive: bool
 interface Booking {
   attendanceReviewComplete?: boolean;
   paymentDecision?: { state?: string } | null;
+  /** A customer's change request waiting on the kitchen's answer. */
+  pendingChange?: { decisionBy: string } | null;
   equipmentItems?: Array<{ id: number; equipmentBookingId?: number; status?: string; name?: string }>;
   id: number;
   locationId?: number;
@@ -350,6 +352,7 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
       addTask(label, { id: String(booking.id), title: recordTitle(booking), booking, detail: [dated.label, listWhenLine(dated.row, i18n.language, words)].filter(Boolean).join(" · "), view: "bookings",
         href: FOLLOW_UP_ACTIONS.includes(label) ? inspectionHref(booking.id, visitId) : `/manager/booking/${booking.id}` });
     }
+    if (booking.pendingChange) addTask("ovrChangeRequests", { id: `change-${booking.id}`, title: recordTitle(booking), booking, view: "bookings", href: `/manager/booking/${booking.id}` });
     for (const item of booking.equipmentItems || []) if (booking.status === 'confirmed' && item.status === 'cancellation_requested')
       addTask('overviewEquipmentCancellations', { id: `${booking.id}:equipment:${item.equipmentBookingId ?? item.id}`, title: item.name || recordTitle(booking),
         view: 'bookings', href: `/manager/booking/${booking.id}` });
@@ -517,8 +520,9 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
   const todoCount = attentionCount + attendanceAnswers.length;
   const requestGroup = attentionGroups.find(group => group.label === "overviewPendingBookings");
   const storageRequestGroup = attentionGroups.find(group => group.label === "overviewStorageRequests");
+  const changeGroup = attentionGroups.find(group => group.label === "ovrChangeRequests");
   const storageGroup = attentionGroups.find(group => group.label === "ovrStorageToAction");
-  const otherGroups = attentionGroups.filter(group => group !== requestGroup && group !== storageRequestGroup && group !== storageGroup);
+  const otherGroups = attentionGroups.filter(group => group !== requestGroup && group !== storageRequestGroup && group !== changeGroup && group !== storageGroup);
   const groupSection = (key: string, label: string, count: number, children: ReactNode, note?: ReactNode) => (
     <section key={key} aria-labelledby={`attention-${key}`} className="border-t border-stone-100 pt-4 first:border-t-0 first:pt-0 [&+&]:mt-4">
       <h3 id={`attention-${key}`} className={cn(groupLabel, "sm:px-4")}>{label}<span className={groupCount}>{count}</span></h3>
@@ -545,6 +549,15 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
       typeof booking.totalPrice === "number" ? formatCurrency(booking.totalPrice, "CAD", i18n.language) : ""].filter(Boolean);
     return tintedRequest({ key: task.id, testId: "booking-request", chef, href: `/manager/booking/${booking.id}/review`, due, facts,
       when: [listWhenLine(days[0].row, i18n.language, words), days.length > 1 ? mt("ovrDayCount", { count: days.length }) : ""].filter(Boolean).join(" · "),
+      who: [chef, kitchenName(booking.kitchenId, booking.kitchenName)].filter(Boolean).join(" · ") });
+  };
+  // A change request reads like a booking request: the booked time, who wants it changed, the answer-by time, one Review button.
+  const changeRow = (task: Task) => {
+    const booking = task.booking!;
+    const chef = chefDisplayName(booking);
+    return tintedRequest({ key: task.id, testId: "change-request", chef, href: task.href!, facts: [mt("ovrWantsChange")],
+      due: formatResponseDeadline(new Date(booking.pendingChange!.decisionBy), i18n.language, booking.timezone || timezone, false),
+      when: listWhenLine(managerListDays(booking)[0].row, i18n.language, words),
       who: [chef, kitchenName(booking.kitchenId, booking.kitchenName)].filter(Boolean).join(" · ") });
   };
   // A storage request reads like a booking request: what and when, who and where, the total, the answer-by time, one Review button.
@@ -598,6 +611,7 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
       {attentionError && <p role="status" className="mb-3 text-sm text-destructive">{mt("overviewActivityPartialError")}</p>}
       {attentionLoading && <Skeleton className="h-12 rounded-lg" />}
       {requestGroup && groupSection("requests", mt(requestGroup.label), requestGroup.items.length, requestGroup.items.map(task => task.booking ? requestRow(task) : rowLink(task)))}
+      {changeGroup && groupSection("change-requests", mt(changeGroup.label), changeGroup.items.length, changeGroup.items.map(changeRow))}
       {storageRequestGroup && groupSection("storage-requests", mt(storageRequestGroup.label), storageRequestGroup.items.length, storageRequestGroup.items.map(task => task.rental ? storageRequestRow(task) : rowLink(task)))}
       {attendanceAnswers.length > 0 && groupSection("attendance", mt("ovrDidTheyCome"), attendanceAnswers.length, attendanceAnswers.map(answerRow),
         <p className={cn("mt-1.5 flex gap-1.5 sm:px-4", sub)}><Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />{mt("ovrDidTheyComeNote")}</p>)}

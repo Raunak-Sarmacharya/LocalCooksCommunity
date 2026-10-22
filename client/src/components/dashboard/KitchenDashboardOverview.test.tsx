@@ -310,6 +310,17 @@ describe("revamped overview (R3)", () => {
     for (const part of ["Dry shelf", "Sam · Kitchen East", "$102.48", "ovrRespondBy", 'href="/manager/storage/61"', "ovrReviewRequest"]) expect(card).toContain(part);
   });
 
+  it("lists a customer's change request under Needs your attention with the answer-by time and one Review request button", () => {
+    live();
+    state.bookings = [{ id: 95, kitchenId: 10, locationId: 1, chefName: "Morgan", kitchenName: "Kitchen East", bookingDate: plus(3), createdAt: "2025-01-01",
+      startTime: "09:00", endTime: "10:00", status: "confirmed", pendingChange: { decisionBy: "2030-01-02T15:00:00.000Z" }, timezone: "America/St_Johns" }];
+    const html = render();
+    const attention = html.slice(html.indexOf('aria-label="overviewNeedsAttention"'), html.indexOf('data-testid="overview-today"'));
+    const row = attention.slice(attention.indexOf('data-testid="change-request"'));
+    const card = row.slice(0, row.indexOf("</a>"));
+    for (const part of ["ovrChangeRequests", "Morgan · Kitchen East", "ovrWantsChange", "ovrRespondBy", 'href="/manager/booking/95"', "ovrReviewRequest"]) expect(attention.includes(part) && (part === "ovrChangeRequests" || card.includes(part))).toBe(true);
+  });
+
   it("counts this week's bookings and utilisation of open hours (closures removed) against last week", () => {
     live();
     state.bookings = [

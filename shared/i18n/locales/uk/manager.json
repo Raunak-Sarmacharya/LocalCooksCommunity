@@ -4811,6 +4811,8 @@
   "ovrAnswerByToday": "Відповісти сьогодні до {time}",
   "ovrRespondBy": "Відповісти до {when}",
   "ovrReviewRequest": "Переглянути запит",
+  "ovrChangeRequests": "Запити на зміну",
+  "ovrWantsChange": "хоче інший час",
   "ovrBookingCount": "{count, plural, one {# бронювання} few {# бронювання} many {# бронювань} other {# бронювання}}",
   "ovrNowAt": "Зараз {time}",
   "ovrNoOneInKitchen": "На кухні нікого",

@@ -3649,10 +3649,16 @@ router.get(
           AND status IN ('succeeded', 'partially_refunded', 'refunded') AND NOT (COALESCE(metadata, '{}'::jsonb) ? 'sessionExtensionId')
           AND COALESCE(metadata->>'type', '') NOT IN ('session_extension', 'damage_claim', 'overstay_penalty')
         GROUP BY booking_id`)).rows as Array<{ booking_id: number; charged: string; refunded: string }> : [];
+      // A customer's change request waiting on this kitchen (the dashboard lists it next to booking requests).
+      const changes = listed.length ? (await db.execute(sql`SELECT DISTINCT ON (booking_id) booking_id, decision_by AT TIME ZONE 'UTC' AS decision_by FROM kitchen_booking_changes
+        WHERE booking_id IN (${sql.join(listed.map(booking => sql`${booking.id}`), sql`, `)}) AND state IN ('requested', 'authorized') AND decision_by AT TIME ZONE 'UTC' > now()
+        ORDER BY booking_id, created_at DESC`)).rows as Array<{ booking_id: number; decision_by: string | Date }> : [];
 
         res.json(await Promise.all(listed.map(async booking => {
           const order = orders.find(row => Number(row.booking_id) === booking.id);
+          const change = changes.find(row => Number(row.booking_id) === booking.id);
           return { ...booking, ...(order ? { orderChargedCents: Number(order.charged), orderRefundedCents: Number(order.refunded) } : {}),
+            ...(change ? { pendingChange: { decisionBy: new Date(change.decision_by).toISOString() } } : {}),
             responseDeadlineAt: await getBookingResponseDeadlineAt(booking, undefined, booking.timezone) };
         })));
     } catch (error: any) {

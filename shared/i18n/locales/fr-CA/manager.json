@@ -4811,6 +4811,8 @@
   "ovrAnswerByToday": "Répondre aujourd’hui avant {time}",
   "ovrRespondBy": "Répondre d’ici le {when}",
   "ovrReviewRequest": "Examiner la demande",
+  "ovrChangeRequests": "Demandes de modification",
+  "ovrWantsChange": "souhaite un autre horaire",
   "ovrBookingCount": "{count, plural, one {# réservation} other {# réservations}}",
   "ovrNowAt": "Maintenant {time}",
   "ovrNoOneInKitchen": "Personne en cuisine",

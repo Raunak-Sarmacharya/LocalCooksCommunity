@@ -4811,6 +4811,8 @@
   "ovrAnswerByToday": "Answer by today, {time}",
   "ovrRespondBy": "Respond by {when}",
   "ovrReviewRequest": "Review request",
+  "ovrChangeRequests": "Change requests",
+  "ovrWantsChange": "wants a different time",
   "ovrBookingCount": "{count, plural, one {# booking} other {# bookings}}",
   "ovrNowAt": "Now {time}",
   "ovrNoOneInKitchen": "No one in the kitchen",
