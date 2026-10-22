@@ -109,7 +109,7 @@ export function StorageRentalDetail({ rentalId }: { rentalId: number }) {
   const date = (value: string) => formatStorageDate(value, i18n.language, rental.timezone);
   const chef = rental.chef?.name || t('stTheChef');
   const chip = chipForRental(rental);
-  const situation = rental.state === 'reserved' ? chip === 'moveInOverdue' ? 'overdue' : 'reserved'
+  const situation = rental.cancellation ? 'cancelled' : rental.state === 'reserved' ? chip === 'moveInOverdue' ? 'overdue' : 'reserved'
     : rental.state === 'active' ? rental.phase === 'holdover' ? 'holdover' : rental.phase === 'grace' ? 'grace' : 'active'
     : rental.state;
   const prominentActions: Record<string, string[]> = {
@@ -127,7 +127,7 @@ export function StorageRentalDetail({ rentalId }: { rentalId: number }) {
           <h1 className="text-xl font-semibold tracking-tight">{t('stUnitLabel', { index: rental.unitLabel })} · {rental.listing.name}</h1>
           {occupiesUnit(rental)
             ? <StorageStatusChip chip={chipForRental(rental)} />
-            : <Badge variant="outline">{t((STATE_KEY[rental.state] ?? "stStateLabel") as never)}</Badge>}
+            : <Badge variant="outline">{t((rental.cancellation ? "stStateCancelled" : STATE_KEY[rental.state] ?? "stStateLabel") as never)}</Badge>}
         </div>
         <div className="flex items-center gap-2 text-sm"><Avatar className="h-8 w-8"><AvatarFallback className="text-xs">{chef.split(/\s+/).map(part => part[0]).slice(0, 2).join('').toUpperCase()}</AvatarFallback></Avatar><span className="font-medium">{chef}</span><span className="text-muted-foreground">· {rental.kitchen.name}</span></div>
         <p className="text-sm">{date(rental.startOn)} – {date(rental.paidThrough)}</p>
@@ -147,6 +147,9 @@ export function StorageRentalDetail({ rentalId }: { rentalId: number }) {
         <AlertDescription className="space-y-3">
           <p className="text-sm font-medium">{t(`stSituation_${situation}` as never, { chef, date: date(rental.startOn), end: date(rental.paidThrough), moveOut: date(rental.moveOutBy || rental.paidThrough), grace: date(rental.graceEndsOn), days: rental.holdoverDays, amount: formatCurrency(rental.accruedCents, 'CAD', i18n.language) })}</p>
           {prominentActions[situation] && <p className="text-sm text-muted-foreground">{t(`stNextStep_${situation}` as never, { chef })}</p>}
+          {rental.cancellation && <p className="text-sm tabular-nums" data-testid="storage-cancelled-money">{t("stCancelledMoney", { refund: formatCurrency(rental.cancellation.refundCents, 'CAD', i18n.language),
+            payout: formatCurrency(rental.cancellation.kitchenPayoutCents ?? 0, 'CAD', i18n.language) })}</p>}
+          {rental.cancellation?.reason && <p className="text-sm text-muted-foreground">{t("stCancelReason", { reason: rental.cancellation.reason })}</p>}
           {situation === 'overdue' && !rental.actions.includes('release') && <p className="text-sm text-muted-foreground">{t('stReleaseAvailableOn', { date: date(addDays(rental.startOn, NO_MOVE_IN_RELEASE_DAYS)) })}</p>}
           <div className="flex flex-wrap items-center gap-2">
             {canMessage && <StorageMessageButton rentalId={rental.id} chef={chef} />}
@@ -210,7 +213,7 @@ export function StorageRentalDetail({ rentalId }: { rentalId: number }) {
         <CardContent className="space-y-4">
           {rental.terms.map((term, index) => {
             const payout = termPayout(term);
-            const payoutText = payout.status === "scheduled"
+            const payoutText = rental.cancellation && payout.amountCents <= 0 ? t("stPayoutNoneOwed") : payout.status === "scheduled"
               ? t("stPayoutScheduled", { amount: formatCurrency(payout.amountCents), date: date(payout.at!) })
               : payout.status === "paid"
                 ? t("stPayoutPaid", { amount: formatCurrency(payout.amountCents), date: date(payout.at!) })

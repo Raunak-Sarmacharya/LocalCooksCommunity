@@ -55,6 +55,8 @@ export interface StorageRental {
   removalItemIndexes?: number[];
   responseDeadline: string | null;
   declineReason: string | null;
+  /** The customer cancelled before the start: what they were refunded and what the kitchen keeps. */
+  cancellation?: { cancelledAt: string; refundCents: number; reason: string | null; kitchenPayoutCents?: number } | null;
   instructions?: { moveIn: string | null; moveOut: string | null };
   chefNotes?: { moveIn: string | null; moveOut: string | null };
   moveOutBy?: string | null;

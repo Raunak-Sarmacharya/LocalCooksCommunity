@@ -14,13 +14,18 @@ export type StorageQuote = { listingId: number; startOn: string; days: number; e
 export type RentalTerm = { id: number; seq: number; kind: string; startsOn: string; endsOn: string; days: number; dailyPriceCents: number
   subtotalCents: number; taxCents: number; serviceFeeCents: number; totalCents: number; status: string; paidAt: string | null }
 /** Only these are wired on the chef side; any other server action is ignored, never guessed. */
-export type RentalAction = "withdraw" | "extend" | "move_in" | "move_out" | "report_problem"
+export type RentalAction = "withdraw" | "cancel" | "extend" | "move_in" | "move_out" | "report_problem"
 export type StorageRental = { id: number; ref: string | null; kitchen: { id: number; name: string }; listing: { id: number; name: string }
   timezone?: string | null; releasedOn?: string | null;
   unitLabel: string; state: "requested" | "declined" | "expired" | "withdrawn" | "reserved" | "active" | "move_out_requested" | "removal_review" | "ended"
   phase: "current" | "ending_soon" | "grace" | "holdover" | null; startOn: string; paidThrough: string; graceEndsOn: string; holdoverDays: number
   accruedCents: number; responseDeadline: string | null; declineReason: string | null; actions: string[]; terms: RentalTerm[]
+  /** The chef cancelled before the start; `kitchenPayoutCents` is on the kitchen's copy only. */
+  cancellation?: { cancelledAt: string; refundCents: number; reason: string | null; kitchenPayoutCents?: number } | null
   rentalTerms: { dailyPriceCents: number; maxTermDays: number; graceDays: number; cancellationPolicySnapshot?: { timezone?: string } } | null }
+/** The server's exact refund for cancelling now, under the frozen policy (same plan the refund reservation uses). */
+export type CancellationQuote = { paidCents: number; alreadyRefundedCents: number; refundCents: number; cardFeeCents: number; lateChargeCents: number
+  startsAt: string; freeUntil: string; lateChargePercent: number; timezone: string | null }
 export type ExtensionQuote = { days: number; dailyPriceCents: number; subtotalCents: number; taxCents: number; serviceFeeCents: number; totalCents: number
   maxDays: number; limitReason: "max_term" | "reservation" | "reclaim" | "window" | "not_extendable"; newPaidThrough: string
   card: { brand: string; last4: string } | null }
@@ -38,6 +43,9 @@ export const storageAvailability = (kitchenId: number) => call<StorageAvailabili
 export const listRentals = () => call<StorageRental[]>(base)
 export const readRental = (id: number) => call<StorageRental>(`${base}/${id}`)
 export const withdrawRental = (id: number) => call<StorageRental>(`${base}/${id}/withdraw`, "POST", {})
+export const previewCancellation = (id: number) => call<CancellationQuote>(`${base}/${id}/cancel/preview`)
+export const cancelRental = (id: number, body: { operationKey: string; reason?: string; expectedRefundCents: number }) =>
+  call<StorageRental & { refundPending?: boolean }>(`${base}/${id}/cancel`, "POST", body)
 export const quoteRental = (body: { listingId: number; startOn: string; days: number }) => call<StorageQuote>(`${base}/quote`, "POST", body)
 export const quoteExtension = (id: number, days: number) => call<ExtensionQuote>(`${base}/${id}/extend/quote`, "POST", { days })
 
@@ -100,6 +108,8 @@ export function rentalStatus(rental: StorageRental, t: T, locale: string, now = 
     if (rental.phase === "ending_soon" && rental.paidThrough >= today) return { pill: t("stcPillEndingSoon"), tone: "warn", sentence: t("stcStatusEndingSoon", { end }) }
     return { pill: t("stcPillActive"), tone: "good", sentence: t("stcStatusActive", { end }) }
   }
+  if (rental.state === "ended" && rental.cancellation) return { pill: t("stcPillCancelled"), tone: "muted",
+    sentence: t("stcStatusCancelled", { date: storageDay(localToday(new Date(rental.cancellation.cancelledAt), rentalTimezone(rental)), locale) }) }
   if (rental.state === "ended") return { pill: t("stcPillEnded"), tone: "muted", sentence: t("stcStatusEnded", { end: storageDay(rental.releasedOn || rental.paidThrough, locale) }) }
   if (rental.state === "declined") return { pill: t("stcPillDeclined"), tone: "muted", sentence: t("stcStatusDeclined") }
   if (rental.state === "expired") return { pill: t("stcPillExpired"), tone: "muted", sentence: t("stcStatusExpired", { kitchen }) }

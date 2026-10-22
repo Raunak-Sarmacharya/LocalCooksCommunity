@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { StoragePageShell } from "@/components/storage/StoragePageShell"
 import { StorageExtendSheet } from "@/components/storage/StorageExtendSheet"
+import { StorageCancelDialog } from "@/components/storage/StorageCancelDialog"
 import { StorageMessageButton } from "@/components/storage/StorageMessageButton"
 import { StorageCheckinDialog } from "@/components/booking/StorageCheckinDialog"
 import { StorageCheckoutDialog } from "@/components/booking/StorageCheckoutDialog"
@@ -18,7 +19,8 @@ import { CommitmentProblems } from "@/components/support/CommitmentProblems"
 import { PendingOverstayPenalties } from "@/components/chef/PendingOverstayPenalties"
 import { StorageDamageClaims } from "@/components/booking/DamageClaimCards"
 import { STORAGE_LIST_KEY } from "@/pages/ChefStoragePage"
-import { TONE_CLASS, cad, can, readRental, rentalStatus, storageDay, withdrawRental, type StorageRental } from "@/lib/storage-rentals"
+import { TONE_CLASS, cad, can, readRental, rentalStatus, rentalTimezone, storageDay, withdrawRental, type StorageRental } from "@/lib/storage-rentals"
+import { localToday } from "@shared/storage-rental"
 import { cn } from "@/lib/utils"
 
 export default function ChefStorageRentalPage() {
@@ -31,7 +33,7 @@ export default function ChefStorageRentalPage() {
   const key = ["/api/chef/storage-rentals", id]
   const query = useQuery({ queryKey: key, queryFn: () => readRental(id), enabled: Number.isSafeInteger(id) && id > 0 })
   const [extendOpen, setExtendOpen] = useState(() => new URLSearchParams(window.location.search).get("extend") === "1")
-  const [dialog, setDialog] = useState<"move_in" | "move_out" | "withdraw" | null>(null)
+  const [dialog, setDialog] = useState<"move_in" | "move_out" | "withdraw" | "cancel" | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const refresh = (next?: StorageRental) => {
     if (next) queryClient.setQueryData(key, next)
@@ -64,6 +66,7 @@ export default function ChefStorageRentalPage() {
           {can(rental, "move_in") && <Button variant={can(rental, "extend") ? "outline" : "default"} className="min-h-12 sm:min-h-11" onClick={() => setDialog("move_in")}>{t("stcMoveIn")}</Button>}
           {can(rental, "move_out") && <Button variant="outline" className="min-h-12 sm:min-h-11" onClick={() => setDialog("move_out")}>{t("stcMoveOut")}</Button>}
           {can(rental, "withdraw") && <Button variant="outline" className="min-h-12 sm:min-h-11" onClick={() => setDialog("withdraw")}>{t("stcWithdraw")}</Button>}
+          {can(rental, "cancel") && <Button variant="outline" className="min-h-12 sm:min-h-11" onClick={() => setDialog("cancel")}>{t("stcCancel")}</Button>}
         </div>
 
         <section className="rounded-2xl border p-4 sm:p-5" aria-labelledby="rental-dates">
@@ -94,6 +97,13 @@ export default function ChefStorageRentalPage() {
                 <p className="text-xs text-muted-foreground">{t("stcTermBreakdown", { days: cad(term.subtotalCents, locale), tax: cad(term.taxCents, locale), fee: cad(term.serviceFeeCents, locale) })}</p>
               </div>
             </li>)}
+            {rental.cancellation && rental.cancellation.refundCents > 0 && <li className="flex items-start justify-between gap-3 py-2.5 text-sm" data-testid="rental-refund">
+              <div className="min-w-0">
+                <p className="font-medium">{t("stcRefundLine")}</p>
+                <p className="text-muted-foreground">{t("stcRefundLineDate", { date: storageDay(localToday(new Date(rental.cancellation.cancelledAt), rentalTimezone(rental)), locale) })}</p>
+              </div>
+              <p className="shrink-0 font-medium tabular-nums">−{cad(rental.cancellation.refundCents, locale)}</p>
+            </li>}
           </ul>
         </section>
 
@@ -108,6 +118,7 @@ export default function ChefStorageRentalPage() {
           storageBooking={{ id: rental.id, storageName: rental.listing.name, startDate: rental.startOn }} onSuccess={() => void query.refetch()} />}
         {can(rental, "move_out") && <StorageCheckoutDialog open={dialog === "move_out"} onOpenChange={open => setDialog(open ? "move_out" : null)}
           storageBooking={{ id: rental.id, storageName: rental.listing.name, endDate: rental.paidThrough }} onSuccess={() => void query.refetch()} />}
+        {dialog === "cancel" && <StorageCancelDialog rental={rental} open onOpenChange={open => setDialog(open ? "cancel" : null)} onCancelled={next => refresh(next)} />}
         <AlertDialog open={dialog === "withdraw"} onOpenChange={open => setDialog(open ? "withdraw" : null)}>
           <AlertDialogContent>
             <AlertDialogHeader>

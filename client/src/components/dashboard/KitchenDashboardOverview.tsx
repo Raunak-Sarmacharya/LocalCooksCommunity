@@ -299,6 +299,11 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
       title: mt(event.corrected ? "activityTourCorrected" : event.disruptionReason ? "activityTourDisrupted" : event.status === 'cancelled' && (item.viewing.adminReviewDecision === 'denied' || item.viewing.cancelledBy === 'manager_declined') ? "activityTourDeclined" : tourActivityLabel[event.status] ?? "kitchenTours"),
       person: chefDisplayName(item), kitchen: item.kitchenName || item.locationName, scheduled: displayDate(item.viewing.scheduledAt), time: tourTime(item) }))),
     ...activity.storageBookings.filter(item => !!item.createdAt).map(item => ({kind:"storage" as const,id:item.id,date:item.createdAt!,title:mt("activityStorageRequested"),person:chefDisplayName(item),kitchen:[item.storageName || item.kitchenName, item.storageName && multiKitchen ? item.kitchenName : undefined].filter(Boolean).join(" · "),scheduled: [item.startDate,item.endDate].filter(Boolean).map(value=>displayDate(item.pricingModel === "hourly" ? value! : value!.slice(0, 10))).join(" – "),time:""})),
+    // A customer's cancellation before the start: who, what came back to them and what the kitchen keeps.
+    ...locationRentals.flatMap(rental => rental.cancellation ? [{ kind: "rental" as const, id: rental.id, activityKey: `rental-cancel:${rental.id}`, date: rental.cancellation.cancelledAt,
+      title: mt("activityStorageCancelled", { name: rental.chef?.name && !rental.chef.name.includes("@") ? rental.chef.name : mt("guestChef") }), person: "", kitchen: rental.listing?.name,
+      scheduled: mt("stCancelledMoney", { ns: "storage", refund: cad(rental.cancellation.refundCents, i18n.language), payout: cad(rental.cancellation.kitchenPayoutCents ?? 0, i18n.language) }),
+      time: "", href: `/manager/storage/${rental.id}` }] : []),
     ...locationApplications.filter(item => !!(item.updatedAt || item.createdAt)).map(item => ({kind:"application" as const,id:item.id,date:item.updatedAt || item.createdAt!,title:mt("overviewApplicationActivity", {status:mt(({inReview:"overviewAwaitingReview",approved:"approved",rejected:"rejected",pending:"pending"} as Record<string,string>)[item.status] ?? "overviewStatusUpdated")}),person:chefDisplayName(item),kitchen:locations.find(location=>location.id===item.locationId)?.name,scheduled:displayDate(item.updatedAt || item.createdAt!),time:""})),
     ...activity.claims.filter(item => !!(item.updatedAt || item.createdAt)).map(item => ({kind:"claim" as const,id:item.id,date:item.updatedAt || item.createdAt!,title:mt("overviewClaimActivity",{status:mt(financialActivityStatus[item.status ?? ""] ?? "overviewStatusUpdated")}),person:chefDisplayName(item),kitchen:item.kitchenName,scheduled:displayDate(item.updatedAt || item.createdAt!),time:""})),
   ].filter(item => Number.isFinite(Date.parse(item.date)) && Date.parse(item.date) <= Date.now()).sort((a, b) => Date.parse(b.date) - Date.parse(a.date)).slice(0, RECENT_ACTIVITY_LIMIT);
@@ -681,7 +686,7 @@ return <div key={kitchen.id}><button type="button" onClick={() => onNavigate(lis
           <span className={cn("col-span-2 mt-0.5 min-w-0 truncate", sub)}>{[item.person, item.kitchen, item.scheduled, item.time].filter(Boolean).join(" · ")}</span>
         </>;
         const className = cn("grid w-full grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-3 border-t border-stone-100 py-2.5 text-left transition-colors first:border-t-0 hover:bg-stone-50/70 motion-reduce:transition-none", focusRing);
-        return item.kind === "booking" ? <Link key={`booking-${item.activityKey}`} href={item.href} className={className}>{content}</Link>
+        return item.kind === "booking" || item.kind === "rental" ? <Link key={`${item.kind}-${item.activityKey}`} href={item.href} className={className}>{content}</Link>
           : <button type="button" key={`${item.kind}-${item.id}-${item.kind === "tour" ? item.activityKey : "current"}`} onClick={() => openTask({ id: String(item.id), title: item.title, view, param: ACTIVITY_PARAM[item.kind] })} className={className}>{content}</button>;
       })}
     </div>
