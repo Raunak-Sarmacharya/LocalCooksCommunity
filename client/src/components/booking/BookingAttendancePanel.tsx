@@ -118,7 +118,8 @@ export function BookingAttendancePanel({ bookingId, manager, localCooks = false,
   const options = [
     { value: 'arrival' as const, visible: canAssist && !arrived && !noShow, icon: LogIn, hint: 'fixArrivalHint' },
     { value: 'departure' as const, visible: canAssist && arrived && status === 'checked_in', icon: LogOut, hint: 'fixDepartureHint' },
-    { value: 'report_no_show' as const, visible: canReport && !arrived && !hasBookingAttendanceEvidence({ ...details, checkinStatus: status }, !!closeout) && !noShow && latest?.action !== 'report_attended', icon: UserX, hint: 'fixNoShowHint' },
+    // The kitchen's no-show report closes with the visit's inspection window (the server enforces it too); Local Cooks can still correct.
+    { value: 'report_no_show' as const, visible: canReport && (localCooks || clock?.inspection.canRespond === true) && !arrived && !hasBookingAttendanceEvidence({ ...details, checkinStatus: status }, !!closeout) && !noShow && latest?.action !== 'report_attended', icon: UserX, hint: 'fixNoShowHint' },
     { value: 'report_attended' as const, visible: canReport && !arrived && latest?.action !== 'report_attended', icon: UserCheck, hint: 'fixAttendedHint' },
     { value: 'withdraw_attendance' as const, visible: chosen && noShow, icon: Undo2, hint: 'fixUndoHint' },
     { value: 'support' as const, visible: true, icon: LifeBuoy, hint: 'fixOtherHint' },

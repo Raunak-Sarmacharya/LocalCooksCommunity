@@ -13,7 +13,7 @@ afterEach(() => { cleanup(); clients.forEach(client => client.clear()); clients.
 const record = { bookingId: 10, status: 'confirmed', checkinStatus: 'not_checked_in', updatedAt: '2026-10-04T12:00:00Z',
   scheduledEnd: '2026-10-03T12:00:00Z', operationsComplete: true, assistanceHistory: [],
   visits: [{ id: 5, startTime: '09:00', endTime: '11:00', checkinStatus: 'not_checked_in', updatedAt: '2026-10-04T12:00:00Z', scheduledEnd: '2026-10-03T12:00:00Z', operationsComplete: true }], history: [] };
-const clock = { timezone: 'America/St_Johns', visits: [{ visitId: 5, phase: 'in_booked_time', scheduledStartAt: '2026-10-03T11:30:00Z', arrivalRecorded: false, inspection: { outcome: 'not_due' } }] };
+const clock = { timezone: 'America/St_Johns', visits: [{ visitId: 5, phase: 'in_booked_time', scheduledStartAt: '2026-10-03T11:30:00Z', arrivalRecorded: false, inspection: { outcome: 'due', canRespond: true } }] };
 function mount(props: any = {}) {
   vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-10-04T12:00:00Z'));
   const data = props.data || record;
@@ -84,6 +84,12 @@ it('offers departure only after recorded arrival and hides no-show for an arrive
   fireEvent.click(screen.getByRole('button', { name: 'Save departure time' }));
   await waitFor(() => expect(posts(fetcher)).toHaveLength(1));
   expect(JSON.parse(posts(fetcher)[0][1].body).action).toBe('departure');
+});
+it('drops "didn’t show up" once the inspection is finished or its window closed', async () => {
+  mount({ closeout: { ...clock, visits: [{ ...clock.visits[0], inspection: { outcome: 'auto_closed_uninspected', canRespond: false } }] } });
+  const dialog = await open();
+  expect(within(dialog).queryByRole('button', { name: /Alex didn’t show up/ })).not.toBeInTheDocument();
+  expect(within(dialog).getByRole('button', { name: /Something else/ })).toBeEnabled();
 });
 it('hides reports before the end and assisted times after inspection closes', async () => {
   mount({ data: { ...record, scheduledEnd: '2027-10-03T12:00:00Z', visits: [] }, closeout: { ...clock, visits: [{ ...clock.visits[0], visitId: undefined, inspection: { outcome: 'manager_cleared' } }] } });

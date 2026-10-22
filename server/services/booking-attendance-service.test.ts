@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-const state = vi.hoisted(() => ({ rows: [] as any[][], updates: [] as any[], events: [] as any[], locks: [] as any[], notify: vi.fn() }));
+const state = vi.hoisted(() => ({ rows: [] as any[][], updates: [] as any[], events: [] as any[], locks: [] as any[], notify: vi.fn(), inspection: { canRespond: true } as any }));
 vi.mock('../db', () => {
   const connection: any = {
     execute: async (query: any) => { state.locks.push(query); },
@@ -15,6 +15,8 @@ vi.mock('../db', () => {
 vi.mock('./notification.service', () => ({ notificationService: { create: (...args: any[]) => state.notify(...args) } }));
 vi.mock('./booking-lifecycle-delivery', () => ({ queueBookingLifecycleEvent: (...args: any[]) => state.notify(...args) }));
 vi.mock('../utils/user-display', () => ({ getUserDisplayName: async () => 'Sam Chef' }));
+// The visit's inspection window (its own tested projection); a no-show report needs it open.
+vi.mock('./clock-closeout', () => ({ visitClock: vi.fn(async () => state.inspection ? { clock: { inspection: state.inspection } } : null) }));
 import { readBookingAttendance, readBookingHistory, recordBookingAttendance } from './booking-attendance-service';
 const timestamp = '2026-10-02T10:00:00.000Z';
 const actor = { id: 2, role: 'manager' as const };
@@ -26,7 +28,7 @@ function prepare(overrides = {}, visits: any[] = [], events: any[] = []) {
 }
 function response() { state.rows.push([context()], [], []); }
 describe('explicit booking attendance statements (mocked database only)', () => {
-  beforeEach(() => { state.rows = []; state.updates = []; state.events = []; state.locks = []; state.notify.mockReset(); vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-02T20:00:00Z')); });
+  beforeEach(() => { state.rows = []; state.updates = []; state.events = []; state.locks = []; state.notify.mockReset(); state.inspection = { canRespond: true }; vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-02T20:00:00Z')); });
   afterEach(() => vi.useRealTimers());
   it.each([{ id: 99, role: 'chef' as const }, { id: 99, role: 'manager' as const }])('protects booking history from a foreign $role before reading events', async foreign => {
     state.rows.push([context()], [{ id: 1, kind: 'requested', createdAt: new Date(timestamp) }]);
@@ -100,6 +102,25 @@ describe('explicit booking attendance statements (mocked database only)', () => 
   it.each([{ checkinStatus: 'checked_in' }, { checkedInAt: new Date() }, { checkoutPhotoUrls: ['photo'] }, { checkoutApprovedAt: new Date() }])('rejects contradictory attendance/inspection evidence %o', async evidence => {
     prepare(evidence); await expect(recordBookingAttendance(10, actor, input)).rejects.toThrow(/contradicts/);
     expect(state.updates).toEqual([]);
+  });
+  it.each([
+    ['the kitchen finished the inspection', { outcome: 'manager_cleared', canRespond: false }],
+    ['the inspection window closed (payout can go)', { outcome: 'auto_closed_uninspected', canRespond: false }],
+    ['no visit clock resolves', null],
+  ])('a kitchen can no longer report a no-show once %s', async (_case, inspection) => {
+    state.inspection = inspection; prepare();
+    await expect(recordBookingAttendance(10, actor, input)).rejects.toMatchObject({ status: 409, message: expect.stringMatching(/inspection window/) });
+    expect(state.updates).toEqual([]); expect(state.events).toEqual([]);
+  });
+  it('Local Cooks can still correct the record after the window closed', async () => {
+    state.inspection = { outcome: 'auto_closed_uninspected', canRespond: false }; prepare(); response();
+    await recordBookingAttendance(10, { id: 1, role: 'admin' }, input);
+    expect(state.events[0]).toMatchObject({ action: 'report_no_show', actorRole: 'admin' });
+  });
+  it('"They came" is not limited by the no-show window', async () => {
+    state.inspection = { outcome: 'auto_closed_uninspected', canRespond: false }; prepare(); response();
+    await recordBookingAttendance(10, actor, { ...input, action: 'report_attended' });
+    expect(state.events[0].action).toBe('report_attended');
   });
   it('requires explicit absence confirmation and rejects manager private notes', async () => {
     await expect(recordBookingAttendance(10, actor, { ...input, confirmsChefAbsent: false })).rejects.toThrow(/Explicitly confirm/);

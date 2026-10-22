@@ -6,6 +6,8 @@ import { kitchenBookings, kitchenBookingVisits, kitchenBookingAttendanceEvents, 
 import { buildBookingHistory } from '@shared/booking-history';
 import { bookingAttendanceEnd, hasBookingAttendanceEvidence, visitAttendanceEnd } from '@shared/booking-attendance';
 import { queueBookingLifecycleEvent } from './booking-lifecycle-delivery';
+import { visitClock } from './clock-closeout';
+import { DEFAULT_TIMEZONE } from '@shared/timezone-utils';
 
 export type AttendanceActor = { id: number; role: 'chef' | 'manager' | 'admin' };
 export class AttendanceError extends Error {
@@ -96,7 +98,7 @@ export async function recordBookingAttendance(bookingId: number, actor: Attendan
   await db.transaction(async tx => {
     // Parent then visit: serialize reports/corrections with reservation changes.
     await tx.execute(sql`SELECT id FROM kitchen_bookings WHERE id = ${bookingId} FOR UPDATE`);
-    const [context] = await tx.select({ booking: kitchenBookings, managerId: locations.managerId, timezone: locations.timezone, kitchenName: kitchens.name })
+    const [context] = await tx.select({ booking: kitchenBookings, managerId: locations.managerId, timezone: locations.timezone, kitchenName: kitchens.name, locationId: locations.id })
       .from(kitchenBookings).innerJoin(kitchens, eq(kitchens.id, kitchenBookings.kitchenId))
       .innerJoin(locations, eq(locations.id, kitchens.locationId))
       .where(eq(kitchenBookings.id, bookingId)).limit(1);
@@ -126,6 +128,12 @@ export async function recordBookingAttendance(bookingId: number, actor: Attendan
       if (current.checkinStatus === 'no_show') throw new AttendanceError('A no-show is already recorded', 409);
       if (latest?.action === 'report_attended') throw new AttendanceError('Withdraw the attended statement before reporting a no-show', 409);
       if (hasBookingAttendanceEvidence(current, !!(context.booking.visitDuties as { clockCloseout?: unknown } | null)?.clockCloseout)) throw new AttendanceError('Recorded arrival, departure or inspection evidence contradicts a no-show', 409);
+      // A kitchen reports a no-show only while that visit's inspection window is open: once it is finished or closed
+      // (and the payout can go), the visit is settled. Local Cooks can still correct the record.
+      if (actor.role === 'manager') {
+        const clock = await visitClock(context.booking, context.timezone || DEFAULT_TIMEZONE, visits, visit?.id, context.locationId, tx);
+        if (!clock?.clock.inspection.canRespond) throw new AttendanceError('The inspection window for this visit has closed, so a no-show can no longer be reported', 409);
+      }
     } else if (input.action === 'withdraw_attendance' && current.checkinStatus !== 'no_show' && latest?.action !== 'report_attended')
       throw new AttendanceError('No visit report is recorded', 409);
     else if (input.action === 'report_attended' && latest?.action === 'report_attended') throw new AttendanceError('The visit is already reported', 409);
