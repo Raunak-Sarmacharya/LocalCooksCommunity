@@ -25,7 +25,9 @@ type Item = { id: number; kind: 'storage' | 'equipment'; name: string; status: s
 type Scope = 'entire' | 'items' | 'days';
 
 export function BookingCancellationChooser({ bookingId, status, paymentStatus, items, onChanged, decisionPending = false, declined = false, summary, cancellationDeadline, visitActive = false, open: controlledOpen, onOpenChange, hideTrigger = false,
-  visits = [], scheduleRevision = 0, dayMoney = [] }: {
+  visits = [], scheduleRevision = 0, dayMoney = [], preselectItems }: {
+  /** Opens on "Selected add-ons" with these items (`kind:id`) ticked — the add-on row's Remove link. */
+  preselectItems?: string[];
   bookingId: number; status: string; paymentStatus?: string; items: Item[]; onChanged: () => Promise<void>;
   summary?: { kitchenName: string; reference?: string; schedule: string; amount?: string }; cancellationDeadline?: string;
   visitActive?: boolean;
@@ -69,6 +71,7 @@ export function BookingCancellationChooser({ bookingId, status, paymentStatus, i
   // Dated bookings cancel by day; add-on removal is also supported server-side, but the chooser scopes to whole booking / some days.
   // Multi-day: add-ons come off one day at a time once confirmed (a pending request is answered all-or-nothing).
   const showItemsScope = items.length > 0 && (!dated || status === 'confirmed');
+  useEffect(() => { if (open && showItemsScope && preselectItems?.length) { setScope('items'); setSelected(preselectItems); } }, [open, showItemsScope, preselectItems]);
   const showDaysScope = dated && cancellableDays.length > 0;
   const paidOf = (visitId: number) => {
     const row = dayMoney.find(item => item.visitId === visitId);

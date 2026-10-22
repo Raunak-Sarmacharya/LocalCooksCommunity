@@ -3443,6 +3443,7 @@
   "bdhHostedBy": "Господар: {name}",
   "bdhSafetyHelper": "Для вашої безпеки листуйтеся та платіть лише в Local Cooks.",
   "bdhAddOns": "Додаткові послуги",
+  "bdRemoveAddon": "Видалити",
   "bdIncludedWithKitchen": "Входить до оренди кухні ({count})",
   "bdIncludedUnavailable": "Недоступно",
   "bdIncludedUnavailableOn": "Недоступно: {days}",

@@ -328,6 +328,8 @@ export default function BookingDetailsPage() {
   const [isManagementProcessing, setIsManagementProcessing] = useState(false);
   const [itemCancellationPending, setItemCancellationPending] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
+  // The add-on row's Remove link opens the cancel chooser on that rental.
+  const [removeItems, setRemoveItems] = useState<string[] | undefined>();
   const [changeOpen, setChangeOpen] = useState(false);
   // Bumped after a change request is sent so the pending-change panel refetches at once.
   const [changesVersion, setChangesVersion] = useState(0);
@@ -1898,6 +1900,13 @@ export default function BookingDetailsPage() {
       <Button variant="outline" size="sm" className="min-h-11" disabled={itemCancellationPending} onClick={() => void reviewEquipmentCancellation(equipment.id, true)}>{t('bdAcceptCancellation', { defaultValue: 'Accept cancellation' })}</Button>
       <Button variant="outline" size="sm" className="min-h-11" disabled={itemCancellationPending} onClick={() => void reviewEquipmentCancellation(equipment.id, false)}>{t('bdDeclineCancellation', { defaultValue: 'Decline cancellation' })}</Button>
     </div> : null;
+  // The customer removes a paid rental where they see it (Airbnb/Peerspace), not only under "Cancel booking".
+  const removeLink = (live: EquipmentBooking[]) => {
+    const removable = live.filter(equipment => equipment.status === 'confirmed' && (equipment.totalPrice || 0) > 0);
+    return !isManagerView && booking?.status === 'confirmed' && !visitActive && removable.length
+      ? <Button variant="link" size="sm" className="h-auto min-h-11 px-0 text-[13px]" onClick={() => { setRemoveItems(removable.map(equipment => `equipment:${equipment.id}`)); setCancelOpen(true); }}>{t('bdRemoveAddon')}</Button>
+      : null;
+  };
   const equipmentRows = byListing(sortedEquipment.filter(equipment => !isIncludedItem(equipment))).map(items => {
     const [first] = items, live = items.filter(equipment => !isStruckItem(equipment)), actions = items.map(equipmentAction);
     const statusKey = (equipment: EquipmentBooking) => [equipment.status, equipment.paymentStatus, isDeclinedInOffer(equipment)].join();
@@ -1907,7 +1916,7 @@ export default function BookingDetailsPage() {
     return { id: first.id, name: first.equipmentListing?.equipmentType || `Equipment #${first.equipmentListingId}`,
       detail: [perDay ? null : items.map(equipmentDayLabel).filter(Boolean).join(', '), brand].filter(Boolean).join(' · ') || null,
       price: formatCurrency((live.length ? live : items).reduce((sum, equipment) => sum + (equipment.totalPrice || 0), 0)), struck: !live.length,
-      chip: perDay ? null : itemChip(first, false), actions: perDay ? null : actions[0],
+      chip: perDay ? null : itemChip(first, false), actions: perDay ? null : actions[0] ?? removeLink(live),
       days: perDay ? items.map((equipment, index) => ({ key: equipment.id, label: equipmentDayLabel(equipment) ?? '', price: formatCurrency(equipment.totalPrice),
         struck: isStruckItem(equipment), chip: itemChip(equipment, false), actions: actions[index] })) : undefined };
   });
@@ -2126,7 +2135,7 @@ export default function BookingDetailsPage() {
           open={changeOpen} onOpenChange={setChangeOpen} onChanged={async () => { setChangesVersion(v => v + 1); await reloadBookingDetails(); await queryClient.invalidateQueries(); }} />
       )}
       {!isManagerView && (
-        <BookingCancellationChooser hideTrigger open={cancelOpen} onOpenChange={setCancelOpen} visitActive={visitActive} bookingId={booking.id} status={booking.status} paymentStatus={booking.paymentStatus}
+        <BookingCancellationChooser hideTrigger open={cancelOpen} onOpenChange={next => { setCancelOpen(next); if (!next) setRemoveItems(undefined); }} preselectItems={removeItems} visitActive={visitActive} bookingId={booking.id} status={booking.status} paymentStatus={booking.paymentStatus}
           summary={{ kitchenName, reference: booking.referenceCode || undefined,
             schedule: datedBooking && bookingDays.length
               ? daySpan

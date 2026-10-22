@@ -3443,6 +3443,7 @@
   "bdhHostedBy": "Hosted by {name}",
   "bdhSafetyHelper": "For your safety, keep messages and payments in Local Cooks.",
   "bdhAddOns": "Add-ons",
+  "bdRemoveAddon": "Remove",
   "bdIncludedWithKitchen": "Included with the kitchen ({count})",
   "bdIncludedUnavailable": "Not available",
   "bdIncludedUnavailableOn": "Not available on {days}",

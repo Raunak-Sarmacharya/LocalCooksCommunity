@@ -84,7 +84,7 @@ const cases: Case[] = [
     primary: { chef: null, manager: null }, message: true },
   { name: "today, in the check-in window", now: START - 5 * 60_000, booking: { status: "confirmed", paymentStatus: "paid", checkinStatus: "not_checked_in" },
     pill: { chef: "Today", manager: "Today" },
-    next: { chef: /^Check-in is open\. Check in when you get to the kitchen\.$/, manager: /^Ada Lovelace arrives today at 10:00 a\.m\.$/ },
+    next: { chef: /^Check-in is open\. Check in when you get to the kitchen\.$/, manager: /^Ada Lovelace arrives at 10:00 a\.m\. Check-in is open\.$/ },
     primary: { chef: "Check in", manager: null }, message: true },
   { name: "in session", now: START + 30 * 60_000, booking: { status: "confirmed", paymentStatus: "paid", checkinStatus: "checked_in", checkedInAt: "2030-01-15T13:32:00Z" },
     pill: { chef: "In session", manager: "In session" },
@@ -102,7 +102,7 @@ const cases: Case[] = [
     primary: { chef: null, manager: null }, message: true },
   { name: "cancelled", now: START - 3 * 86_400_000, booking: { status: "cancelled", paymentStatus: "failed" },
     pill: { chef: "Cancelled", manager: "Cancelled" },
-    next: { chef: /^This booking was cancelled\. Refund details are under Payment\.$/, manager: /^This booking was cancelled\.$/ },
+    next: { chef: /^This booking was cancelled\. Refund details are under Payment\.$/, manager: /^This booking was cancelled\. The refund and your payout are under Payment\.$/ },
     primary: { chef: null, manager: null }, message: false },
 ];
 

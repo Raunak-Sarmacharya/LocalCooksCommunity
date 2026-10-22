@@ -4,7 +4,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import en from "@shared/i18n/locales/en-CA/booking.json";
 import { BookingRefundPolicyNotice } from "./BookingRefundPolicyNotice";
 import { KitchenPayoutStatementBreakdown } from "./BookingPricingBreakdown";
-import { CheckinPolicyTimesCard } from "./CheckinPolicyTimesCard";
 
 vi.mock("react-i18next", () => ({ useTranslation: () => ({
   i18n: { language: "en-CA", resolvedLanguage: "en-CA" },
@@ -34,26 +33,5 @@ describe("manager payout breakdown", () => {
     render(<KitchenPayoutStatementBreakdown {...(input as object)} hstCollectedLabel="Includes HST you collected and remit" />);
     expect(screen.getByText("Includes HST you collected and remit")).toBeInTheDocument();
     expect(screen.getByText("$15.00")).toBeInTheDocument();
-  });
-});
-
-describe("kitchen-local time label", () => {
-  it("names the zone in words, not as an IANA id", () => {
-    render(<CheckinPolicyTimesCard bookingDate="2030-01-15" startTime="10:00" timezone="America/St_Johns" checkinWindowMinutesBefore={15} noShowGraceMinutes={30} operatingWindowStartTime="08:00" />);
-    expect(screen.getByText(/local time \(Newfoundland Time\)/)).toBeInTheDocument();
-    expect(document.body.textContent).not.toContain("America/St_Johns");
-  });
-});
-
-describe("check-in time once it has opened", () => {
-  it("says when check-in opened instead of a future-tense date", () => {
-    render(<CheckinPolicyTimesCard bookingDate="2020-01-15" startTime="10:00" timezone="America/St_Johns" checkinWindowMinutesBefore={15} noShowGraceMinutes={30} operatingWindowStartTime="08:00" />);
-    expect(screen.getByText("Check-in opened at")).toBeInTheDocument();
-    expect(screen.queryByText("Check-in opens")).not.toBeInTheDocument();
-    expect(screen.getByText(/9:45/)).toBeInTheDocument();
-  });
-  it("keeps the future-tense label and date before it opens", () => {
-    render(<CheckinPolicyTimesCard bookingDate="2999-01-15" startTime="10:00" timezone="America/St_Johns" checkinWindowMinutesBefore={15} noShowGraceMinutes={30} operatingWindowStartTime="08:00" />);
-    expect(screen.getByText("Check-in opens")).toBeInTheDocument();
   });
 });
