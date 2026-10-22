@@ -803,7 +803,7 @@ describe('claim-aware booking page', () => {
     expect(screen.queryByRole('button', { name: 'Report damage or extra cleaning' })).not.toBeInTheDocument();
     const link = screen.getByRole('link', { name: /You reported this visit/ });
     expect(link).toHaveAttribute('href', '/manager/dashboard?view=support');
-    expect(link).toHaveClass('!text-muted-foreground');
+    expect(link).toHaveClass('text-muted-foreground');
   });
 });
 

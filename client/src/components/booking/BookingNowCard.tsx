@@ -92,13 +92,15 @@ export function BookingNowCard({ reference, bookedOn, title, subtitle, leading, 
       </div>
       {attention}
       {body}
-      {secondary.length > 0 && <nav aria-label={labels.secondary} className="flex flex-wrap items-center gap-x-5" data-testid="now-secondary">
+      {secondary.length > 0 && <nav aria-label={labels.secondary} className="flex flex-wrap items-center gap-2" data-testid="now-secondary">
         {secondary.map(link => {
           const content = <>{link.icon && <link.icon className="mr-1.5 h-4 w-4" aria-hidden />}{link.label}</>;
-          const className = cn(link.muted && '!text-muted-foreground !font-normal', 'inline-flex min-h-11 items-center text-[13px] font-medium leading-[18px] text-foreground/80 underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm');
-          return link.href
-            ? <a key={link.key} href={link.href} className={className} data-testid={link.testId} onClick={link.onSelect ? event => { event.preventDefault(); link.onSelect!(); } : undefined}>{content}</a>
-            : <button key={link.key} type="button" className={className} data-testid={link.testId} onClick={link.onSelect}>{content}</button>;
+          // Actions read as buttons, like the header's own ("Find another time"); a muted entry is a note that links on, so it stays text.
+          if (link.muted) return <a key={link.key} href={link.href} className="inline-flex min-h-11 items-center rounded-sm px-1 text-[13px] leading-[18px] text-muted-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" data-testid={link.testId}>{content}</a>;
+          return <Button key={link.key} type={link.href ? undefined : "button"} variant="outline" className="min-h-11" data-testid={link.testId} asChild={!!link.href}
+            onClick={link.href ? undefined : link.onSelect}>
+            {link.href ? <a href={link.href} onClick={link.onSelect ? event => { event.preventDefault(); link.onSelect!(); } : undefined}>{content}</a> : content}
+          </Button>;
         })}
       </nav>}
       {footnote}

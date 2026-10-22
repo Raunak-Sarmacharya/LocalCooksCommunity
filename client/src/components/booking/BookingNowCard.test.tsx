@@ -24,6 +24,8 @@ describe("Now card shell", () => {
     expect(screen.getAllByTestId("booking-status-pill")).toHaveLength(1);
     expect(screen.getByTestId("booking-status-pill")).toHaveAttribute("data-tone", "blue");
     expect(screen.getByTestId("booking-next-step")).toHaveTextContent("Your arrival details are ready.");
+    // Real buttons (outline, like the header actions), not quiet text links.
+    for (const button of within(screen.getByTestId("now-secondary")).getAllByRole("button")) expect(button).toHaveClass("border", "bg-background", "min-h-11");
     expect(within(screen.getByTestId("now-secondary")).getAllByRole("button")).toHaveLength(2);
     for (const image of Array.from(document.querySelectorAll("img"))) expect(image).toHaveAttribute("alt", "");
     expect(screen.getByRole("heading", { level: 1 })).toHaveClass("text-[22px]");
