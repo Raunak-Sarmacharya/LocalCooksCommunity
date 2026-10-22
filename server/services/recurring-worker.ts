@@ -4,7 +4,7 @@ import * as schema from '@shared/schema';
 import runtime from '../../vercel.json';
 import { workerContext, WorkerBudgetExhausted, workerRemaining, isWorkerBudgetError, deliveryReserve } from './worker-context';
 import { reminderSources, reconcileRecurringSource } from './reminder-reconciliation';
-import { dispatchAdvanceReminders } from './advance-reminders';
+import { armUpcomingReminderTimers, dispatchAdvanceReminders } from './advance-reminders';
 import { deliverBookingLifecycleEvents } from './booking-lifecycle-delivery';
 import { deliverTourEvents } from './tour-delivery-service';
 import { deliverOutcomeEmails } from './outcome-delivery';
@@ -156,7 +156,7 @@ export async function runRecurringWorker(cancellations: () => Promise<unknown>, 
       // business tasks rotate through durable checkpoints in the remaining time.
       const deliveryState = { nextTask: state.deliveryNext || 0, cursors: {} };
       const delivery = await runFairTasks([
-        { name: 'advance', budgetMs: deliveryTaskMs, run: () => dispatchAdvanceReminders({ limit: 3, budgetMs: deliveryTaskMs }) },
+        { name: 'advance', budgetMs: deliveryTaskMs, run: async () => ({ ...await armUpcomingReminderTimers(), ...await dispatchAdvanceReminders({ limit: 3, budgetMs: deliveryTaskMs }) }) },
         { name: 'booking', budgetMs: deliveryTaskMs, run: () => deliverBookingLifecycleEvents(1, deliveryTaskMs) },
         { name: 'tour', budgetMs: deliveryTaskMs, run: () => deliverTourEvents(undefined, 1, deliveryTaskMs) },
         // One action queues a notice per person (customer, kitchen, admins), so a tick sends a batch; the budget still caps it.

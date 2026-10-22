@@ -8,6 +8,8 @@ const state = vi.hoisted(() => ({ db: null as any, booking: null as any, tour: n
 vi.mock('../db', () => ({ db: new Proxy({}, { get: (_, key) => state.db[key] }) }));
 vi.mock('../email', async original => ({ ...await original<typeof import('../email')>(), sendEmail: state.send }));
 vi.mock('./notification.service', () => ({ notificationService: { create: async (value: any) => state.alerts.push(value) } }));
+const timers = vi.hoisted(() => ({ arm: vi.fn() }));
+vi.mock('./deadline-timer', () => ({ scheduleDeadlineTimer: timers.arm }));
 import { confirmedInsidePreparationWindow, acknowledgeConfirmationReminders, dispatchAdvanceReminders, currentReminders, reminderVisitTimes, scheduleAdvanceReminders, renderTourReminder, renderBookingVisitReminder,
   formatVisitRange, endInstructionSentence, selectedReminderPolicy, reminderEligibility, type ReminderPolicy } from './advance-reminders';
 import { currentDeadlineReminders, deadlineWarningDue } from './deadline-reminders';
@@ -95,7 +97,10 @@ beforeEach(() => {
         for: () => { lock = true; return chain; }, then: (resolve: any, reject: any) => Promise.resolve().then(rows).then(resolve, reject) };
       return chain;
     },
-    insert: () => ({ values: (value: any) => ({ then: (resolve: any) => { state.logs.push({ id: state.logs.length + 1, retryCount: 0, retriedAt: null, ...value }); return resolve([]); } }) }),
+    insert: () => ({ values: (value: any) => {
+      const save = () => { const row = { id: state.logs.length + 1, retryCount: 0, retriedAt: null, ...value }; state.logs.push(row); return row; };
+      return { then: (resolve: any) => { save(); return resolve([]); }, returning: async () => [{ id: save().id }] };
+    } }),
     update: (table: any) => ({ set: (value: any) => ({ where: (condition: any) => ({ then: (resolve: any, reject: any) => {
       if (value.status === 'sent' && state.failAck) return reject(Error('ack interrupted'));
       filter(tableName(table), state.logs, condition).forEach(r => Object.assign(r, value)); return resolve([]);
@@ -111,8 +116,11 @@ describe('manager request decision reminders', () => {
     state.people[0].managerProfileData = { fullName: 'Alex' };
   });
   it('schedules both channels at 12h and 2h before R5, then sends once with Review request', async () => {
+    timers.arm.mockClear();
     await schedule('manager_decision');
     expect(state.logs).toHaveLength(4);
+    // Each scheduled reminder gets its own exact-time timer, at its own due time.
+    expect(timers.arm.mock.calls.map(call => [call[0], call[1], call[2]])).toEqual(state.logs.map(log => ['reminder', log.id, JSON.parse(log.textBody).reminder.due]));
     expect([...new Set(state.logs.map(log => JSON.parse(log.textBody).reminder.due))]).toEqual(['2026-10-04T19:00:00.000Z', '2026-10-05T05:00:00.000Z']);
     expect(state.logs.every(log => log.recipientUserId === 2 && log.subject.includes("Alex's request"))).toBe(true);
     await dispatch(new Date('2026-10-04T19:00:00Z'));

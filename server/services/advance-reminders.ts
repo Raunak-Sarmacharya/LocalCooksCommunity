@@ -4,6 +4,7 @@ import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { emailLogs, kitchenBookings, kitchenBookingVisits, kitchenViewings, kitchenViewingSettings, kitchens, locations, users, checkinCheckoutChecklists, kitchenCheckinCheckoutOverrides, storageBookings, storageListings } from '@shared/schema';
 import { bookingLifecycleEvents } from '@shared/schema';
+import { scheduleDeadlineTimer } from './deadline-timer';
 import { createBookingDateTime, DEFAULT_TIMEZONE, friendlyTimezoneName } from '@shared/timezone-utils';
 import { makeVisitDuties, readVisitDuties } from '@shared/visit-duties';
 import { tourDateKey, formatTourDate, formatTourSlotRange } from '@shared/tour-time';
@@ -349,6 +350,7 @@ export async function currentReminders(tx: Transaction, source: ReminderSource, 
 export async function scheduleAdvanceReminders(tx: Transaction, source: ReminderSource, id: number, policy: ReminderPolicy = selectedReminderPolicy, now = new Date()) {
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`advance:${source}:${id}`}))`);
   const reminders = await currentReminders(tx, source, id, policy, now);
+  const armed: Array<{ id: number; due: string }> = [];
   const existing = await tx.select().from(emailLogs).where(and(eq(emailLogs.category, category),
     sql`${emailLogs.trackingId} LIKE ${`advance:${source}:${id}:%`}`));
   if (source === 'tour') {
@@ -390,16 +392,22 @@ export async function scheduleAdvanceReminders(tx: Transaction, source: Reminder
     if (prior) {
       // A corrected/restored actionable schedule can revive unsent work; accepted
       // channels keep their original acknowledgment and are never requeued.
-      if (prior.status !== 'sent') await tx.update(emailLogs).set({
-        textBody: JSON.stringify({ reminder, channel }),
-        ...(prior.status === 'suppressed' ? { status: 'scheduled', errorMessage: null } : {}),
-      }).where(eq(emailLogs.id, prior.id));
+      if (prior.status !== 'sent') {
+        await tx.update(emailLogs).set({
+          textBody: JSON.stringify({ reminder, channel }),
+          ...(prior.status === 'suppressed' ? { status: 'scheduled', errorMessage: null } : {}),
+        }).where(eq(emailLogs.id, prior.id));
+        armed.push({ id: prior.id, due: reminder.due });
+      }
       continue;
     }
-    await tx.insert(emailLogs).values({ recipientEmail: reminder.email, recipientUserId: reminder.recipientId,
+    const [created] = await tx.insert(emailLogs).values({ recipientEmail: reminder.email, recipientUserId: reminder.recipientId,
       recipientRole: reminder.role, subject: reminder.kind === 'manager_decision' || reminder.kind === 'deadline' ? reminder.title : reminder.source === 'booking' ? bookingReminderSubject(reminder) : `${reminder.title}: ${reminder.kind}`, category, status: 'scheduled',
-      trackingId: key, textBody: JSON.stringify({ reminder, channel }), previewText: reminder.message });
+      trackingId: key, textBody: JSON.stringify({ reminder, channel }), previewText: reminder.message }).returning({ id: emailLogs.id });
+    armed.push({ id: created.id, due: reminder.due });
   }
+  // Each reminder fires at its own time (a sleeping timer costs no compute); the worker tick stays the backstop.
+  for (const reminder of armed) scheduleDeadlineTimer('reminder', reminder.id, reminder.due, now.getTime());
 }
 
 export function reminderEligibility(r: Reminder, now: Date, policy?: ReminderPolicy) {
@@ -502,6 +510,17 @@ export function renderTourReminder(r: Reminder, url = `${getAppBaseUrl(r.role ==
       ...(r.departureNotes ? [{ label: 'Departure instructions', value: r.departureNotes }] : [])] }],
     actionLabel: 'View tour', actionUrl: url,
     secondaryButton: { label: isManager ? 'Message chef' : 'Message manager', url: url + '&action=message' } });
+}
+
+/** Reminders due before the next tick get an exact timer (rows made before timers existed, or more than 6 days ahead).
+ * The event id dedupes, so arming an already-armed reminder is a no-op. */
+export async function armUpcomingReminderTimers(now = new Date(), windowMs = 35 * 60_000) {
+  const rows = await db.select({ id: emailLogs.id, due: sql<string>`${emailLogs.textBody}::jsonb->'reminder'->>'due'` }).from(emailLogs)
+    .where(and(eq(emailLogs.category, category), eq(emailLogs.status, 'scheduled'),
+      sql`(${emailLogs.textBody}::jsonb->'reminder'->>'due')::timestamptz > ${now.toISOString()}::timestamptz`,
+      sql`(${emailLogs.textBody}::jsonb->'reminder'->>'due')::timestamptz <= ${new Date(now.getTime() + windowMs).toISOString()}::timestamptz`)).limit(200);
+  for (const row of rows) scheduleDeadlineTimer('reminder', row.id, row.due, now.getTime());
+  return { armed: rows.length };
 }
 
 /** Callable due dispatch for 2C. Held row lock is the atomic claim; connection/process

@@ -8,6 +8,7 @@ const state = vi.hoisted(() => ({
   expireStorage: vi.fn(async (..._args: unknown[]) => ({ changed: true })),
   persist: vi.fn(async (..._args: unknown[]) => ({ changed: true })),
   release: vi.fn(async (..._args: unknown[]) => ({ success: true })),
+  dispatch: vi.fn(async (..._args: unknown[]) => ({ accepted: 1, suppressed: 0, failed: 0 })),
   rows: [] as Array<Record<string, unknown>>,
   responseDeadline: new Date('2026-10-15T21:00:00Z'),
 }));
@@ -24,6 +25,7 @@ vi.mock('./kitchen-booking-changes', () => ({ expireKitchenChangeForBooking: sta
 vi.mock('./auth-expiry-service', () => ({ lazyExpireKitchenBookingAuth: state.lazyExpire }));
 vi.mock('./clock-closeout', () => ({ persistBookingCloseout: state.persist }));
 vi.mock('./kitchen-payout-service', () => ({ releaseKitchenPayout: state.release }));
+vi.mock('./advance-reminders', () => ({ dispatchAdvanceReminders: state.dispatch }));
 vi.mock('./booking-response-deadline', () => ({ getBookingResponseDeadline: async () => state.responseDeadline }));
 import { deadlineGraceMs, deadlineHorizonMs, deadlineScheduledEvent, runDeadlineExpiry, scheduleBookingRequestTimer, scheduleDeadlineTimer } from './deadline-timer';
 
@@ -179,5 +181,15 @@ describe('deadline-timer Inngest function', () => {
     const source = (await import('node:fs')).readFileSync(new URL('../lifecycle-inngest.ts', import.meta.url), 'utf8');
     expect(source).toContain('functions: [lifecycleTick, startingChatEmail, bookingNoticeDelivery, invitationNoticeDelivery, deadlineTimer]');
     expect(source).toContain('triggers: [{ event: deadlineScheduledEvent }]');
+  });
+});
+
+describe('reminder timers', () => {
+  it('a reminder wakes at its own time and sends exactly that one reminder (no retry storm on a failed send)', async () => {
+    const at = new Date('2026-10-22T17:15:05Z');
+    await expect(runDeadlineExpiry('reminder', 42, at)).resolves.toMatchObject({ kind: 'reminder', accepted: 1 });
+    expect(state.dispatch).toHaveBeenCalledWith({ onlyLogId: 42, limit: 1, now: at });
+    state.dispatch.mockResolvedValueOnce({ accepted: 0, suppressed: 0, failed: 1 });
+    await expect(runDeadlineExpiry('reminder', 43, at)).resolves.toMatchObject({ failed: 1 });
   });
 });

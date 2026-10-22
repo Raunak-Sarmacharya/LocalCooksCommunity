@@ -12,8 +12,8 @@ import { isE2eOutboundSuppressed } from '../e2e-outbound-guard';
  * the backstop. Sending twice (or the worker winning the race) is harmless: each expiry re-checks its row under lock.
  */
 export const deadlineScheduledEvent = 'localcooks/deadline.scheduled';
-export type DeadlineKind = 'extension' | 'booking_request' | 'closeout' | 'kitchen_change' | 'storage_request';
-export const deadlineKinds: readonly DeadlineKind[] = ['extension', 'booking_request', 'closeout', 'kitchen_change', 'storage_request'];
+export type DeadlineKind = 'extension' | 'booking_request' | 'closeout' | 'kitchen_change' | 'storage_request' | 'reminder';
+export const deadlineKinds: readonly DeadlineKind[] = ['extension', 'booking_request', 'closeout', 'kitchen_change', 'storage_request', 'reminder'];
 /** Runs just after the deadline so "now >= deadline" holds even with small clock differences. */
 export const deadlineGraceMs = 5_000;
 /** Inngest sleeps are bounded (plan limits); anything further out is picked up by the tick, then re-armed. */
@@ -86,6 +86,11 @@ export async function runDeadlineExpiry(kind: DeadlineKind, id: number, now = ne
     // The id is the booking id: one change is open per booking, so the expiry re-reads whichever one is overdue.
     const changes = await import('./kitchen-booking-changes');
     return { kind, ...await changes.expireKitchenChangeForBooking(await changes.changeProviderStripe(), id, now) };
+  }
+  if (kind === 'reminder') {
+    // The id is the reminder's email-log row: send exactly that one if it is still scheduled and still current.
+    // A failed send is left to the worker's own retry and recovery, not re-thrown here (no duplicate recovery alerts).
+    return { kind, ...await (await import('./advance-reminders')).dispatchAdvanceReminders({ onlyLogId: id, limit: 1, now }) };
   }
   throw Error('Unknown deadline kind');
 }

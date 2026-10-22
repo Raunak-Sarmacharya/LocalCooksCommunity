@@ -19,7 +19,7 @@ vi.mock('drizzle-orm/node-postgres', () => ({ drizzle: (client: any) => ({ execu
 // ~2x the real per-task cost (dev run Oct 16: all ~33 tasks in 10.1 s), so the 30 s budget check stays meaningful.
 const task = async (name: string) => { state.calls.push(name); state.clock += 600; if (state.fail === name) throw Error('isolated failure'); return { count: 1 }; };
 vi.mock('./reminder-reconciliation', () => ({ reminderSources: ['booking', 'tour'], reconcileRecurringSource: (source: string) => task(`reconcile:${source}`) }));
-vi.mock('./advance-reminders', () => ({ dispatchAdvanceReminders: () => task('advance') }));
+vi.mock('./advance-reminders', () => ({ armUpcomingReminderTimers: async () => ({ armed: 0 }), dispatchAdvanceReminders: () => task('advance') }));
 vi.mock('./booking-lifecycle-delivery', () => ({ deliverBookingLifecycleEvents: () => task('booking') }));
 vi.mock('./tour-delivery-service', () => ({ deliverTourEvents: () => task('tour') }));
 vi.mock('./outcome-delivery', () => ({ deliverOutcomeEmails: () => task('outcome') }));
