@@ -656,7 +656,7 @@
   "dcV2Refresh": "Refresh",
   "dcV2Retry": "Try again",
   "dcV2PaymentTitle": "Pay this claim",
-  "dcV2PaymentIntro": "You confirm this payment. Your bank may ask you to verify your card.",
+  "dcV2PaymentIntro": "Your payment is being processed. Your bank may ask you to verify it.",
   "dcV2PaymentUnavailable": "Card payment is unavailable right now. Contact Local Cooks for help.",
   "dcV2AddCard": "Add your card below, then choose Pay.",
   "dcV2PaymentFailed": "Your card payment wasn’t completed. Please try again.",

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import i18n from 'i18next';
 import { formatVisitTime, friendlyTimezoneName } from '@/lib/visit-time';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { getAuthHeaders } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -108,7 +109,8 @@ function ProblemsPanel({ kind, id, canReport = false, staff = false, role = 'che
   const query = useCommitmentProblems(kind, id, role);
   const report = useMutation({
     mutationFn: () => problemRequest(path, 'POST', { description, requestKey, ...(intent?.category ? { category: intent.category } : {}) }),
-    onSuccess: () => { setReportOpen(false); setDescription(''); setRequestKey(crypto.randomUUID()); void queryClient.invalidateQueries({ queryKey: ['commitment-problems'] }); }
+    // A toast too: the inline line sits below the fold on a phone once the report form closes.
+    onSuccess: () => { toast.success(t('problemCopy41')); setReportOpen(false); setDescription(''); setRequestKey(crypto.randomUUID()); void queryClient.invalidateQueries({ queryKey: ['commitment-problems'] }); }
   });
   const reportingAvailable = canReport && query.data?.reportingAvailable && !!kind && !!id;
   const openToken = intent?.openToken;

@@ -653,7 +653,7 @@
   "dcV2Refresh": "Actualiser",
   "dcV2Retry": "Réessayer",
   "dcV2PaymentTitle": "Payer cette réclamation",
-  "dcV2PaymentIntro": "Vous confirmez ce paiement. Votre banque peut vous demander de vérifier votre carte.",
+  "dcV2PaymentIntro": "Votre paiement est en cours. Votre banque peut vous demander de le vérifier.",
   "dcV2PaymentUnavailable": "Le paiement par carte est indisponible. Contactez Local Cooks.",
   "dcV2AddCard": "Ajoutez votre carte ci-dessous, puis choisissez Payer.",
   "dcV2PaymentFailed": "Le paiement par carte n’a pas abouti. Réessayez.",

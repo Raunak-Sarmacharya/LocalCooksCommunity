@@ -198,7 +198,7 @@ export function NowClaimRows({ claims, manager, chefName, timezone, allowPrimary
     })}
     <Sheet open={!!open} onOpenChange={value => { if (!value) setOpen(null); }}>
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-xl">
-        <SheetHeader className="mb-4"><SheetTitle>{open ? tb(manager ? 'dcV2ViewingTitle' : 'dcV2ClaimTitle', { kitchen: kitchenOf(open), amount: amount(open) }) : ''}</SheetTitle><SheetDescription className="sr-only">{open ? amount(open) : ''}</SheetDescription></SheetHeader>
+        <SheetHeader className="mb-4 px-8 sm:pl-0"><SheetTitle>{open ? tb(manager ? 'dcV2ViewingTitle' : 'dcV2ClaimTitle', { kitchen: kitchenOf(open), amount: amount(open) }) : ''}</SheetTitle><SheetDescription className="sr-only">{open ? amount(open) : ''}</SheetDescription></SheetHeader>
         {open && <DamageClaimCard claim={open} manager={manager} hideTitle onChanged={() => { setOpen(null); onChanged(); }} />}
       </SheetContent>
     </Sheet>

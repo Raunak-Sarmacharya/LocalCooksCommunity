@@ -27,7 +27,7 @@ export function DamageClaimSheet({ bookingId, storageRentalId, visitId, chefName
   return <>
     {!hideTrigger && <Button variant="outline" onClick={() => setOpen(true)}>{t('dcV2Report')}</Button>}
     <Sheet open={open} onOpenChange={setOpen}><SheetContent className="w-full overflow-y-auto sm:max-w-xl">
-      <SheetHeader><SheetTitle>{t('dcV2Report')}</SheetTitle><SheetDescription>{t('dcV2FilingIntro')}</SheetDescription></SheetHeader>
+      <SheetHeader className="px-8 sm:pl-0"><SheetTitle>{t('dcV2Report')}</SheetTitle><SheetDescription>{t('dcV2FilingIntro')}</SheetDescription></SheetHeader>
       {open && <ClaimForm key={formKey} bookingId={bookingId} storageRentalId={storageRentalId} visitId={visitId} chefName={chefName}
         onDone={() => { setOpen(false); onFiled?.(); }} locale={i18n.language} />}
     </SheetContent></Sheet>
