@@ -169,7 +169,8 @@ export default function ChefDashboardLayout({
                 <main className="min-w-0 p-4 md:p-6 lg:p-8">
                     <div className="mx-auto max-w-7xl w-full min-w-0 animate-fade-in space-y-6">
                         <DamageClaimBookingHoldBanner />
-                        <ChefInvitationsBanner />
+                        {/* My bookings lists open invitations as cards itself. */}
+                        {activeView !== "bookings" && <ChefInvitationsBanner />}
                         {children}
                     </div>
                 </main>
