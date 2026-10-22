@@ -1705,7 +1705,7 @@ export default function BookingDetailsPage() {
     <BookingNowCard
       reference={bookingReference(booking.referenceCode, booking.id)}
       // A request that closed before the kitchen confirmed it was never booked.
-      bookedOn={t(cancelCause && !['cancelled_after_confirmation', 'cancelled'].includes(cancelCause) ? 'bdRequestedOn' : 'bdBookedOn', { date: formatShortDate(booking.createdAt) })}
+      bookedOn={t(booking.status === 'pending' || (cancelCause && !['cancelled_after_confirmation', 'cancelled'].includes(cancelCause)) ? 'bdRequestedOn' : 'bdBookedOn', { date: formatShortDate(booking.createdAt) })}
       title={isManagerView ? chefName : kitchenName}
       heroImage={heroSrc}
       leading={isManagerView ? <Avatar className="h-12 w-12 shrink-0"><AvatarFallback className="bg-muted text-sm font-semibold">{initials(chefName)}</AvatarFallback></Avatar> : undefined}

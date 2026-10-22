@@ -106,10 +106,10 @@ describe("pending booking page", () => {
     }
   });
 
-  it("labels the header date as the booking date, not the visit date", async () => {
+  it("labels a pending request with the request date (Requested, not Booked), not the visit date", async () => {
     render(<BookingDetailsPage />);
     // This year's dates drop the year.
-    expect(await screen.findByText(/^Booked [A-Z][a-z]{2} \d{1,2}$/)).toBeInTheDocument();
+    expect(await screen.findByText(/^Requested [A-Z][a-z]{2} \d{1,2}$/)).toBeInTheDocument();
   });
 
   it("tells the manager the consequence of not responding", async () => {
