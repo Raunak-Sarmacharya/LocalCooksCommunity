@@ -4251,6 +4251,13 @@ router.get(
       // When the customer may check in: the location's own window, so the kitchen sees the same time the customer does.
       const { getCheckinSettings } = await import('../services/kitchen-checkout-service');
       Object.assign(booking, { checkinWindowMinutesBefore: (await getCheckinSettings(kitchen.locationId)).checkinWindowMinutesBefore });
+      // Who cancelled, from the booking's own cancellation record: the header names them instead of a bare "was cancelled".
+      if (booking.status === 'cancelled') {
+        const [cancelled] = (await db.execute(sql`SELECT actor_id, metadata->>'kitchenCaused' AS kitchen_caused FROM booking_lifecycle_events
+          WHERE booking_id = ${booking.id} AND kind = 'cancelled' ORDER BY id DESC LIMIT 1`)).rows as Array<{ actor_id: number | null; kitchen_caused: string | null }>;
+        if (cancelled) Object.assign(booking, { cancelledBy: cancelled.kitchen_caused === 'true' || cancelled.actor_id === req.neonUser!.id ? 'kitchen'
+          : cancelled.actor_id != null && cancelled.actor_id === booking.chefId ? 'customer' : 'local_cooks' });
+      }
 
       // Get chef details
       let chef = null;

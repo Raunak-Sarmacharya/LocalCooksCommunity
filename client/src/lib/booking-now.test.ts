@@ -86,6 +86,13 @@ describe('copy per moment', () => {
     expect(bookingNowContent({ phase: 'completed', role: 'manager', facts: { ...facts, claimFilingOpen: false }, t }).secondary).not.toContain('report_damage');
     expect(bookingNowContent({ phase: 'confirmed', role: 'manager', facts, t }).secondary).not.toContain('report_damage');
   });
+  it('the kitchen sees who cancelled a booking', () => {
+    const sentence = (cancelledBy: BookingNowFacts['cancelledBy']) => bookingNowContent({ phase: 'cancelled', role: 'manager', facts: { ...facts, status: 'cancelled', cancelledBy }, t }).sentence;
+    expect(sentence('customer')).toBe('Ada Lovelace cancelled this booking. The refund and your payout are under Payment.');
+    expect(sentence('kitchen')).toMatch(/^You cancelled this booking\./);
+    expect(sentence('local_cooks')).toMatch(/^Local Cooks cancelled this booking\./);
+    expect(sentence(null)).toMatch(/^This booking was cancelled\./);
+  });
   it('the kitchen sees when the customer can check in, the same time the customer sees', () => {
     const k = { ...facts, opensClock: '9:45 a.m.' };
     expect(bookingNowContent({ phase: 'today', role: 'manager', facts: k, t }).sentence).toBe('Ada Lovelace arrives today at 10:00 a.m. and can check in from 9:45 a.m.');

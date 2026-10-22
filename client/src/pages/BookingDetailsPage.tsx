@@ -1451,6 +1451,7 @@ export default function BookingDetailsPage() {
     responseDeadline: responseDeadlineText, detailsReleaseAt,
     opensAt: visitBounds ? shortWhen(visitBounds.opensAt) : null,
     opensClock: visitBounds ? clockTime(visitBounds.opensAt) : null,
+    cancelledBy: (booking as { cancelledBy?: 'customer' | 'kitchen' | 'local_cooks' } | null)?.cancelledBy ?? null,
     startClock: visitBounds ? clockTime(visitBounds.startAt) : null,
     endClock: visitBounds ? clockTime(visitBounds.endAt) : null,
     endWithZone: visitBounds ? withZone(visitBounds.endAt) : null,

@@ -31,6 +31,8 @@ export interface BookingNowFacts {
   opensAt?: string | null;
   /** Check-in opening as a clock time (kitchen view, same day). */
   opensClock?: string | null;
+  /** Kitchen view of a cancelled booking: who cancelled it. */
+  cancelledBy?: 'customer' | 'kitchen' | 'local_cooks' | null;
   startClock?: string | null;
   endClock?: string | null;
   /** Booked end with the zone name ("12:00 p.m. Newfoundland Time"). */
@@ -161,6 +163,9 @@ function managerSentence(phase: BookingHeaderPhase, f: BookingNowFacts, t: T): s
     case 'cancelled':
       if (f.cancelCause === 'replaced' && f.replacedByRef) return t('bnManagerReplaced', { chef, ref: f.replacedByRef });
       if (f.cancelCause === 'declined' || f.cancelCause === 'expired' || f.cancelCause === 'withdrawn') return t(`bdhNextManager_${f.cancelCause}`, { chef });
+      if (f.cancelledBy === 'customer') return t('bnManagerCancelledByCustomer', { chef });
+      if (f.cancelledBy === 'kitchen') return t('bnManagerCancelledByKitchen');
+      if (f.cancelledBy === 'local_cooks') return t('bnManagerCancelledByLocalCooks');
       return t('bdhNextManagerCancelled');
     case 'confirmed': return f.arrivalMode === 'self' ? t('bnManagerUpcomingSelf', { chef }) : t('bdhNextManagerUpcoming', { chef });
     case 'today':
