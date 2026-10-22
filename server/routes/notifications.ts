@@ -135,10 +135,11 @@ async function getNotifications(
   const typeCondition = type ? sql`AND type = ${type}::notification_type` : sql``;
   const locationCondition = locationId ? sql`AND (location_id = ${locationId} OR location_id IS NULL)` : sql``;
 
-  // Get notifications with pagination. Metadata stays server-side: it can hold the other party's wording and internal money facts.
+  // Get notifications with pagination. Only the metadata keys the app reads (links, access alerts): the rest can hold the other party's wording and money facts.
   const notificationsResult = await db.execute(sql`
     SELECT 
       id, manager_id, location_id, type, priority, title, message, 
+      jsonb_strip_nulls(jsonb_build_object('bookingId', metadata->'bookingId', 'locationId', metadata->'locationId', 'viewingId', metadata->'viewingId', 'conversationId', metadata->'conversationId', 'chefName', metadata->'chefName', 'chefEmail', metadata->'chefEmail', 'step', metadata->'step')) AS metadata,
       is_read, read_at, is_archived, archived_at, 
       action_url, action_label, created_at, expires_at
     FROM manager_notifications

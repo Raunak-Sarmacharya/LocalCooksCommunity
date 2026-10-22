@@ -922,13 +922,14 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
                     baseAmount: txn.baseAmount ? parseFloat(txn.baseAmount) : null,
                     serviceFee: txn.serviceFee ? parseFloat(txn.serviceFee) : null,
                     taxAmount: txn.taxAmount != null ? parseFloat(txn.taxAmount) : null,
-                    managerRevenue: txn.managerRevenue ? parseFloat(txn.managerRevenue) : null,
+                    // The kitchen's payout and the raw transaction metadata (kitchen share, absorbed fees) are not the chef's.
+                    managerRevenue: null,
                     stripeProcessingFee: txn.stripeProcessingFee ? parseFloat(txn.stripeProcessingFee) : null,
                     refundAmount: txn.refundAmount ? parseFloat(txn.refundAmount) : 0,
-                    netAmount: txn.netAmount ? parseFloat(txn.netAmount) : null,
+                    netAmount: null,
                     refundedAt: txn.refundedAt || null,
                     refundReason: txn.refundReason || null,
-                    metadata: txn.metadata || null,
+                    metadata: null,
                     goodwillRefundCents: Number(txn.goodwillRefundCents) || 0,
                 };
             }

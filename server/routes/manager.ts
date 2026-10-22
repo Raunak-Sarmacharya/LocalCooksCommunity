@@ -3643,7 +3643,7 @@ router.get(
     try {
       const user = req.neonUser!;
       const bookings = await bookingService.getBookingsByManager(user.id);
-      const listed = await attachKitchenPayouts(await projectBookingCloseouts(bookings));
+      const listed = await withChefDisplayNames(await attachKitchenPayouts(await projectBookingCloseouts(bookings)));
       // A multi-day booking can be paid in several charges (the booking, then paid changes): its row shows the whole order.
       const dated = listed.filter(booking => (booking as { scheduleRevision?: number }).scheduleRevision).map(booking => booking.id);
       const orders = dated.length ? (await db.execute(sql`SELECT booking_id, SUM(amount::numeric)::bigint AS charged, SUM(COALESCE(refund_amount, '0')::numeric)::bigint AS refunded
@@ -4015,7 +4015,7 @@ router.get(
       const location = kitchen && await locationService.getLocationById(kitchen.locationId);
       if (!location || location.managerId !== req.neonUser!.id) return res.status(404).json({ error: 'Kitchen not found' });
       const bookings = await bookingService.getBookingsByKitchen(kitchenId);
-      res.json(bookings);
+      res.json(await withChefDisplayNames(bookings));
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
@@ -4078,7 +4078,6 @@ router.get(
           checkoutChecklistItems: kitchenBookings.checkoutChecklistItems,
           kitchenName: kitchens.name,
           locationName: locations.name,
-          chefEmail: users.username,
           locationId: locations.id,
           timezone: locations.timezone,
         })

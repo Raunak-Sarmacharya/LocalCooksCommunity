@@ -187,7 +187,8 @@ export class BookingRepository {
                     AND e.visit_id IS NULL ORDER BY e.id DESC LIMIT 1), '') = 'report_attended' END`,
                 kitchen: kitchens,
                 location: locations,
-                chef: users,
+                // Only the id: the full users row carried the password column, token hashes and the login email to the kitchen.
+                chef: { id: users.id },
                 // Chef's full name from chef_kitchen_applications table
                 chefFullName: chefKitchenApplications.fullName,
                 // Kitchen tax rate for revenue calculations
@@ -378,9 +379,9 @@ export class BookingRepository {
                 attendanceReviewComplete: row.attendanceReviewComplete,
                 kitchen: row.kitchen,
                 location: { ...row.location, cancellationPolicyHours: mappedBooking.cancellationPolicyHours ?? row.location.cancellationPolicyHours },
-                chef: row.chef,
-                // Use full name from chef_kitchen_applications if available, otherwise fall back to username (email)
-                chefName: row.chefFullName || row.chef?.username,
+                chef: { id: row.chef?.id, fullName: row.chefFullName ?? null },
+                // Application name; the route fills a safe display name (never the email) when missing.
+                chefName: row.chefFullName || null,
                 kitchenName: row.kitchen.name,
                 locationName: row.location.name,
                 locationId: row.location.id,
@@ -425,8 +426,8 @@ export class BookingRepository {
         return db
             .select({
                 ...getKitchenBookingSelection(),
-                chefName: sql<string>`COALESCE(${chefKitchenApplications.fullName}, ${users.username})`.as('chef_name'),
-                chefEmail: sql<string>`COALESCE(${chefKitchenApplications.email}, ${users.username})`.as('chef_email'),
+                // Never the login email: no emails on the kitchen's booking lists (the route fills a display name).
+                chefName: sql<string | null>`${chefKitchenApplications.fullName}`.as('chef_name'),
             })
             .from(kitchenBookings)
             .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
