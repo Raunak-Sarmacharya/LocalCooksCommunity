@@ -7,6 +7,7 @@ import * as Sentry from '@sentry/node';
 import { initializeFirebaseAdmin } from "./firebase-setup.js";
 import { registerFirebaseRoutes } from "./firebase-routes.js";
 import { registerRoutes } from "./routes.js";
+import { hideServerErrors } from './hide-server-errors.js';
 import { registerInngest, registerLifecycleWorkerEndpoints } from './lifecycle-inngest';
 import { log, serveStatic, setupVite } from "./vite.js";
 import { registerSecurityMiddleware } from "./security.js";
@@ -32,6 +33,8 @@ app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }));
 // JSON parsing for all other routes
 app.use(express.json({ limit: '12mb' }));
 app.use(express.urlencoded({ limit: '12mb', extended: true }));
+// Internal error text (SQL, stack details) never reaches a person; see hide-server-errors.
+app.use(hideServerErrors);
 // Inngest authenticates signed requests before optional Firebase/host routing or
 // database-backed rate-limit middleware. This endpoint cannot accept Bearer cron calls.
 registerInngest(app);
