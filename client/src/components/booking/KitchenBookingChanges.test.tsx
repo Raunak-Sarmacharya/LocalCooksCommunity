@@ -32,6 +32,23 @@ describe('open change on the booking page', () => {
     await waitFor(() => expect(calls.length).toBeGreaterThan(0));
     expect(container).toBeEmptyDOMElement();
   });
+  it('chef: a declined request says so for a week, the kitchen never sees it, and an old one is gone', async () => {
+    const ended = (at: string) => ({ ...open({ state: 'declined' }), steps: [{ state: 'authorized', at: '2020-01-01T00:00:00Z' }, { state: 'declined', at }] });
+    routes = { '/changes': { original, canRequest: { allowed: true }, history: [ended(new Date().toISOString())], timezone: 'America/St_Johns' } };
+    const { unmount } = render(<KitchenBookingChanges bookingId={10} manager={false} counterpart="PHASE0 Main Kitchen" onChanged={async () => {}} />);
+    const row = await screen.findByTestId('booking-change-ended');
+    expect(row).toHaveTextContent(/PHASE0 Main Kitchen couldn’t move your booking to/);
+    expect(row).toHaveTextContent(/Your booking stays .*\. Nothing extra was charged\./);
+    unmount();
+    const kitchen = render(<KitchenBookingChanges bookingId={10} manager counterpart="Sam Chef" onChanged={async () => {}} />);
+    await waitFor(() => expect(calls.length).toBeGreaterThan(1));
+    expect(kitchen.container).toBeEmptyDOMElement();
+    kitchen.unmount();
+    routes = { '/changes': { original, canRequest: { allowed: true }, history: [ended('2020-01-02T00:00:00Z')], timezone: 'America/St_Johns' } };
+    const old = render(<KitchenBookingChanges bookingId={10} manager={false} counterpart="PHASE0 Main Kitchen" onChanged={async () => {}} />);
+    await waitFor(() => expect(calls.length).toBeGreaterThan(2));
+    expect(old.container).toBeEmptyDOMElement();
+  });
   it('chef: what was asked, until when, the hold, and a way to withdraw', async () => {
     routes = { '/changes': { original, canRequest: { allowed: false }, open: open(), timezone: 'America/St_Johns' } };
     render(<KitchenBookingChanges bookingId={10} manager={false} counterpart="PHASE0 Main Kitchen" onChanged={async () => {}} />);

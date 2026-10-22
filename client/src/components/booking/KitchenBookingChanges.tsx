@@ -21,7 +21,7 @@ type Money = { oldTotalCents: number; newTotalCents: number; payCents: number; r
 type Change = { id: string; state: string; revision: number; original: AnyChangeSchedule; destination: AnyChangeSchedule; money: Money;
   decisionBy: string; freeCancelAfter?: string; canDecide: boolean; canWithdraw: boolean; cardDeclined?: boolean;
   /** Kitchen view only: its payout change in cents (+ more, − less), before the card processing fee. */ kitchenPayoutChangeCents?: number };
-type Changes = { original: AnyChangeSchedule; dated?: boolean; canRequest: { allowed: boolean; reason?: string; code?: string; values?: Record<string, unknown>; until?: string }; open?: Change; timezone: string | null;
+type Changes = { original: AnyChangeSchedule; dated?: boolean; canRequest: { allowed: boolean; reason?: string; code?: string; values?: Record<string, unknown>; until?: string }; open?: Change; history?: Array<Change & { steps?: Array<{ state: string; at: string }> }>; timezone: string | null;
   /** The kitchen's booking length limits (hours), same as new bookings. */ limits?: { minHours: number; maxHours: number };
   /** The current refund deadline, to say whether a change moves it. */ freeCancelUntil?: string };
 type Preview = { destination: AnyChangeSchedule; money: Money; decisionBy: string; freeCancelAfter?: string; quoteHash: string };
@@ -71,7 +71,16 @@ export function KitchenBookingChanges({ bookingId, manager, onChanged, timezone,
   const load = () => api<Changes>(`/api/bookings/${bookingId}/changes`).then(setData).catch(() => {});
   useEffect(() => { void load(); const timer = setInterval(() => void load(), 30_000); return () => clearInterval(timer); }, [bookingId]);
   const open = data?.open;
-  if (!open) return null;
+  if (!open) {
+    // The customer's last request was turned down or ran out: say so on the booking for a week, not only in the history.
+    const last = manager ? undefined : data?.history?.[0];
+    const endedAt = last?.steps?.at(-1)?.at;
+    if (!last || !['declined', 'expired'].includes(last.state) || !endedAt || Date.now() - Date.parse(endedAt) > 7 * 86_400_000) return null;
+    return <NowAttentionRow data-testid="booking-change-ended" tone="info">
+      <p className="font-medium">{t(last.state === 'declined' ? 'chgDeclinedChefTitle' : 'chgExpiredChefTitle', { kitchen: counterpart, when: f.schedule(last.destination) })}</p>
+      <p className="text-sm">{t('chgEndedChefBody', { was: f.schedule(last.original) })}</p>
+    </NowAttentionRow>;
+  }
   const act = async (work: () => Promise<unknown>) => {
     setBusy(true); setError('');
     try { await work(); await load(); await onChanged(); setDeclining(false); setMessage(''); }
