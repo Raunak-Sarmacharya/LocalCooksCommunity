@@ -262,6 +262,7 @@
   "stcRedirecting": "Ouverture du paiement sécurisé…",
   "stcPriceChanged": "Le prix est maintenant de {amount}. Vérifiez-le, puis touchez de nouveau le bouton.",
   "stcNoListing": "Cet entreposage n’est pas disponible pour le moment.",
+  "stcPickListing": "Choisissez l’espace d’entreposage voulu chez {kitchen}.",
   "stcApplyTitle": "Postulez d’abord à cette cuisine",
   "stcApplyBody": "Vous pourrez louer de l’entreposage chez {kitchen} une fois votre demande approuvée.",
   "stcApply": "Postuler d’abord à cette cuisine",

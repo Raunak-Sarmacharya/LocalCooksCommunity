@@ -3,7 +3,7 @@
  * The price is the server's quote; it is re-quoted silently right before checkout, so reading the terms never expires it.
  */
 import { useEffect, useMemo, useState } from "react"
-import { Link, useLocation } from "wouter"
+import { Link, useLocation, useSearch } from "wouter"
 import { keepPreviousData, useQuery } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { Minus, Plus } from "lucide-react"
@@ -12,7 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { StoragePageShell } from "@/components/storage/StoragePageShell"
 import { CheckoutCancellationDisclosure, CheckoutConsentNotice } from "@/components/booking/CheckoutCancellationDisclosure"
 import { PublishedCancellationPolicySummary, type PolicyResponse } from "@/components/booking/CancellationPolicySummary"
-import { StorageListingDetails } from "@/components/storage/StorageRentCta"
+import { StorageListingDetails, StorageRentCta } from "@/components/storage/StorageRentCta"
 import { SmartImage } from "@/components/ui/smart-image"
 import { getR2ProxyUrl } from "@/utils/r2-url-helper"
 import { apiGet } from "@/lib/api"
@@ -30,11 +30,14 @@ export default function ChefStorageRequestPage() {
   const locale = i18n.language
   const { t: tc } = useTranslation("chef")
   const [, navigate] = useLocation()
-  const params = new URLSearchParams(window.location.search)
+  const params = new URLSearchParams(useSearch())
   const kitchenId = Number(params.get("kitchenId")), listingId = Number(params.get("listingId"))
-  const valid = Number.isSafeInteger(kitchenId) && kitchenId > 0 && Number.isSafeInteger(listingId) && listingId > 0
+  const validKitchen = Number.isSafeInteger(kitchenId) && kitchenId > 0
+  const valid = validKitchen && Number.isSafeInteger(listingId) && listingId > 0
+  // A kitchen without a listing (an older link, or the kitchen page's general entry): let the chef pick one instead of a dead end.
+  const pickListing = validKitchen && !params.get("listingId")
 
-  const listings = useQuery({ queryKey: ["storage-availability", kitchenId], queryFn: () => storageAvailability(kitchenId), enabled: valid })
+  const listings = useQuery({ queryKey: ["storage-availability", kitchenId], queryFn: () => storageAvailability(kitchenId), enabled: validKitchen })
   const listing = listings.data?.find(row => row.listingId === listingId)
   const timezone = listing?.timezone || "America/St_Johns"
   const today = localToday(new Date(), timezone)
@@ -93,7 +96,16 @@ export default function ChefStorageRequestPage() {
     ...(listing?.locationId ? [{ label: kitchen, onClick: () => navigate(`/kitchen-preview/${listing.locationId}?kitchenId=${kitchenId}`) }] : []),
   ] }), [tc, navigate, listing?.locationId, kitchen, kitchenId])
   return <StoragePageShell crumb={t("stcRequestTitle")} parent={parent}>
-    {!valid || listings.error || (listings.data && !listing) ? <div role="alert" className="space-y-3 rounded-2xl border p-5">
+    {pickListing && listings.data?.some(row => row.availability.state !== "full") ? <section className="space-y-3" data-testid="storage-pick">
+      <header className="space-y-1">
+        <h1 className="text-2xl font-semibold tracking-tight">{t("stcRentStorage")}</h1>
+        <p className="text-sm text-muted-foreground">{t("stcPickListing", { kitchen: listings.data[0].kitchenName || t("stcTheKitchen") })}</p>
+      </header>
+      <div className="rounded-2xl border px-4 sm:px-5">
+        <StorageRentCta kitchenId={kitchenId} canBook listings={listings.data} onApply={() => navigate("/dashboard?view=discover-kitchens")} />
+      </div>
+    </section> : pickListing && !listings.data && !listings.error ? <div role="status" aria-label={t("stcLoading")}><Skeleton className="h-64 w-full rounded-2xl" /></div>
+    : !valid || listings.error || (listings.data && !listing) ? <div role="alert" className="space-y-3 rounded-2xl border p-5">
       <p className="text-sm">{t("stcNoListing")}</p>
       <Button asChild variant="outline" className="min-h-11"><Link href="/storage">{t("stcBackToStorage")}</Link></Button>
     </div> : !listing ? <div role="status" aria-label={t("stcLoading")} className="space-y-3"><Skeleton className="h-20 w-full rounded-2xl" /><Skeleton className="h-64 w-full rounded-2xl" /></div> : <>

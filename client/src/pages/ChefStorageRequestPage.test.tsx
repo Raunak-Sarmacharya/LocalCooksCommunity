@@ -7,7 +7,7 @@ import i18n from "@/i18n"
 const state = vi.hoisted(() => ({ approved: true, quoteTotal: 3500, calls: [] as Array<[string, Record<string, unknown> | undefined]>, navigate: vi.fn() }))
 vi.mock("@/lib/api", () => ({ getAuthHeaders: async () => ({}), apiGet: async () => null }))
 vi.mock("@/lib/session-extensions", () => ({ newRequestKey: () => "key-12345678", completeCardAction: vi.fn() }))
-vi.mock("wouter", () => ({ useLocation: () => ["/storage/new", state.navigate], Link: ({ href, children }: { href: string; children: React.ReactNode }) => <a href={href}>{children}</a> }))
+vi.mock("wouter", () => ({ useLocation: () => ["/storage/new", state.navigate], useSearch: () => window.location.search.slice(1), Link: ({ href, children }: { href: string; children: React.ReactNode }) => <a href={href}>{children}</a> }))
 vi.mock("@/components/storage/StoragePageShell", () => ({ StoragePageShell: ({ children }: { children: React.ReactNode }) => <main>{children}</main> }))
 vi.mock("@/components/booking/CancellationPolicySummary", () => ({ PublishedCancellationPolicySummary: () => <p>Cancellation policy line</p> }))
 vi.mock("@/components/booking/CheckoutCancellationDisclosure", () => ({
@@ -125,5 +125,16 @@ describe("rent storage stepper", () => {
     for (const button of container.querySelectorAll("button")) expect(button.className).toMatch(/\bmin-h-1[12]\b|\bh-11\b/)
     const wide = [...container.querySelectorAll<HTMLElement>("[class]")].flatMap(el => [...(el.getAttribute("class") ?? "").matchAll(/\b(?:min-)?w-\[(\d+)px\]/g)].map(m => Number(m[1])))
     expect(wide.filter(px => px > 390)).toEqual([])
+  })
+
+  it("with only a kitchen, lists its open storage to pick from instead of a dead end", async () => {
+    window.history.pushState({}, "", "/storage/new?kitchenId=1")
+    show()
+    const pick = await screen.findByTestId("storage-pick")
+    expect(within(pick).getByRole("heading", { name: "Rent storage" })).toBeInTheDocument()
+    expect(within(pick).getByText("Choose the storage you want at Harbour Kitchen.")).toBeInTheDocument()
+    expect(within(pick).getByText("Dry shelf")).toBeInTheDocument()
+    expect(within(pick).getByRole("link")).toHaveAttribute("href", "/storage/new?kitchenId=1&listingId=4")
+    expect(screen.queryByText("This storage isn’t available right now.")).not.toBeInTheDocument()
   })
 })

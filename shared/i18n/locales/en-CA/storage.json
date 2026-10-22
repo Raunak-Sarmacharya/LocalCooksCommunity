@@ -262,6 +262,7 @@
   "stcRedirecting": "Opening secure checkout…",
   "stcPriceChanged": "The price is now {amount}. Check it, then tap the button again.",
   "stcNoListing": "This storage isn’t available right now.",
+  "stcPickListing": "Choose the storage you want at {kitchen}.",
   "stcApplyTitle": "Apply to this kitchen first",
   "stcApplyBody": "You can rent storage at {kitchen} once your application is approved.",
   "stcApply": "Apply to this kitchen first",
