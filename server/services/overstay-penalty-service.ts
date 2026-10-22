@@ -1168,7 +1168,7 @@ async function sendOverstayNotificationEmails(data: OverstayEmailData): Promise<
     if (location && location.notificationEmail) {
       const managerEmail = generateOverstayManagerNotificationEmail({
         managerEmail: location.notificationEmail,
-        chefName: booking.chefEmail || 'Chef',
+        chefName: booking.chefEmail || 'Customer',
         chefEmail: booking.chefEmail || '',
         storageName: listing.name || 'Storage',
         kitchenName: kitchen.name || 'Kitchen',

@@ -29,7 +29,7 @@ export function StorageRequestCard({ rental, onDone }: { rental: StorageRental; 
   const [saving, setSaving] = useState(false);
   const total = rentalTotalCents(rental);
   const payoutLine = rental.estimatedPayoutCents != null
-    ? t("stRequestPayout", { total: formatCurrency(total), payout: formatCurrency(rental.estimatedPayoutCents) })
+    ? t("stRequestPayout", { chef, total: formatCurrency(total), payout: formatCurrency(rental.estimatedPayoutCents) })
     : t("stRequestTotal", { amount: formatCurrency(total) });
   const canApprove = rental.actions.includes("approve");
   const canDecline = rental.actions.includes("decline");

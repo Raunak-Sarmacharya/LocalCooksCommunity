@@ -146,7 +146,7 @@ export function StorageRentalDetail({ rentalId }: { rentalId: number }) {
         <Info className={warning ? 'h-4 w-4 text-amber-700' : 'h-4 w-4 text-muted-foreground'} />
         <AlertDescription className="space-y-3">
           <p className="text-sm font-medium">{t(`stSituation_${situation}` as never, { chef, date: date(rental.startOn), end: date(rental.paidThrough), moveOut: date(rental.moveOutBy || rental.paidThrough), grace: date(rental.graceEndsOn), days: rental.holdoverDays, amount: formatCurrency(rental.accruedCents, 'CAD', i18n.language) })}</p>
-          {prominentActions[situation] && <p className="text-sm text-muted-foreground">{t(`stNextStep_${situation}` as never)}</p>}
+          {prominentActions[situation] && <p className="text-sm text-muted-foreground">{t(`stNextStep_${situation}` as never, { chef })}</p>}
           {situation === 'overdue' && !rental.actions.includes('release') && <p className="text-sm text-muted-foreground">{t('stReleaseAvailableOn', { date: date(addDays(rental.startOn, NO_MOVE_IN_RELEASE_DAYS)) })}</p>}
           <div className="flex flex-wrap items-center gap-2">
             {canMessage && <StorageMessageButton rentalId={rental.id} chef={chef} />}
