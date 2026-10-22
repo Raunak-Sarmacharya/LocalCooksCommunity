@@ -1019,7 +1019,6 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
             checkinWindowMinutesBefore: checkinSettings.checkinWindowMinutesBefore,
             noShowGraceMinutes: checkinSettings.noShowGraceMinutes,
             kitchenContact: kitchenContact ? {
-                email: kitchenContact.email,
                 // The kitchen's public business number first (owner, Oct 21); else the manager's verified phone.
                 phone: kitchenContact.businessPhone || (kitchenContact.phoneVerifiedAt ? kitchenContact.phone : null),
                 hostName: await (await import('../services/booking-people')).readKitchenHostName(kitchenContact.managerId, kitchenContact.email),

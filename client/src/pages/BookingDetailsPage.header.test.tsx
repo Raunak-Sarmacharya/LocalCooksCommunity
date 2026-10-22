@@ -65,7 +65,7 @@ const base = () => ({
   kitchen: { id: 2, name: "Harbour Kitchen", locationId: 3 },
   location: { id: 3, name: "Harbour", address: "1 Water St, St. John's", timezone: "America/St_Johns" },
   chef: { id: 1, username: "ada@example.com", fullName: "Ada Lovelace", phone: "+17095550101" },
-  kitchenContact: { email: "kitchen@example.com", phone: "+17095550199", hostName: "Sam Host" },
+  kitchenContact: { phone: "+17095550199", hostName: "Sam Host" },
 });
 const closeout = (deadline: string) => ({ phase: "booked_time_ended", timezone: "America/St_Johns", serviceEndedAt: "2030-01-15T15:30:00Z",
   visits: [{ key: "b", phase: "booked_time_ended", arrivalRecorded: true, scheduledStartAt: "2030-01-15T13:30:00Z", scheduledEndAt: "2030-01-15T15:30:00Z",

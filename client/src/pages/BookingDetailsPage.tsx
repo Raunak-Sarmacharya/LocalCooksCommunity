@@ -143,7 +143,7 @@ interface BookingDetails {
   createdAt: string;
   updatedAt?: string;
   paymentIntentId?: string;
-  kitchenContact?: { email: string; phone: string | null; hostName?: string | null } | null;
+  kitchenContact?: { phone: string | null; hostName?: string | null } | null;
   kitchen?: {
     id: number;
     name: string;
