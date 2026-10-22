@@ -49,7 +49,7 @@ export function BookingHistoryPanel({ id, version, reference, role, timezone, ca
   };
   // "Thu, Nov 5 cancelled by the kitchen · $250.10 refunded": which day, who, and what came back.
   const dayText = (event: BookingHistoryResponse['events'][number]) => {
-    if (!event.dayDate) return t(`historyEvents.${event.kind}` as const);
+    if (!event.dayDate) return t('historyEvents.day_cancelled');
     const date = new Intl.DateTimeFormat(i18n.resolvedLanguage || 'en-CA', { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' }).format(new Date(`${event.dayDate}T12:00:00Z`));
     const refunded = event.amountCents ? t('historyDayRefunded', { amount: money(event.amountCents) }) : '';
     if (event.kind === 'refund_issued') return t('historyDayRefund', { date, amount: money(event.amountCents ?? 0) });
