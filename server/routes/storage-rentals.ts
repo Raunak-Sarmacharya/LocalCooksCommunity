@@ -38,7 +38,11 @@ const extensionPayment = extensionQuote.extend({ expectedTotalCents: z.number().
 
 export function endpoint(run: (req: Request) => Promise<unknown>) {
   return async (req: Request, res: Response) => {
-    try { res.json(await run(req)); }
+    try {
+      res.json(await run(req));
+      // Storage actions queue notices (customer, kitchen, admins); send them now rather than on the worker's slow tick.
+      if (req.method !== 'GET') attemptOutcomeDeliveryAfterResponse();
+    }
     catch (error) {
       const known = error instanceof StorageRentalError || error instanceof StorageRefundError;
       const code = error instanceof z.ZodError ? 'invalid_details' : known ? error.code : error instanceof BookingMoneyFrozen ? 'payment_review' : 'unavailable';
@@ -93,7 +97,6 @@ router.get('/chef/storage-rentals/:id/cancel/preview', endpoint(req => previewSt
 router.post('/chef/storage-rentals/:id/cancel', endpoint(async req => {
   const rentalId = id.parse(req.params.id), actor = { id: req.neonUser!.id, role: 'chef' as const };
   const result = await cancelStorageRental(rentalId, actor.id, cancel.parse(req.body ?? {}));
-  attemptOutcomeDeliveryAfterResponse();
   return { ...(await readRental(rentalId, actor)), refundPending: result.refunds.some(refund => refund.status !== 'succeeded') };
 }));
 

@@ -23,11 +23,20 @@ const body = { ...details, requestKey: 'request_123', expectedTotalCents: 7000, 
 async function call(method: string, path: string, data: unknown = body, param = '7') {
   const route = (router as any).stack.find((r: any) => r.route?.path === path && r.route.methods[method]).route;
   const res: any = { json: vi.fn(), status: vi.fn().mockReturnThis() };
-  await route.stack[0].handle({ body: data, params: { id: param, termId: '9' }, neonUser: user, path }, res);
+  await route.stack[0].handle({ method: method.toUpperCase(), body: data, params: { id: param, termId: '9' }, neonUser: user, path }, res);
   return res;
 }
 beforeEach(() => { vi.resetAllMocks(); h.read.mockResolvedValue({ id: 7, actions: [] }); });
 describe('storage rental API contract', () => {
+  it('every successful storage action sends its queued notices after the response; reads and failures do not', async () => {
+    h.visit.mockResolvedValue(undefined);
+    await call('post', '/chef/storage-rentals/:id/move-in', {});
+    expect(h.deliver).toHaveBeenCalledTimes(1);
+    await call('get', '/chef/storage-rentals/:id', {});
+    h.visit.mockRejectedValue(new StorageRentalError('not_allowed'));
+    await call('post', '/chef/storage-rentals/:id/move-in', {});
+    expect(h.deliver).toHaveBeenCalledTimes(1);
+  });
   it('cancels for the authenticated chef with a validated key, then delivers notices after the response', async () => {
     h.cancel.mockResolvedValue({ rentalId: 7, refunds: [{ status: 'succeeded' }] });
     const res = await call('post', '/chef/storage-rentals/:id/cancel', { operationKey: 'cancel-key-1', reason: ' Moved ', expectedRefundCents: 3417, chefId: 99, amountCents: 1 });

@@ -159,7 +159,8 @@ export async function runRecurringWorker(cancellations: () => Promise<unknown>, 
         { name: 'advance', budgetMs: deliveryTaskMs, run: () => dispatchAdvanceReminders({ limit: 3, budgetMs: deliveryTaskMs }) },
         { name: 'booking', budgetMs: deliveryTaskMs, run: () => deliverBookingLifecycleEvents(1, deliveryTaskMs) },
         { name: 'tour', budgetMs: deliveryTaskMs, run: () => deliverTourEvents(undefined, 1, deliveryTaskMs) },
-        { name: 'outcome', budgetMs: deliveryTaskMs, run: () => deliverOutcomeEmails(1, deliveryTaskMs) },
+        // One action queues a notice per person (customer, kitchen, admins), so a tick sends a batch; the budget still caps it.
+        { name: 'outcome', budgetMs: deliveryTaskMs, run: () => deliverOutcomeEmails(5, deliveryTaskMs) },
         { name: 'chat', budgetMs: deliveryTaskMs, run: () => dispatchChatDigests(1, deliveryTaskMs) },
         { name: 'invitations', budgetMs: deliveryTaskMs, run: async () => (await import('./kitchen-invitations')).deliverKitchenInvitationEvents(1) },
         // Retries access-ended and document-expiry notices that were not accepted inline.
