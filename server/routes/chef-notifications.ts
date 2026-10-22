@@ -61,11 +61,11 @@ async function getNotifications(
 
   const typeCondition = type ? sql`AND type = ${type}::chef_notification_type` : sql``;
 
-  // Get notifications
+  // Get notifications. Metadata stays server-side: it can hold the other party's wording and internal money facts.
   const notificationsResult = await db.execute(sql`
     SELECT 
       id, chef_id, type, priority, title, message, 
-      metadata, is_read, read_at, is_archived, archived_at, 
+      is_read, read_at, is_archived, archived_at, 
       action_url, action_label, created_at, expires_at
     FROM chef_notifications
     WHERE chef_id = ${chefId}
