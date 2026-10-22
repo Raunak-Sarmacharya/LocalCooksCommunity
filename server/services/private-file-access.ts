@@ -27,7 +27,7 @@ export async function canReadPrivateFile(actor: ChatActor | undefined, url: stri
   if (!actor) return false;
   if (actor.role === 'admin') return true;
   if (filename.startsWith(`${actor.id}_`)) return true;
-  // Visit and storage condition photos are evidence for both people on that booking: the customer and the kitchen's manager.
+  // Condition photos and damage claim files are evidence for both people on that booking: the customer and the kitchen's manager.
   if (await isBookingPhotoParticipant(actor.id, url)) return true;
   // Chefs must read the listed kitchen's terms before they have an application.
   // This grants only the exact terms URL, never the other facility documents.
@@ -65,7 +65,8 @@ export async function canReadPrivateFile(actor: ChatActor | undefined, url: stri
   return false;
 }
 
-/** True when the URL is a check-in/out or handover photo on a kitchen booking, visit or storage rental the actor is party to. */
+/** True when the URL is a check-in/out or handover photo on a kitchen booking, visit or storage rental the actor is party to,
+ * or a damage claim file (the chef only once Local Cooks has sent them the claim). */
 async function isBookingPhotoParticipant(actorId: number, url: string) {
   const has = (column: string) => sql.raw(`COALESCE(${column}, '[]'::jsonb)`);
   const value = JSON.stringify([url]);
@@ -84,6 +85,9 @@ async function isBookingPhotoParticipant(actorId: number, url: string) {
       WHERE (s.chef_id = ${actorId} OR l.manager_id = ${actorId})
         AND (${has('s.checkin_photo_urls')} @> ${value}::jsonb OR ${has('s.checkout_photo_urls')} @> ${value}::jsonb
           OR ${has('s.handover_photo_urls')} @> ${value}::jsonb)
+    UNION ALL
+    SELECT 1 FROM damage_evidence e JOIN damage_claims c ON c.id = e.damage_claim_id
+      WHERE e.file_url = ${url} AND (c.manager_id = ${actorId} OR (c.chef_id = ${actorId} AND c.chef_visible_at IS NOT NULL))
     LIMIT 1`);
   return result.rows.length > 0;
 }

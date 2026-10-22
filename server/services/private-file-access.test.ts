@@ -61,6 +61,8 @@ it('booking condition photos: readable by the people on that booking (customer a
   const query = new PgDialect().sqlToQuery(state.photoQueries.at(-1));
   expect(query.sql).toMatch(/storage_bookings[\s\S]*handover_photo_urls/);
   expect(query.sql).toMatch(/kitchen_booking_visits/);
+  // Damage claim files: the chef only once Local Cooks has sent the claim.
+  expect(query.sql).toMatch(/damage_evidence[\s\S]*c\.chef_visible_at IS NOT NULL/);
   expect(query.params).toContain(379);
   expect(query.params).toContain(JSON.stringify([photo]));
   expect(await canReadPrivateFile(undefined, photo)).toBe(false);

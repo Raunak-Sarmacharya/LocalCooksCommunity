@@ -1,3 +1,5 @@
+import { PrivateFileLink } from '@/components/common/PrivateFileLink';
+import { SmartImage } from '@/components/ui/smart-image';
 import { lazy, Suspense, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -16,11 +18,11 @@ export function ClaimEvidence({ claim }: { claim: DamageClaimCardData }) {
     <div className="mt-3 grid gap-4 sm:grid-cols-2">{(['before', 'after'] as const).map(side => <section key={side}>
       <h3 className="text-sm font-medium">{t(side === 'before' ? 'dcV2Before' : 'dcV2After')}</h3>
       <p className="whitespace-pre-wrap text-sm">{claim.visitEvidence?.[side === 'before' ? 'checkinNotes' : 'checkoutNotes']}</p>
-      <div className="mt-2 grid grid-cols-2 gap-2">{claim.visitEvidence?.[side].map((url, index) => <a key={url} href={url} target="_blank" rel="noopener noreferrer">
-        <img src={url} className={`aspect-square w-full rounded-lg object-cover ${claim.visitEvidence?.highlighted?.includes(url) ? 'ring-2 ring-primary' : ''}`} alt={t('dcV2VisitPhoto', { number: index + 1 })} /></a>)}</div>
+      <div className="mt-2 grid grid-cols-2 gap-2">{claim.visitEvidence?.[side].map((url, index) => <PrivateFileLink key={url} url={url}>
+        <SmartImage src={url} className={`aspect-square w-full rounded-lg object-cover ${claim.visitEvidence?.highlighted?.includes(url) ? 'ring-2 ring-primary' : ''}`} alt={t('dcV2VisitPhoto', { number: index + 1 })} /></PrivateFileLink>)}</div>
     </section>)}</div>
     <ul className="mt-3 space-y-2 text-sm">{claim.evidence.map(item => <li key={item.id}>
-      <a className="underline break-all" href={item.fileUrl} target="_blank" rel="noopener noreferrer">{item.fileName || t('dcV2ViewFile')} · {item.uploadedBy === claim.chefId ? t('dcV2ChefEvidence') : t('dcV2KitchenEvidence')}</a>
+      <PrivateFileLink className="underline break-all" url={item.fileUrl}>{item.fileName || t('dcV2ViewFile')} · {item.uploadedBy === claim.chefId ? t('dcV2ChefEvidence') : t('dcV2KitchenEvidence')}</PrivateFileLink>
     </li>)}</ul>
   </details>;
 }
@@ -69,7 +71,7 @@ export function DamageClaimCard({ claim, manager = false, hideTitle = false, onC
     {manager && claim.status === 'in_review' && <p role="status">{t('dcV2FirstReview')}</p>}
     {claim.claimVersion !== 2 && <p>{t('dcV2LegacySupport')} <a className="underline" href={manager ? '/manager/dashboard?view=support' : '/dashboard?view=support'}>{t('dcV2Contact')}</a></p>}
     <p className="whitespace-pre-wrap text-sm">{claim.description}</p>
-    <ul className="space-y-2 text-sm">{claim.lines.map((line, index) => <li key={index}>{line.description} · {claimMoney(line.amountCents, i18n.language)} · <a href={line.document.fileUrl} className="underline" target="_blank" rel="noopener noreferrer">{line.document.fileName}</a></li>)}</ul>
+    <ul className="space-y-2 text-sm">{claim.lines.map((line, index) => <li key={index}>{line.description} · {claimMoney(line.amountCents, i18n.language)} · <PrivateFileLink url={line.document.fileUrl} className="underline">{line.document.fileName}</PrivateFileLink></li>)}</ul>
     {claim.amountCents < claim.claimedAmountCents && <p className="text-sm font-medium">{t('dcV2ApprovedOf', { approved: amount, claimed: claimMoney(claim.claimedAmountCents, i18n.language) })}</p>}
     {manager && claim.reviewRequest && claim.status === 'awaiting_kitchen' && <p className="rounded-lg bg-muted p-3 text-sm whitespace-pre-wrap">{claim.reviewRequest}</p>}
     {claim.publicMessage && !(manager && claim.status === 'awaiting_kitchen' && claim.publicMessage === claim.reviewRequest) && <p className="rounded-lg bg-muted p-3 text-sm whitespace-pre-wrap">{claim.publicMessage}</p>}

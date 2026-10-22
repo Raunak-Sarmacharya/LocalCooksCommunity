@@ -6,6 +6,7 @@
  * Detail dialog with full audit trail timeline, evidence, Stripe details, and booking context.
  */
 
+import { PrivateFileLink } from '@/components/common/PrivateFileLink';
 import { useState, useMemo, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { auth } from "@/lib/firebase";
@@ -700,9 +701,9 @@ export default function AdminDamageClaimsHistory({ getFirebaseToken: _getFirebas
                             </p>
                           </div>
                           {ev.fileUrl && (
-                            <a href={ev.fileUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline shrink-0 ml-2">
+                            <PrivateFileLink url={ev.fileUrl} className="text-xs text-blue-600 hover:underline shrink-0 ml-2">
                               View
-                            </a>
+                            </PrivateFileLink>
                           )}
                         </div>
                       ))}

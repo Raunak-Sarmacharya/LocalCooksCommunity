@@ -1,3 +1,4 @@
+import { PrivateFileLink } from '@/components/common/PrivateFileLink';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -72,8 +73,8 @@ function ClaimReview({ claim, bookingId, onChanged }: { claim: DamageClaimCardDa
       <section><h4 className="text-sm font-medium">{t('dcV2ChefStatement')}</h4><p className="text-sm whitespace-pre-wrap">{claim.chefResponse || t(firstReview ? 'dcV2ChefNotContacted' : 'dcV2NoResponse')}</p></section></div>
     <ClaimEvidence claim={{ ...claim, evidence: otherEvidence }} />
     {replyEvidence.length > 0 && <section className="rounded-lg border p-3"><h4 className="text-sm font-medium">{t('dcV2SentWithReply')}</h4>
-      <ul className="mt-2 space-y-1 text-sm">{replyEvidence.map(item => <li key={item.id}><a className="underline break-all" href={item.fileUrl} target="_blank" rel="noopener noreferrer">{item.fileName || t('dcV2ViewFile')}</a></li>)}</ul></section>}
-    <ul className="text-sm space-y-1">{claim.lines.map((line, index) => <li key={index}>{line.description} · {claimMoney(line.amountCents, i18n.language)} · <a className="underline" href={line.document.fileUrl} target="_blank" rel="noopener noreferrer">{line.document.fileName}</a></li>)}</ul>
+      <ul className="mt-2 space-y-1 text-sm">{replyEvidence.map(item => <li key={item.id}><PrivateFileLink className="underline break-all" url={item.fileUrl}>{item.fileName || t('dcV2ViewFile')}</PrivateFileLink></li>)}</ul></section>}
+    <ul className="text-sm space-y-1">{claim.lines.map((line, index) => <li key={index}>{line.description} · {claimMoney(line.amountCents, i18n.language)} · <PrivateFileLink className="underline" url={line.document.fileUrl}>{line.document.fileName}</PrivateFileLink></li>)}</ul>
     <ClaimTimeline claim={claim} />
     {(claim.compensationPending || claim.withdrawalPending || claim.kitchenPaymentPending) && <div className="space-y-2">
       <Button variant="outline" disabled={busy} onClick={async () => { setBusy(true); setError('');

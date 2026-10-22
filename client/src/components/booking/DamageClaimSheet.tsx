@@ -1,3 +1,5 @@
+import { PrivateFileLink } from '@/components/common/PrivateFileLink';
+import { SmartImage } from '@/components/ui/smart-image';
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -103,7 +105,7 @@ function ClaimForm({ bookingId, storageRentalId, visitId, chefName, onDone, loca
       <div className="grid grid-cols-2 gap-3">{['before', 'after'].map(side => <section key={side}><h3 className="text-sm font-medium mb-2">{storage
         ? t(side === 'before' ? 'stClaimBefore' : 'stClaimAfter', { ns: 'storage' })
         : t(side === 'before' ? 'dcV2Before' : 'dcV2After')}</h3>
-        {ctx[side as 'before' | 'after'].map((url, index) => <div key={url}><a href={url} target="_blank" rel="noopener noreferrer"><img className="mb-2 aspect-square w-full rounded-lg object-cover" src={url} alt={t('dcV2VisitPhoto', { number: index + 1 })} /></a>
+        {ctx[side as 'before' | 'after'].map((url, index) => <div key={url}><PrivateFileLink url={url}><SmartImage className="mb-2 aspect-square w-full rounded-lg object-cover" src={url} alt={t('dcV2VisitPhoto', { number: index + 1 })} /></PrivateFileLink>
           <label className="flex items-center gap-2 text-xs mb-2"><input type="checkbox" checked={selectedPhotoUrls.includes(url)} onChange={event => setSelectedPhotos(current => event.target.checked ? [...current, url] : current.filter(photo => photo !== url))} />{t('dcV2UsePhoto', { number: index + 1 })}</label></div>)}</section>)}</div>
       <label className="block space-y-2"><span>{t('dcV2AddPhoto')}</span><Input type="file" accept="image/*" disabled={isUploading} onChange={event => { const file = event.target.files?.[0]; if (file) void upload(file); }} /></label>
       {photos.map(photo => <p key={photo.fileUrl} className="text-sm">{photo.fileName}</p>)}
