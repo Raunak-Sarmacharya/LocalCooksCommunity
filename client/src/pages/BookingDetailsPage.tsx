@@ -1448,6 +1448,7 @@ export default function BookingDetailsPage() {
     chef: chefName, kitchen: kitchenName, cancelCause, status: booking?.status, suggestingOtherTimes: !!booking?.paymentDecision?.suggestingOtherTimes,
     responseDeadline: responseDeadlineText, detailsReleaseAt,
     opensAt: visitBounds ? shortWhen(visitBounds.opensAt) : null,
+    opensClock: visitBounds ? clockTime(visitBounds.opensAt) : null,
     startClock: visitBounds ? clockTime(visitBounds.startAt) : null,
     endClock: visitBounds ? clockTime(visitBounds.endAt) : null,
     endWithZone: visitBounds ? withZone(visitBounds.endAt) : null,

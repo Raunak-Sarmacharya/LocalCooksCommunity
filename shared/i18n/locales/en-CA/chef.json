@@ -3396,6 +3396,8 @@
   "bdhNextManagerCancelled": "This booking was cancelled.",
   "bdhNextChefCancelled": "This booking was cancelled. Refund details are under Payment.",
   "bdhNextManagerToday": "{chef} arrives today at {time}.",
+  "bnManagerTodayOpens": "{chef} arrives today at {time} and can check in from {opens}.",
+  "bnManagerCheckinOpen": "{chef} arrives at {time}. Check-in is open.",
   "bdhNextManagerUpcoming": "{chef} is booked. Share the check-in code with them in person when they arrive.",
   "bdhNextChefDetailsAt": "Arrival details arrive {time}.",
   "bdhNextChefDetailsReady": "Your arrival details are ready. Check-in opens {time}.",

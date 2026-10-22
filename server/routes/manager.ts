@@ -4244,6 +4244,9 @@ router.get(
       }
 
       Object.assign(booking, await getKitchenTrackingState(kitchen.id, booking.checkinStatus, booking.id));
+      // When the customer may check in: the location's own window, so the kitchen sees the same time the customer does.
+      const { getCheckinSettings } = await import('../services/kitchen-checkout-service');
+      Object.assign(booking, { checkinWindowMinutesBefore: (await getCheckinSettings(kitchen.locationId)).checkinWindowMinutesBefore });
 
       // Get chef details
       let chef = null;

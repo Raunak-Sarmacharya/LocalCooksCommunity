@@ -86,6 +86,12 @@ describe('copy per moment', () => {
     expect(bookingNowContent({ phase: 'completed', role: 'manager', facts: { ...facts, claimFilingOpen: false }, t }).secondary).not.toContain('report_damage');
     expect(bookingNowContent({ phase: 'confirmed', role: 'manager', facts, t }).secondary).not.toContain('report_damage');
   });
+  it('the kitchen sees when the customer can check in, the same time the customer sees', () => {
+    const k = { ...facts, opensClock: '9:45 a.m.' };
+    expect(bookingNowContent({ phase: 'today', role: 'manager', facts: k, t }).sentence).toBe('Ada Lovelace arrives today at 10:00 a.m. and can check in from 9:45 a.m.');
+    expect(bookingNowContent({ phase: 'checkin_open', role: 'manager', facts: k, t }).sentence).toBe('Ada Lovelace arrives at 10:00 a.m. Check-in is open.');
+    expect(bookingNowContent({ phase: 'today', role: 'manager', facts, t }).sentence).toBe('Ada Lovelace arrives today at 10:00 a.m.');
+  });
   it('bodies: arrival preparation for the chef, the code for the kitchen, only before the visit', () => {
     expect(bookingNowContent({ phase: 'confirmed', role: 'chef', facts, t }).body).toBe('preparation');
     expect(bookingNowContent({ phase: 'today', role: 'manager', facts, t }).body).toBe('code');

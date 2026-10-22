@@ -3396,6 +3396,8 @@
   "bdhNextManagerCancelled": "Cette réservation a été annulée.",
   "bdhNextChefCancelled": "Cette réservation a été annulée. Les détails du remboursement se trouvent sous Paiement.",
   "bdhNextManagerToday": "{chef} arrive aujourd’hui à {time}.",
+  "bnManagerTodayOpens": "{chef} arrive aujourd’hui à {time} et peut s’enregistrer dès {opens}.",
+  "bnManagerCheckinOpen": "{chef} arrive à {time}. L’enregistrement est ouvert.",
   "bdhNextManagerUpcoming": "{chef} a réservé. Communiquez-lui le code d’enregistrement en personne à son arrivée.",
   "bdhNextChefDetailsAt": "Les instructions d’arrivée seront disponibles le {time}.",
   "bdhNextChefDetailsReady": "Vos instructions d’arrivée sont prêtes. L’enregistrement ouvre le {time}.",

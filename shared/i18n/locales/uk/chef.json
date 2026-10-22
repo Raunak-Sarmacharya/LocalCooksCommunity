@@ -3396,6 +3396,8 @@
   "bdhNextManagerCancelled": "Це бронювання скасовано.",
   "bdhNextChefCancelled": "Це бронювання скасовано. Деталі повернення коштів — у розділі «Оплата».",
   "bdhNextManagerToday": "{chef} прибуде сьогодні о {time}.",
+  "bnManagerTodayOpens": "{chef} прибуде сьогодні о {time} і може зареєструватися з {opens}.",
+  "bnManagerCheckinOpen": "{chef} прибуде о {time}. Реєстрацію відкрито.",
   "bdhNextManagerUpcoming": "{chef} забронював(-ла). Назвіть код для відмітки особисто, коли кухар прийде.",
   "bdhNextChefDetailsAt": "Інструкції щодо прибуття з’являться {time}.",
   "bdhNextChefDetailsReady": "Ваші інструкції щодо прибуття готові. Реєстрація відкривається {time}.",

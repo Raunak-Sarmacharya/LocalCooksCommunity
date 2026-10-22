@@ -29,6 +29,8 @@ export interface BookingNowFacts {
   detailsReleaseAt?: string | null;
   /** Formatted "Jan 15, 9:45 a.m." when check-in opens. */
   opensAt?: string | null;
+  /** Check-in opening as a clock time (kitchen view, same day). */
+  opensClock?: string | null;
   startClock?: string | null;
   endClock?: string | null;
   /** Booked end with the zone name ("12:00 p.m. Newfoundland Time"). */
@@ -163,10 +165,11 @@ function managerSentence(phase: BookingHeaderPhase, f: BookingNowFacts, t: T): s
     case 'confirmed': return f.arrivalMode === 'self' ? t('bnManagerUpcomingSelf', { chef }) : t('bdhNextManagerUpcoming', { chef });
     case 'today':
       if (f.runningLate && f.endWithZone) return t('bnManagerRunningLate', { chef, duration: f.runningLate.duration, end: f.endWithZone });
+      if (f.startClock && f.opensClock) return t('bnManagerTodayOpens', { chef, time: f.startClock, opens: f.opensClock });
       return f.startClock ? t('bdhNextManagerToday', { chef, time: f.startClock }) : t('bdhNextManagerUpcoming', { chef });
     case 'checkin_open':
       if (f.runningLate && f.endWithZone) return t('bnManagerRunningLate', { chef, duration: f.runningLate.duration, end: f.endWithZone });
-      return !f.startPassed && f.startClock ? t('bdhNextManagerToday', { chef, time: f.startClock }) : t('bdhNextManagerNotArrived', { chef });
+      return !f.startPassed && f.startClock ? t('bnManagerCheckinOpen', { chef, time: f.startClock }) : t('bdhNextManagerNotArrived', { chef });
     case 'in_session': return `${t('bdhNextManagerInSession', { chef, time: f.endClock || '' })}${checkedInFragment(f, t)}`;
     case 'time_ended_in_session': return t('bdhNextManagerTimeEnded', { chef, end: f.overstayEndWithZone || f.endWithZone || '' });
     case 'checkout_review':
