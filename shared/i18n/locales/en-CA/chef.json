@@ -3792,5 +3792,9 @@
   "mdDayOf": "Day {number} of {total}",
   "billingBookingChange": "Booking change",
   "billingExtraTime": "Extra time",
-  "blDaysCount": "{count, plural, one {# day} other {# days}}"
+  "blDaysCount": "{count, plural, one {# day} other {# days}}",
+  "blInvitations": "Invitations",
+  "blInvitationPill": "Invitation",
+  "blInvitationExpires": "Expires {deadline}",
+  "blInvitationReviewPay": "Review and pay"
 }

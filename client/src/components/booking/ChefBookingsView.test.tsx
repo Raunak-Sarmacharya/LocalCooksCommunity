@@ -169,3 +169,53 @@ describe('chef My bookings: the kitchen offered a new total', () => {
     expect(within(card('Answered Kitchen')).getByTestId('booking-status-pill')).not.toHaveTextContent('Answer needed');
   });
 });
+
+describe('chef My bookings: open kitchen invitations', () => {
+  const invitation = (overrides: Record<string, unknown>) => ({
+    id: 'inv-1', version: 1, status: 'sent', kitchen: { id: 9, name: 'Invite Kitchen', locationId: 1, locationName: 'Harbour', photoUrl: null },
+    chef: null, date: '2026-10-27', startTime: '06:00', endTime: '07:00', timezone: 'America/St_Johns', dayCount: 1,
+    days: [{ date: '2026-10-27', pricingMode: 'hourly', startTime: '06:00', endTime: '07:00', equipment: [] }], dated: true,
+    pricing: { listSubtotalCents: 5000, offeredSubtotalCents: 5000, discount: null, taxCents: 750, serviceFeeCents: 0, totalCents: 5750 },
+    note: null, expiresAt: '2026-10-16T01:20:00.000Z', createdAt: '2026-10-14T12:00:00.000Z', bookingId: null, startAt: '2026-10-27T08:30:00.000Z',
+    cancellation: { noticeHours: 24, lateChargePercent: 100, refundDeadlineAt: '2026-10-26T08:30:00.000Z' }, ...overrides,
+  });
+  const serve = (response: Promise<Response>) => vi.stubGlobal('fetch', vi.fn((url: string) =>
+    String(url).includes('/api/chef/invitations') ? response : Promise.reject(new Error('offline'))));
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it('shows open invitations first in Upcoming with the expiry and a link, keeping the tab count to bookings', async () => {
+    serve(Promise.resolve(new Response(JSON.stringify({ invitations: [
+      invitation({}),
+      invitation({ id: 'inv-2', kitchen: { id: 10, name: 'Multi Invite Kitchen', locationId: 1, locationName: 'Harbour', photoUrl: null }, dayCount: 3,
+        days: ['2026-11-02', '2026-11-03', '2026-11-05'].map(date => ({ date, pricingMode: 'daily', startTime: '06:00', endTime: '23:00', equipment: [] })) }),
+      invitation({ id: 'inv-3', status: 'declined', kitchen: { id: 11, name: 'Declined Kitchen', locationId: 1, locationName: 'H', photoUrl: null } }),
+      invitation({ id: 'inv-4', status: 'accepted', kitchen: { id: 12, name: 'Accepted Kitchen', locationId: 1, locationName: 'H', photoUrl: null } }),
+      invitation({ id: 'inv-5', expiresAt: '2026-10-14T16:00:00.000Z', kitchen: { id: 13, name: 'Lapsed Kitchen', locationId: 1, locationName: 'H', photoUrl: null } }),
+    ] }), { status: 200 })));
+    mount();
+    const group = await screen.findByTestId('chef-invitations-group');
+    expect(within(group).getByRole('heading', { name: /Invitations\s*2/ })).toBeInTheDocument();
+    const invites = within(group).getAllByTestId('chef-invitation-card');
+    expect(invites.map(element => element.querySelector('h3')!.textContent)).toEqual(['Invite Kitchen', 'Multi Invite Kitchen']);
+    expect(within(invites[0]).getByTestId('booking-status-pill')).toHaveTextContent('Invitation');
+    expect(within(invites[0]).getByText('Tue, Oct 27 · 6:00–7:00 a.m.')).toBeInTheDocument();
+    expect(within(invites[0]).getByText('$57.50 · Expires Oct 15, 10:50 p.m.')).toBeInTheDocument();
+    expect(within(invites[0]).getByRole('link', { name: 'Review and pay' })).toHaveAttribute('href', '/invitation/inv-1');
+    expect(within(invites[0]).getByRole('link', { name: 'Invite Kitchen' })).toHaveAttribute('href', '/invitation/inv-1');
+    expect(within(invites[1]).getByText(/^3 days · Mon, Nov 2\s*–\s*Thu, Nov 5$/)).toBeInTheDocument();
+    expect(screen.queryByText(/Declined Kitchen|Accepted Kitchen|Lapsed Kitchen/)).not.toBeInTheDocument();
+    // Invitations sit above the bookings; the tab still counts bookings only.
+    expect(group.compareDocumentPosition(cards()[0]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByRole('tab', { name: /Upcoming\s*5/ })).toBeInTheDocument();
+    openTab(/Past/);
+    expect(screen.queryByTestId('chef-invitations-group')).not.toBeInTheDocument();
+  });
+
+  it('still lists the bookings when the invitations call fails', async () => {
+    serve(Promise.resolve(new Response(JSON.stringify({ error: 'boom' }), { status: 500 })));
+    mount();
+    await vi.waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalled());
+    expect(cards()).toHaveLength(5);
+    expect(screen.queryByTestId('chef-invitations-group')).not.toBeInTheDocument();
+  });
+});

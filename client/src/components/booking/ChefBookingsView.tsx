@@ -7,6 +7,7 @@
 import { useMemo, useState } from "react"
 import { Link } from "wouter"
 import { useTranslation } from "react-i18next"
+import { useQuery } from "@tanstack/react-query"
 import { Search, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -21,6 +22,7 @@ import { bookingCancelCause } from "@/lib/booking-cancel-cause"
 import { bookingResponseDeadline, formatResponseDeadline } from "@/lib/booking-response-deadline"
 import {
   bookingListBounds, bookingListPill, chefBookingTabs, chefUpcomingRank, listDaySpan, listTimezone, listWhenLine,
+  type ListDay,
   type BookingListRow, type ChefListTab, type ListedBooking,
 } from "@/lib/booking-list-status"
 import { friendlyTimezoneName } from "@shared/timezone-utils"
@@ -28,6 +30,7 @@ import { getR2ProxyUrl } from "@/utils/r2-url-helper"
 import { bt } from "@/i18n/booking-ns"
 import { partialAcceptanceDeadlineText, waitingPartialAcceptance } from "@shared/partial-acceptance"
 import { cn } from "@/lib/utils"
+import { invitationOpen, invitationRequest, type Invitation } from "@/lib/invitations"
 
 export interface ChefListBooking extends BookingListRow {
   id: number
@@ -178,6 +181,40 @@ function BookingCard({ item, kitchenName, t, locale, words, primary, showZone }:
   )
 }
 
+/** An open kitchen invitation, styled as a booking card so a chef who closed the invitation page finds it again. */
+function InvitationCard({ invitation, t, locale, words }: { invitation: Invitation; t: T; locale: string; words: { today: string; tomorrow: string } }) {
+  const href = `/invitation/${invitation.id}`
+  const last = invitation.days[invitation.days.length - 1]
+  const when = invitation.dayCount > 1 && last
+    ? `${t("blDaysCount", { count: invitation.dayCount })} · ${listDaySpan({ first: invitation.days[0].date, last: last.date } as ListDay, locale)}`
+    : listWhenLine({ status: "confirmed", bookingDate: `${invitation.date}T00:00:00.000Z`, startTime: invitation.startTime, endTime: invitation.endTime,
+      locationTimezone: invitation.timezone }, locale, words)
+  const expires = formatResponseDeadline(new Date(invitation.expiresAt), locale, invitation.timezone, false)
+  return (
+    <article className="group relative flex gap-3 rounded-2xl border border-border/70 bg-card p-3 transition-shadow sm:gap-5 sm:p-4 [@media(hover:hover)]:hover:shadow-[0_4px_16px_-8px_rgba(15,23,42,0.18)]"
+      data-testid="chef-invitation-card">
+      <KitchenThumb src={invitation.kitchen.photoUrl} alt={invitation.kitchen.name} />
+      <div className="min-w-0 flex-1 space-y-1">
+        <div className="flex flex-col-reverse items-start gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+          <h3 className="min-w-0 max-w-full truncate text-[15px] font-semibold leading-6">
+            <Link href={href} className="outline-none after:absolute after:inset-0 after:rounded-2xl after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-ring">
+              {invitation.kitchen.name}
+            </Link>
+          </h3>
+          <StatusPill tone="teal" className="shrink-0">{t("blInvitationPill")}</StatusPill>
+        </div>
+        <p className="text-sm font-medium tabular-nums text-foreground/80">{when}</p>
+        <p className="text-[13px] leading-[18px] tabular-nums text-muted-foreground">
+          {[money(invitation.pricing.totalCents, locale), expires && t("blInvitationExpires", { deadline: expires })].filter(Boolean).join(" · ")}
+        </p>
+        <Button asChild size="sm" className="relative z-10 mt-2 min-h-11 sm:min-h-9">
+          <Link href={href}>{t("blInvitationReviewPay")}</Link>
+        </Button>
+      </div>
+    </article>
+  )
+}
+
 export default function ChefBookingsView({ bookings, isLoading, kitchens = [], onFindKitchen }: ChefBookingsViewProps) {
   const { t: tStrict, i18n } = useTranslation("chef")
   const t = tStrict as unknown as T
@@ -185,6 +222,23 @@ export default function ChefBookingsView({ bookings, isLoading, kitchens = [], o
   const [tab, setTab] = useState<ChefListTab>("upcoming")
   const [query, setQuery] = useState("")
   const words = { today: t("ovToday"), tomorrow: t("ovTomorrow") }
+  // Same query as the dashboard banner; a failed call just shows no invitations, never breaks the bookings list.
+  const invitationsQuery = useQuery({ queryKey: ["chef-invitations"], refetchOnWindowFocus: true, staleTime: 30_000, retry: false,
+    queryFn: () => invitationRequest<{ invitations: Invitation[] }>("/api/chef/invitations") })
+  const invitations = (invitationsQuery.data?.invitations || [])
+    .filter((invitation: Invitation) => invitationOpen(invitation) && Date.parse(invitation.expiresAt) > Date.now())
+  const invitationGroup = invitations.length > 0 && (
+    <section className="space-y-3" aria-labelledby="chef-invitations-heading" data-testid="chef-invitations-group">
+      <h2 id="chef-invitations-heading" className="flex items-baseline gap-1.5 text-[15px] font-semibold">
+        {t("blInvitations")}<span className="tabular-nums font-normal text-muted-foreground">{invitations.length}</span>
+      </h2>
+      <ul className="space-y-3">
+        {invitations.map((invitation: Invitation) => (
+          <li key={invitation.id}><InvitationCard invitation={invitation} t={t} locale={locale} words={words} /></li>
+        ))}
+      </ul>
+    </section>
+  )
 
   const rows = useMemo(() => (Array.isArray(bookings) ? bookings : []).filter(Boolean), [bookings])
   const tabs = useMemo(() => chefBookingTabs(rows), [rows])
@@ -221,12 +275,13 @@ export default function ChefBookingsView({ bookings, isLoading, kitchens = [], o
         <div className="space-y-3" role="status" aria-label={t("bkLoadingBookings")}>
           {Array.from({ length: 3 }, (_, index) => <Skeleton key={index} className="h-[104px] w-full rounded-2xl" />)}
         </div>
-      ) : !rows.length ? (
+      ) : !rows.length ? (<>
+        {invitationGroup}
         <div className="flex flex-col items-start gap-3 rounded-2xl border border-dashed p-6">
           <p className="text-[15px]">{t("blEmptyAll")}</p>
           {findKitchen}
         </div>
-      ) : (
+      </>) : (
         <section className="space-y-4" aria-label={t("bkMyBookings")}>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <Tabs value={activeTab} onValueChange={value => { setTab(value as ChefListTab); setQuery("") }}>
@@ -238,6 +293,8 @@ export default function ChefBookingsView({ bookings, isLoading, kitchens = [], o
             </Tabs>
             {zones.length === 1 && <p className="text-[13px] text-muted-foreground">{t("blTimesIn", { zone: friendlyTimezoneName(zones[0], locale) })}</p>}
           </div>
+
+          {activeTab === "upcoming" && invitationGroup}
 
           {current.length > SEARCH_AFTER && (
             <div className="relative">

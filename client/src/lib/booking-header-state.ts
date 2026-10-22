@@ -9,7 +9,7 @@ export type BookingHeaderPhase =
   | 'checkout_review' | 'visit_ended' | 'completed' | 'no_show' | 'no_checkin' | 'issue'
   | 'cancellation_requested' | 'cancelled';
 
-export type BookingPillTone = 'amber' | 'blue' | 'green' | 'purple' | 'neutral' | 'grey' | 'red';
+export type BookingPillTone = 'amber' | 'blue' | 'green' | 'purple' | 'neutral' | 'grey' | 'red' | 'teal';
 
 export type BookingPrimaryAction = 'review_request' | 'review_cancellation' | 'review_checkout' | 'inspect_visit' | 'open_visit' | 'answer_attendance' | null;
 

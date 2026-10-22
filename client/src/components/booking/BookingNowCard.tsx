@@ -29,6 +29,8 @@ export const PILL: Record<BookingPillTone, { surface: string; dot: string }> = {
   neutral: { surface: 'border-border bg-muted text-foreground', dot: 'bg-foreground/60' },
   grey: { surface: 'border-border bg-muted text-muted-foreground', dot: 'bg-muted-foreground' },
   red: { surface: 'border-red-200 bg-red-50 text-red-900', dot: 'bg-red-500' },
+  // Kitchen invitations only: an offer, not a booking status.
+  teal: { surface: 'border-teal-200 bg-teal-50 text-teal-900', dot: 'bg-teal-500' },
 };
 
 export function StatusPill({ tone, children, className }: { tone: BookingPillTone; children: ReactNode; className?: string }) {

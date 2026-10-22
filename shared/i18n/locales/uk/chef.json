@@ -3792,5 +3792,9 @@
   "mdDayOf": "День {number} із {total}",
   "billingBookingChange": "Зміна бронювання",
   "billingExtraTime": "Додатковий час",
-  "blDaysCount": "{count, plural, one {# день} few {# дні} many {# днів} other {# дня}}"
+  "blDaysCount": "{count, plural, one {# день} few {# дні} many {# днів} other {# дня}}",
+  "blInvitations": "Запрошення",
+  "blInvitationPill": "Запрошення",
+  "blInvitationExpires": "Діє до {deadline}",
+  "blInvitationReviewPay": "Переглянути й оплатити"
 }

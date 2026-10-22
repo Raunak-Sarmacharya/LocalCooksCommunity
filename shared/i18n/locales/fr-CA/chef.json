@@ -3792,5 +3792,9 @@
   "mdDayOf": "Jour {number} sur {total}",
   "billingBookingChange": "Modification de réservation",
   "billingExtraTime": "Temps supplémentaire",
-  "blDaysCount": "{count, plural, one {# jour} other {# jours}}"
+  "blDaysCount": "{count, plural, one {# jour} other {# jours}}",
+  "blInvitations": "Invitations",
+  "blInvitationPill": "Invitation",
+  "blInvitationExpires": "Expire le {deadline}",
+  "blInvitationReviewPay": "Voir et payer"
 }
