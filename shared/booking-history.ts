@@ -101,7 +101,8 @@ export function buildBookingHistory(booking: Facts, records: RecordedEvent[], vi
     const dayCancellation = metadata.dayCancellation && typeof metadata.dayCancellation === 'object' ? metadata.dayCancellation as Record<string, unknown> : undefined;
     const noticeDay = metadata.noticeDay && typeof metadata.noticeDay === 'object' ? metadata.noticeDay as Record<string, unknown> : undefined;
     const day = dayCancellation && (record.kind === 'day_cancelled' || record.kind === 'refund_issued') ? {
-      ...(typeof noticeDay?.date === 'string' && /^\d{4}-\d{2}-\d{2}/.test(noticeDay.date) ? { dayDate: String(noticeDay.date).slice(0, 10) } : {}),
+      // Name the date only when one day was cancelled; the amount covers every day in the operation.
+      ...(typeof noticeDay?.date === 'string' && /^\d{4}-\d{2}-\d{2}/.test(noticeDay.date) && (!Array.isArray(dayCancellation.visitIds) || dayCancellation.visitIds.length === 1) ? { dayDate: String(noticeDay.date).slice(0, 10) } : {}),
       ...(dayCancellation.cause === 'chef' || dayCancellation.cause === 'kitchen' ? { cancelledBy: dayCancellation.cause as 'chef' | 'kitchen' } : {}),
       ...(Number.isSafeInteger(dayCancellation.refundCents) && Number(dayCancellation.refundCents) > 0 ? { amountCents: Number(dayCancellation.refundCents) } : {}) } : {};
     // A goodwill refund without a known amount cannot say what was refunded, so it is left out.

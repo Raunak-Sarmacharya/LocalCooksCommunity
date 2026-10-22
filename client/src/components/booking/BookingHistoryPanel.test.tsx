@@ -186,9 +186,9 @@ it('says which day was cancelled, by whom, and what was refunded, on both sides'
   ];
   vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ complete: true, events }) })));
   mount('manager', 'Maya Chen');
-  expect(await screen.findByText('Thu, Nov 5 cancelled by the kitchen · $250.10 refunded')).toBeInTheDocument();
+  expect(await screen.findByText('Thu, Nov 5 cancelled by the kitchen · refund of $250.10')).toBeInTheDocument();
   expect(screen.getByText('Fri, Nov 6 cancelled by Maya Chen')).toBeInTheDocument();
-  expect(screen.getByText('Wed, Nov 4 · $15.00 refunded by the kitchen')).toBeInTheDocument();
+  expect(screen.getByText('Wed, Nov 4 · refund of $15.00 from the kitchen')).toBeInTheDocument();
   cleanup();
   mount('chef');
   expect(await screen.findByText('Fri, Nov 6 cancelled by you')).toBeInTheDocument();

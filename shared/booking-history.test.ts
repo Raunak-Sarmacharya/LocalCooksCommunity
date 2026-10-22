@@ -134,4 +134,10 @@ describe('day cancellations in the history', () => {
     ]);
     expect(JSON.stringify(history)).not.toMatch(/op-1|private/);
   });
+  it('two days cancelled at once: no single date is named for the combined refund', () => {
+    const history = buildBookingHistory({ createdAt: '2026-10-01T12:00:00Z' }, [
+      { id: 2, kind: 'day_cancelled', createdAt: '2026-10-21T12:00:00Z', metadata: { noticeDay: { date: '2026-11-05' }, dayCancellation: { cause: 'kitchen', visitIds: [7, 8], refundCents: 50000 } } },
+    ]);
+    expect(history.events.at(-1)).toEqual({ key: 'event-2', kind: 'day_cancelled', recordedAt: '2026-10-21T12:00:00.000Z', cancelledBy: 'kitchen', amountCents: 50000 });
+  });
 });
