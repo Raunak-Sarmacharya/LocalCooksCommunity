@@ -700,6 +700,14 @@ export async function assignOutsideRefund(bookingId: number, actorId: number, in
 
 /** After the receipt is verified: a reversed paid day records its reversed amount, so revenue and payout evidence show it (once per operation). */
 export async function finalizeDatedRefund(tx: Tx, operation: Record<string, any>) {
+  // An add-on-only refund on a multi-day booking: record that it was sent (the removal row said "being processed").
+  // An add-on-only refund on a multi-day booking: record that it was sent (the removal row said "being processed").
+  // queueBookingLifecycleEvent keeps one such completion per operation, so a replayed finalize adds nothing.
+  if ((operation.cancelledEquipmentIds || []).length && !(operation.visitIds || []).length && Number(operation.customerRefund) > 0)
+    await queueBookingLifecycleEvent(tx, operation.bookingId, 'refund_issued', `${operation.itemName} removed`, `${operation.itemName} removed.`, operation.chefId ?? undefined,
+      { operationId: operation.id, itemKind: 'equipment', itemId: operation.cancelledEquipmentIds[0],
+        addonRemoval: { state: 'sent', itemName: operation.itemName, refundCents: Number(operation.customerRefund), kitchenRefundCents: Number(operation.managerRefund || 0),
+          feeCents: Number(operation.feeRetainedCents || 0), ...(operation.reason ? { reason: operation.reason } : {}) } });
   for (const reversal of (operation.reversals || []) as Array<{ installmentId: number; amountCents: number; debt?: boolean }>) {
     if (reversal.debt) continue;
     const [row] = await tx.select().from(kitchenBookingDayPayouts).where(eq(kitchenBookingDayPayouts.id, reversal.installmentId)).for('update');

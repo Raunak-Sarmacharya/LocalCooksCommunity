@@ -137,6 +137,13 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
   message: string, actorId?: number, metadata: Record<string, unknown> = {}, afterFailedAttempts = false) {
   // The chef's own arrival and checkout are shown on their visit page; only the kitchen is notified.
   if (kind === 'checkout_requested' || kind === 'checkin_recorded') metadata = { ...metadata, recipientPolicy: 'manager' };
+  // One "refund sent" completion per add-on removal operation (its finalizer can run again on a webhook or retry).
+  if (kind === 'refund_issued' && typeof metadata.operationId === 'string' && (metadata.addonRemoval as { state?: string } | undefined)?.state === 'sent') {
+    const [existing] = await tx.select({ id: bookingLifecycleEvents.id }).from(bookingLifecycleEvents).where(and(
+      eq(bookingLifecycleEvents.bookingId, bookingId), eq(bookingLifecycleEvents.kind, kind),
+      sql`${bookingLifecycleEvents.metadata}->>'operationId' = ${metadata.operationId}`, sql`${bookingLifecycleEvents.metadata}->'addonRemoval'->>'state' = 'sent'`)).limit(1);
+    if (existing) return;
+  }
   if (kind === 'visit_closed') {
     const [existing] = await tx.select({ id: bookingLifecycleEvents.id }).from(bookingLifecycleEvents).where(and(
       eq(bookingLifecycleEvents.bookingId, bookingId), eq(bookingLifecycleEvents.kind, kind),

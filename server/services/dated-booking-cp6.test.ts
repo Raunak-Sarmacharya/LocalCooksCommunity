@@ -248,6 +248,8 @@ describe('CP6 equipment per day (WP-AO)', () => {
     expect(quote).toMatchObject({ chefRefundCents: late, itemName: 'Mixer', lateCancel: true, free: false });
     expect(await removeChefAddon(1, 3, { kind: 'equipment', id: friItem }, { operationKey: 'remove-fri-mixer', expectedRefundCents: late })).toMatchObject({ state: 'removed', refundCents: late });
     expect((await get(s.equipmentBookings)).map((row: any) => row.status)).toEqual(['confirmed', 'cancelled']);
+    // The removal row stops saying "being processed" once the refund is sent: one completion, never repeated.
+    expect(h.event.mock.calls.filter((call: any[]) => call[2] === 'refund_issued' && call[6]?.addonRemoval?.state === 'sent')).toHaveLength(1);
     // Day then all: the removed item is settled once and never refunded again.
     await cancelDatedDays(1, chef, { target: { visitIds: [3] }, operationKey: 'drop-fri-after-item' });
     await cancelChefBooking(1, 3, 'drop-rest');
