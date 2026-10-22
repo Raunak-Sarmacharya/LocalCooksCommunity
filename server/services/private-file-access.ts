@@ -27,6 +27,8 @@ export async function canReadPrivateFile(actor: ChatActor | undefined, url: stri
   if (!actor) return false;
   if (actor.role === 'admin') return true;
   if (filename.startsWith(`${actor.id}_`)) return true;
+  // Visit and storage condition photos are evidence for both people on that booking: the customer and the kitchen's manager.
+  if (await isBookingPhotoParticipant(actor.id, url)) return true;
   // Chefs must read the listed kitchen's terms before they have an application.
   // This grants only the exact terms URL, never the other facility documents.
   if (actor.role === 'chef') {
@@ -61,4 +63,27 @@ export async function canReadPrivateFile(actor: ChatActor | undefined, url: stri
     if ([location.kitchenLicenseUrl, location.kitchenTermsUrl, requirements?.floor_plans_url, requirements?.ventilation_specs_url].includes(url)) return true;
   }
   return false;
+}
+
+/** True when the URL is a check-in/out or handover photo on a kitchen booking, visit or storage rental the actor is party to. */
+async function isBookingPhotoParticipant(actorId: number, url: string) {
+  const has = (column: string) => sql.raw(`COALESCE(${column}, '[]'::jsonb)`);
+  const value = JSON.stringify([url]);
+  const result = await db.execute(sql`
+    SELECT 1 FROM kitchen_bookings b JOIN kitchens k ON k.id = b.kitchen_id JOIN locations l ON l.id = k.location_id
+      WHERE (b.chef_id = ${actorId} OR l.manager_id = ${actorId})
+        AND (${has('b.checkin_photo_urls')} @> ${value}::jsonb OR ${has('b.checkout_photo_urls')} @> ${value}::jsonb)
+    UNION ALL
+    SELECT 1 FROM kitchen_booking_visits v JOIN kitchen_bookings b ON b.id = v.booking_id JOIN kitchens k ON k.id = b.kitchen_id
+      JOIN locations l ON l.id = k.location_id
+      WHERE (b.chef_id = ${actorId} OR l.manager_id = ${actorId})
+        AND (${has('v.checkin_photo_urls')} @> ${value}::jsonb OR ${has('v.checkout_photo_urls')} @> ${value}::jsonb)
+    UNION ALL
+    SELECT 1 FROM storage_bookings s JOIN storage_listings sl ON sl.id = s.storage_listing_id JOIN kitchens k ON k.id = sl.kitchen_id
+      JOIN locations l ON l.id = k.location_id
+      WHERE (s.chef_id = ${actorId} OR l.manager_id = ${actorId})
+        AND (${has('s.checkin_photo_urls')} @> ${value}::jsonb OR ${has('s.checkout_photo_urls')} @> ${value}::jsonb
+          OR ${has('s.handover_photo_urls')} @> ${value}::jsonb)
+    LIMIT 1`);
+  return result.rows.length > 0;
 }

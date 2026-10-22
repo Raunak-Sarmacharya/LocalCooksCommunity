@@ -1,14 +1,14 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 import { PgDialect } from 'drizzle-orm/pg-core';
-const state = vi.hoisted(() => ({ logoUrl: '', termsUrl: '', applications: [] as any[], termsConditions: [] as any[], storagePhotos: [] as string[] }));
-vi.mock('../db', () => ({ db: { select: (fields: any) => {
+const state = vi.hoisted(() => ({ logoUrl: '', termsUrl: '', applications: [] as any[], termsConditions: [] as any[], storagePhotos: [] as string[], photoRows: [] as unknown[], photoQueries: [] as any[] }));
+vi.mock('../db', () => ({ db: { execute: async (query: any) => { state.photoQueries.push(query); return { rows: state.photoRows }; }, select: (fields: any) => {
   const chain: any = { from: () => chain, innerJoin: () => chain, where: (condition: any) => { if (fields?.termsUrl) state.termsConditions.push(condition); return chain; }, limit: () => chain,
     then: (resolve: any) => resolve(fields?.photos ? [{ photos: state.storagePhotos }] : fields?.logoUrl ? [{ logoUrl: state.logoUrl }] : fields?.termsUrl ? [{ termsUrl: state.termsUrl }] : fields?.application ? state.applications : []) };
   return chain;
 } } }));
 import { canReadPrivateFile } from './private-file-access';
 const logo = 'https://files.localcooks.ca/location-logos/353_file_1790536347939_LoCo_Red.png';
-beforeEach(() => { state.logoUrl = logo; state.termsUrl = ''; state.applications = []; state.termsConditions = []; state.storagePhotos = []; });
+beforeEach(() => { state.logoUrl = logo; state.termsUrl = ''; state.applications = []; state.termsConditions = []; state.storagePhotos = []; state.photoRows = []; state.photoQueries = []; });
 
 it('serves a storage listing photo like other listing images, and nothing else from that folder', async () => {
   const photo = 'https://files.localcooks.ca/storage-photos/379_file_1792445963015_walk-in-cooler.jpg';
@@ -50,4 +50,18 @@ it.each(['customFieldsData', 'tier2_custom_fields_data'])('allows only applicati
   expect(await canReadPrivateFile({ id: 99, role: 'manager' }, url)).toBe(false);
   expect(await canReadPrivateFile({ id: 99, role: 'chef' }, url)).toBe(false);
   expect(await canReadPrivateFile(undefined, url)).toBe(false);
+});
+
+it('booking condition photos: readable by the people on that booking (customer and the kitchen manager), checked against the stored photo lists', async () => {
+  const photo = 'https://files.localcooks.ca/checkin-photos/380_file_1792667567388_space-photo.png';
+  // The kitchen manager (379) is not the uploader; the grant comes from the booking query.
+  expect(await canReadPrivateFile({ id: 379, role: 'manager' }, photo)).toBe(false);
+  state.photoRows = [{ '?column?': 1 }];
+  expect(await canReadPrivateFile({ id: 379, role: 'manager' }, photo)).toBe(true);
+  const query = new PgDialect().sqlToQuery(state.photoQueries.at(-1));
+  expect(query.sql).toMatch(/storage_bookings[\s\S]*handover_photo_urls/);
+  expect(query.sql).toMatch(/kitchen_booking_visits/);
+  expect(query.params).toContain(379);
+  expect(query.params).toContain(JSON.stringify([photo]));
+  expect(await canReadPrivateFile(undefined, photo)).toBe(false);
 });
