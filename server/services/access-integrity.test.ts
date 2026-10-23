@@ -6,7 +6,7 @@ import { chefKitchenApplications, chefLocationAccess, emailLogs, kitchenBookings
 const state = vi.hoisted(() => ({ tables: {} as Record<string, any[]>, writes: [] as string[], notify: vi.fn(), send: vi.fn(), requirements: { requireFoodHandlerCert: true } as any }));
 vi.mock('../db', () => ({ db: database(), pool: {}, getDbError: (error: any) => error }));
 vi.mock('../domains/locations/location.service', () => ({ locationService: { getLocationRequirementsWithDefaults: async () => state.requirements } }));
-vi.mock('./notification.service', () => ({ notificationService: { createForChef: state.notify } }));
+vi.mock('./notification.service', () => ({ notificationService: { createForChef: state.notify, createForManager: vi.fn() } }));
 vi.mock('../email', () => ({ sendEmail: state.send, renderTransactionalEmail: (data: any) => ({ to: data.to, subject: data.subject,
   text: `Hi ${data.recipientName},\n${data.message}\n${data.facts.map((fact: any) => fact.value).join('\n')}\n${data.actionUrl}\nLocal Cooks`, html: `<p>Hi ${data.recipientName}</p><p>${data.message}</p>` }) }));
 
@@ -107,7 +107,7 @@ it('repeated revoke does not duplicate notices', async () => {
   await revokeManagerLocationAccess(2, 8, 47, 'Kitchen rules'); await revokeManagerLocationAccess(2, 8, 47, 'Kitchen rules');
   expect(state.notify).toHaveBeenCalledTimes(1); expect(state.tables.email_logs).toHaveLength(1);
 });
-it.each([['2026-11-13', '30_day'], ['2026-10-21', '7_day'], ['2026-10-14', 'expired']] as const)('sends one email and notification in the %s window (%s)', async (expiry, stage) => {
+it.each([['2026-11-28', '45_day'], ['2026-10-28', '14_day'], ['2026-10-17', '3_day'], ['2026-10-14', 'expired']] as const)('sends one email and notification in the %s window (%s)', async (expiry, stage) => {
   vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-14T12:00:00Z'));
   state.tables.chef_kitchen_applications[0].foodSafetyLicenseExpiry = expiry;
   await sweepChefDocumentExpiry(); await sweepChefDocumentExpiry();
@@ -141,7 +141,7 @@ it('early renewal: the approved document stays valid, no nudge is sent while the
   vi.setSystemTime(new Date('2026-11-04T12:00:00Z'));
   expect(await readLocationBookingEligibility(8, 47)).toMatchObject({ canBook: false, status: 'renewal_under_review', message: expect.stringContaining('Your renewal is under review') });
 });
-it('without a renewal the same document still reminds at 30 days and then blocks on expiry', async () => {
+it('without a renewal the same document still reminds (14 days out) and then blocks on expiry', async () => {
   vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-14T12:00:00Z'));
   state.tables.chef_kitchen_applications[0].foodSafetyLicenseExpiry = '2026-11-03';
   await sweepChefDocumentExpiry(); expect(state.send).toHaveBeenCalledTimes(1);

@@ -1,13 +1,13 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db';
 import { chefDocumentRenewals, chefKitchenApplications, locations } from '@shared/schema';
-import { accessDocumentDaysLeft, documentRenewalHref, type AccessRenewal } from '@shared/location-booking-eligibility';
+import { accessDocumentDaysLeft, DOCUMENT_LABELS, documentRenewalHref, type AccessRenewal, type DocumentKey } from '@shared/location-booking-eligibility';
 import { DomainError } from '../shared/errors/domain-error';
 import { logger } from '../logger';
 
-export type RenewalKey = 'foodSafetyLicense' | 'foodEstablishmentCert';
+export type RenewalKey = DocumentKey;
 export type RenewalDecision = 'approved' | 'rejected';
-const labels: Record<RenewalKey, string> = { foodSafetyLicense: 'Food Safety Certificate', foodEstablishmentCert: 'Food Establishment Licence' };
+const labels = DOCUMENT_LABELS;
 
 /** Until migration 0074 is applied the table is missing: every read treats that as "no renewal" and every write reports it. */
 const tableMissing = (error: unknown) => {
@@ -73,7 +73,9 @@ export async function decideDocumentRenewal(input: { applicationId: number; key:
       const documentVerification = { ...(tierData.documentVerification || {}), [input.key]: input.reviewer };
       await tx.update(chefKitchenApplications).set(input.key === 'foodSafetyLicense'
         ? { foodSafetyLicenseUrl: renewal.url, foodSafetyLicenseExpiry: renewal.expiry, foodSafetyLicenseStatus: 'approved', tier_data: { ...tierData, documentVerification }, updatedAt: reviewedAt }
-        : { foodEstablishmentCertUrl: renewal.url, foodEstablishmentCertExpiry: renewal.expiry, foodEstablishmentCertStatus: 'approved', tier_data: { ...tierData, documentVerification }, updatedAt: reviewedAt })
+        : input.key === 'foodEstablishmentCert'
+          ? { foodEstablishmentCertUrl: renewal.url, foodEstablishmentCertExpiry: renewal.expiry, foodEstablishmentCertStatus: 'approved', tier_data: { ...tierData, documentVerification }, updatedAt: reviewedAt }
+          : { insuranceUrl: renewal.url, insuranceExpiry: renewal.expiry, insuranceStatus: 'approved', tier_data: { ...tierData, documentVerification }, updatedAt: reviewedAt })
         .where(eq(chefKitchenApplications.id, app.id));
     }
     await tx.update(chefDocumentRenewals).set({ status: input.decision, rejectionReason: input.decision === 'rejected' ? reason! : null, reviewedBy: input.reviewer, reviewedAt })

@@ -9,7 +9,7 @@ import { calendarDateForBookingTime } from '@shared/operating-hours';
 import { createBookingDateTime, DEFAULT_TIMEZONE } from '@shared/timezone-utils';
 import { deliveryReserve, assertWorkerTime, workerAfter, workerBatch, workerPageEnd, workerRecord } from './worker-context';
 import { logger } from '../logger';
-import { accessDocumentStage, requiredAccessDocuments } from '@shared/location-booking-eligibility';
+import { accessDocumentStage, accessDocuments } from '@shared/location-booking-eligibility';
 import { locationService } from '../domains/locations/location.service';
 
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -77,7 +77,7 @@ export async function deliverAccessNotice(id: number) {
       const [location] = app ? await tx.select().from(locations).where(eq(locations.id, app.locationId)).limit(1) : [];
       const [access] = app ? await tx.select().from(chefLocationAccess).where(and(eq(chefLocationAccess.chefId, app.chefId), eq(chefLocationAccess.locationId, app.locationId))).limit(1) : [];
       const requirements = app ? await locationService.getLocationRequirementsWithDefaults(app.locationId) : {};
-      const doc = app && requiredAccessDocuments(app, requirements).find(doc => doc.key === metadata.document);
+      const doc = app && accessDocuments(app, requirements).find(doc => doc.key === metadata.document);
       if (!app || app.status !== 'approved' || app.current_tier < 3 || !access || !doc || doc.status !== 'approved' || doc.expiry !== metadata.expiry || accessDocumentStage(doc.expiry, location?.timezone || undefined) !== metadata.stage) {
         await tx.update(emailLogs).set({ status: 'suppressed' }).where(eq(emailLogs.id, id));
         return null;

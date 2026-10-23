@@ -154,7 +154,7 @@ describe('Customers against real SQL', () => {
     expect(page.past.slice(0, 2).map(booking => [booking.bookingId, booking.outcome, booking.refundedCents])).toEqual([[11, 'visit_ended', 0], [17, 'cancelled_by_customer', 0]]);
     expect(page.money).toMatchObject({ paidCents: 58250, refundedCents: 2843, heldCents: 6100, outstandingCents: 0, currency: 'CAD', paymentCount: 3, holdCount: 1 });
     expect(page.claims).toEqual([expect.objectContaining({ id: 3, status: 'submitted', nextActor: 'customer', amountCents: 8500 })]);
-    expect(page.application?.documents[0]).toMatchObject({ key: 'foodSafetyLicense', expiry: '2026-10-22', daysLeft: 6, stage: '7_day', url: '/api/files/documents/licence.pdf' });
+    expect(page.application?.documents[0]).toMatchObject({ key: 'foodSafetyLicense', expiry: '2026-10-22', daysLeft: 6, stage: '14_day', url: '/api/files/documents/licence.pdf' });
     expect(JSON.stringify(page)).not.toMatch(/99900|77700|Elsewhere|West End|stripe|pi_/i);
   });
 

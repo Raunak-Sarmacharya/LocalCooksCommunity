@@ -5,7 +5,7 @@ import {
   kitchenBookingVisits, kitchens, kitchenViewings, paymentTransactions, storageBookings, storageListings, tourFeedbackResponses, users,
 } from '@shared/schema';
 import { customerRelationshipView, moreUrgentRelationship, type CustomerNextAction, type CustomerStatus } from '@shared/customer-next-action';
-import { accessDocumentDaysLeft, accessDocumentStage, requiredAccessDocuments } from '@shared/location-booking-eligibility';
+import { accessDocumentDaysLeft, accessDocumentStage, DOCUMENT_KEYS, documentFields, documentModes } from '@shared/location-booking-eligibility';
 import { responseDeadlineForBooking } from '@shared/booking-response-deadline';
 import { kitchenPayout } from '@shared/kitchen-payout';
 import { ATTENDANCE_CATEGORY } from '@shared/commitment-problems';
@@ -129,7 +129,9 @@ export async function getCustomerPage(managerId: number, chefId: number, request
       createdAt: chefKitchenApplications.createdAt, tier1CompletedAt: chefKitchenApplications.tier1_completed_at, tier2CompletedAt: chefKitchenApplications.tier2_completed_at,
       reviewedAt: chefKitchenApplications.reviewedAt,
       foodSafetyLicenseUrl: chefKitchenApplications.foodSafetyLicenseUrl, foodSafetyLicenseStatus: chefKitchenApplications.foodSafetyLicenseStatus, foodSafetyLicenseExpiry: chefKitchenApplications.foodSafetyLicenseExpiry,
-      foodEstablishmentCertUrl: chefKitchenApplications.foodEstablishmentCertUrl, foodEstablishmentCertStatus: chefKitchenApplications.foodEstablishmentCertStatus, foodEstablishmentCertExpiry: chefKitchenApplications.foodEstablishmentCertExpiry })
+      foodEstablishmentCertUrl: chefKitchenApplications.foodEstablishmentCertUrl, foodEstablishmentCertStatus: chefKitchenApplications.foodEstablishmentCertStatus, foodEstablishmentCertExpiry: chefKitchenApplications.foodEstablishmentCertExpiry,
+      insuranceUrl: chefKitchenApplications.insuranceUrl, insuranceStatus: chefKitchenApplications.insuranceStatus, insuranceExpiry: chefKitchenApplications.insuranceExpiry,
+      documentsWaivedAt: chefKitchenApplications.documentsWaivedAt })
       .from(chefKitchenApplications).where(and(eq(chefKitchenApplications.chefId, chefId), eq(chefKitchenApplications.locationId, locationId))).limit(1),
     db.select({ username: users.username, phoneNumber: users.phoneNumber, phoneVerifiedAt: users.phoneVerifiedAt }).from(users).where(eq(users.id, chefId)).limit(1),
     db.select({ grantedAt: chefLocationAccess.grantedAt }).from(chefLocationAccess).where(and(eq(chefLocationAccess.chefId, chefId), eq(chefLocationAccess.locationId, locationId))),
@@ -257,15 +259,13 @@ export async function getCustomerPage(managerId: number, chefId: number, request
   const user = userRows[0] ?? null;
   const status: CustomerStatus = view.status;
   const canViewFiles = ['applied', 'in_review', 'approved', 'suspended'].includes(status);
-  const documents = app ? (['foodSafetyLicense', 'foodEstablishmentCert'] as const).flatMap(key => {
-    const url = key === 'foodSafetyLicense' ? app.foodSafetyLicenseUrl : app.foodEstablishmentCertUrl;
-    const required = requiredAccessDocuments({ status: app.status, currentTier: app.currentTier,
-      foodSafetyLicenseUrl: app.foodSafetyLicenseUrl, foodEstablishmentCertUrl: app.foodEstablishmentCertUrl }, requirements).some(document => document.key === key);
-    if (!url && !required) return [];
-    const docStatus = key === 'foodSafetyLicense' ? app.foodSafetyLicenseStatus : app.foodEstablishmentCertStatus;
-    const expiry = key === 'foodSafetyLicense' ? app.foodSafetyLicenseExpiry : app.foodEstablishmentCertExpiry;
-    return [{ key, required, uploaded: !!url, status: docStatus ?? 'pending', expiry: expiry ?? null, daysLeft: accessDocumentDaysLeft(expiry, timezone, now),
-      stage: accessDocumentStage(expiry, timezone, now), url: canViewFiles ? url ?? null : null,
+  // Every document this location tracks or requires, plus any other one the customer has on file (owner, Oct 23).
+  const modes = documentModes(requirements);
+  const documents = app ? DOCUMENT_KEYS.flatMap(key => {
+    const { url, status: docStatus, expiry } = documentFields(app, key);
+    if (!url && modes[key] === 'none') return [];
+    return [{ key, mode: modes[key], required: modes[key] === 'required' && !app.documentsWaivedAt, uploaded: !!url, status: docStatus ?? 'pending', expiry: expiry ?? null,
+      daysLeft: accessDocumentDaysLeft(expiry, timezone, now), stage: accessDocumentStage(expiry, timezone, now), url: canViewFiles ? url ?? null : null,
       renewalPending: renewals.some(renewal => renewal.key === key) }];
   }) : [];
 

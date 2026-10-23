@@ -118,6 +118,8 @@ export class TierValidationService {
         }
 
         // --- Tier 2 Requirements (Kitchen Coordination) ---
+        // The kitchen approved this customer for booking without its Step 2 requirements (owner, Oct 23).
+        if (targetTier >= 2 && application.documentsWaivedAt) return { valid: missing.length === 0, missingRequirements: missing };
         if (targetTier >= 2) {
             if (requirements.requireFoodHandlerCert &&
                 (!application.foodSafetyLicenseUrl || !application.foodSafetyLicenseExpiry || application.foodSafetyLicense !== 'yes')) {
@@ -141,12 +143,13 @@ export class TierValidationService {
                 }
             }
 
-            // 2. Insurance Document
+            // 2. Insurance, a dated document like the licence (0109)
             if (requirements.tier2_insurance_document_required) {
-                const tierData = this.getTierData(application);
-                const hasInsurance = tierData.tierFiles?.['tier2_insurance_document'] || tierData.insuranceUrl;
-                if (!hasInsurance) {
-                    missing.push("Insurance Document is required");
+                if (!application.insuranceUrl || application.insuranceStatus !== 'approved') {
+                    missing.push("Insurance must be uploaded and approved");
+                }
+                if (!application.insuranceExpiry) {
+                    missing.push("Insurance expiry date is required");
                 }
             }
 

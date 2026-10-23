@@ -544,6 +544,9 @@ export class ChefApplicationService {
         foodEstablishmentCertExpiry?: string;
         foodSafetyLicenseStatus?: "pending" | "approved" | "rejected";
         foodEstablishmentCertStatus?: "pending" | "approved" | "rejected";
+        insuranceUrl?: string;
+        insuranceExpiry?: string;
+        insuranceStatus?: "pending" | "approved" | "rejected";
         verifiedBy?: "local_cooks" | "manager";
     }): Promise<ChefKitchenApplication> {
         try {
@@ -552,6 +555,7 @@ export class ChefApplicationService {
             const documentVerification = { ...(tierData.documentVerification || {}) };
             if (data.foodSafetyLicenseStatus) documentVerification.foodSafetyLicense = data.verifiedBy;
             if (data.foodEstablishmentCertStatus) documentVerification.foodEstablishmentCert = data.verifiedBy;
+            if (data.insuranceStatus) documentVerification.insurance = data.verifiedBy;
             const [updated] = await db
                 .update(chefKitchenApplications)
                 .set({
@@ -561,6 +565,9 @@ export class ChefApplicationService {
                     ...((data.foodEstablishmentCertExpiry) && { foodEstablishmentCertExpiry: data.foodEstablishmentCertExpiry }),
                     ...(data.foodSafetyLicenseStatus && { foodSafetyLicenseStatus: data.foodSafetyLicenseStatus }),
                     ...(data.foodEstablishmentCertStatus && { foodEstablishmentCertStatus: data.foodEstablishmentCertStatus }),
+                    ...(data.insuranceUrl && { insuranceUrl: data.insuranceUrl }),
+                    ...(data.insuranceExpiry && { insuranceExpiry: data.insuranceExpiry }),
+                    ...(data.insuranceStatus && { insuranceStatus: data.insuranceStatus }),
                     ...(data.verifiedBy && { tier_data: { ...tierData, documentVerification } }),
                     updatedAt: new Date()
                 })

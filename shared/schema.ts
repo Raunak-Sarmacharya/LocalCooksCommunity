@@ -460,6 +460,10 @@ export const locationRequirements = pgTable("location_requirements", {
   tier2_food_establishment_expiry_required: boolean("tier2_food_establishment_expiry_required").default(false).notNull(),
   tier2_insurance_document_required: boolean("tier2_insurance_document_required").default(false).notNull(),
   tier2_insurance_minimum_amount: integer("tier2_insurance_minimum_amount").default(0).notNull(),
+  // "Track it" (not required): asked as optional, kept with its expiry date and reminded, never pauses booking (0109).
+  food_handler_cert_tracked: boolean("food_handler_cert_tracked").default(false).notNull(),
+  food_establishment_cert_tracked: boolean("food_establishment_cert_tracked").default(false).notNull(),
+  insurance_tracked: boolean("insurance_tracked").default(false).notNull(),
   tier2_kitchen_experience_required: boolean("tier2_kitchen_experience_required").default(false).notNull(),
   tier2_custom_fields: jsonb("tier2_custom_fields").default([]),
 
@@ -1166,6 +1170,9 @@ export const updateLocationRequirementsSchema = z.object({
   tier2_food_establishment_expiry_required: z.boolean().optional(),
   tier2_insurance_document_required: z.boolean().optional(),
   tier2_insurance_minimum_amount: z.number().int().min(0).optional(),
+  food_handler_cert_tracked: z.boolean().optional(),
+  food_establishment_cert_tracked: z.boolean().optional(),
+  insurance_tracked: z.boolean().optional(),
   tier2_kitchen_experience_required: z.boolean().optional(),
   tier2_allergen_plan_required: z.boolean().optional(),
   tier2_supplier_list_required: z.boolean().optional(),
@@ -2016,6 +2023,13 @@ export const chefKitchenApplications = pgTable("chef_kitchen_applications", {
   foodEstablishmentCertUrl: text("food_establishment_cert_url"),
   foodEstablishmentCertStatus: documentVerificationStatusEnum("food_establishment_cert_status").default("pending"),
   foodEstablishmentCertExpiry: date("food_establishment_cert_expiry"),
+  // Insurance, a document like the two above (0109); review status is 'pending' | 'approved' | 'rejected'.
+  insuranceUrl: text("insurance_url"),
+  insuranceStatus: text("insurance_status"),
+  insuranceExpiry: date("insurance_expiry"),
+  // The kitchen approved this customer for booking without its documents (0109; history in kitchenDocumentWaiverEvents).
+  documentsWaivedAt: timestamp("documents_waived_at", { withTimezone: true }),
+  documentsWaivedBy: integer("documents_waived_by").references(() => users.id, { onDelete: "set null" }),
 
   // Application Status
   status: applicationStatusEnum("status").default("inReview").notNull(),
@@ -2047,10 +2061,19 @@ export const chefKitchenApplications = pgTable("chef_kitchen_applications", {
 
 // A renewed access document waits here while the current approved document stays valid.
 // Approval replaces the current document; rejection leaves it untouched. Migration 0074.
+export const kitchenDocumentWaiverEvents = pgTable("kitchen_document_waiver_events", {
+  id: serial("id").primaryKey(),
+  applicationId: integer("application_id").references(() => chefKitchenApplications.id, { onDelete: "cascade" }).notNull(),
+  action: text("action").notNull(), // 'waived' | 'ended'
+  actorId: integer("actor_id").references(() => users.id, { onDelete: "set null" }),
+  actorRole: text("actor_role").notNull(), // 'manager' | 'admin'
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 export const chefDocumentRenewals = pgTable("chef_document_renewals", {
   id: serial("id").primaryKey(),
   applicationId: integer("application_id").references(() => chefKitchenApplications.id, { onDelete: "cascade" }).notNull(),
-  documentKey: text("document_key").notNull(), // 'foodSafetyLicense' | 'foodEstablishmentCert'
+  documentKey: text("document_key").notNull(), // 'foodSafetyLicense' | 'foodEstablishmentCert' | 'insurance'
   url: text("url").notNull(),
   expiry: date("expiry").notNull(),
   status: text("status").default("pending").notNull(), // 'pending' | 'approved' | 'rejected'
@@ -2094,6 +2117,9 @@ export const insertChefKitchenApplicationSchema = createInsertSchema(chefKitchen
   feedback: true,
   foodSafetyLicenseStatus: true,
   foodEstablishmentCertStatus: true,
+  // Set only by the kitchen's "approve for booking without documents" (0109), never by a submitted form.
+  documentsWaivedAt: true,
+  documentsWaivedBy: true,
 });
 
 export const updateChefKitchenApplicationSchema = z.object({

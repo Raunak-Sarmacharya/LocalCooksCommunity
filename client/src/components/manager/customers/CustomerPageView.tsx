@@ -294,7 +294,7 @@ function DocumentRow({ document, locale, onView }: { document: CustomerDocument;
   const ok = document.uploaded && !expired && document.status === 'approved';
   const expiry = !document.expiry ? mt('cuDocNoExpiry') : expired ? mt('cuDocExpiredOn', { date: formatCalendarDay(document.expiry, locale) })
     : mt('cpExpires', { date: formatCalendarDay(document.expiry, locale) });
-  const warn = document.stage === 'expired' || document.stage === '7_day' ? 'font-medium text-red-700' : document.stage === '30_day' ? 'font-medium text-amber-800' : '';
+  const warn = document.stage === 'expired' || document.stage === '3_day' ? 'font-medium text-red-700' : document.stage === '14_day' || document.stage === '45_day' ? 'font-medium text-amber-800' : '';
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 border-[#f0eeec] py-[11px] [&+&]:border-t">
       <div className="min-w-0">

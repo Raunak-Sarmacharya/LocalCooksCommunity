@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { accessDocumentDaysLeft, accessDocumentStage, bookingRefusalBody, locationBookingEligibility, usesRenewalSlot } from './location-booking-eligibility';
+import { accessDocumentDaysLeft, accessDocuments, accessDocumentStage, bookingRefusalBody, locationBookingEligibility, requiredAccessDocuments, usesRenewalSlot } from './location-booking-eligibility';
 
 const now = new Date('2026-10-14T12:00:00Z');
 const app = { status: 'approved', current_tier: 3, foodSafetyLicenseUrl: '/certificate.pdf', foodSafetyLicenseStatus: 'approved', foodSafetyLicenseExpiry: '2027-10-14' };
@@ -20,11 +20,36 @@ describe('location booking eligibility', () => {
     expect(eligible({ foodSafetyLicenseExpiry: '2020-01-01' }, true, { requireFoodHandlerCert: false }).canBook).toBe(true);
     expect(eligible({ foodEstablishmentCertUrl: '/licence.pdf', foodEstablishmentCertStatus: 'approved', foodEstablishmentCertExpiry: '2020-01-01' }, true, { tier2_food_establishment_cert_required: true }).canBook).toBe(false);
   });
+  // Owner, Oct 23: per document Not needed / Track it / Required; insurance is a dated document; the kitchen can waive.
+  it('a tracked document never pauses booking, a required one does', () => {
+    const expired = { foodEstablishmentCertUrl: '/licence.pdf', foodEstablishmentCertStatus: 'approved', foodEstablishmentCertExpiry: '2020-01-01' };
+    expect(eligible(expired, true, { food_establishment_cert_tracked: true }).canBook).toBe(true);
+    expect(eligible(expired, true, { tier2_food_establishment_cert_required: true }).canBook).toBe(false);
+    expect(accessDocuments({ ...app, ...expired }, { food_establishment_cert_tracked: true }).map(doc => [doc.key, doc.mode]))
+      .toEqual([['foodSafetyLicense', 'required'], ['foodEstablishmentCert', 'track']]);
+  });
+  it('required insurance needs an approved, unexpired document', () => {
+    const requirements = { tier2_insurance_document_required: true };
+    expect(eligible({}, true, requirements)).toMatchObject({ canBook: false, status: 'document_review_required', document: { key: 'insurance' } });
+    expect(eligible({ insuranceUrl: '/ins.pdf', insuranceStatus: 'approved', insuranceExpiry: '2027-01-01' }, true, requirements).canBook).toBe(true);
+    expect(eligible({ insuranceUrl: '/ins.pdf', insuranceStatus: 'approved', insuranceExpiry: '2026-10-14' }, true, requirements)).toMatchObject({ canBook: false, status: 'document_expired' });
+    expect(usesRenewalSlot({ ...app, insuranceUrl: '/ins.pdf', insuranceStatus: 'approved' }, 'insurance')).toBe(true);
+  });
+  it('a kitchen waiver lets the customer book with documents missing or expired; ending it pauses again', () => {
+    const requirements = { tier2_insurance_document_required: true, tier2_food_establishment_cert_required: true };
+    const missing = { foodSafetyLicenseUrl: null, foodSafetyLicenseExpiry: null };
+    expect(eligible({ ...missing, documentsWaivedAt: '2026-10-13T10:00:00Z' }, true, requirements).canBook).toBe(true);
+    expect(eligible({ ...missing, documentsWaivedAt: null }, true, requirements).canBook).toBe(false);
+    expect(requiredAccessDocuments({ ...app, documentsWaivedAt: new Date() }, requirements)).toEqual([]);
+    // Still tracked and shown (and reminded once uploaded) while waived.
+    expect(accessDocuments({ ...app, documentsWaivedAt: new Date() }, requirements).map(doc => doc.key)).toEqual(['foodSafetyLicense', 'foodEstablishmentCert', 'insurance']);
+  });
   it.each(['2026-02-30', 'not-a-date', '', '2026-99-99'])('fails closed for invalid expiry %s', foodSafetyLicenseExpiry => { expect(eligible({ foodSafetyLicenseExpiry }).canBook).toBe(false); });
   it('uses the location calendar at a UTC date boundary', () => {
     expect(accessDocumentDaysLeft('2026-10-14', 'America/St_Johns', new Date('2026-10-14T01:00:00Z'))).toBe(1);
   });
-  it.each([['2026-11-14', null], ['2026-11-13', '30_day'], ['2026-10-21', '7_day'], ['2026-10-14', 'expired'], ['2026-10-13', 'expired']] as const)('cadence for %s is %s', (expiry, stage) => {
+  // Food Corridor's schedule (owner, Oct 23): 45, 14 and 3 days before, and on the day.
+  it.each([['2026-11-29', null], ['2026-11-28', '45_day'], ['2026-10-29', '45_day'], ['2026-10-28', '14_day'], ['2026-10-18', '14_day'], ['2026-10-17', '3_day'], ['2026-10-14', 'expired'], ['2026-10-13', 'expired']] as const)('cadence for %s is %s', (expiry, stage) => {
     expect(accessDocumentStage(expiry, 'America/St_Johns', now)).toBe(stage);
   });
 

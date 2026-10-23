@@ -305,7 +305,9 @@ export async function loadCustomerReadInput(managerId: number, locationId: numbe
       createdAt: chefKitchenApplications.createdAt, updatedAt: chefKitchenApplications.updatedAt,
       foodSafetyLicenseUrl: chefKitchenApplications.foodSafetyLicenseUrl, foodSafetyLicenseStatus: chefKitchenApplications.foodSafetyLicenseStatus,
       foodSafetyLicenseExpiry: chefKitchenApplications.foodSafetyLicenseExpiry, foodEstablishmentCertUrl: chefKitchenApplications.foodEstablishmentCertUrl,
-      foodEstablishmentCertStatus: chefKitchenApplications.foodEstablishmentCertStatus, foodEstablishmentCertExpiry: chefKitchenApplications.foodEstablishmentCertExpiry })
+      foodEstablishmentCertStatus: chefKitchenApplications.foodEstablishmentCertStatus, foodEstablishmentCertExpiry: chefKitchenApplications.foodEstablishmentCertExpiry,
+      insuranceUrl: chefKitchenApplications.insuranceUrl, insuranceStatus: chefKitchenApplications.insuranceStatus, insuranceExpiry: chefKitchenApplications.insuranceExpiry,
+      documentsWaivedAt: chefKitchenApplications.documentsWaivedAt })
       .from(chefKitchenApplications).where(and(inArray(chefKitchenApplications.locationId, ids), only(chefKitchenApplications.chefId))),
     db.select({ chefId: chefLocationAccess.chefId, locationId: chefLocationAccess.locationId, grantedAt: chefLocationAccess.grantedAt })
       .from(chefLocationAccess).where(and(inArray(chefLocationAccess.locationId, ids), only(chefLocationAccess.chefId))),
@@ -357,7 +359,8 @@ export async function loadCustomerReadInput(managerId: number, locationId: numbe
     currentTier: row.currentTier, tier2CompletedAt: row.tier2CompletedAt, accessEnded: !!row.accessEnded, createdAt: row.createdAt, updatedAt: row.updatedAt,
     documents: row.status === 'approved' && row.currentTier >= 3 ? requiredAccessDocuments({ status: row.status, currentTier: row.currentTier,
       foodSafetyLicenseUrl: row.foodSafetyLicenseUrl, foodSafetyLicenseStatus: row.foodSafetyLicenseStatus, foodSafetyLicenseExpiry: row.foodSafetyLicenseExpiry,
-      foodEstablishmentCertUrl: row.foodEstablishmentCertUrl, foodEstablishmentCertStatus: row.foodEstablishmentCertStatus, foodEstablishmentCertExpiry: row.foodEstablishmentCertExpiry },
+      foodEstablishmentCertUrl: row.foodEstablishmentCertUrl, foodEstablishmentCertStatus: row.foodEstablishmentCertStatus, foodEstablishmentCertExpiry: row.foodEstablishmentCertExpiry,
+      insuranceUrl: row.insuranceUrl, insuranceStatus: row.insuranceStatus, insuranceExpiry: row.insuranceExpiry, documentsWaivedAt: row.documentsWaivedAt },
       requirements.get(row.locationId) ?? {}).map(({ key, label, expiry }) => ({ key, label, expiry: expiry ?? null })) : [],
   }));
   const bookings: RawBooking[] = bookingRows.filter(row => row.chefId != null).map(row => ({ ...row, chefId: row.chefId! }));
