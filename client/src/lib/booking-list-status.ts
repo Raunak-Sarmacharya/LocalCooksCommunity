@@ -24,7 +24,7 @@ export interface BookingListRow {
   /** The kitchen zone from the server's closeout projection (preferred over `locationTimezone`). */
   timezone?: string | null;
   /** The server's closeout projection, as on the booking page. */
-  closeout?: { phase?: string | null; legacy?: boolean; visits?: Array<{ visitId?: number; localDate?: string; startTime?: string; endTime?: string; attendance?: string | null;
+  closeout?: { phase?: string | null; legacy?: boolean; visits?: Array<{ visitId?: number; localDate?: string; startTime?: string; endTime?: string; phase?: string; attendance?: string | null;
     inspection?: { canRespond?: boolean; deadline?: string } | null }> | null } | null;
   /** Per-visit check-in states (multi-visit bookings). */
   visitStates?: Array<{ id?: number; checkinStatus: string; checkoutRequestedAt?: string | null; visitDate?: string | null; startTime?: string; endTime?: string; operatingWindowStartTime?: string | null }> | null;
