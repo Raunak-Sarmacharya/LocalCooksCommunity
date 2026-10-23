@@ -3138,6 +3138,8 @@
   "problemHelp": "Besoin d’aide?",
   "problemRequest": "Demande de soutien no {id}",
   "problemAssigned": "Attribuée au membre no {id}",
+  "problemAssignedYou": "Assigné à vous",
+  "problemAssignedTo": "Assigné à {name}",
   "problemLatest": "Dernière réponse : {note}",
   "problemOpenBooking": "Ouvrir la réservation",
   "problemOpenTour": "Ouvrir la visite guidée",

@@ -243,7 +243,9 @@ export async function listProblems(actor: Actor, commitment?: 'booking' | 'tour'
     for (const row of rows) {
       const context = await problemContext(tx, row.storageBookingId ? 'storage' : row.bookingId ? 'booking' : 'tour', row.storageBookingId || row.bookingId || row.viewingId!);
       if (actor.role === 'admin' || actor.id === context?.chefId || actor.id === context?.managerId)
-        visible.push({ ...row, reference: context?.reference ?? null });
+        visible.push({ ...row, reference: context?.reference ?? null,
+          // Staff see who has it by name, not by user id.
+          ...(actor.role === 'admin' && row.claimedBy ? { claimedByName: await (await import('../utils/user-display')).getUserDisplayName(row.claimedBy, 'manager').catch(() => null) } : {}) });
     }
     return visible;
   });

@@ -3138,6 +3138,8 @@
   "problemHelp": "Need a hand?",
   "problemRequest": "Support request #{id}",
   "problemAssigned": "Assigned to team member #{id}",
+  "problemAssignedYou": "Assigned to you",
+  "problemAssignedTo": "Assigned to {name}",
   "problemLatest": "Latest reply: {note}",
   "problemOpenBooking": "Open booking",
   "problemOpenTour": "Open tour",

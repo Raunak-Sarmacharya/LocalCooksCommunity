@@ -3138,6 +3138,8 @@
   "problemHelp": "Потрібна допомога?",
   "problemRequest": "Запит підтримки №{id}",
   "problemAssigned": "Призначено працівнику №{id}",
+  "problemAssignedYou": "Призначено вам",
+  "problemAssignedTo": "Призначено: {name}",
   "problemLatest": "Остання відповідь: {note}",
   "problemOpenBooking": "Відкрити бронювання",
   "problemOpenTour": "Відкрити екскурсію",

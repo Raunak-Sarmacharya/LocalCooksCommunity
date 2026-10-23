@@ -180,3 +180,13 @@ it('opens straight on a framed report when the page asks (the chef’s "I was th
   // The report carries the attendance category, so the kitchen reads "{chef} says they were there".
   await waitFor(() => expect(fetcher.mock.calls.some(([, init]: any) => init?.method==='POST' && JSON.parse(init.body).category==='attendance')).toBe(true)); client.clear();
 });
+it('staff queue: open before resolved, safety then access first; the assignee by name; no customer-facing line', async () => {
+  const problems=[{...problem,id:1,status:'resolved',category:'safety'},{...problem,id:2,category:'equipment'},{...problem,id:3,category:'access',claimedBy:9,claimedByName:'Raunak',status:'acknowledged'},
+    {...problem,id:6,category:'safety'}];
+  const client=mount({staff:true,role:'admin'},vi.fn(async()=>({ok:true,json:async()=>({problems,reportingAvailable:false,actorId:1})})));
+  await screen.findByRole('article',{name:'Support request #6'});
+  expect(screen.getAllByRole('article').map(card=>card.getAttribute('aria-label'))).toEqual(['Support request #6','Support request #3','Support request #2','Support request #1']);
+  expect(screen.getByText('Assigned to Raunak')).toBeInTheDocument();
+  expect(screen.queryByText(/You can follow updates and reply here/)).not.toBeInTheDocument();
+  client.clear();
+});

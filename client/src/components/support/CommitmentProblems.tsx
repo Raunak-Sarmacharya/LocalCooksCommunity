@@ -12,7 +12,7 @@ import { problemDestination, type ProblemHistory } from '@shared/commitment-prob
 
 export type Problem = {
   id: number; bookingId: number | null; viewingId: number | null; storageBookingId?: number | null; kind: string; status: string; claimedBy: number | null;
-  revision: number; description: string; history: ProblemHistory[]; category?: string | null; reference?: string | null;
+  revision: number; description: string; history: ProblemHistory[]; category?: string | null; reference?: string | null; claimedByName?: string | null;
 };
 async function problemRequest(path: string, method = 'GET', body?: unknown) {
   const t = i18n.getFixedT(null, 'chef');
@@ -41,6 +41,13 @@ export function useCommitmentProblems(kind: 'booking' | 'tour' | 'storage' | und
   });
 }
 
+/** Staff queue: open before resolved, safety then access first, newest first within each. */
+const URGENT = ['safety', 'access'];
+export const staffOrder = (problems: Problem[]) => [...problems].sort((a, b) =>
+  Number(a.status === 'resolved') - Number(b.status === 'resolved')
+  || (URGENT.includes(a.category || '') ? URGENT.indexOf(a.category!) : 9) - (URGENT.includes(b.category || '') ? URGENT.indexOf(b.category!) : 9)
+  || b.id - a.id);
+
 function ProblemCard({ problem, staff, role, actorId, here }: { problem: Problem; staff: boolean; role: string; actorId?: number; here: boolean }) {
   const { t, i18n } = useTranslation('chef');
   const [note, setNote] = useState('');
@@ -63,12 +70,12 @@ function ProblemCard({ problem, staff, role, actorId, here }: { problem: Problem
     <p className="font-medium">{!here && <>{commitmentLabel} · </>}{t('problemRequest', { id: problem.id })} · {t(`problemStatus_${problem.status}`, { defaultValue: t('problemStatus_reported') })}</p>
     {!staff && reporter && <p className="text-xs text-muted-foreground">{reporter.actorId === actorId ? t('problemReportedByYou') : reporter.actorRole === 'manager' ? t('problemReportedByKitchen') : t(role === 'manager' ? 'problemReportedByCustomer' : 'problemReportedByChef')}</p>}
     {problem.category && <p className={problem.category === 'safety' ? 'text-sm font-semibold text-destructive' : 'text-sm'}>{problem.category === 'safety' ? t('problemCopy03') : t(`problemCategory_${problem.category}`, { defaultValue: t('problemCategory_other') })}</p>}
-    {staff && <p className="text-sm">{problem.claimedBy ? t('problemAssigned', { id: problem.claimedBy }) : t('problemCopy04')}</p>}
+    {staff && <p className="text-sm">{!problem.claimedBy ? t('problemCopy04') : problem.claimedBy === actorId ? t('problemAssignedYou') : t('problemAssignedTo', { name: problem.claimedByName || t('problemCopy07') })}</p>}
     <p className="whitespace-pre-wrap text-sm">{problem.description}</p>
     {latestUpdate && <p className="whitespace-pre-wrap rounded-md bg-muted p-3 text-sm">{t('problemLatest', { note: latestUpdate.note })}</p>}
     {!here && <a className="text-sm underline" href={problemDestination(kind, id, role)}>{t(kind === 'booking' ? 'problemOpenBooking' : kind === 'storage' ? 'problemOpenStorage' : 'problemOpenTour')}</a>}
     <details><summary className="cursor-pointer text-sm">{t('problemCopy05')}</summary>{history.map(entry => <p key={entry.revision} className="whitespace-pre-wrap border-t py-2 text-sm">{formatVisitTime(entry.at, Intl.DateTimeFormat().resolvedOptions().timeZone, i18n.resolvedLanguage)} {friendlyTimezoneName(Intl.DateTimeFormat().resolvedOptions().timeZone, i18n.resolvedLanguage)} · {entry.actorId === actorId ? t('problemCopy06') : entry.actorRole === 'admin' ? t('problemCopy07') : entry.actorRole === 'manager' ? t('problemCopy08') : entry.actorRole === 'chef' ? t(role === 'manager' ? 'problemCopy09Kitchen' : 'problemCopy09') : t('problemCopy10')}: {entry.action === 'report' ? t('problemCopy11') : entry.note}</p>)}</details>
-    {problem.status !== 'resolved' && <p className="text-sm">{problem.status === 'reported' ? t('problemCopy12') : t('problemCopy13')}</p>}
+    {!staff && problem.status !== 'resolved' && <p className="text-sm">{problem.status === 'reported' ? t('problemCopy12') : t('problemCopy13')}</p>}
     {staff && problem.status !== 'resolved' && <div className="space-y-2">
       {!problem.claimedBy ? <Button disabled={action.isPending} onClick={() => action.mutate('claim')}>{t('problemCopy14')}</Button> : <>
         <label className="block text-sm" htmlFor={`problem-response-${problem.id}`}>{t(role === 'manager' ? 'problemCopy15Kitchen' : 'problemCopy15')}</label>
@@ -149,6 +156,6 @@ function ProblemsPanel({ kind, id, canReport = false, staff = false, role = 'che
     {report.isSuccess && <p role="status" className="text-sm">{t('problemCopy41')}</p>}
     {report.error && !reportOpen && <p role="alert" className="text-sm text-destructive">{report.error.message} {t('problemRetryDraft')}</p>}
     {query.isPending ? <p role="status">{t('problemCopy42')}</p> : query.error ? <p role="alert">{query.error.message} <button className="underline" onClick={() => void query.refetch()}>{t('problemCopy43')}</button></p>
-      : !hasProblems ? !kind && <p className="text-sm">{staff ? t('problemCopy44') : t('problemCopy45')}</p> : query.data!.problems.map(problem => <ProblemCard key={problem.id} problem={problem} staff={staff} role={role} actorId={query.data?.actorId} here={!!kind && !!id} />)}
+      : !hasProblems ? !kind && <p className="text-sm">{staff ? t('problemCopy44') : t('problemCopy45')}</p> : (staff ? staffOrder(query.data!.problems) : query.data!.problems).map(problem => <ProblemCard key={problem.id} problem={problem} staff={staff} role={role} actorId={query.data?.actorId} here={!!kind && !!id} />)}
   </section>;
 }
