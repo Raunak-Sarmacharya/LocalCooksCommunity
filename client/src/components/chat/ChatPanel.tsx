@@ -1,7 +1,7 @@
 import { logger } from "@/lib/logger";
 import { normalizeChatSystemMessage } from "@/lib/chat-system-message";
 import { useTranslation } from "react-i18next";
-import { useState, useRef, useEffect } from "react";
+import { Fragment, useState, useRef, useEffect } from "react";
 import { X, Info, FileText, AlertCircle } from "lucide-react";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Button } from "@/components/ui/button";
@@ -136,7 +136,7 @@ export default function ChatPanel({
     url: string;
   }>>([]);
 
-  const { t } = useTranslation("chef");
+  const { t, i18n } = useTranslation("chef");
   const {
     messages,
     isLoading,
@@ -256,6 +256,15 @@ export default function ChatPanel({
   );
 
   // ... renderMessages kept same generally ...
+  const sentAt = (message: { createdAt?: unknown }) => message.createdAt instanceof Date ? message.createdAt
+    : message.createdAt instanceof Timestamp ? message.createdAt.toDate() : null;
+  const sameDay = (a: Date | null, b: Date) => !!a && a.toDateString() === b.toDateString();
+  const dayLabel = (at: Date) => {
+    const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1);
+    return sameDay(new Date(), at) ? t("chatToday") : sameDay(yesterday, at) ? t("chatYesterday")
+      : new Intl.DateTimeFormat(i18n.language, { weekday: "short", month: "short", day: "numeric" }).format(at);
+  };
+
   const renderMessages = () => {
     if (messages.length === 0) {
       return (
@@ -271,16 +280,20 @@ export default function ChatPanel({
 
     return (
       <ChatMessageList scrollRef={messagesEndRef} className="px-4 py-6">
-        {messages.map((message) => {
+        {messages.map((message, index) => {
+          const at = sentAt(message);
+          // A day divider whenever the day changes, so last night's message isn't read as this morning's.
+          const divider = !at || (index > 0 && sameDay(sentAt(messages[index - 1]), at)) ? null : (
+            <div key={`day-${message.id}`} role="separator" className="my-4 text-center text-xs font-medium text-muted-foreground">{dayLabel(at)}</div>);
           if (message.senderRole === 'system') {
             const systemMessage = normalizeChatSystemMessage(message.content, canBook);
             if (!systemMessage) return null;
-            return (
-              <div key={message.id} className="flex justify-center my-4">
+            return (<Fragment key={message.id}>{divider}
+              <div className="flex justify-center my-4">
                 <span className="text-xs text-muted-foreground bg-muted/50 px-3 py-1 rounded-full border">
                   {systemMessage}
                 </span>
-              </div>
+              </div></Fragment>
             );
           }
 
@@ -291,18 +304,14 @@ export default function ChatPanel({
           // The admin role is internal; the chef only ever sees the team name.
           if (message.senderRole === 'admin') senderName = localCooksName;
 
-          const timestamp = message.createdAt instanceof Date
-            ? message.createdAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-            : message.createdAt instanceof Timestamp
-              ? message.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-              : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          // The app's clock: "11:46 a.m." in English, the reader's own convention in other languages.
+          const timestamp = new Intl.DateTimeFormat(i18n.language, { hour: 'numeric', minute: '2-digit' }).format(at ?? new Date());
 
-          return (
+          return (<Fragment key={message.id}>{divider}
             <ChatBubble
-              key={message.id}
               variant={isMe ? "sent" : "received"}
               avatarFallback={senderName[0]}
-              senderName={!isMe ? senderName : "You"}
+              senderName={!isMe ? senderName : t("chatYou")}
               timestamp={timestamp}
             >
               {message.type === 'file' ? (
@@ -318,7 +327,7 @@ export default function ChatPanel({
               ) : (
                 <span className="whitespace-pre-wrap">{message.content}</span>
               )}
-            </ChatBubble>
+            </ChatBubble></Fragment>
           );
         })}
       </ChatMessageList>
