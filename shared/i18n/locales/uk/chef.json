@@ -347,6 +347,7 @@
   "bdPayoutAdjustment": "Інші коригування",
   "bdHstIncludedNote": "Включає {amount} HST, які ви зібрали й сплачуєте.",
   "bdGoodwillIncluded": "Включає {amount} від Local Cooks",
+  "bdGoodwillIncludedKitchen": "Включає {amount}, сплачені Local Cooks, а не з вашої виплати",
   "bdRefundPanelInfo": "Використайте панель бронювань для здійснення повернень (потрібен ID транзакції).",
   "bdRefundPart": " − {amount} повернення",
   "bdRefundProcessedDesc": "Повернення {amount} оброблено.",

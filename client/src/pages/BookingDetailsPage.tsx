@@ -666,7 +666,8 @@ export default function BookingDetailsPage() {
     const refundedCents = (booking.paymentTransaction?.refundAmount || 0)
       + (booking.additionalCharges || []).reduce((sum, line) => sum + line.refundedCents, 0);
     const goodwill = booking.paymentTransaction?.goodwillRefundCents || 0;
-    if (goodwill > 0 && (status === 'refunded' || status === 'partially_refunded')) {
+    // The booking's own status can still read 'paid' after a goodwill refund (only the transaction changes).
+    if (goodwill > 0) {
       const total = Math.max(refundedCents, goodwill);
       const other = total - goodwill;
       const chefLabel = booking.chef?.fullName || booking.chef?.username || t('bdhChefFallback');
@@ -1991,7 +1992,7 @@ export default function BookingDetailsPage() {
         {moneyRow(t('bdServiceFeeLine'), statement.serviceFee, { muted: true, sub: isManagerView ? t('bdServiceFeeChefPaid') : undefined })}
         {moneyRow(statement.held ? t(isManagerView ? 'bdChefCardHold' : 'bnCardHold') : t('bdhTotalPaid'), statement.paid, { total: true, testId: 'statement-total-paid' })}
         {statement.refunded > 0 && moneyRow(isManagerView ? t('bdRefundedToChefLine') : t('bdRefundedLine'), -statement.refunded, { testId: 'statement-refunded',
-          sub: goodwillRefund > 0 ? t('bdGoodwillIncluded', { amount: formatCurrency(goodwillRefund) }) : undefined })}
+          sub: goodwillRefund > 0 ? t(isManagerView ? 'bdGoodwillIncludedKitchen' : 'bdGoodwillIncluded', { amount: formatCurrency(goodwillRefund) }) : undefined })}
         {!isManagerView && statement.refunded > 0 && moneyRow(t('bdAfterRefunds'), statement.paid - statement.refunded, { total: true, testId: 'statement-after-refunds' })}
         {isManagerView && (<div className="space-y-1 pt-3" data-testid="statement-payout">
           <h4 className="text-xs font-semibold text-muted-foreground">{t('bdYourPayout')}</h4>

@@ -347,6 +347,7 @@
   "bdPayoutAdjustment": "Autres ajustements",
   "bdHstIncludedNote": "Comprend {amount} de TVH perçue que vous devez remettre.",
   "bdGoodwillIncluded": "Comprend {amount} de Local Cooks",
+  "bdGoodwillIncludedKitchen": "Comprend {amount} payés par Local Cooks, pas pris sur votre versement",
   "bdRefundPanelInfo": "Utilisez le panneau des réservations pour émettre des remboursements (ID de transaction requis).",
   "bdRefundPart": " − {amount} de remboursement",
   "bdRefundProcessedDesc": "Remboursement de {amount} traité.",

@@ -317,6 +317,14 @@ describe("Local Cooks goodwill refund on the payment card", () => {
     
     expect(card).toHaveTextContent("a $26.00 refund. Your payout is unchanged.");
   });
+  it("still says so when the booking itself reads paid (as #229 on dev) and names who paid on the refund line", async () => {
+    h.manager = true; h.booking = { ...refunded(), paymentStatus: "paid" };
+    render(<BookingDetailsPage />);
+    const card = await screen.findByTestId("payment-card");
+    expect(card).toHaveTextContent("a $26.00 refund. Your payout is unchanged.");
+    fireEvent.click(within(within(card).getByTestId("statement-refunded")).getByRole("button", { name: /^About / }));
+    expect(await screen.findByText("Includes $26.00 paid by Local Cooks, not from your payout")).toBeInTheDocument();
+  });
 });
 
 describe("payout after closeout on the payment card", () => {

@@ -347,6 +347,7 @@
   "bdPayoutAdjustment": "Other adjustments",
   "bdHstIncludedNote": "Includes {amount} HST you collected and remit.",
   "bdGoodwillIncluded": "Includes {amount} from Local Cooks",
+  "bdGoodwillIncludedKitchen": "Includes {amount} paid by Local Cooks, not from your payout",
   "bdRefundedLine": "Refunded",
   "bdRefundedOn": "Refunded on {date}",
   "bdRefundedToChef": "{amount} was refunded to the customer.",
