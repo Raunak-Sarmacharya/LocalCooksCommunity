@@ -70,9 +70,13 @@ export function BookingFeedbackCard({ bookingId, role, otherPartyName, timezone,
   };
   const form = <form onSubmit={save} className="min-w-0 space-y-4 [overflow-wrap:anywhere]">
     {mobile && stars()}
-    <div className="flex flex-wrap gap-2">{bookingFeedbackTags[role].map(tag => <Button key={tag} type="button" variant={tags.includes(tag) ? 'default' : 'outline'}
-      aria-pressed={tags.includes(tag)} disabled={saving} className="h-auto min-h-11 max-w-full whitespace-normal text-left"
-      onClick={() => setTags(current => current.includes(tag) ? current.filter(value => value !== tag) : [...current, tag])}>{tagLabel(tag)}</Button>)}</div>
+    {/* The first four tags of each role are what went well, the last four what could be better (shared/booking-feedback.ts). */}
+    {[['wentWell', bookingFeedbackTags[role].slice(0, 4)], ['couldBeBetter', bookingFeedbackTags[role].slice(4)]].map(([group, list]) =>
+      <fieldset key={group as string} className="space-y-2"><legend className="text-sm font-medium">{t(`privateFeedback.${group}`)}</legend>
+        <div className="flex flex-wrap gap-2">{(list as readonly string[]).map(tag => <Button key={tag} type="button" variant={tags.includes(tag) ? 'default' : 'outline'}
+          aria-pressed={tags.includes(tag)} disabled={saving} className="h-auto min-h-11 max-w-full whitespace-normal text-left"
+          onClick={() => setTags(current => current.includes(tag) ? current.filter(value => value !== tag) : [...current, tag])}>{tagLabel(tag)}</Button>)}</div>
+      </fieldset>)}
     <div className="space-y-2"><label htmlFor={noteId} className="text-sm font-medium">{t('privateFeedback.note')}</label>
       <Textarea id={noteId} value={comment} onChange={event => setComment(event.target.value)} maxLength={1000} disabled={saving} className="min-w-0" />
       <p className="text-right text-xs text-muted-foreground">{comment.length}/1000</p></div>

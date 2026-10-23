@@ -360,6 +360,8 @@
     "managerQuestion": "How was {name}'s session?",
     "privacy": "Only Local Cooks sees this. {name} won't see your answers.",
     "note": "Anything Local Cooks should know?",
+    "wentWell": "What went well",
+    "couldBeBetter": "What could be better",
     "send": "Send feedback",
     "thanks": "Thanks — this helps us keep Local Cooks great.",
     "sent": "You sent feedback on {date}",

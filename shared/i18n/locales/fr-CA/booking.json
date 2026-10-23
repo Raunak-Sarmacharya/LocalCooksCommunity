@@ -357,6 +357,8 @@
     "managerQuestion": "Comment s’est passée la séance de {name}?",
     "privacy": "Seul Local Cooks voit ceci. {name} ne verra pas vos réponses.",
     "note": "Y a-t-il quelque chose que Local Cooks devrait savoir?",
+    "wentWell": "Ce qui s’est bien passé",
+    "couldBeBetter": "Ce qui pourrait être mieux",
     "send": "Envoyer mes commentaires",
     "thanks": "Merci — vos commentaires nous aident à faire de Local Cooks un endroit agréable.",
     "sent": "Vous avez envoyé vos commentaires le {date}",
