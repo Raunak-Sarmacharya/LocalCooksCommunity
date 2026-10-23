@@ -11,6 +11,7 @@ vi.mock('@tanstack/react-query', () => ({ useQuery: ({ queryKey }: any) => query
   : queryKey.includes('/api/public/kitchens') ? { data: [], isLoading: false }
   : { data: { id: 4, name: 'Fixture location' }, isLoading: false } }));
 vi.mock('@/components/kitchen-application/KitchenApplicationForm', () => ({ default: (props: any) => { state.form(props); return <div>Editable application form</div>; } }));
+vi.mock('@/components/kitchen-application/RequestToCookPage', () => ({ RequestToCookPage: (props: any) => { state.form(props); return <div>Editable application form</div>; } }));
 vi.mock('@/components/auth/KitchenJourneyAuth', () => ({ default: () => <div>Authentication</div>, useKitchenJourneyEmailVerified: () => true }));
 vi.mock('@/layouts/chef-shell-context', () => ({ useChefShellChrome: () => true }));
 vi.mock('@/layouts/ChefDashboardLayout', () => ({ default: ({ children }: any) => <main>{children}</main> }));

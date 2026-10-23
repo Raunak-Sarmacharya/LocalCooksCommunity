@@ -22,7 +22,7 @@ describe("chef-shell-path", () => {
     assert.equal(isChefShellPath("/en-CA/kitchen-preview/foo"), true);
     assert.equal(isChefShellPath("/booking/99"), true);
     assert.equal(isChefShellPath("/booking/99/visit"), true);
-    assert.equal(isChefShellPath("/apply-kitchen/3"), true);
+    assert.equal(isChefShellPath("/apply-kitchen/3"), false); // the request to cook is its own focused page
     assert.equal(isChefShellPath("/request-tour/3"), true);
     assert.equal(isChefShellPath("/kitchen-requirements/3"), true);
     assert.equal(isChefShellPath("/manager/booking/99"), false);

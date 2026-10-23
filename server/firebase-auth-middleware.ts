@@ -43,6 +43,9 @@ function isContactVerificationRecoveryRoute(req: Request): boolean {
     '/api/sync-verification-status',
     '/api/firebase/user/me',
     '/api/firebase-sync-user',
+    // A new account's request to cook is held here until its email is verified (owner, Oct 23); sending it still
+    // goes through the request route, which requires a verified email.
+    '/api/firebase/chef/kitchen-request-draft',
   ].some((allowed) => path === allowed.replace(/\/$/, '') || path.startsWith(allowed));
 }
 

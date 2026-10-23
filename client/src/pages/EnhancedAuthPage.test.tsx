@@ -10,6 +10,8 @@ const state = vi.hoisted(() => ({
   updateUserVerification: vi.fn(),
   end: vi.fn(),
 }));
+// The manual "I have verified my email" check is a backup shown after 20 s; these tests exercise it directly.
+vi.mock("@/hooks/use-email-verified-watch", () => ({ useEmailVerifiedWatch: () => true }));
 vi.mock("@/lib/firebase", () => ({ auth: state.firebase }));
 vi.mock("firebase/auth", () => ({ isSignInWithEmailLink: () => false }));
 vi.mock("@/hooks/use-auth", () => ({ useFirebaseAuth: () => ({

@@ -21,7 +21,9 @@ import { readPreferredSchedule, writePreferredSchedule } from "@/lib/preferred-s
 type Rules = { hourlyRate?: number | null; dailyRate?: number | null; taxRatePercent?: number; platformCommissionRate?: number; minimumBookingHours?: number;
   maxSlotsPerChef?: number | null; allowMultiDayBookings?: boolean; multidayCreationEnabled?: boolean; maxBookingDays?: number };
 
-export function PreferredDaysPicker({ kitchenId }: { kitchenId: string }) {
+export type PreferredDaysSummary = { days: string[]; pricingMode: "hourly" | "daily"; times: string[]; totalCents: number | null };
+
+export function PreferredDaysPicker({ kitchenId, onSummary }: { kitchenId: string; onSummary?: (summary: PreferredDaysSummary) => void }) {
   const { t, i18n } = useTranslation("booking");
   const locale = i18n.language;
   const isMobile = useIsMobile();
@@ -68,6 +70,9 @@ export function PreferredDaysPicker({ kitchenId }: { kitchenId: string }) {
   const perDay = hours.pricingMode === "daily" ? estimateKitchenBookingPrice({ hourlyRateCents: daily, hours: 1, taxRatePercent: rules?.taxRatePercent, platformCommissionRate: rules?.platformCommissionRate })
     : hours.times.length ? estimateKitchenBookingPrice({ hourlyRateCents: hourly, hours: hours.times.length, minimumBookingHours: rules?.minimumBookingHours, taxRatePercent: rules?.taxRatePercent, platformCommissionRate: rules?.platformCommissionRate }) : null;
   const status = firstDay ? statuses[firstDay] : undefined;
+  const totalCents = perDay ? perDay.totalCents * Math.max(1, days.length) : null;
+  useEffect(() => { onSummary?.({ days, pricingMode: hours.pricingMode, times: hours.times, totalCents }); },
+    [days.join(","), hours.pricingMode, hours.times.join(","), totalCents]);
   const calendarProps = { month, onMonthChange: setMonth, numberOfMonths: monthCount, pagedNavigation: monthCount === 2, showOutsideDays: false, fromMonth: new Date(),
     disabled: (date: Date) => !!reason(date), components: { Day: DatedCalendarDay }, className: "w-full bg-transparent p-1",
     classNames: monthCount === 2 ? { ...BOOKING_CALENDAR_TWO_MONTH_CLASS_NAMES, cell: "relative h-10 p-0 text-center text-sm" } : { ...BOOKING_CALENDAR_CLASS_NAMES, cell: "relative h-10 p-0 text-center text-sm" } };
@@ -88,7 +93,7 @@ export function PreferredDaysPicker({ kitchenId }: { kitchenId: string }) {
       slots={slots} value={hours} onChange={setHours} hourlyRate={hourly} dailyRate={daily} fullDayAllowed={!!status?.fullDay} fullDayReason={status?.fullDayReason ?? undefined}
       minHours={Math.max(1, Number(rules?.minimumBookingHours) || 1)} maxHours={rules?.maxSlotsPerChef ?? null} loading={slotsLoading} />}
     {perDay && <p className="rounded-xl bg-muted/40 p-3 text-sm" data-testid="preferred-days-estimate">
-      <span className="font-medium">{t("pdEstimate", { amount: formatCurrency(perDay.totalCents * Math.max(1, days.length), "CAD", locale), count: Math.max(1, days.length) })}</span>
+      <span className="font-medium">{t("pdEstimate", { amount: formatCurrency(totalCents!, "CAD", locale), count: Math.max(1, days.length) })}</span>
       <span className="block text-xs text-muted-foreground">{t("pdEstimateNote")}</span></p>}
   </div>;
 }

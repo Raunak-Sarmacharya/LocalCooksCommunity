@@ -24,7 +24,7 @@ it('allows stored location branding without authentication but denies arbitrary 
   expect(await canReadPrivateFile(undefined, logo)).toBe(false);
 });
 
-it('allows a chef to read exact listed kitchen terms before submitting a request', async () => {
+it('allows a chef or a signed-out visitor to read exact listed kitchen terms before submitting a request', async () => {
   const url = 'https://files.localcooks.ca/documents/371_file_1791484771230_invoice-96__3_.pdf';
   state.termsUrl = url;
   expect(await canReadPrivateFile({ id: 22, role: 'chef' }, url)).toBe(true);
@@ -34,7 +34,8 @@ it('allows a chef to read exact listed kitchen terms before submitting a request
   expect(query.sql).not.toContain('"kitchens"."kitchen_terms_url"');
   expect(query.sql).not.toContain('coalesce');
   expect(query.sql).toContain('"kitchens"."listing_status"');
-  expect(await canReadPrivateFile(undefined, url)).toBe(false);
+  // A signed-out visitor sending a request in one go reads the same terms before agreeing.
+  expect(await canReadPrivateFile(undefined, url)).toBe(true);
   expect(await canReadPrivateFile({ id: 22, role: 'chef' }, url.replace('invoice', 'license'))).toBe(false);
   state.termsUrl = '';
   expect(await canReadPrivateFile({ id: 22, role: 'chef' }, url)).toBe(false);

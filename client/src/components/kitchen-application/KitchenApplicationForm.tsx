@@ -7,7 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { motion } from "framer-motion";
 import { AlertCircle, ArrowLeft, Building2, CalendarDays, Check, Clock, FileText, Loader2, MapPin, MessageCircle, Send, XCircle } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { type FieldErrors, useForm, useWatch } from "react-hook-form";
 import { useLocation } from "wouter";
 import { z } from "zod";
@@ -236,6 +236,22 @@ interface KitchenApplicationFormProps {
   onCancel?: () => void;
   tourReference?: TourApplicationReference;
   sourceTourId?: number;
+  /**
+   * The one-page request to cook (owner, Oct 23): the page supplies "Your details" (in place of About You), the
+   * calendar above the form and the kitchen summary for the rail; `submit`, when given, receives the same FormData
+   * this form would POST (a brand-new account saves it as a draft until its email is verified).
+   */
+  onePage?: {
+    details: ReactNode;
+    detailsReady: boolean;
+    identity: { fullName: string; email: string; phone: string } | null;
+    before?: ReactNode;
+    summary?: ReactNode;
+    /** The one-line summary phones show at the top instead of the rail. */
+    summaryCompact?: ReactNode;
+    preferredDaysChosen?: boolean;
+    submit?: (formData: FormData) => Promise<void>;
+  };
 }
 
 // Business type / frequency options — shared with registration “Request to apply” modal
@@ -335,6 +351,7 @@ export default function KitchenApplicationForm({
   onCancel,
   tourReference,
   sourceTourId,
+  onePage,
 }: KitchenApplicationFormProps) {
   const { user } = useFirebaseAuth();
   const { t, i18n } = useTranslation("kitchen");
@@ -347,6 +364,7 @@ export default function KitchenApplicationForm({
   const { application, hasApplication, refetch: refetchLocationApp } = useChefKitchenApplicationForLocation(location.id);
   const { data: chefProfile, isLoading: isLoadingChefProfile } = useQuery<{ phone?: string | null }>({
     queryKey: ["/api/chef/my-profile"],
+    enabled: !!user,
     queryFn: async () => {
       const { auth } = await import("@/lib/firebase");
       const token = await auth.currentUser?.getIdToken();
@@ -809,7 +827,9 @@ export default function KitchenApplicationForm({
   const form = useForm<KitchenApplicationFormData>({
     resolver,
     defaultValues: getDefaultValues,
-    mode: "onChange",
+    // Nothing is marked wrong until the first Send; after that, fields re-check as they're corrected.
+    mode: "onSubmit",
+    reValidateMode: "onChange",
   });
 
   // Subscribe so asynchronous defaults preserve the chef's edits.
@@ -819,10 +839,22 @@ export default function KitchenApplicationForm({
   useEffect(() => {
     if (requirements) {
       form.reset(getDefaultValues, { keepDirtyValues: true });
-      // Trigger revalidation with the new schema
-      form.trigger();
+      // Re-check with the new schema only once the chef has tried to send.
+      if (form.formState.isSubmitted) form.trigger();
     }
   }, [requirements, getDefaultValues, form]);
+
+  // One-page request: name, email and phone come from "Your details", not from About You.
+  const identity = onePage?.identity;
+  useEffect(() => {
+    if (!identity) return;
+    const parts = identity.fullName.trim().split(/\s+/).filter(Boolean);
+    const opts = { shouldValidate: form.formState.isSubmitted };
+    form.setValue("firstName", parts[0] || "", opts);
+    form.setValue("lastName", parts.slice(1).join(" "), opts);
+    form.setValue("email", identity.email, opts);
+    form.setValue("phone", identity.phone, opts);
+  }, [identity?.fullName, identity?.email, identity?.phone, form]);
 
   // Watch all form values for progress calculation
   const watchedValues = useWatch({ control: form.control });
@@ -976,9 +1008,15 @@ export default function KitchenApplicationForm({
       (!needsPhone || has("phone"));
     push(required, {
       id: "aboutYou",
-      label: t("aboutYou", { defaultValue: "About You" }),
-      state: aboutYouDone ? "done" : "todo",
+      label: onePage ? t("yourDetails", { defaultValue: "Your details" }) : t("aboutYou", { defaultValue: "About You" }),
+      state: (onePage ? onePage.detailsReady : aboutYouDone) ? "done" : "todo",
       onNavigate: () => goToSection("aboutYou"),
+    });
+    if (onePage) push(optional, {
+      id: "preferredDays",
+      label: t("preferredDaysProgress", { defaultValue: "Preferred days" }),
+      state: onePage.preferredDaysChosen ? "done" : "todo",
+      onNavigate: () => goToSection("preferredDays"),
     });
 
     // Your Food Business — business name/type/description/experience are all flag-driven.
@@ -1098,7 +1136,7 @@ export default function KitchenApplicationForm({
 
   const phaseTitle = currentTier >= 2
     ? t("step2Coordinate", { defaultValue: "Kitchen documents" })
-    : t("requestToApply", { defaultValue: "Request to apply" });
+    : onePage ? t("yourRequest", { defaultValue: "Your request" }) : t("requestToApply", { defaultValue: "Request to apply" });
 
   /**
    * The lines under the bar.
@@ -1165,7 +1203,7 @@ export default function KitchenApplicationForm({
       <Button
         type="button"
         variant="outline"
-        onClick={() => setDiscardOpen(true)}
+        onClick={() => onePage && onCancel ? onCancel() : setDiscardOpen(true)}
         size="sm"
         className="shrink-0"
       >
@@ -1190,6 +1228,7 @@ export default function KitchenApplicationForm({
           <>
             {currentTier >= 2
               ? t("submitDocuments", { defaultValue: "Submit documents" })
+              : onePage ? t("sendRequestBtn", { defaultValue: "Send request" })
               : t("submitApplicationBtn", { defaultValue: "Submit application" })}
             <span className="ml-2">→</span>
           </>
@@ -1437,10 +1476,10 @@ export default function KitchenApplicationForm({
       );
       formData.append(
         "fullName",
-        submittedFullName || existingFullName || "N/A",
+        identity?.fullName.trim() || submittedFullName || existingFullName || "N/A",
       );
-      formData.append("email", data.email || application?.email || "");
-      formData.append("phone", chefProfile?.phone || data.phone || application?.phone || "");
+      formData.append("email", identity?.email || data.email || application?.email || "");
+      formData.append("phone", identity?.phone || chefProfile?.phone || data.phone || application?.phone || "");
       formData.append("kitchenPreference", application?.kitchenPreference || "commercial");
       if (sourceTourId) formData.append('sourceTourId', String(sourceTourId));
 
@@ -1569,6 +1608,10 @@ export default function KitchenApplicationForm({
         logger.info(`[KitchenApplicationForm] Appending custom file: customFile_${fieldId}`, file.name);
       });
 
+      if (onePage?.submit && currentTier === 1) {
+        await onePage.submit(formData);
+        return;
+      }
       await createApplication.mutateAsync(formData);
       
       // Clear fallback data since they have successfully submitted
@@ -1792,7 +1835,7 @@ export default function KitchenApplicationForm({
     <div className="relative space-y-6 pb-12">
       {/* Early notice so an unverified chef does not fill a long, multi-step form
           only to be refused at submit. Non-blocking: the form stays usable. */}
-      {emailUnverified && (
+      {emailUnverified && !onePage && (
         <div
           role="status"
           className="flex items-start gap-3 rounded-xl border border-warning/30 bg-warning/10 p-4"
@@ -1840,8 +1883,8 @@ export default function KitchenApplicationForm({
         </div>
       )}
 
-      {/* Header */}
-      <ChefPageHeader
+      {/* Header (the one-page request has its own title) */}
+      {!onePage && <ChefPageHeader
         title={currentTier >= 2
           ? t("kitchenDocuments", { defaultValue: "Kitchen documents" })
           : t("requestToApply", { defaultValue: "Request to apply" })}
@@ -1852,9 +1895,9 @@ export default function KitchenApplicationForm({
           name: location.name,
         })}
         className="mb-0"
-      />
+      />}
 
-      <FormLegend />
+      {!onePage && <FormLegend />}
 
       {/*
        * Below `lg` there is no rail, and a form this long cannot lose its progress readout
@@ -1866,10 +1909,11 @@ export default function KitchenApplicationForm({
        * In normal flow, not sticky: this slot is full-width, so making it stick would need the
        * opaque full-bleed chrome that smeared in the rail. It scrolls away with the page.
        */}
-      <div className="space-y-4 lg:hidden">
+      {/* On a phone the one-page request shows a one-line summary here and its checklist + Send after the form. */}
+      {onePage ? <div className="lg:hidden">{onePage.summaryCompact}</div> : <div className="space-y-4 lg:hidden">
         {managerContact}
         <ApplicationProgress {...trackerProps} />
-      </div>
+      </div>}
 
       {/* Two columns on lg+: the task on the left, progress and context on the right. */}
       <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
@@ -1877,20 +1921,36 @@ export default function KitchenApplicationForm({
       {/* MAIN COLUMN — the task itself. The rail never holds a field. */}
       <div className="min-w-0">
 
+      {onePage?.before && <div ref={registerSection("preferredDays")} className="mb-6">{onePage.before}</div>}
+
       <Form {...form}>
         <form
           id={FORM_ID}
           ref={formRef}
           onSubmit={form.handleSubmit(async (data) => {
-            await guard(() => onSubmit(data));
+            // The one-page request handles a new account's verification itself (it holds the request).
+            if (onePage?.submit) await onSubmit(data);
+            else await guard(() => onSubmit(data));
           }, handleInvalidSubmit)}
           className="space-y-6"
         >
           {/* TIER 1 SECTIONS - Only show when on Tier 1 */}
           {currentTier === 1 && (
             <>
+              {/* SECTION 1: "Your details" on the one-page request (who is asking, signed in or not) */}
+              {onePage && (
+                <Card className="shadow-none" ref={registerSection("aboutYou")}>
+                  <CardContent className="p-6">
+                    <div className="mb-4 border-b pb-3">
+                      <h3 className="font-semibold">{t("yourDetails", { defaultValue: "Your details" })}</h3>
+                    </div>
+                    {onePage.details}
+                  </CardContent>
+                </Card>
+              )}
+
               {/* SECTION 1: About You - Hide if global app has collected this */}
-              {showAboutYou && (
+              {showAboutYou && !onePage && (
                 <Card className="shadow-none" ref={registerSection("aboutYou")}>
                   <CardContent className="p-6">
                     <div className="mb-4 border-b pb-3">
@@ -2989,6 +3049,42 @@ export default function KitchenApplicationForm({
                   </div>
                 )}
 
+                {onePage ? (
+                  <FormField
+                    control={form.control}
+                    name="termsAgree"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-row items-start space-x-3 space-y-0">
+                        <FormControl>
+                          <Checkbox
+                            checked={field.value === true && watchedValues.accuracyAgree === true}
+                            onCheckedChange={(checked) => {
+                              field.onChange(checked === true);
+                              form.setValue("accuracyAgree", checked === true, { shouldValidate: form.formState.isSubmitted });
+                            }}
+                            className="mt-1"
+                          />
+                        </FormControl>
+                        <div className="space-y-1 leading-none">
+                          {/* Both agreements in one tick (owner, Oct 23): same policies, same commitment. */}
+                          <FormLabel className="text-sm font-normal leading-6 text-muted-foreground cursor-pointer">
+                            {t("onePageAgreePrefix", { defaultValue: "I agree to Local Cooks’" })}{" "}
+                            <a href="/terms" target="_blank" rel="noopener noreferrer" className="font-medium text-primary underline underline-offset-2 hover:text-primary/80">
+                              {t("onePageAgreeTerms", { defaultValue: "Terms and kitchen usage policies" })}
+                            </a>
+                            {location.kitchenTermsUrl ? t("onePageAgreeKitchen", { defaultValue: ", {name}’s terms above", name: location.name }) : ""}
+                            {t("onePageAgreeAnd", { defaultValue: " and" })}{" "}
+                            <a href="/privacy" target="_blank" rel="noopener noreferrer" className="font-medium text-primary underline underline-offset-2 hover:text-primary/80">
+                              {t("privacyPolicy", { defaultValue: "Privacy Policy" })}
+                            </a>
+                            {t("onePageAgreeAccurate", { defaultValue: ", and confirm my answers are accurate." })}
+                          </FormLabel>
+                          <FormMessage />
+                        </div>
+                      </FormItem>
+                    )}
+                  />
+                ) : <>
                 <FormField
                   control={form.control}
                   name="termsAgree"
@@ -3056,6 +3152,7 @@ export default function KitchenApplicationForm({
                     </FormItem>
                   )}
                 />
+                </>}
               </div>
             </CardContent>
           </Card>
@@ -3063,6 +3160,8 @@ export default function KitchenApplicationForm({
 
         </form>
       </Form>
+
+      {onePage && <ApplicationProgress {...trackerProps} className="mt-6 lg:hidden" />}
 
       </div>
 
@@ -3081,6 +3180,7 @@ export default function KitchenApplicationForm({
        */}
       <aside className="hidden min-w-0 space-y-4 lg:sticky lg:top-6 lg:block">
         {managerContact}
+        {onePage?.summary}
         <ApplicationProgress {...trackerProps} />
       </aside>
 

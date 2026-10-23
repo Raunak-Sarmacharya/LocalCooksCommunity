@@ -6,7 +6,8 @@ import { logger } from "../../logger";
 import { Router, Request, Response } from 'express';
 import { upload, uploadToBlob } from '../../fileUpload';
 import { requireFirebaseAuthWithUser, requireManager, requireAdmin } from '../../firebase-auth-middleware';
-import { db } from '../../db';
+import { db, pool } from '../../db';
+import { deleteDraft, draftFieldsFromBody, readDraft, saveDraft } from '../../services/kitchen-request-drafts';
 import { chefKitchenApplications, chefLocationAccess, insertChefKitchenApplicationSchema, updateApplicationTierSchema, platformSettings, users, kitchenViewings } from '@shared/schema';
 import { applyTier1Requirements, STEP1_REQUIREMENTS_SETTING_KEY } from '@shared/application-requirements';
 import { findMissingRequiredCustomFields } from '../../domains/applications/tier-validation';
@@ -58,6 +59,45 @@ const applicationService = new ApplicationService(applicationRepository);
 // 🍳 CHEF KITCHEN APPLICATIONS - Direct Kitchen Application Flow
 // =============================================================================
 
+const draftQuery = (text: string, params: unknown[]) => pool.query(text, params as any[]);
+
+/**
+ * One-page request to cook: a brand-new account (email not verified yet) saves its request here. It's sent, through
+ * the POST below with fromDraft=1, once the email is verified. The certificate, if any, is uploaded now.
+ */
+router.put('/firebase/chef/kitchen-request-draft', upload.any(), requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
+    try {
+        const locationId = Number(req.body.locationId);
+        if (!Number.isSafeInteger(locationId) || locationId <= 0 || !(await locationService.getLocationById(locationId))) {
+            return res.status(404).json({ error: 'Kitchen location not found' });
+        }
+        const fields = draftFieldsFromBody(req.body);
+        if (!fields) return res.status(400).json({ error: 'Nothing to save.' });
+        const files = (req.files as Express.Multer.File[] | undefined) || [];
+        const license = files.find(file => file.fieldname === 'foodSafetyLicenseFile');
+        const licenseUrl = license ? await uploadToBlob(license, req.neonUser!.id, 'documents') : null;
+        // A kitchen's own file questions: stored as URLs in customFieldsData, as the request route does.
+        const customFiles = files.filter(file => file.fieldname.startsWith('customFile_'));
+        if (customFiles.length) {
+            const custom = fields.customFieldsData ? JSON.parse(fields.customFieldsData) : {};
+            for (const file of customFiles) custom[file.fieldname.replace('customFile_', '')] = await uploadToBlob(file, req.neonUser!.id, 'documents');
+            fields.customFieldsData = JSON.stringify(custom);
+        }
+        await saveDraft(draftQuery, req.neonUser!.id, locationId, fields, licenseUrl);
+        res.json({ saved: true });
+    } catch (error) {
+        logger.error('Error saving kitchen request draft:', error);
+        res.status(500).json({ error: 'Could not save your request. Please try again.' });
+    }
+});
+
+router.get('/firebase/chef/kitchen-request-draft/:locationId', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
+    const locationId = Number(req.params.locationId);
+    if (!Number.isSafeInteger(locationId) || locationId <= 0) return res.status(400).json({ error: 'Invalid location' });
+    const draft = await readDraft(draftQuery, req.neonUser!.id, locationId);
+    res.set('Cache-Control', 'no-store').json({ draft: draft ? { createdAt: draft.createdAt } : null });
+});
+
 /**
  * 🔥 Submit Kitchen Application (Firebase Auth)
  * POST /api/firebase/chef/kitchen-applications
@@ -74,6 +114,18 @@ router.post('/firebase/chef/kitchen-applications',
                     error: "Please verify your email before submitting an application.",
                     code: "EMAIL_NOT_VERIFIED",
                 });
+            }
+
+            // Sending a held request: the body is the saved draft, never the client's (only locationId is read).
+            let draftLicenseUrl: string | undefined;
+            const fromDraft = req.body.fromDraft === '1';
+            if (fromDraft) {
+                const draftLocationId = Number(req.body.locationId);
+                const draft = Number.isSafeInteger(draftLocationId) ? await readDraft(draftQuery, req.neonUser!.id, draftLocationId) : null;
+                if (!draft) return res.status(404).json({ error: 'No saved request to send.', code: 'DRAFT_NOT_FOUND' });
+                req.body = { ...draft.fields, locationId: String(draftLocationId) };
+                draftLicenseUrl = draft.licenseUrl || undefined;
+                if (Array.isArray(req.files) && req.files.length) req.files = [];
             }
 
             const rawSourceTourId = req.body.sourceTourId;
@@ -96,7 +148,7 @@ router.post('/firebase/chef/kitchen-applications',
                 });
             }
             
-            let foodSafetyLicenseUrl: string | undefined;
+            let foodSafetyLicenseUrl: string | undefined = draftLicenseUrl;
             let foodEstablishmentCertUrl: string | undefined;
             const tierFileUrls: Record<string, string> = {};
 
@@ -865,6 +917,8 @@ router.post('/firebase/chef/kitchen-applications',
                     logger.error("Error sending Step 2 received email to chef:", emailError);
                 }
             }
+
+            if (fromDraft) await deleteDraft(draftQuery, req.neonUser!.id, locationId).catch(error => logger.error('Error deleting sent kitchen request draft:', error));
 
             res.status(201).json({
                 success: true,

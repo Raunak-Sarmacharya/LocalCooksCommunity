@@ -24,20 +24,20 @@ export async function canReadPrivateFile(actor: ChatActor | undefined, url: stri
   const storagePhotos = await db.select({ photos: storageListings.photos }).from(storageListings)
     .where(sql`${storageListings.photos} @> ${JSON.stringify([url])}::jsonb`).limit(1);
   if (storagePhotos.some(row => Array.isArray(row.photos) && (row.photos as string[]).includes(url))) return true;
-  if (!actor) return false;
-  if (actor.role === 'admin') return true;
-  if (filename.startsWith(`${actor.id}_`)) return true;
-  // Condition photos and damage claim files are evidence for both people on that booking: the customer and the kitchen's manager.
-  if (await isBookingPhotoParticipant(actor.id, url)) return true;
-  // Chefs must read the listed kitchen's terms before they have an application.
-  // This grants only the exact terms URL, never the other facility documents.
-  if (actor.role === 'chef') {
+  // A listed kitchen's terms are read before agreeing to them, by a chef or by a signed-out visitor sending a request
+  // in one go (owner, Oct 23). This grants only the exact terms URL, never the other facility documents.
+  if (!actor || actor.role === 'chef') {
     const terms = await db.select({ termsUrl: locations.kitchenTermsUrl }).from(locations)
       .innerJoin(kitchens, eq(kitchens.locationId, locations.id))
       .where(and(eq(locations.kitchenTermsUrl, url), eq(locations.isActive, true),
         eq(kitchens.isActive, true), eq(kitchens.listingStatus, 'active'))).limit(1);
     if (terms.some(row => row.termsUrl === url)) return true;
   }
+  if (!actor) return false;
+  if (actor.role === 'admin') return true;
+  if (filename.startsWith(`${actor.id}_`)) return true;
+  // Condition photos and damage claim files are evidence for both people on that booking: the customer and the kitchen's manager.
+  if (await isBookingPhotoParticipant(actor.id, url)) return true;
   const apps = await db.select({ application: chefKitchenApplications, managerId: locations.managerId }).from(chefKitchenApplications)
     .innerJoin(locations, eq(chefKitchenApplications.locationId, locations.id))
     .where(or(eq(chefKitchenApplications.chefId, actor.id), eq(locations.managerId, actor.id)));

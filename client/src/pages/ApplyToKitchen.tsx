@@ -9,18 +9,18 @@ import { Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import ChefDashboardLayout from "@/layouts/ChefDashboardLayout";
 import { useChefShellChrome } from "@/layouts/chef-shell-context";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTranslation } from "react-i18next";
 import { kt } from "@/i18n/kitchen-ns";
-import { formatHourSlotRange } from "@/lib/formatters";
 import { saveAuthIntent } from "@/lib/auth-intent";
 import { PreferredDaysPicker } from "@/components/kitchen-application/PreferredDaysPicker";
-import KitchenJourneyAuth, { useKitchenJourneyEmailVerified } from "@/components/auth/KitchenJourneyAuth";
-import KitchenJourneyLayout, { KitchenJourneySteps } from "@/components/kitchen-application/KitchenJourneyLayout";
+import { useKitchenJourneyEmailVerified } from "@/components/auth/KitchenJourneyAuth";
+import { RequestToCookPage } from "@/components/kitchen-application/RequestToCookPage";
+import KitchenJourneyLayout from "@/components/kitchen-application/KitchenJourneyLayout";
 import { getKitchenDisplayStatus, hasStep2BeenSubmitted } from "@/components/chef/applications/status";
 import { apiRequest } from '@/lib/queryClient';
 import type { TourApplicationNextStep } from '@shared/tour-application';
@@ -54,18 +54,10 @@ export default function ApplyToKitchen() {
     staleTime: 0,
   });
   const progressKey = `kitchen_apply_progress_${kitchenId || locationId}`;
-  const [requestStep, setRequestStep] = useState<"plan" | "details">(() => {
-    try { return (localStorage.getItem(progressKey) || sessionStorage.getItem(progressKey)) === "details" ? "details" : "plan"; }
-    catch { return "plan"; }
-  });
+  const onePageMounted = useRef(false);
   const [activeView, setActiveView] = useState("discover-kitchens");
   const [submittedTier, setSubmittedTier] = useState<number | null>(null);
   const { t } = useTranslation("kitchen");
-  // Keep the next step's heading and first control in view after continuing.
-  useEffect(() => {
-    window.scrollTo(0, 0);
-  }, [requestStep]);
-
   // Keep registration and verification on this kitchen's request page.
   useEffect(() => {
     if (locationId) {
@@ -76,10 +68,6 @@ export default function ApplyToKitchen() {
       });
     }
   }, [locationId]);
-
-  useEffect(() => {
-    try { localStorage.setItem(progressKey, requestStep); } catch { /* storage unavailable */ }
-  }, [progressKey, requestStep]);
 
   // Fetch location details
   const { data: location, isLoading: locationLoading, error: locationError } = useQuery<PublicLocation>({
@@ -274,26 +262,6 @@ export default function ApplyToKitchen() {
     breadcrumbs: applyBreadcrumbs,
   });
 
-  const requestAside = (
-    <div className="space-y-5">
-      <KitchenJourneySteps steps={["Booking preferences", user && !emailVerified ? "Verify email" : "Account", "Access request"]} current={requestStep === "plan" ? 0 : !user || !emailVerified ? 1 : 2} />
-      {requestStep === "plan" && <p className="text-sm leading-6 text-muted-foreground">No payment is due now. Preferred times are not reserved.</p>}
-      {requestStep !== "plan" && <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground sm:text-sm">
-        <p className="min-w-0">{(() => {
-          try {
-            const dates = JSON.parse(localStorage.getItem(`kitchen_dates_${kitchenId}`) || sessionStorage.getItem(`kitchen_dates_${kitchenId}`) || "{}");
-            const prefs = JSON.parse(localStorage.getItem(`kitchen_booking_prefs_${kitchenId}`) || sessionStorage.getItem(`kitchen_booking_prefs_${kitchenId}`) || "{}");
-            const date = dates.from ? new Date(dates.from) : null;
-            if (!date || Number.isNaN(date.getTime())) return "No date or time selected";
-            const ranges = Array.isArray(prefs.slots) ? prefs.slots.map((slot: string) => formatHourSlotRange(slot)).join(", ") : "";
-            return `${date.toLocaleDateString(undefined, { month: "short", day: "numeric" })} · ${ranges || "No time selected"}`;
-          } catch { return "No date or time selected"; }
-        })()}</p>
-        <Button variant="ghost" size="sm" className="shrink-0 px-1 text-xs text-primary sm:text-sm" onClick={() => setRequestStep("plan")}>Edit date and time</Button>
-      </div>}
-    </div>
-  );
-
   if (!locationLoading && (!locationId || locationError || !location || (!!kitchenId && !kitchensLoading && !selectedKitchen))) {
     return (
       <KitchenJourneyLayout
@@ -308,36 +276,26 @@ export default function ApplyToKitchen() {
     );
   }
 
-  // Keep the journey mounted while a Google popup or email sign-in is pending.
-  if (authLoading || locationLoading || kitchensLoading) {
-    return <main className="mx-auto w-full max-w-3xl px-4 py-12" role="status">{loadingContent}</main>;
+  // One page for every new request, signed in or not (owner, Oct 23). It stays mounted while an inline sign-in or the
+  // new account settles (both flip the auth phase), so a half-sent request never drops back to a loader.
+  const existingRequest = !!user && emailVerified && hasKitchenApp && !!locationApplication
+    && locationApplication.status !== 'rejected' && locationApplication.status !== 'cancelled';
+  // A tour link that doesn't resolve to "apply here" keeps its own explanation (same checks as getContent below).
+  const tourBlocks = !!user && emailVerified && ((tourError && tourParam === null) || (tourParam !== null && (!tourId || tourError || !tourNextStep
+    || tourNextStep.action !== 'apply' || tourNextStep.locationId !== locationId || (!!kitchenId && tourNextStep.kitchenId !== Number(kitchenId)))));
+  const showOnePage = !!location && submittedTier === null && !existingRequest && !tourBlocks
+    && (onePageMounted.current || (!authLoading && !locationLoading && !kitchensLoading && !(user && emailVerified && (locationAppLoading || tourLoading))));
+  onePageMounted.current = showOnePage;
+  if (showOnePage) {
+    return <RequestToCookPage location={location as any} kitchen={selectedKitchen} kitchenId={kitchenId} emailVerified={emailVerified}
+      globalApp={globalApp} tourReference={tourNextStep?.prefill}
+      sourceTourId={tourNextStep?.action === 'apply' ? tourNextStep.sourceTourId : undefined}
+      onCancel={() => navigate(`/kitchen-preview/${locationId}`)}
+      onSent={() => { void refetchLocationApp(); setSubmittedTier(1); }} />;
   }
 
-  const requestJourney = !user || !emailVerified;
-  if (requestJourney) {
-    return (
-      <KitchenJourneyLayout
-        eyebrow="Request to apply"
-        title={`Cook at ${selectedKitchen?.name || location?.name || "this kitchen"}`}
-        description="Your request is sent only when you submit it."
-        imageUrl={selectedKitchen?.imageUrl}
-        onBack={() => navigate(`/kitchen-preview/${locationId}`)}
-        aside={requestAside}
-        compactContent={requestStep !== "plan"}
-      >
-        {requestStep === "plan" ? (
-          <div className="space-y-5">
-            <div><h2 className="text-xl font-semibold">Booking preferences <span className="text-base font-normal text-muted-foreground">(optional)</span></h2><p className="mt-1 text-sm leading-6 text-muted-foreground">Choose a date and hours for a later booking, or continue without them. You can change them after approval.</p></div>
-            {kitchenId && <PreferredDaysPicker kitchenId={kitchenId} />}
-            <Button size="lg" className="w-full sm:w-auto" onClick={() => setRequestStep("details")}>Continue {user && emailVerified ? "to request" : "to account"} →</Button>
-          </div>
-        ) : (
-          <div className="space-y-5 [&_.max-w-3xl]:max-w-none">
-            {!user || !emailVerified ? <KitchenJourneyAuth title="Continue your access request" /> : getContent()}
-          </div>
-        )}
-      </KitchenJourneyLayout>
-    );
+  if (authLoading || locationLoading || kitchensLoading) {
+    return <main className="mx-auto w-full max-w-3xl px-4 py-12" role="status">{loadingContent}</main>;
   }
 
   // If user is authenticated, use persistent chef shell (or layout fallback)

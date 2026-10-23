@@ -398,9 +398,11 @@ router.get("/r2-presigned", async (req: Request, res: Response) => {
         // Debug logging for auth issues
         logger.info(`[R2 Presigned] Auth check - neonUser: ${req.neonUser?.id || 'none'}, role: ${req.neonUser?.role || 'none'}, isPublic: ${isPublic}, isImage: ${isImageFile}`);
 
-        if (!isPublic && !req.neonUser) {
-            logger.info(`[R2 Presigned] Unauthorized access attempt for protected file: ${url}`);
-            return res.status(401).json({ error: "Not authenticated" });
+        // A private file is signed only for someone allowed to read it (owner, chef, booking participant, admin,
+        // or anyone for a listed kitchen's published terms); being signed in is not enough on its own.
+        if (!isPublic && !await canReadPrivateFile(req.neonUser ? { id: req.neonUser.id, role: req.neonUser.role || '' } as any : undefined, url)) {
+            logger.info(`[R2 Presigned] Refused protected file: ${url} (user: ${req.neonUser?.id || 'anonymous'})`);
+            return req.neonUser ? res.status(403).json({ error: "File access denied" }) : res.status(401).json({ error: "Not authenticated" });
         }
 
         logger.info(`[R2 Presigned] Request for: ${url} (user: ${req.neonUser?.id || 'anonymous'}, role: ${req.neonUser?.role || 'none'}, public: ${isPublic})`);

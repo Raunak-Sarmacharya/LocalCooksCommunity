@@ -255,8 +255,9 @@ describe("KitchenApplicationForm render harness", () => {
     expect(agreements).toHaveLength(2);
     agreements.forEach((checkbox) => expect(checkbox).toHaveAttribute("data-state", "unchecked"));
     screen.getAllByTestId("kitchen-application-submit").forEach((button) => expect(button).toBeDisabled());
-    expect(await screen.findByText('Please agree to the kitchen terms and policies')).toBeInTheDocument();
-    expect(screen.getByText('Please confirm your application is accurate')).toBeInTheDocument();
+    // Nothing is marked wrong before the first Send (owner, Oct 23); the disabled button and checklist guide instead.
+    expect(screen.queryByText('Please agree to the kitchen terms and policies')).not.toBeInTheDocument();
+    expect(screen.queryByText('Please confirm your application is accurate')).not.toBeInTheDocument();
     expect(screen.queryByText(/Invalid literal value/)).not.toBeInTheDocument();
     fireEvent.click(agreements[0]);
     expect(agreements[0]).toHaveAttribute("data-state", "checked");
