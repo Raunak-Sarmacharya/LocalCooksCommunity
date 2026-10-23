@@ -4567,6 +4567,8 @@ router.get(
       res.json({
         ...derived,
         payout: await readKitchenPayout(id),
+        // The booking page's "{chef} is running about 15 min late" line (it read only the bare booking route before).
+        runningLate: await (await import('../services/running-late')).readRunningLate(id),
         ...(booking.scheduleRevision > 0 ? { dayMoney: await (await import('../services/booking-day-money')).readBookingDayMoney(id) } : {}),
         // Read-only: extra time and claim payments on this booking, with the kitchen's share of each.
         additionalCharges: await (await import('../services/booking-additional-charges')).readAdditionalCharges(db, id, 'manager', booking.paymentIntentId).catch(() => []),
