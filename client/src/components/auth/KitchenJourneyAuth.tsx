@@ -3,6 +3,7 @@ import { auth } from "@/lib/firebase";
 import { hasVerifiedEmail } from "@/lib/auth-verification";
 import { sendVerificationEmailWithFallback } from "@/lib/send-verification-email";
 import { useFirebaseAuth } from "@/hooks/use-auth";
+import { useEmailVerifiedWatch } from "@/hooks/use-email-verified-watch";
 import AuthFlow, { type AuthFlowStep } from "./AuthFlow";
 import { Button } from "@/components/ui/button";
 import { kitchenJourneyEmailKey } from "@/lib/kitchen-journey-email";
@@ -81,6 +82,9 @@ export default function KitchenJourneyAuth({ title, description = "Use your Loca
     }
   };
 
+  // The link tapped here or on a phone continues this request by itself (same as the profile's email card).
+  useEmailVerifiedWatch(awaitingVerification && !signInAfterVerification && !!user, checkVerification);
+
   const resend = async () => {
     if (!email) return;
     setBusy(true);
@@ -110,6 +114,7 @@ export default function KitchenJourneyAuth({ title, description = "Use your Loca
           <div className="space-y-4 rounded-2xl border bg-muted/30 p-5">
             <h2 className="text-lg font-semibold">Verify your email</h2>
             <p className="text-sm text-muted-foreground">Open the verification link sent to <strong className="text-foreground">{email}</strong>. Your {subject} has not been sent yet.</p>
+            {user && <p className="text-xs text-muted-foreground" data-testid="verification-auto">Open it on any device. This page continues by itself once you tap the link.</p>}
             {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
             <div className="flex flex-wrap gap-3">
               {user && <Button disabled={busy} onClick={checkVerification}>I verified my email</Button>}

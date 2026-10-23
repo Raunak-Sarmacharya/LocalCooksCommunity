@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import { CheckCircle2, Clock, Loader2, Mail, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useEmailVerifiedWatch } from "@/hooks/use-email-verified-watch";
 
 interface EmailVerificationScreenProps {
   email: string;
@@ -59,6 +60,8 @@ export default function EmailVerificationScreen({
   const [verificationError, setVerificationError] = useState<string | null>(null);
   const [isChecking, setIsChecking] = useState(false);
   const [isLeaving, setIsLeaving] = useState(false);
+  // Tapping the link (here or on a phone) continues this screen by itself; the button stays as a fallback.
+  useEmailVerifiedWatch(mode === "verification" && !!onCheckVerified, () => onCheckVerified?.());
 
   const handleGoBack = async () => {
     if (isLeaving) return;
@@ -119,6 +122,7 @@ export default function EmailVerificationScreen({
           {isMagicLink ? "We sent a sign-in link to" : "We sent a verification link to"}
         </p>
         <p className="mt-1 break-all text-sm font-medium text-gray-950">{email}</p>
+        {!isMagicLink && onCheckVerified && <p className="mt-3 text-xs text-gray-500" data-testid="verification-auto">Open it on any device. This page continues by itself once you tap the link.</p>}
       </motion.div>
 
       <motion.div variants={itemVariants} className="space-y-3">
