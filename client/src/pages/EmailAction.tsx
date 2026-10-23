@@ -19,13 +19,11 @@ import { logger } from "@/lib/logger";
 
 import { applyActionCode } from "firebase/auth";
 import { clearAuthIntent, getAuthIntent, resolveVerificationReturnPath } from "@/lib/auth-intent";
-import { motion } from "framer-motion";
-import { CheckCircle2, Loader2, XCircle, ArrowRight, Mail, ShieldCheck, Link2, LayoutDashboard } from "lucide-react";
+import { CheckCircle2, Loader2, XCircle } from "lucide-react";
 import { useEffect, useState, useRef, useCallback, type FormEvent } from "react";
 import { useLocation } from "wouter";
 import { useFirebaseAuth } from "../hooks/use-auth";
 import { auth, waitForFirebaseAuthReady } from "../lib/firebase";
-import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import Logo from "@/components/ui/logo";
@@ -601,7 +599,7 @@ export default function EmailAction() {
         /* user may not be signed in */
       }
       setStatus('success');
-      setMessage('Your email has been verified! You can now log in. If you were expecting another email, check your spam folder.');
+      setMessage('Your email is verified.');
       setRedirectUrl(buildRedirectUrl(continueUrl, databaseRole));
     };
 
@@ -690,7 +688,7 @@ export default function EmailAction() {
 
         setStatus('success');
         setMessage(
-          'Your email has been verified! You can now book, apply and receive notifications.'
+          'Your email is verified. You can now apply to kitchens, book and get updates.'
         );
         setRedirectUrl(
           withVerifiedMarker(buildRedirectUrl(continueUrl, databaseRole, signedIn))
@@ -780,7 +778,7 @@ export default function EmailAction() {
           ? (databaseRole
             ? 'Your phone and email are verified. Your account is ready.'
             : 'Your email is verified. Sign in with your phone once more to finish account setup.')
-          : 'Your email has been verified! You can now log in. If you were expecting another email, check your spam folder.');
+          : 'Your email is verified.');
 
         // Build the redirect URL based on continueUrl or detected role. Signed-in
         // users go to their dashboard; signed-out users to the login page.
@@ -994,7 +992,7 @@ export default function EmailAction() {
         logger.info('✅ Magic link sign-in successful (email verified implicitly)');
 
         setStatus('success');
-        setMessage('Sign-in successful! Taking you back to continue where you left off...');
+        setMessage("You're signed in.");
 
         const finalRedirectUrl = buildRedirectUrl(continueUrl, databaseRole, true);
         if (isKitchenFlowPath(finalRedirectUrl)) {
@@ -1124,250 +1122,92 @@ export default function EmailAction() {
   // RENDER
   // ============================================================================
 
+  const verifying = actionType === 'verifyEmail' || actionType === 'verifyAndChangeEmail';
+  // A link that lands signed out goes to sign-in; everywhere else it continues where the person left off.
+  const toSignIn = !!redirectUrl && /\/(auth|login)([/?#]|$)/.test(redirectUrl.replace(/^https?:\/\/[^/]+/, ''));
+  const heading = status === 'loading'
+    ? actionType === 'signIn' ? 'Signing you in' : actionType === 'recoverEmail' ? 'Restoring your email' : verifying ? 'Confirming your email' : 'One moment'
+    : actionType === 'signIn' ? "You're signed in" : actionType === 'recoverEmail' ? 'Your email is restored' : actionType === 'verifyAndChangeEmail' ? 'Your account is ready' : 'Your email is verified';
+
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#FFFDFC] p-4 sm:p-8">
-      <div className="pointer-events-none absolute -left-28 -top-28 h-96 w-96 rounded-full bg-[#E10939]/[0.07] blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-32 -right-24 h-96 w-96 rounded-full bg-amber-200/20 blur-3xl" />
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="relative z-10 w-full max-w-[520px]"
-      >
-        <div className="mb-7 flex justify-center">
-          <Logo className="h-12" />
-        </div>
-        <Card className="overflow-hidden rounded-[1.75rem] border border-slate-200/80 bg-white shadow-[0_24px_80px_-38px_rgba(15,23,42,0.32)]">
-          <div className="h-1.5 bg-gradient-to-r from-[#E10939] via-[#FF496C] to-[#E10939]" />
-          <CardContent className="p-7 sm:p-10">
-            {/* Loading State */}
-            {status === 'loading' && (
-              <div className="space-y-8">
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.45 }}
-                  className="flex items-center justify-between gap-4"
-                >
-                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#E10939]/10 text-[#E10939]">
-                    <ShieldCheck className="h-6 w-6" />
-                  </div>
-                  <span className="inline-flex items-center gap-2 rounded-full border border-[#E10939]/15 bg-[#E10939]/5 px-3 py-1.5 text-xs font-bold text-[#C90832]">
-                    <span className="relative flex h-2 w-2"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#E10939] opacity-50" /><span className="relative inline-flex h-2 w-2 rounded-full bg-[#E10939]" /></span>
-                    Secure connection
-                  </span>
-                </motion.div>
+    <main className="flex min-h-screen flex-col items-center bg-[#FAFAF9] px-4 py-12 sm:py-20">
+      <Logo className="h-10" />
+      <Card className="mt-10 w-full max-w-[440px] rounded-2xl border border-stone-200 bg-white shadow-sm">
+        <CardContent className="p-7 sm:p-9">
+          {status === 'loading' && (
+            <div className="text-center" role="status">
+              <Loader2 className="mx-auto h-7 w-7 animate-spin text-[#E10939]" aria-hidden />
+              <h1 className="mt-5 text-xl font-semibold tracking-tight text-stone-950">{heading}</h1>
+              <p className="mt-2 text-sm text-stone-600">This takes a moment. Keep this page open.</p>
+            </div>
+          )}
 
-                <div className="text-left">
-                  <p className="mb-2 text-xs font-bold uppercase tracking-[0.16em] text-[#E10939]">LocalCooks account access</p>
-                  <h1 className="text-3xl font-bold tracking-[-0.035em] text-slate-950 sm:text-4xl">
-                    {actionType === 'verifyEmail' && 'Verifying your email...'}
-                    {actionType === 'verifyAndChangeEmail' && 'Finishing your account...'}
-                    {actionType === 'resetPassword' && 'Processing...'}
-                    {actionType === 'recoverEmail' && 'Recovering email...'}
-                    {actionType === 'signIn' && 'Signing you in...'}
-                    {!actionType && 'Processing...'}
-                  </h1>
-                  <p className="mt-3 leading-relaxed text-slate-600">Securely confirming your link and preparing your account. This usually takes only a moment.</p>
-                </div>
-
-                <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50/70">
-                  <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-4">
-                    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700"><CheckCircle2 className="h-5 w-5" /></span>
-                    <div className="min-w-0 flex-1"><p className="text-sm font-bold text-slate-900">Secure link received</p><p className="text-xs text-slate-500">The sign-in request is recognized</p></div>
-                    <span className="text-xs font-semibold text-emerald-700">Complete</span>
-                  </div>
-                  <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-4">
-                    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#E10939]/10 text-[#E10939]"><Loader2 className="h-5 w-5 animate-spin" /></span>
-                    <div className="min-w-0 flex-1"><p className="text-sm font-bold text-slate-900">Confirming your account</p><p className="text-xs text-slate-500">Matching your secure session</p></div>
-                    <span className="text-xs font-semibold text-[#E10939]">In progress</span>
-                  </div>
-                  <div className="flex items-center gap-3 px-4 py-4 opacity-55">
-                    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-500"><LayoutDashboard className="h-5 w-5" /></span>
-                    <div className="min-w-0 flex-1"><p className="text-sm font-bold text-slate-900">Opening your dashboard</p><p className="text-xs text-slate-500">Your next page is prepared automatically</p></div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3 text-xs leading-relaxed text-slate-500">
-                  <Link2 className="h-4 w-4 shrink-0 text-slate-400" />
-                  Keep this page open. You’ll be redirected as soon as verification finishes.
-                </div>
-              </div>
-            )}
-
-            {/* Cross-device magic-link email confirmation */}
-            {status === 'awaiting-email' && (
-              <motion.div
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="space-y-7"
-              >
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#E10939]/10 text-[#E10939]">
-                  <Mail className="h-7 w-7" />
-                </div>
+          {status === 'awaiting-email' && (
+            <div>
+              <h1 className="text-xl font-semibold tracking-tight text-stone-950">Confirm your email</h1>
+              <p className="mt-2 text-sm leading-relaxed text-stone-600">
+                This link was opened on a different browser or device. Enter the email it was sent to, so we know it's you.
+              </p>
+              <form onSubmit={handleEmailConfirmation} className="mt-6 space-y-4" noValidate>
                 <div>
-                  <p className="mb-2 text-xs font-bold uppercase tracking-[0.16em] text-[#E10939]">One secure step</p>
-                  <h1 className="text-3xl font-bold tracking-[-0.035em] text-slate-950">Confirm your email</h1>
-                  <p className="mt-3 leading-relaxed text-slate-600">
-                    Enter the email address that received this magic link. This protects your account when the link is opened on a different browser or device.
-                  </p>
+                  <label htmlFor="magic-link-email" className="mb-1.5 block text-sm font-medium text-stone-800">Email</label>
+                  <input
+                    id="magic-link-email"
+                    type="email"
+                    inputMode="email"
+                    autoComplete="email"
+                    autoFocus
+                    value={confirmationEmail}
+                    onChange={(event) => {
+                      setConfirmationEmail(event.target.value);
+                      if (confirmationError) setConfirmationError('');
+                    }}
+                    aria-invalid={Boolean(confirmationError)}
+                    aria-describedby={confirmationError ? 'magic-link-email-error' : undefined}
+                    placeholder="you@example.com"
+                    className="h-12 w-full rounded-lg border border-stone-300 bg-white px-3.5 text-stone-950 outline-none transition focus:border-[#E10939] focus:ring-2 focus:ring-[#E10939]/15"
+                  />
+                  {confirmationError && <p id="magic-link-email-error" className="mt-2 text-sm text-red-600">{confirmationError}</p>}
                 </div>
+                <Button type="submit" className="h-12 w-full rounded-lg bg-[#E10939] text-base font-semibold text-white hover:bg-[#C90832]">Continue</Button>
+              </form>
+            </div>
+          )}
 
-                <form onSubmit={handleEmailConfirmation} className="space-y-4" noValidate>
-                  <div>
-                    <label htmlFor="magic-link-email" className="mb-2 block text-sm font-semibold text-slate-800">Email address</label>
-                    <div className="relative">
-                      <Mail className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-slate-400" />
-                      <input
-                        id="magic-link-email"
-                        type="email"
-                        inputMode="email"
-                        autoComplete="email"
-                        autoFocus
-                        value={confirmationEmail}
-                        onChange={(event) => {
-                          setConfirmationEmail(event.target.value);
-                          if (confirmationError) setConfirmationError('');
-                        }}
-                        aria-invalid={Boolean(confirmationError)}
-                        aria-describedby={confirmationError ? 'magic-link-email-error' : undefined}
-                        placeholder="you@example.com"
-                        className="h-[52px] w-full rounded-xl border border-slate-200 bg-white pl-11 pr-4 text-slate-950 outline-none transition focus:border-[#E10939] focus:ring-4 focus:ring-[#E10939]/10"
-                      />
-                    </div>
-                    {confirmationError && <p id="magic-link-email-error" className="mt-2 text-sm font-medium text-red-600">{confirmationError}</p>}
-                  </div>
-                  <Button type="submit" className="h-12 w-full rounded-xl bg-[#E10939] text-base font-semibold text-white shadow-lg shadow-[#E10939]/15 hover:bg-[#C90832]">
-                    Continue secure sign-in <ArrowRight className="ml-2 h-4 w-4" />
-                  </Button>
-                </form>
+          {status === 'success' && (
+            <div className="text-center">
+              <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50" aria-hidden>
+                <CheckCircle2 className="h-6 w-6 text-emerald-600" />
+              </span>
+              <h1 className="mt-5 text-xl font-semibold tracking-tight text-stone-950">{heading}</h1>
+              <p className="mt-2 text-sm leading-relaxed text-stone-600">{message}</p>
+              {redirectUrl && <>
+                <Button onClick={handleRedirectNow} className="mt-7 h-12 w-full rounded-lg bg-[#E10939] text-base font-semibold text-white hover:bg-[#C90832]">
+                  {toSignIn ? 'Sign in' : 'Continue'}
+                </Button>
+                <p className="mt-3 text-xs text-stone-500" role="status">{toSignIn ? 'Taking you to sign in…' : 'Taking you back…'}</p>
+              </>}
+              {verifying && <p className="mt-6 border-t border-stone-100 pt-4 text-xs leading-relaxed text-stone-500">
+                Started on another device? That page continues by itself; you can close this one.
+              </p>}
+            </div>
+          )}
 
-                <div className="flex gap-3 rounded-xl border border-slate-200 bg-slate-50/80 p-4 text-sm leading-relaxed text-slate-600">
-                  <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
-                  Your email is used only to match this sign-in link. We’ll redirect you automatically after verification.
-                </div>
-              </motion.div>
-            )}
-
-            {/* Success State */}
-            {status === 'success' && (
-              <div className="text-center space-y-6">
-                <motion.div
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  transition={{ type: "spring", stiffness: 200, delay: 0.1 }}
-                  className="flex justify-center"
-                >
-                    <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-green-100">
-                    <CheckCircle2 className="w-10 h-10 text-green-600" />
-                  </div>
-                </motion.div>
-
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.2 }}
-                >
-                  <h1 className="text-2xl font-bold text-gray-900 mb-2">
-                    {actionType === 'verifyEmail' && 'Email Verified!'}
-                    {actionType === 'verifyAndChangeEmail' && 'Account Ready!'}
-                    {actionType === 'recoverEmail' && 'Email Restored!'}
-                    {actionType === 'signIn' && 'Signed In!'}
-                    {!actionType && 'Success!'}
-                  </h1>
-                  <p className="text-gray-600">{message}</p>
-                </motion.div>
-
-                {/* Redirect Progress Section */}
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: 0.4 }}
-                  className="space-y-4 pt-4 border-t border-gray-100"
-                >
-                  <div className="flex items-center justify-center gap-2 text-gray-600">
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span className="text-sm font-medium">
-                      Redirecting in {countdown} second{countdown !== 1 ? 's' : ''}...
-                    </span>
-                  </div>
-
-                  <Progress value={progress} className="h-2 bg-gray-100" />
-
-                  {redirectUrl && (
-                    <div className="flex items-center justify-center gap-2 text-xs text-gray-400">
-                      <ArrowRight className="w-3 h-3" />
-                      <span className="truncate max-w-[250px]">
-                        {redirectUrl.replace(/^https?:\/\//, '')}
-                      </span>
-                    </div>
-                  )}
-
-                  <Button
-                    onClick={handleRedirectNow}
-                    variant="outline"
-                    size="sm"
-                    className="mt-2 rounded-xl"
-                  >
-                    {actionType === 'signIn' ? 'Go to Dashboard Now' : 'Go to Login Now'}
-                    <ArrowRight className="w-4 h-4 ml-2" />
-                  </Button>
-                </motion.div>
-              </div>
-            )}
-
-            {/* Error State */}
-            {status === 'error' && (
-              <div className="text-center space-y-6">
-                <motion.div
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  transition={{ type: "spring", stiffness: 200 }}
-                  className="flex justify-center"
-                >
-                  <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-red-100">
-                    <XCircle className="w-10 h-10 text-red-600" />
-                  </div>
-                </motion.div>
-
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.2 }}
-                >
-                  <h1 className="text-2xl font-bold text-gray-900 mb-2">Something went wrong</h1>
-                  <p className="text-gray-600 mb-6">{message}</p>
-                </motion.div>
-
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: 0.4 }}
-                >
-                  <Button
-                    onClick={handleGoToLogin}
-                    variant="destructive"
-                    className="h-12 w-full rounded-xl bg-[#E10939] hover:bg-[#C90832]"
-                  >
-                    Go to Login
-                    <ArrowRight className="w-4 h-4 ml-2" />
-                  </Button>
-                </motion.div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Footer */}
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.6 }}
-          className="mt-5 flex items-center justify-center gap-1.5 text-center text-xs font-medium text-slate-400"
-        >
-          <ShieldCheck className="h-3.5 w-3.5" /> LocalCooks secure account verification
-        </motion.p>
-      </motion.div>
-    </div>
+          {status === 'error' && (
+            <div className="text-center">
+              <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-red-50" aria-hidden>
+                <XCircle className="h-6 w-6 text-red-600" />
+              </span>
+              <h1 className="mt-5 text-xl font-semibold tracking-tight text-stone-950">This link didn't work</h1>
+              <p className="mt-2 text-sm leading-relaxed text-stone-600">{message} Links expire and can be used once. Sign in to get a new one.</p>
+              <Button onClick={handleGoToLogin} className="mt-7 h-12 w-full rounded-lg bg-[#E10939] text-base font-semibold text-white hover:bg-[#C90832]">Go to sign in</Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+      <p className="mt-6 text-center text-xs text-stone-500">
+        Need help? <a className="underline underline-offset-2 hover:text-stone-700" href="mailto:support@localcooks.ca">support@localcooks.ca</a>
+      </p>
+    </main>
   );
 }
