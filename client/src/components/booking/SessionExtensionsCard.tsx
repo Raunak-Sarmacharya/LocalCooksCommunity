@@ -238,10 +238,11 @@ export function SessionExtensionsCard({ bookingId, manager, chefName, onChanged,
       <NowAttentionRow key={item.id} as={nowMode ? undefined : "plain"} tone={item.status === "disputed" || manager ? "info" : "warning"}
         className={nowMode ? undefined : "space-y-2 rounded-xl border p-3"} data-testid="extension-charge">
         <p className="text-sm font-medium">{manager
-          ? t("sxbChargeSent", { defaultValue: "You asked {chef} for {amount} for {billed} of extra time.", chef: chefName, amount: cash(item.amountCents), billed: minutesText(item.minutes) })
+          // What the kitchen asked stays as asked; a Local Cooks reduction is its own line below.
+          ? t("sxbChargeSent", { defaultValue: "You asked {chef} for {amount} for {billed} of extra time.", chef: chefName, amount: cash(item.resolution?.originalAmountCents ?? item.amountCents), billed: minutesText(item.minutes) })
           // The amount may have been lowered, so the chef line never pairs it with a length (it would read as a rate).
           : t("sxbChargeChef", { defaultValue: "You stayed {stayed} past your booking at {kitchen}. They’ve asked for {amount} for the extra time.",
-            stayed: minutesText(item.actualMinutes ?? item.minutes), kitchen, amount: cash(item.amountCents) })}</p>
+            stayed: minutesText(item.actualMinutes ?? item.minutes), kitchen, amount: cash(item.resolution?.originalAmountCents ?? item.amountCents) })}</p>
         {item.note && <p className="text-sm whitespace-pre-wrap">{manager ? t("sxbYourNote", { defaultValue: "Your note: {note}", note: item.note }) : t("sxbKitchenNote", { defaultValue: "Note from {kitchen}: {note}", kitchen, note: item.note })}</p>}
         {item.resolution?.disputeNote && <p className="text-sm whitespace-pre-wrap">{manager ? t("sxbChefSaid", { chef: chefName, note: item.resolution.disputeNote }) : t("sxbYouSaid", { note: item.resolution.disputeNote })}</p>}
         {/* Local Cooks decided: who pays what by when, and its note; the customer can pay but not dispute again. */}

@@ -301,6 +301,7 @@ describe("booking page: extra time", () => {
     expect(card).toHaveTextContent("Local Cooks reviewed this and lowered the charge from $15.01 to $7.50. Pay by Oct 22 so you can keep making new bookings.");
     expect(card).toHaveTextContent("Note from Local Cooks: Half of the time is fair.");
     expect(screen.getByText("What you told Local Cooks: I left at 4")).toBeInTheDocument();
+    expect(screen.getByTestId("extension-charge")).toHaveTextContent("They’ve asked for $15.01 for the extra time.");
     expect(screen.getByRole("button", { name: "Pay $7.50" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "This isn’t right" })).not.toBeInTheDocument();
     chef.unmount();
