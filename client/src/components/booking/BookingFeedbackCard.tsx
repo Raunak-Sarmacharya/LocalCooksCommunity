@@ -72,7 +72,7 @@ export function BookingFeedbackCard({ bookingId, role, otherPartyName, timezone,
     {mobile && stars()}
     {/* The first four tags of each role are what went well, the last four what could be better (shared/booking-feedback.ts). */}
     {[['wentWell', bookingFeedbackTags[role].slice(0, 4)], ['couldBeBetter', bookingFeedbackTags[role].slice(4)]].map(([group, list]) =>
-      <fieldset key={group as string} className="space-y-2"><legend className="text-sm font-medium">{t(`privateFeedback.${group}`)}</legend>
+      <fieldset key={group as string} className="space-y-2"><legend className="text-sm font-medium">{t(group === 'wentWell' ? 'privateFeedback.wentWell' : 'privateFeedback.couldBeBetter')}</legend>
         <div className="flex flex-wrap gap-2">{(list as readonly string[]).map(tag => <Button key={tag} type="button" variant={tags.includes(tag) ? 'default' : 'outline'}
           aria-pressed={tags.includes(tag)} disabled={saving} className="h-auto min-h-11 max-w-full whitespace-normal text-left"
           onClick={() => setTags(current => current.includes(tag) ? current.filter(value => value !== tag) : [...current, tag])}>{tagLabel(tag)}</Button>)}</div>
