@@ -357,7 +357,7 @@ export default function EnhancedLoginForm({
      * are quiet links below; as three stacked buttons they buried the code under the fold on phones.
      */
     const linkClass = "!min-h-0 !min-w-0 font-medium text-[#C90832] underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none disabled:cursor-default disabled:text-slate-400 disabled:no-underline";
-    const slotClass = "h-12 flex-1 rounded-lg border border-slate-200 bg-white text-lg font-semibold tabular-nums text-slate-950 first:rounded-lg last:rounded-lg sm:h-14 sm:text-xl";
+    const slotClass = "h-12 flex-1 rounded-lg border border-slate-200 bg-white ring-inset ring-offset-0 text-lg font-semibold tabular-nums text-slate-950 first:rounded-lg last:rounded-lg sm:h-14 sm:text-xl";
     return (
       <div className="mx-auto mt-4 w-full max-w-md">
         <LoadingOverlay
