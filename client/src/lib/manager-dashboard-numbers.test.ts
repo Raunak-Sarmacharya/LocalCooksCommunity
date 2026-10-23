@@ -67,7 +67,7 @@ describe('revenueSummaryFromCurrent', () => {
 });
 
 describe('openAttendanceAnswers', () => {
-  const visit = (over: Record<string, unknown>) => ({ localDate: '2026-10-20', startTime: '17:00', endTime: '18:00', attendance: 'unknown',
+  const visit = (over: Record<string, unknown>) => ({ localDate: '2026-10-20', startTime: '17:00', endTime: '18:00', attendance: 'unknown', phase: 'ended',
     inspection: { canRespond: true, deadline: '2026-10-21T21:30:00.000Z' }, ...over });
   it('lists only unanswered visits whose window the server says is open, each with its own deadline (as dev booking 207)', () => {
     const answers = openAttendanceAnswers({ status: 'completed', bookingDate: '2026-10-18', startTime: '14:00', endTime: '16:00', closeout: { visits: [
@@ -84,6 +84,9 @@ describe('openAttendanceAnswers', () => {
       visit({ localDate: '2026-10-21', startTime: '14:00', endTime: '15:00', inspection: { canRespond: true, deadline: '2026-10-22T17:30:00.000Z' } }),
     ] } });
     expect(answers).toEqual([{ visitId: undefined, localDate: '2026-10-21', startTime: '10:00', endTime: '15:00', deadline: '2026-10-22T17:30:00.000Z' }]);
+  });
+  it('waits for the service grace: a visit just past its booked end is not asked yet, as on the booking page (#232)', () => {
+    expect(openAttendanceAnswers({ status: 'confirmed', bookingDate: '2026-10-23', startTime: '13:00', endTime: '14:00', closeout: { visits: [visit({ phase: 'booked_time_ended' })] } })).toEqual([]);
   });
   it('asks nothing of a legacy closeout', () => {
     expect(openAttendanceAnswers({ status: 'completed', bookingDate: '2026-10-21', startTime: '10:00', endTime: '11:00', closeout: { legacy: true, visits: [visit({})] } })).toEqual([]);

@@ -546,7 +546,7 @@
   "sxbLcWaivedChef": "Local Cooks a annulé les frais de temps supplémentaire de {amount}. Vous ne devez rien pour le temps supplémentaire.",
   "sxbLcWaivedManager": "Local Cooks a annulé les frais de temps supplémentaire de {amount}. Rien ne sera facturé pour le temps supplémentaire.",
   "sxbChargeDone": "Envoyé à {chef}. La personne paiera ou nous dira si ce n’est pas juste.",
-  "sxbChargeExplain": "{chef} est parti {stayed} après la fin prévue ({end}). Le temps supplémentaire au-delà de la période de grâce est facturé par tranches de 30 minutes : {billed} au tarif de la réservation, jusqu’à {max}.",
+  "sxbChargeExplain": "{chef} est parti {stayed} après la fin prévue ({end}). Le temps supplémentaire est facturé par tranches de 30 minutes au tarif de la réservation : {billed}, jusqu’à {max}.",
   "sxbAmount": "Montant (vous pouvez le réduire)",
   "sxbTooHigh": "Les frais ne peuvent pas dépasser {max}.",
   "sxbNote": "Note à {chef} (obligatoire)",

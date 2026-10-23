@@ -492,11 +492,11 @@ describe("revamped overview (R3)", () => {
           { id: 157, checkinStatus: "not_checked_in", visitDate: "2026-10-21", startTime: "14:00", endTime: "16:00" }],
         closeout: { phase: "ended", visits: [
           { visitId: 156, localDate: "2026-10-18", startTime: "14:00", endTime: "16:00", attendance: "recorded", inspection: { canRespond: false, deadline: "2026-10-19T18:30:00.000Z" } },
-          { visitId: 157, localDate: "2026-10-21", startTime: "14:00", endTime: "16:00", attendance: "unknown", inspection: { canRespond: true, deadline: "2026-10-22T18:30:00.000Z" } },
+          { visitId: 157, localDate: "2026-10-21", startTime: "14:00", endTime: "16:00", phase: "ended", attendance: "unknown", inspection: { canRespond: true, deadline: "2026-10-22T18:30:00.000Z" } },
         ] } },
         { id: 300, kitchenId: 10, locationId: 1, chefName: "Closed Chef", kitchenName: "Kitchen East", bookingDate: "2026-10-17", createdAt: "2025-01-01",
           startTime: "09:00", endTime: "10:00", status: "completed", checkinStatus: "not_checked_in", timezone: "America/St_Johns",
-          closeout: { phase: "ended", visits: [{ localDate: "2026-10-17", startTime: "09:00", endTime: "10:00", attendance: "unknown", inspection: { canRespond: false, deadline: "2026-10-18T13:30:00.000Z" } }] } }];
+          closeout: { phase: "ended", visits: [{ localDate: "2026-10-17", startTime: "09:00", endTime: "10:00", phase: "ended", attendance: "unknown", inspection: { canRespond: false, deadline: "2026-10-18T13:30:00.000Z" } }] } }];
     });
     afterEach(() => vi.useRealTimers());
 
@@ -577,7 +577,7 @@ describe("revamped overview (R3)", () => {
       const visit = (id: number, kitchenId: number, chefName: string, bookingDate: string, status: string, extra = {}) => ({ id, kitchenId, locationId: 1, chefName, kitchenName: kitchenId === 10 ? "Kitchen East" : "Kitchen West",
         bookingDate, createdAt: "2025-01-01", startTime: "13:00", endTime: "15:00", status, timezone: "America/St_Johns", ...extra });
       state.bookings = [
-        visit(207, 11, "Morgan", "2026-10-21", "completed", { checkinStatus: "not_checked_in", closeout: { phase: "ended", visits: [{ localDate: "2026-10-21", startTime: "13:00", endTime: "15:00", attendance: "unknown", inspection: { canRespond: true, deadline: "2026-10-22T18:30:00.000Z" } }] } }),
+        visit(207, 11, "Morgan", "2026-10-21", "completed", { checkinStatus: "not_checked_in", closeout: { phase: "ended", visits: [{ localDate: "2026-10-21", startTime: "13:00", endTime: "15:00", phase: "ended", attendance: "unknown", inspection: { canRespond: true, deadline: "2026-10-22T18:30:00.000Z" } }] } }),
         // Both kitchens booked at the same hours tomorrow.
         visit(400, 10, "East Chef", "2026-10-22", "confirmed"), visit(401, 11, "West Chef", "2026-10-22", "confirmed")];
       state.rentals = [{ id: 45, kitchen: { id: 11, name: "Kitchen West" }, listing: { id: 5, name: "Dry shelf" }, chef: { id: 2, name: "Sam" }, state: "reserved", startOn: "2026-10-17", paidThrough: "2026-10-30", timezone: "America/St_Johns", actions: [], terms: [] }];

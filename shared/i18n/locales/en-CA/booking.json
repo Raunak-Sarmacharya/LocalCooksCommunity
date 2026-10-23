@@ -549,7 +549,7 @@
   "sxbLcWaivedChef": "Local Cooks waived the {amount} extra-time charge. You don’t owe anything for the extra time.",
   "sxbLcWaivedManager": "Local Cooks waived the {amount} extra-time charge. Nothing will be charged for the extra time.",
   "sxbChargeDone": "Sent to {chef}. They’ll pay or let us know if it isn’t right.",
-  "sxbChargeExplain": "{chef} checked out {stayed} after the booked end ({end}). Extra time past the grace period is billed in 30-minute blocks, so that's {billed} at the booking's rate: up to {max}.",
+  "sxbChargeExplain": "{chef} checked out {stayed} after the booked end ({end}). Extra time is billed in 30-minute blocks at the booking's rate, so that's {billed}: up to {max}.",
   "sxbAmount": "Amount (you can lower it)",
   "sxbTooHigh": "The charge can’t be more than {max}.",
   "sxbNote": "Note to {chef} (required)",

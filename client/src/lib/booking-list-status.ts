@@ -103,7 +103,8 @@ export function openAttendanceAnswers(row: BookingListRow): AttendanceAnswer[] {
   const answers = new Map<number | undefined, AttendanceAnswer>();
   for (const visit of row.closeout?.visits ?? []) {
     const deadline = visit.inspection?.deadline;
-    if (visit.attendance !== 'unknown' || !visit.inspection?.canRespond || !deadline || !visit.localDate || !visit.startTime || !visit.endTime) continue;
+    // Asked once the service grace has passed (phase 'ended'), the same moment the booking page asks (owner, Oct 23).
+    if (visit.attendance !== 'unknown' || visit.phase !== 'ended' || !visit.inspection?.canRespond || !deadline || !visit.localDate || !visit.startTime || !visit.endTime) continue;
     const seen = answers.get(visit.visitId);
     answers.set(visit.visitId, seen ? { ...seen, endTime: visit.endTime, deadline: deadline > seen.deadline ? deadline : seen.deadline }
       : { visitId: visit.visitId, localDate: visit.localDate, startTime: visit.startTime, endTime: visit.endTime, deadline });

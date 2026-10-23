@@ -89,7 +89,7 @@ export default function ManagerSupportPage({
         },
         {
           q: t("supportManagerBookingsQ2", "How does check-in and check-out work?"),
-          a: t("supportManagerBookingsA2", "Set your check-in window and no-show grace in Check-in & Check-out, then record arrivals from the booking itself."),
+          a: t("supportManagerBookingsA2", "Set when check-in opens in Arrival & departure, then record arrivals from the booking itself."),
         },
         {
           q: t("supportManagerBookingsQ3", "What if something is damaged?"),

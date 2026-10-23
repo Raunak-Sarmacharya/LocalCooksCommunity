@@ -1127,7 +1127,6 @@
   "kciNextStep3": "If the kitchen doesn’t reply in time, the review window closes without an inspection",
   "kciCheckoutPendingBody": "Your checkout is saved. The kitchen can review it or report a problem before the inspection deadline. Your booked time ends as scheduled.",
   "kciNoShow": "No-Show",
-  "kciNoShowContact": "You did not check in within the grace period. Contact the kitchen manager if this is an error.",
   "kciNoShowDetected": "No-Show Detected",
   "kciOutcome": "Outcome",
   "kciOutcomeDesc": "Cleared if no issues, or a claim may be filed",

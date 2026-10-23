@@ -1081,7 +1081,6 @@
   "kciNextStep3": "Sans réponse de la cuisine à temps, le délai se termine sans inspection",
   "kciCheckoutPendingBody": "Votre départ est enregistré. La cuisine peut l’examiner ou signaler un problème avant l’échéance. Votre horaire se termine comme prévu.",
   "kciNoShow": "Non-présentation",
-  "kciNoShowContact": "Vous ne vous êtes pas enregistré dans le délai de grâce. Contactez le gestionnaire de cuisine s'il s'agit d'une erreur.",
   "kciNoShowDetected": "Absence détectée",
   "kciOutcome": "Résultat",
   "kciOutcomeDesc": "Terminé sans problème ou réclamation déposée",
