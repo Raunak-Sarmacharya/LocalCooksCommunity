@@ -76,7 +76,7 @@ vi.mock('../logger', () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.
 vi.mock('../lifecycle-inngest', () => ({ inngest: { send: state.send } }));
 vi.mock('../utils/user-display', () => ({ getUserDisplayName: async () => 'Maya Chen' }));
 import { withdrawOpenSessionExtensions, checkoutSessionExtension, createSessionExtension, decideSessionExtension, expireSessionExtension, expireSessionExtensions, handleSessionExtensionCheckout, handleSessionExtensionRefund,
-  handleSessionExtensionWebhook, readSessionExtensions, reconcileSessionExtension, recoverSessionExtensions, syncSessionExtension } from './session-extensions';
+  handleSessionExtensionWebhook, resolveExtraTimeDispute, readSessionExtensions, reconcileSessionExtension, recoverSessionExtensions, syncSessionExtension } from './session-extensions';
 void is; void Table;
 
 // 14:00–16:00 Newfoundland Daylight Time = 16:30Z–18:30Z.
@@ -553,6 +553,40 @@ describe('extra-time charge after the visit', () => {
     expect(extensions()[0]).toMatchObject({ status: 'disputed' });
     expect(state.notify.mock.calls.at(-1)?.[2]).toBe('disputed');
     expect(stripe.paymentIntents.create).not.toHaveBeenCalled();
+  });
+  it('Local Cooks settles a dispute: reduced keeps the split proportional, the customer pays the new amount with a pay-by; no second dispute', async () => {
+    const { extension } = await charge();
+    await decideSessionExtension(stripe, 10, extension.id, chef, { action: 'dispute', note: 'I left at 4' }, new Date('2026-10-14T20:10:00Z'));
+    expect(extensions()[0].resolution).toMatchObject({ disputeNote: 'I left at 4' });
+    await expect(resolveExtraTimeDispute(10, extension.id, 1, { outcome: 'reduced', amountCents: 1500, note: 'short' })).rejects.toThrow(/short note/);
+    await expect(resolveExtraTimeDispute(10, extension.id, 1, { outcome: 'reduced', amountCents: 3000, note: 'Half of the time is fair.' })).rejects.toThrow(/less than the original/);
+    const decidedAt = new Date('2026-10-15T12:00:00Z');
+    const { extension: settled } = await resolveExtraTimeDispute(10, extension.id, 1, { outcome: 'reduced', amountCents: 1500, note: 'Half of the time is fair.' }, decidedAt);
+    expect(settled).toMatchObject({ status: 'offered', amountCents: 1500, upheldAt: decidedAt.toISOString(), payBy: '2026-10-22T12:00:00.000Z',
+      resolution: { disputeNote: 'I left at 4', outcome: 'reduced', note: 'Half of the time is fair.', originalAmountCents: 3000 } });
+    const quote = extensions()[0].quote;
+    expect(quote.amountCents).toBe(1500);
+    expect(quote.taxCents + quote.commissionCents + quote.subtotalCents).toBe(1500);
+    expect(quote.kitchenGrossCents).toBe(1500 - quote.commissionCents);
+    expect(notices().at(-1)).toBe('dispute_upheld');
+    await expect(decideSessionExtension(stripe, 10, extension.id, chef, { action: 'dispute', note: 'Still wrong' })).rejects.toThrow(/already reviewed/);
+    const paid = await decideSessionExtension(stripe, 10, extension.id, chef, { action: 'pay', expectedAmountCents: 1500 }, new Date('2026-10-15T13:00:00Z'));
+    expect(paid.extension).toMatchObject({ status: 'paid', amountCents: 1500 });
+  });
+  it('Local Cooks waives a dispute: closed as the no-charge record, nothing owed; only a disputed or unanswered charge can be settled', async () => {
+    const { extension } = await charge();
+    await expect(resolveExtraTimeDispute(10, extension.id, 1, { outcome: 'upheld', note: 'Checkout time is recorded.' })).rejects.toThrow(/disputed or unanswered/);
+    await decideSessionExtension(stripe, 10, extension.id, chef, { action: 'dispute', note: 'The door was locked' }, new Date('2026-10-14T20:10:00Z'));
+    const { extension: settled } = await resolveExtraTimeDispute(10, extension.id, 1, { outcome: 'waived', note: 'The kitchen let them in late.' });
+    expect(settled).toMatchObject({ status: 'waived', amountCents: 0, free: true, resolution: { outcome: 'waived', originalAmountCents: 3000 } });
+    expect(notices().at(-1)).toBe('dispute_waived');
+    await expect(decideSessionExtension(stripe, 10, extension.id, chef, { action: 'pay', expectedAmountCents: 0 })).rejects.toThrow();
+  });
+  it('an unanswered (escalated) charge can be upheld by Local Cooks as it stands', async () => {
+    const { extension } = await charge();
+    await expireSessionExtensions(stripe, 3, new Date('2026-10-16T20:01:00Z'));
+    const { extension: settled } = await resolveExtraTimeDispute(10, extension.id, 1, { outcome: 'upheld', note: 'Checkout time is recorded.' }, new Date('2026-10-17T12:00:00Z'));
+    expect(settled).toMatchObject({ status: 'offered', amountCents: 3000, payBy: '2026-10-24T12:00:00.000Z' });
   });
   it('uses the departure time the kitchen recorded (not when it was typed in) on a completed booking', async () => {
     // The chef never checked out; the kitchen recorded at 21:00Z that they left at 19:40Z. The booking already reads completed.

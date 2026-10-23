@@ -6,7 +6,7 @@ import { Router, type Request, type Response, type RequestHandler } from 'expres
 import Stripe from 'stripe';
 import { z } from 'zod';
 import { requireFirebaseAuthWithUser, requireAdmin, requireManager } from '../firebase-auth-middleware';
-import { createSessionExtension, decideSessionExtension, pendingSessionExtensionRequests, readSessionExtensions,
+import { createSessionExtension, resolveExtraTimeDispute, decideSessionExtension, pendingSessionExtensionRequests, readSessionExtensions,
   SessionExtensionError, syncSessionExtension, checkoutSessionExtension } from '../services/session-extensions';
 import { readSessionExtensionSettings, saveSessionExtensionSettings, sessionExtensionsEnabled, SessionExtensionSettingsError,
   setSessionExtensionsEnabled } from '../services/session-extension-settings';
@@ -63,6 +63,13 @@ router.post('/bookings/:id/extensions/:extensionId/decision', auth, handler((req
   const extensionId = positive(req.params.extensionId);
   if (!extensionId) throw new SessionExtensionError('Choose a valid request', 400);
   return decideSessionExtension(stripeClient(), id, extensionId, actor(req), decision.parse(req.body));
+}));
+const resolution = z.object({ outcome: z.enum(['upheld', 'reduced', 'waived']), amountCents: z.number().int().positive().optional(), note: z.string().max(2000) }).strict()
+  .refine(value => value.outcome !== 'reduced' || value.amountCents !== undefined, 'Enter the reduced amount');
+router.post('/admin/bookings/:id/extensions/:extensionId/resolve', auth, requireAdmin as RequestHandler, handler((req, id) => {
+  const extensionId = positive(req.params.extensionId);
+  if (!extensionId) throw new SessionExtensionError('Choose a valid charge', 400);
+  return resolveExtraTimeDispute(id, extensionId, req.neonUser!.id, resolution.parse(req.body));
 }));
 router.post('/bookings/:id/extensions/:extensionId/sync', auth, handler((req, id) => {
   const extensionId = positive(req.params.extensionId);

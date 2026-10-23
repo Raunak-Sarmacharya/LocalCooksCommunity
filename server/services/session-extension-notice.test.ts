@@ -5,7 +5,7 @@ import { ensureServerI18n } from '../i18n';
 import { sessionExtensionAudiences, sessionExtensionCopy } from './session-extension-notice';
 
 const facts = { chef: 'Maya Chen', kitchen: 'Harbour Kitchen', reference: 'KB-10', end: '4:30 p.m. Newfoundland Time', originalEnd: '3:30 p.m. Newfoundland Time',
-  expires: '3:45 p.m. Newfoundland Time', amount: '$28.75', payout: '$27.32', duration: '1 more hour', billed: '30 minutes', stayed: '40 minutes', early: '30 minutes', note: null };
+  expires: '3:45 p.m. Newfoundland Time', amount: '$28.75', payout: '$27.32', duration: '1 more hour', billed: '30 minutes', stayed: '40 minutes', early: '30 minutes', note: null, payBy: 'Oct 29' };
 
 describe('session-extension notices', () => {
   it('routes each event to the right people', () => {
@@ -25,6 +25,20 @@ describe('session-extension notices', () => {
       .toMatch(/^You stayed 40 minutes past your booking at Harbour Kitchen\. They’ve asked for \$28\.75 for 30 minutes of extra time\.[\s\S]*Note from Harbour Kitchen: Fryer cleanup$/);
     expect(sessionExtensionCopy('sxGrantedStartChef', 'en-CA', facts).title).toBe('Harbour Kitchen let you start at 4:30 p.m. Newfoundland Time');
     for (const locale of ['fr-CA', 'uk']) expect(sessionExtensionCopy('sxOfferedChef', locale, facts).title).toContain('Harbour Kitchen');
+  });
+  it('tells both sides what Local Cooks decided on a disputed charge, with the pay-by and its note, in all three languages', async () => {
+    await ensureServerI18n();
+    expect(sessionExtensionAudiences('dispute_upheld', 'extra_time')).toEqual([['chef', 'sxUpheldChef'], ['manager', 'sxUpheldManager']]);
+    expect(sessionExtensionAudiences('dispute_waived', 'extra_time').map(([who]) => who)).toEqual(['chef', 'manager']);
+    const decided = { ...facts, note: 'Checkout time is recorded.' };
+    expect(sessionExtensionCopy('sxUpheldChef', 'en-CA', decided).message)
+      .toBe('Local Cooks reviewed your concern about the extra-time charge from Harbour Kitchen and decided $28.75 is due. Pay by Oct 29 on your booking so you can keep making new bookings.\nNote from Local Cooks: Checkout time is recorded.');
+    expect(sessionExtensionCopy('sxWaivedManager', 'en-CA', decided).message).toMatch(/^Local Cooks reviewed Maya Chen’s concern and waived/);
+    for (const locale of ['fr-CA', 'uk']) for (const prefix of ['sxUpheldChef', 'sxUpheldManager', 'sxWaivedChef', 'sxWaivedManager']) {
+      const copy = sessionExtensionCopy(prefix, locale, decided);
+      expect(copy.title).not.toContain('sx');
+      expect(copy.message).toContain('Checkout time is recorded.');
+    }
   });
   it('explains another-card recovery and automatic refunds in all three languages', async () => {
     await ensureServerI18n();

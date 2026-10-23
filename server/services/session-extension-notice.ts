@@ -11,14 +11,16 @@ import { ensureServerI18n } from '../i18n';
 import { tEmail } from '../i18n/outbound';
 import { queueBookingLifecycleEvent } from './booking-lifecycle-delivery';
 import { kitchenClockWithZone } from './kitchen-payout-notice';
+import { EXTRA_TIME_PAY_DAYS } from '@shared/session-extension';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type Extension = typeof kitchenBookingExtensions.$inferSelect;
 export type SessionExtensionNoticeEvent = 'requested' | 'instant' | 'confirmed' | 'declined' | 'expired' | 'offered'
-  | 'extra_time' | 'paid' | 'disputed' | 'escalated' | 'card_failed' | 'granted' | 'early_offered' | 'refunded' | 'withdrawn';
+  | 'extra_time' | 'paid' | 'disputed' | 'escalated' | 'card_failed' | 'granted' | 'early_offered' | 'refunded' | 'withdrawn'
+  | 'dispute_upheld' | 'dispute_waived';
 type Audience = 'chef' | 'manager' | 'admins';
 type Facts = { chef: string; kitchen: string; reference: string; end: string; originalEnd: string; expires: string; amount: string;
-  payout: string; duration: string; billed: string; stayed: string; early: string; note: string | null };
+  payout: string; duration: string; billed: string; stayed: string; early: string; note: string | null; payBy: string };
 
 /** Which audiences hear about each event, and which copy each of them reads. */
 export function sessionExtensionAudiences(event: SessionExtensionNoticeEvent, kind: Extension['kind']): Array<[Audience, string]> {
@@ -43,6 +45,8 @@ export function sessionExtensionAudiences(event: SessionExtensionNoticeEvent, ki
     case 'offered': return [['chef', 'sxOfferedChef']];
     case 'extra_time': return [['chef', 'sxExtraTimeChef']];
     case 'withdrawn': return [['chef', 'sxWithdrawnChef']];
+    case 'dispute_upheld': return [['chef', 'sxUpheldChef'], ['manager', 'sxUpheldManager']];
+    case 'dispute_waived': return [['chef', 'sxWaivedChef'], ['manager', 'sxWaivedManager']];
     case 'paid': return [['chef', 'sxPaidChef'], ['manager', 'sxPaidManager']];
     case 'disputed': return [['chef', 'sxDisputedChef'], ['manager', 'sxDisputedManager'], ['admins', 'sxSupportDisputed']];
     case 'escalated': return [['chef', 'sxEscalatedChef'], ['manager', 'sxEscalatedManager'], ['admins', 'sxSupportUnanswered']];
@@ -54,6 +58,10 @@ export function sessionExtensionAudiences(event: SessionExtensionNoticeEvent, ki
 export function sessionExtensionCopy(prefix: string, locale: string | null | undefined, facts: Facts) {
   const language = locale || 'en-CA';
   const message = tEmail(language, `${prefix}Body`, facts);
+  // Local Cooks' decision note is read by both sides under its own label.
+  if (facts.note && ['sxUpheldChef', 'sxUpheldManager', 'sxWaivedChef', 'sxWaivedManager'].includes(prefix))
+    return { title: tEmail(language, `${prefix}Title`, facts), message: `${message}
+${tEmail(language, 'sxLocalCooksNoteLine', { note: facts.note })}` };
   const note = facts.note && ['sxExtraTimeChef', 'sxEscalatedChef', 'sxSupportDisputed', 'sxSupportUnanswered', 'sxDisputedManager'].includes(prefix)
     ? `\n${tEmail(language, prefix.startsWith('sxSupport') || prefix === 'sxDisputedManager' ? 'sxChefNoteLine' : 'sxNoteLine', { kitchen: facts.kitchen, chef: facts.chef, note: facts.note })}` : '';
   return { title: tEmail(language, `${prefix}Title`, facts), message: `${message}${note}` };
@@ -85,7 +93,9 @@ export async function queueSessionExtensionNotices(tx: Tx, extension: Extension,
     amount: money(extension.amountCents, row.booking.currency, locale), payout: money(quote.kitchenGrossCents, row.booking.currency, locale),
     duration: duration(extension.minutes, locale), billed: tEmail(locale, 'sxMinutes', { minutes: extension.minutes }),
     stayed: tEmail(locale, 'sxMinutes', { minutes: quote.actualMinutes ?? extension.minutes }), early: tEmail(locale, 'sxMinutes', { minutes: extension.minutes }),
-    note: extra.disputeNote || extension.note || null });
+    note: extra.disputeNote || (event.startsWith('dispute_') ? extension.resolution?.note : null) || extension.note || null,
+    payBy: extension.upheldAt ? new Intl.DateTimeFormat(locale, { timeZone: row.timezone!, month: 'short', day: 'numeric' })
+      .format(new Date(extension.upheldAt.getTime() + EXTRA_TIME_PAY_DAYS * 86_400_000)) : '' });
   for (const [audience, prefix] of sessionExtensionAudiences(event, extension.kind)) {
     const locale = (audience === 'chef' ? people[0]?.locale : audience === 'manager' ? managers[0]?.locale : null) || 'en-CA';
     const copy = sessionExtensionCopy(prefix, locale, factsFor(locale));

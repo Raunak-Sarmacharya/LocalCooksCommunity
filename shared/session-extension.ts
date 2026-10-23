@@ -15,6 +15,10 @@ export type ExtensionOperation = { action: 'authorize' | 'pay' | 'capture' | 're
   attemptKey?: string;
   retiredAttempts?: Array<{ attemptKey: string; paymentIntentId: string | null; checkoutSessionId: string | null }>;
   capturedAt?: string; capturedAmountCents?: number; chargeId?: string | null };
+/** A disputed extra-time charge: what the customer said, then what Local Cooks decided. */
+export type ExtraTimeResolution = { disputeNote?: string; disputedAt?: string;
+  outcome?: 'upheld' | 'reduced' | 'waived'; note?: string; originalAmountCents?: number; decidedBy?: number; decidedAt?: string };
+export const EXTRA_TIME_PAY_DAYS = 7;
 const cents = (value: number) => { if (!Number.isSafeInteger(value) || value < 0) throw Error('Whole nonnegative cents are required'); return value; };
 
 /** Tax and service-fee ratios are frozen from the parent charge, matching its separate-transfer split. */
@@ -99,6 +103,13 @@ export function extraTimeQuote(endAt: string, checkoutAt: string, hourlyRateCent
   const commissionCents = roundRatio(amountCents, maximum.commissionCents, maximum.amountCents);
   const subtotalCents = amountCents - taxCents - commissionCents;
   return { actualMinutes, minutes, maximumAmountCents: maximum.amountCents, amountCents, subtotalCents, taxCents, commissionCents, kitchenGrossCents: amountCents - commissionCents };
+}
+
+/** Local Cooks lowers an upheld charge: tax and fee keep the saved quote's proportions, so the split stays as agreed. */
+export function reducedExtraTimeQuote<Q extends ExtensionQuote>(quote: Q, amountCents: number): Q {
+  if (!Number.isSafeInteger(amountCents) || amountCents <= 0 || amountCents >= quote.amountCents) throw Error('A reduced charge must be more than $0 and less than the original');
+  const taxCents = roundRatio(amountCents, quote.taxCents, quote.amountCents), commissionCents = roundRatio(amountCents, quote.commissionCents, quote.amountCents);
+  return { ...quote, amountCents, taxCents, commissionCents, subtotalCents: amountCents - taxCents - commissionCents, kitchenGrossCents: amountCents - commissionCents };
 }
 
 /** `boundaryAt` is the booked end, or for an early start the original booked start (the offer closes then). */

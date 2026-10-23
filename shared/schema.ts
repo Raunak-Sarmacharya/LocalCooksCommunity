@@ -861,6 +861,9 @@ export const kitchenBookingExtensions = pgTable('kitchen_booking_extensions', {
   paidAt: timestamp('paid_at', { withTimezone: true }),
   appliedAt: timestamp('applied_at', { withTimezone: true }),
   escalatedAt: timestamp('escalated_at', { withTimezone: true }),
+  /** Local Cooks upheld (or reduced) a disputed extra-time charge; the pay-by is 7 days later. */
+  upheldAt: timestamp('upheld_at', { withTimezone: true }),
+  resolution: jsonb('resolution').$type<import('./session-extension').ExtraTimeResolution>(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 }, table => [

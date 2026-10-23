@@ -5,7 +5,8 @@ import { createHash } from 'node:crypto';
 import { and, asc, desc, eq, inArray, isNull, lte, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { damageClaims, damageEvidence, damageClaimHistory, kitchenBookings, kitchenBookingVisits,
-  storageBookings, storageListings, kitchens, locations, users, supportActions, platformSettings } from '@shared/schema';
+  storageBookings, storageListings, kitchens, locations, users, supportActions, platformSettings, kitchenBookingExtensions } from '@shared/schema';
+import { EXTRA_TIME_PAY_DAYS } from '@shared/session-extension';
 import { approvedClaimAmount, claimFilingWindow, claimResponseDeadline, claimTotal, fileClaimInput,
   claimSupportInput, claimUpload, claimBookingHeld, validateClaimLines, type ClaimSupportInput } from '@shared/damage-claims';
 import { occupancyRange, toDateRange, localToday, type RentalDates } from '@shared/storage-rental';
@@ -285,7 +286,14 @@ export async function readClaimBookingHold(chefId: number, now = new Date()) {
     .where(and(eq(damageClaims.chefId, chefId), eq(damageClaims.chefOwes, true), isNull(damageClaims.holdReleasedAt),
       isNull(damageClaims.resolvedAt), isNull(damageClaims.chargeSucceededAt), lte(damageClaims.upheldAt, new Date(now.getTime() - 7 * 86400000)),
       sql`${damageClaims.status} NOT IN ('rejected','resolved','charge_succeeded','expired')`)).orderBy(asc(damageClaims.id)).limit(20);
-  return { held: rows.length > 0, claims: rows };
+  // An extra-time charge Local Cooks upheld and that is still unpaid 7 days on pauses new bookings the same way.
+  const extraTime = await db.select({ id: kitchenBookingExtensions.id, bookingId: kitchenBookingExtensions.bookingId, kitchenName: kitchens.name, amountCents: kitchenBookingExtensions.amountCents })
+    .from(kitchenBookingExtensions).innerJoin(kitchenBookings, eq(kitchenBookings.id, kitchenBookingExtensions.bookingId)).innerJoin(kitchens, eq(kitchens.id, kitchenBookings.kitchenId))
+    .where(and(eq(kitchenBookings.chefId, chefId), eq(kitchenBookingExtensions.kind, 'extra_time'), eq(kitchenBookingExtensions.status, 'offered'),
+      isNull(kitchenBookingExtensions.paidAt), lte(kitchenBookingExtensions.upheldAt, new Date(now.getTime() - EXTRA_TIME_PAY_DAYS * 86400000)))).limit(20);
+  // Negative ids keep list keys apart from claim ids; every consumer links by bookingId.
+  const held = [...rows, ...extraTime.map(row => ({ ...row, id: -row.id, storageRentalId: null }))];
+  return { held: held.length > 0, claims: held };
 }
 /** The hold itself is computed live; this bounded sweep only sends the once-per-claim notice to both people. */
 export async function notifyDamageClaimBookingHolds(now = new Date()) {

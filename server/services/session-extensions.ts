@@ -21,7 +21,7 @@ import type Stripe from 'stripe';
 import { db } from '../db';
 import { kitchenAvailability, kitchenBookingExtensions, kitchenBookings, kitchenBookingVisits,
   kitchenCheckoutHolds, kitchenDateOverrides, kitchens, locations, paymentHistory, paymentTransactions } from '@shared/schema';
-import { appendExtensionSlot, earlierSessionSnapshot, earlyStartOptions, extendedSessionSnapshot, extensionDeadline, extraTimeChargeOpen,
+import { EXTRA_TIME_PAY_DAYS, reducedExtraTimeQuote, appendExtensionSlot, earlierSessionSnapshot, earlyStartOptions, extendedSessionSnapshot, extensionDeadline, extraTimeChargeOpen,
   extraTimeQuote, inEarlyStartWindow, inExtensionWindow, prependEarlySlot, sessionExtensionBlocker, sessionExtensionOptions, type NoTimeReason, validExtensionMinutes,
   type EarlyStartOption, type ExtensionKind, type ExtensionOperation, type ExtensionOption } from '@shared/session-extension';
 import { absoluteOperatingSlotInterval, occupiedIntervals, timeToMinutes } from '@shared/operating-hours';
@@ -257,7 +257,41 @@ export function sessionExtensionDto(extension: Extension) {
     processing: extension.operation?.state === 'pending', escalated: !!extension.escalatedAt,
     checkoutPending: !!extension.operation?.checkout && extension.operation.state === 'pending' && ['authorize', 'pay'].includes(extension.operation.action),
     refundPending: extension.operation?.action === 'refund' && extension.operation.state === 'pending',
-    cardFailedAt: extension.cardFailedAt?.toISOString() ?? null, refundedAt: extension.refundedAt?.toISOString() ?? null };
+    cardFailedAt: extension.cardFailedAt?.toISOString() ?? null, refundedAt: extension.refundedAt?.toISOString() ?? null,
+    // Both sides see what was said and decided; who decided stays internal.
+    upheldAt: extension.upheldAt?.toISOString() ?? null,
+    payBy: extension.upheldAt ? new Date(extension.upheldAt.getTime() + EXTRA_TIME_PAY_DAYS * 86_400_000).toISOString() : null,
+    resolution: extension.resolution ? { disputeNote: extension.resolution.disputeNote ?? null, outcome: extension.resolution.outcome ?? null,
+      note: extension.resolution.note ?? null, originalAmountCents: extension.resolution.originalAmountCents ?? null } : null };
+}
+
+/**
+ * Local Cooks settles a disputed (or unanswered, escalated) extra-time charge (owner, Oct 22: same as damage claims). Upheld or reduced: the charge
+ * goes back to the customer as offered, with a pay-by 7 days out (unpaid after that pauses new bookings); waived: closed
+ * as the kitchen's "No charge" record. The note is shown to both sides. Nothing is charged here.
+ */
+export async function resolveExtraTimeDispute(bookingId: number, extensionId: number, adminId: number,
+  input: { outcome: 'upheld' | 'reduced' | 'waived'; amountCents?: number; note: string }, now = new Date()) {
+  const note = input.note?.trim();
+  if (!note || note.length < 10) throw new SessionExtensionError('Add a short note for the customer and the kitchen (at least 10 characters)', 400);
+  const extension = await db.transaction(async tx => {
+    await lockedContext(tx, bookingId, { id: adminId, role: 'admin' });
+    const current = await savedExtension(tx, bookingId, extensionId);
+    // Disputed by the customer, or unanswered for 48 hours (escalated, still offered): both wait on Local Cooks.
+    const open = current.status === 'disputed' || current.status === 'offered' && !!current.escalatedAt && !current.upheldAt && !current.paidAt && current.operation?.state !== 'pending';
+    if (current.kind !== 'extra_time' || !open) throw new SessionExtensionError('Only a disputed or unanswered extra-time charge can be settled here');
+    const resolution = { ...current.resolution, outcome: input.outcome, note: note.slice(0, 2000), originalAmountCents: current.amountCents, decidedBy: adminId, decidedAt: now.toISOString() };
+    const values = input.outcome === 'waived'
+      ? { status: 'waived' as const, free: true, amountCents: 0, quote: { ...current.quote, amountCents: 0, subtotalCents: 0, taxCents: 0, commissionCents: 0, kitchenGrossCents: 0 } }
+      : { status: 'offered' as const, upheldAt: now, ...(input.outcome === 'reduced'
+        ? (() => { const quote = reducedExtraTimeQuote(current.quote, Number(input.amountCents)); return { amountCents: quote.amountCents, quote }; })() : {}) };
+    const [saved] = await tx.update(kitchenBookingExtensions).set({ ...values, resolution, decidedBy: adminId, updatedAt: now })
+      .where(and(eq(kitchenBookingExtensions.id, extensionId), eq(kitchenBookingExtensions.status, current.status))).returning();
+    if (!saved) throw new SessionExtensionError('This charge changed. Refresh and try again.');
+    await notify(tx, saved, input.outcome === 'waived' ? 'dispute_waived' : 'dispute_upheld', adminId);
+    return saved;
+  });
+  return { extension: sessionExtensionDto(extension) };
 }
 const openActive = (ext: Extension, blockIndex: number) => ext.blockIndex === blockIndex && ext.kind !== 'extra_time'
   && ['requested', 'offered', 'approved'].includes(ext.status) && !ext.appliedAt;
@@ -474,11 +508,13 @@ export async function decideSessionExtension(stripe: ExtensionStripe, bookingId:
     }
     if (input.action === 'dispute') {
       if (extension.status === 'disputed') return;
+      if (extension.upheldAt) throw new SessionExtensionError('Local Cooks has already reviewed this charge. Contact Local Cooks.');
       if (extension.paidAt || extension.operation?.state === 'pending' || extension.status !== 'offered')
         throw new SessionExtensionError('This charge is already paid or being processed. Contact Local Cooks.');
       const note = input.note?.trim();
       if (!note) throw new SessionExtensionError('Tell us briefly what isn’t right');
-      await tx.update(kitchenBookingExtensions).set({ status: 'disputed', decidedBy: actor.id, escalatedAt: extension.escalatedAt ?? now, updatedAt: now })
+      await tx.update(kitchenBookingExtensions).set({ status: 'disputed', decidedBy: actor.id, escalatedAt: extension.escalatedAt ?? now, updatedAt: now,
+        resolution: { disputeNote: note.slice(0, 2000), disputedAt: now.toISOString() } })
         .where(eq(kitchenBookingExtensions.id, id));
       await notify(tx, { ...extension, status: 'disputed' }, 'disputed', actor.id, { disputeNote: note });
       return;
