@@ -10,6 +10,7 @@ vi.mock('stripe', async original => {
 });
 vi.mock('../db', () => ({ db: { select: h.write, update: h.write, transaction: h.write }, pool: {} }));
 vi.mock('../firebase-auth-middleware', () => ({ requireFirebaseAuthWithUser: vi.fn() }));
+vi.mock('../services/outcome-delivery', () => ({ attemptOutcomeDeliveryAfterResponse: vi.fn() }));
 vi.mock('../services/stripe-webhook-events', () => ({ claimStripeWebhookEvent: h.claim, markStripeWebhookEventProcessed: h.done }));
 vi.mock('../services/booking-checkout-fulfillment', () => ({ fulfillQuotedKitchenBooking: h.fulfill }));
 vi.mock('../services/dated-booking-allocations', () => ({ syncDatedPayment: h.sync }));
