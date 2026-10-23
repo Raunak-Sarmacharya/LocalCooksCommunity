@@ -116,6 +116,25 @@ ${access ? t('cpnAccessNext', { start }) : attendance ? t('cpnAttendanceNext') :
   };
 }
 
+/** Per-reader wording for an update on a booking or tour report: the reporter reads "your report", the other side reads whose it is. */
+export async function updateCopy(tx: Tx, problem: Problem, context: ProblemContext, action: string, last: ProblemHistory | undefined) {
+  await ensureServerI18n();
+  const reporterIsChef = problem.reportedBy === context.chefId;
+  const chefName = context.chefId ? await getUserDisplayName(context.chefId, 'chef', tx) : '';
+  const reporterName = reporterIsChef ? chefName : context.kitchenName || '';
+  const actorName = last?.actorRole === 'chef' ? chefName : last?.actorRole === 'manager' ? context.kitchenName || '' : '';
+  return (person: typeof users.$inferSelect) => {
+    const t = (key: string, values: Record<string, unknown> = {}) => tLocale(person.preferredLocale, key, { ns: 'booking', ...values });
+    const mine = person.id === problem.reportedBy, step = action === 'escalate' ? 'acknowledge' : action;
+    const name = reporterName || t(reporterIsChef ? 'cpnTheChef' : 'cpnTheKitchen');
+    const title = step === 'reply' && actorName ? t('cpnUpdReplyBy', { ref: context.reference, who: actorName })
+      : t(`cpnUpd_${step}_${mine ? 'mine' : 'other'}`, { ref: context.reference, name });
+    return { title, message: `${last?.note ? `${last.note}
+
+` : ''}${t(step === 'resolve' ? 'cpnUpdResolvedNext' : 'cpnUpdNext')}` };
+  };
+}
+
 async function queueProblemNotice(tx: Tx, problem: Problem, action: string) {
   const kind = problem.storageBookingId ? 'storage' : problem.bookingId ? 'booking' : 'tour', id = problem.storageBookingId || problem.bookingId || problem.viewingId!;
   const context = await problemContext(tx, kind, id);
@@ -134,13 +153,14 @@ async function queueProblemNotice(tx: Tx, problem: Problem, action: string) {
   // A live report (e.g. "can't get in" at check-in) is worded per reader: the reporter, the other side, Local Cooks.
   if (kind === 'storage') await ensureServerI18n();
   const live = kind !== 'storage' && action === 'report' && problem.kind === 'live' ? await liveReportCopy(tx, problem, context, kind) : undefined;
+  const update = kind !== 'storage' && ['acknowledge', 'reply', 'escalate', 'resolve'].includes(action) ? await updateCopy(tx, problem, context, action, last) : undefined;
   for (const person of people) {
     const role = person.role === 'admin' ? 'admin' : person.id === context.chefId ? 'chef' : 'manager';
     const storageT = (key: string, values: Record<string, unknown> = {}) => tLocale(person.preferredLocale, key, { ns: 'storage', ...values });
     const copy = kind === 'storage' ? {
       title: storageT('stProblemTitle', { ref, status: storageT(`stProblemStatus_${problem.status}`) }),
       message: `${storageT('stProblemAt', { name: role === 'manager' && context.chefId ? await getUserDisplayName(context.chefId, 'chef', tx) : context.kitchenName || '', date: emailLocalDateTime(problem.updatedAt || problem.createdAt, context.timezone, person.preferredLocale || 'en-CA') })}\n${problem.description}\n${last?.action === 'report' ? storageT('stProblemReceived') : last?.note || ''}`,
-    } : live?.(person, role);
+    } : live?.(person, role) ?? (role === 'admin' ? undefined : update?.(person));
     const personTitle = copy?.title ?? title, personMessage = copy?.message ?? message;
     // Internal assignment changes do not ask participants to act or change their report's public status.
     if (assignmentOnly && role !== 'admin') continue;

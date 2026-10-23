@@ -101,3 +101,20 @@ describe('problem category', () => {
       .rejects.toMatchObject({ statusCode: 400, message: expect.stringContaining('category') });
   });
 });
+
+describe('update notices on a report', () => {
+  it('reads per person: the reporter gets "your report", the kitchen whose it is; the note leads; a participant reply is theirs', async () => {
+    const { updateCopy } = await import('./commitment-problems');
+    const problem: any = { reportedBy: 3, history: [] };
+    const context: any = { chefId: 3, managerId: 2, kitchenName: 'Harbour Kitchen', reference: 'KB-TEST10' };
+    const chef: any = { id: 3, preferredLocale: 'en-CA' }, kitchen: any = { id: 2, preferredLocale: 'en-CA' };
+    const resolved = await updateCopy({} as any, problem, context, 'resolve', { action: 'resolve', note: 'The kitchen let you in late; we refunded $5.', actorRole: 'admin' } as any);
+    expect(resolved(chef)).toEqual({ title: 'Your report is resolved · KB-TEST10',
+      message: 'The kitchen let you in late; we refunded $5.\n\nIf you need anything else, reply on the booking.' });
+    expect(resolved(kitchen).title).toBe("Sam Chef's report is resolved · KB-TEST10");
+    const reply = await updateCopy({} as any, problem, context, 'reply', { action: 'reply', note: 'Door is open now.', actorRole: 'manager' } as any);
+    expect(reply(chef).title).toBe('Harbour Kitchen replied about the report · KB-TEST10');
+    const fr = await updateCopy({} as any, problem, context, 'acknowledge', { action: 'acknowledge', note: 'On regarde.', actorRole: 'admin' } as any);
+    expect(fr({ id: 3, preferredLocale: 'fr-CA' } as any).title).toBe('Local Cooks examine votre signalement · KB-TEST10');
+  });
+});
