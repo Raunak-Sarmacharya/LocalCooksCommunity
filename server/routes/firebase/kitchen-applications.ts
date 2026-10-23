@@ -1711,7 +1711,7 @@ router.get('/firebase/chat/viewings/:viewingId/conversation', requireFirebaseAut
         const location = tour ? await locationService.getLocationById(tour.locationId) : null;
         if (!tour || !location || !isChatParticipant(req.neonUser!, tour.chefId, location.managerId))
             return res.status(404).json({ error: 'Tour not found' });
-        if (!tourGrantsChat(tour)) return res.status(409).json({ error: 'Messaging opens after Local Cooks approves and forwards this tour' });
+        if (!tourGrantsChat(tour)) return res.status(409).json({ error: 'Messaging opens once your tour request is accepted' });
         const conversation = await participantConversation(req.neonUser!, tour.chefId, tour.locationId);
         if (!conversation) return res.status(409).json({ error: 'Eligible conversation unavailable. Please retry.' });
         return res.json({ ...conversation, viewingId,

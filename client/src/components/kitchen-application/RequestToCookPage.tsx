@@ -113,7 +113,7 @@ export function RequestToCookPage({ location, kitchen, kitchenId, emailVerified,
         <div className="flex justify-between gap-3"><dt className="text-muted-foreground">{t("rtcPreferred", { defaultValue: "Preferred" })}</dt><dd className="text-right">{scheduleText || t("rtcNoDays", { defaultValue: "No days picked" })}</dd></div>
         {schedule?.totalCents != null && <div className="flex justify-between gap-3"><dt className="text-muted-foreground">{t("rtcEstimate", { defaultValue: "Estimate" })}</dt><dd className="font-semibold tabular-nums">{formatCurrency(schedule.totalCents, "CAD", i18n.language)}</dd></div>}
       </dl>
-      <p className="mt-3 border-t pt-3 text-xs leading-5 text-muted-foreground">{t("rtcNext", { defaultValue: "Local Cooks reviews your request first, then the kitchen. You book and pay only after you’re approved." })}</p>
+      <p className="mt-3 border-t pt-3 text-xs leading-5 text-muted-foreground">{t("rtcNext", { defaultValue: "The kitchen reviews your request. You book and pay only after you’re approved." })}</p>
     </CardContent>
   </Card>;
 
@@ -135,7 +135,7 @@ export function RequestToCookPage({ location, kitchen, kitchenId, emailVerified,
         {user && emailVerified ? <p className="flex items-center gap-2 text-sm" role="status"><Loader2 className="h-4 w-4 animate-spin" aria-hidden />{t("rtcSending", { defaultValue: "Sending your request…" })}</p> : <>
           <span aria-hidden className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-[#FCE3E9]"><Mail className="h-6 w-6 text-[#E10939]" /></span>
           <h2 className="text-xl font-semibold">{t("rtcConfirmTitle", { defaultValue: "Confirm your email to send your request" })}</h2>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">{t("rtcConfirmBody", { defaultValue: "We sent a link to {email}. Tap it on any device and your request goes to Local Cooks. This page continues by itself.", email: mask(user?.email || "") })}</p>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">{t("rtcConfirmBody", { defaultValue: "We sent a link to {email}. Tap it on any device and your request goes to the kitchen. This page continues by itself.", email: mask(user?.email || "") })}</p>
           <p className="mt-4 flex items-center gap-2 text-sm" role="status"><Loader2 className="h-4 w-4 animate-spin text-primary" aria-hidden />{t("rtcWaiting", { defaultValue: "Waiting for you to tap the link…" })}</p>
           <ul className="mt-4 list-disc space-y-1.5 pl-5 text-sm text-muted-foreground">
             <li>{t("rtcSaved", { defaultValue: "Your answers are saved with your new account, so nothing is lost if you close this page." })}</li>
@@ -162,7 +162,7 @@ export function RequestToCookPage({ location, kitchen, kitchenId, emailVerified,
       <header className="mb-6 flex items-start justify-between gap-6">
         <div className="min-w-0">
           <h1 className="text-2xl font-semibold tracking-tight">{t("rtcTitle", { defaultValue: "Cook at {name}", name: kitchenName })}</h1>
-          <p className="mt-1.5 max-w-2xl text-sm leading-6 text-muted-foreground">{t("rtcLead", { defaultValue: "{address}. Send one request; Local Cooks reviews it first, then the kitchen.", address: location.address })}</p>
+          <p className="mt-1.5 max-w-2xl text-sm leading-6 text-muted-foreground">{t("rtcLead", { defaultValue: "{address}. Send one request and the kitchen will get back to you.", address: location.address })}</p>
         </div>
         <Button variant="ghost" className="shrink-0 gap-2 text-muted-foreground" onClick={onCancel}><X className="h-4 w-4" aria-hidden />{t("cancelBtn", { defaultValue: "Cancel" })}</Button>
       </header>

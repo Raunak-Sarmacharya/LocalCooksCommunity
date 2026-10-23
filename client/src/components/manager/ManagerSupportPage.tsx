@@ -75,7 +75,7 @@ export default function ManagerSupportPage({
         },
         {
           q: t("supportManagerApplicationsQ2", "What's the difference between the two tiers?"),
-          a: t("supportManagerApplicationsA2", "Local Cooks reviews the initial request. You set the kitchen access requirements, which customers complete after initial approval."),
+          a: t("supportManagerApplicationsA2", "Customers send a request with their details. You set the access requirements they complete before booking, and you approve them."),
         },
       ],
     },

@@ -115,7 +115,7 @@ export function KitchenApplicationJourneySteps({
       title: t("journeyApplyTitle", "Request to apply"),
       desc: t(
         "journeyApplyDesc",
-        "Share your basic details with Local Cooks."
+        "Share your basic details with the kitchen."
       ),
     },
     {
