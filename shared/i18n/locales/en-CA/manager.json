@@ -3627,6 +3627,7 @@
   "rrChangesNote": "{chef} must approve these changes by {deadline}. Nothing is charged until they accept; if they don’t, the request closes and their card hold is released.",
   "rrAccept": "Accept request",
   "rrSendChanges": "Send changes to {chef}",
+  "rrChangesSummary": "{chef} will pay {total} instead of {was} once they approve. Nothing is charged until then.",
   "rrChefTitle": "Customer",
   "rrCharging": "Charging the customer’s card…",
   "rrReleasing": "Releasing the hold…",

@@ -74,6 +74,8 @@ describe('kitchen request review page', () => {
     await waitFor(() => expect(screen.getByTestId('rr-money')).toHaveTextContent('The customer pays$183.00$91.50'));
     expect(h.calls.find(call => call.method === 'POST')?.body).toEqual({ equipmentBookingIds: [], declinedVisitIds: [2] });
     expect(screen.getByTestId('rr-changes-note')).toHaveTextContent('Alex must approve these changes by');
+    // The new total is also right by the send button (the payment card is far above it on a phone).
+    expect(screen.getByTestId('rr-changes-summary')).toHaveTextContent('Alex will pay $91.50 instead of $183.00 once they approve. Nothing is charged until then.');
     // The last kept day can't be declined too.
     expect(screen.getAllByRole('checkbox')[0]).toBeDisabled();
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Send changes to Alex' })); });

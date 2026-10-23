@@ -3627,6 +3627,7 @@
   "rrChangesNote": "{chef} doit approuver ces changements d’ici le {deadline}. Rien n’est débité avant son acceptation; sinon, la demande est fermée et le blocage sur sa carte est libéré.",
   "rrAccept": "Accepter la demande",
   "rrSendChanges": "Envoyer les changements à {chef}",
+  "rrChangesSummary": "{chef} paiera {total} au lieu de {was} après son approbation. Rien n’est facturé d’ici là.",
   "rrChefTitle": "Client",
   "rrCharging": "Débit de la carte du client…",
   "rrReleasing": "Libération de la retenue…",

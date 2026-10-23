@@ -228,11 +228,15 @@ export default function ManagerRequestReviewPage() {
                   ? <Button variant="destructive" disabled={busy} onClick={() => void decide('cancelled')}>{busy && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}{t(busy ? 'rrReleasing' : 'rrConfirmDecline')}</Button>
                   : <Button disabled={busy} onClick={() => void decide('cancelled', true)}>{busy && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}{t(busy ? 'rrReleasing' : 'rrContinueInvite')}</Button>}
               </div>
-            </div> : <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end">
+            </div> : <>
+              {/* With changes, the new total sits by the button (on a phone the payment card is far above). */}
+              {changed && preview?.allowed && <p className="mb-2 text-sm sm:text-right" role="status" data-testid="rr-changes-summary">
+                {t('rrChangesSummary', { chef, total: money(preview.newTotalCents), was: money(preview.oldTotalCents) })}</p>}
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end">
               <Button variant="outline" disabled={busy} onClick={() => setDeclining('decline')}>{t('rrDecline')}</Button>
               <Button disabled={busy || (changed && (!preview || !preview.allowed))} onClick={() => void decide('confirmed')} data-testid="rr-accept">
                 {busy && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}{busy ? t(changed ? 'rrSending' : 'rrCharging') : changed ? t('rrSendChanges', { chef }) : t('rrAccept')}</Button>
-            </div>}
+            </div></>}
           </div>
         </div>}
       </>}
