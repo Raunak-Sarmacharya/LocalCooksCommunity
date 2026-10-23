@@ -83,7 +83,7 @@ export default function KitchenJourneyAuth({ title, description = "Use your Loca
   };
 
   // The link tapped here or on a phone continues this request by itself (same as the profile's email card).
-  useEmailVerifiedWatch(awaitingVerification && !signInAfterVerification && !!user, checkVerification);
+  const showManualCheck = useEmailVerifiedWatch(awaitingVerification && !signInAfterVerification && !!user, checkVerification);
 
   const resend = async () => {
     if (!email) return;
@@ -117,7 +117,7 @@ export default function KitchenJourneyAuth({ title, description = "Use your Loca
             {user && <p className="text-xs text-muted-foreground" data-testid="verification-auto">Open it on any device. This page continues by itself once you tap the link.</p>}
             {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
             <div className="flex flex-wrap gap-3">
-              {user && <Button disabled={busy} onClick={checkVerification}>I verified my email</Button>}
+              {user && showManualCheck && <Button disabled={busy} onClick={checkVerification}>I verified my email</Button>}
               <Button variant="outline" disabled={busy} onClick={resend}>Resend link</Button>
               {!user && <Button onClick={() => setSignInAfterVerification(true)}>I verified my email · Continue</Button>}
             </div>

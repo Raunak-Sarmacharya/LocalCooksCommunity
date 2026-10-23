@@ -1949,25 +1949,23 @@ The Local Cooks Team
   };
 };
 
-// Generate magic link (passwordless sign-in) email with unified design
-// Role determines the correct subdomain for the link target (though EmailAction handles cross-subdomain redirects)
-export const generateMagicLinkEmail = (
-  userData: {
-    fullName: string;
-    email: string;
-    signInUrl: string;
-    /** Recipient preferred locale (BCP 47). Defaults to en-CA. */
-    locale?: string | null;
-  }
-): EmailContent => {
+// Sign-in code email (replaces the sign-in link): the code is in the subject so it can be read from a phone notification.
+export const generateSignInCodeEmail = (userData: { fullName: string; email: string; code: string; locale?: string | null }): EmailContent => {
   const firstName = userData.fullName.split(' ')[0];
-  const locale = userData.locale;
-  const subject = locale && locale.startsWith('fr')
-    ? 'Votre lien de connexion - Local Cooks'
-    : locale && locale.startsWith('uk')
-      ? 'Ваше посилання для входу - Local Cooks'
-      : 'Your Sign-In Link - Local Cooks';
-
+  const fr = userData.locale?.startsWith('fr'), uk = userData.locale?.startsWith('uk');
+  const subject = fr ? `${userData.code} est votre code de connexion Local Cooks`
+    : uk ? `${userData.code} — ваш код для входу в Local Cooks`
+      : `${userData.code} is your Local Cooks sign-in code`;
+  const lead = fr ? 'Entrez ce code sur l’écran de connexion pour continuer.'
+    : uk ? 'Введіть цей код на екрані входу, щоб продовжити.'
+      : 'Enter this code on the sign-in screen to continue.';
+  const expiry = fr ? 'Il expire dans 10 minutes et ne peut servir qu’une fois.'
+    : uk ? 'Він діє 10 хвилин і лише один раз.'
+      : 'It expires in 10 minutes and can be used once.';
+  const ignore = fr ? 'Vous n’avez pas demandé ce code ? Ignorez ce courriel ; personne ne peut se connecter sans lui.'
+    : uk ? 'Не запитували цей код? Просто проігноруйте лист: без коду ніхто не увійде.'
+      : 'Didn’t ask for this code? You can ignore this email; no one can sign in without it.';
+  const hi = fr ? 'Bonjour' : uk ? 'Вітаємо' : 'Hi';
   const html = `
 <!DOCTYPE html>
 <html>
@@ -1983,19 +1981,15 @@ export const generateMagicLinkEmail = (
       <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
-      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
-      <p class="message" style="margin-bottom: 20px;">Here&#8217;s your secure sign-in link for Local Cooks. Click the button below to access your account instantly — no password needed.</p>
-      <p class="message" style="margin-bottom: 20px;">For your security, this link will expire in <strong>10 minutes</strong> and can only be used once.</p>
-      <div style="margin: 16px 0 4px 0; text-align: center;">
-        <span style="display: inline-block; padding: 4px 12px; background: #eff6ff; color: #1d4ed8; border: 1px solid #dbeafe; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">&#9679; Secure Sign-In</span>
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">${hi} ${firstName},</h2>
+      <p class="message" style="margin-bottom: 20px;">${lead}</p>
+      <div style="margin: 8px 0 20px 0; text-align: center;">
+        <span style="display: inline-block; padding: 14px 24px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; font-family: 'SFMono-Regular', Menlo, Consolas, monospace; font-size: 32px; font-weight: 700; letter-spacing: 0.3em; color: #0f172a;">${userData.code}</span>
       </div>
-      <div style="margin: 16px 0 0 0; text-align: center;">
-        <a href="${userData.signInUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Sign In to My Account</a>
-      </div>
-      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;"><strong>Didn&#8217;t request this?</strong> If you didn&#8217;t try to sign in, you can safely ignore this email. Your account remains secure.</p>
+      <p class="message" style="margin-bottom: 20px;">${expiry}</p>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">${ignore}</p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
-        <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
-        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 0;">Local Cooks</p>
       </div>
     </div>
     <div class="footer">
@@ -2005,36 +1999,18 @@ export const generateMagicLinkEmail = (
   </div>
 </body>
 </html>`;
+  const text = `${hi} ${firstName},
 
-  const text = `
-Hi ${firstName},
+${lead}
 
-Here's your secure sign-in link for Local Cooks. Use the link below to sign in instantly — no password needed.
+${userData.code}
 
-Sign in: ${userData.signInUrl}
+${expiry}
 
-For your security, this link will expire in 10 minutes and can only be used once.
+${ignore}
 
-If you didn't request this, you can safely ignore this email. Your account remains secure.
-
-Best,
-The Local Cooks Team
-
-© ${new Date().getFullYear()} Local Cooks
-  `.trim();
-
-  return {
-    to: userData.email,
-    subject,
-    text,
-    html: prepareEmailHtml(html),
-    headers: {
-      'X-Priority': '1',
-      'X-MSMail-Priority': 'High',
-      'Importance': 'High',
-      'List-Unsubscribe': `<mailto:${getUnsubscribeEmail()}>`
-    }
-  };
+Local Cooks`;
+  return { to: userData.email, subject, text, html: prepareEmailHtml(html), headers: { 'X-Transactional-Type': 'sign-in-code' } };
 };
 
 // Generate welcome email with unified design

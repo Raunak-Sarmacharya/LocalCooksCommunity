@@ -1,8 +1,9 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const authMocks = vi.hoisted(() => ({
-  sendEmailLink: vi.fn(),
+  sendSignInCode: vi.fn(),
+  signInWithEmailCode: vi.fn(),
   login: vi.fn(),
   resendEmailVerification: vi.fn(),
 }));
@@ -25,10 +26,10 @@ vi.mock("./LoadingOverlay", () => ({ default: () => null }));
 
 import EnhancedLoginForm from "./EnhancedLoginForm";
 
-describe("EnhancedLoginForm email-link waiting state", () => {
+describe("EnhancedLoginForm email sign-in code", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    authMocks.sendEmailLink.mockResolvedValue(undefined);
+    authMocks.sendSignInCode.mockResolvedValue(undefined);
   });
 
   it("automatically sends a selected linked email method and keeps recovery controls visible", async () => {
@@ -44,8 +45,8 @@ describe("EnhancedLoginForm email-link waiting state", () => {
       />,
     );
 
-    await waitFor(() => expect(authMocks.sendEmailLink).toHaveBeenCalledTimes(1));
-    expect(authMocks.sendEmailLink).toHaveBeenCalledWith("linked@example.com");
+    await waitFor(() => expect(authMocks.sendSignInCode).toHaveBeenCalledTimes(1));
+    expect(authMocks.sendSignInCode).toHaveBeenCalledWith("linked@example.com");
     expect(await screen.findByRole("heading", { name: "Check your email" })).toBeInTheDocument();
     expect(screen.getByText(/li\*\*\*@example\.com/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Email sent" })).toBeDisabled();
@@ -65,18 +66,18 @@ describe("EnhancedLoginForm email-link waiting state", () => {
       />,
     );
 
-    await waitFor(() => expect(authMocks.sendEmailLink).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(authMocks.sendSignInCode).toHaveBeenCalledTimes(1));
 
     // The address gets its OWN line. Inlined into the sentence it broke around the email, so
     // the sentence read as two ragged fragments.
     const address = await screen.findByText("li***@example.com");
     expect(address.tagName).toBe("P");
-    expect(screen.getByText("We sent a secure sign-in link to")).toBeInTheDocument();
+    expect(screen.getByText("We sent a 6-digit sign-in code to")).toBeInTheDocument();
 
     // The spam hint is the point of this screen, and it was missing entirely once the account
     // was confirmed — the one case where the visitor knows the address is right.
     expect(screen.getByText("Nothing yet? Check your spam or promotions folder.")).toBeInTheDocument();
-    expect(screen.getByText("Open the link on this device to sign in.")).toBeInTheDocument();
+    expect(screen.getByText("The code works once and expires in 10 minutes.")).toBeInTheDocument();
 
     // A NAMED way out, not an arrow. `AuthFlow` renders "← Back" above the card for
     // single-method accounts, and this state is precisely that account.
@@ -99,8 +100,22 @@ describe("EnhancedLoginForm email-link waiting state", () => {
       />,
     );
 
-    await waitFor(() => expect(authMocks.sendEmailLink).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(authMocks.sendSignInCode).toHaveBeenCalledTimes(1));
     expect(screen.queryByRole("button", { name: "Try another way" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Use a different email" })).toBeInTheDocument();
+  });
+
+  it("signs in on this device with the 6 digits (typed or pasted), and says when a code is wrong", async () => {
+    const onSuccess = vi.fn();
+    authMocks.signInWithEmailCode.mockRejectedValueOnce(new Error("code-wrong")).mockResolvedValueOnce(undefined);
+    render(<EnhancedLoginForm initialEmail="linked@example.com" initialChallenge="email-link" accountConfirmed autoSendEmailLink showChallengeSwitcher={false} onSuccess={onSuccess} />);
+    const input = await screen.findByLabelText("Sign-in code");
+    fireEvent.change(input, { target: { value: "12 34 5" } });
+    expect(authMocks.signInWithEmailCode).not.toHaveBeenCalled();
+    fireEvent.change(input, { target: { value: "123-456" } });
+    await waitFor(() => expect(authMocks.signInWithEmailCode).toHaveBeenCalledWith("linked@example.com", "123456"));
+    expect(await screen.findByRole("alert")).toHaveTextContent("That code isn't right");
+    fireEvent.change(input, { target: { value: "654321" } });
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
   });
 });

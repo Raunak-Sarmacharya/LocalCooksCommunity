@@ -97,7 +97,8 @@ interface AuthContextType {
    * a page load, which the load-time sweep cannot see.
    */
   discardPendingGoogleRegistration: () => Promise<void>;
-  sendEmailLink: (email: string) => Promise<void>;
+  sendSignInCode: (email: string) => Promise<void>;
+  signInWithEmailCode: (email: string, code: string) => Promise<void>;
   handleEmailLinkSignIn: () => Promise<void>;
   isUserVerified: (user: AuthUser | null) => boolean;
   updateUserVerification: () => Promise<AuthUser | null>;
@@ -1093,39 +1094,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const sendEmailLink = async (email: string) => {
+  // Email sign-in is a 6-digit code typed here (owner, Oct 23), so asking on a PC and reading the email on a phone signs
+  // the PC in. The server answers the same for unknown accounts; never bypass it with the client SDK.
+  const sendSignInCode = async (email: string) => {
     setError(null);
+    const res = await fetch('/api/auth/email-code/send', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      const message = res.status === 429 ? 'too-many-requests' : body?.error || 'Unable to send a sign-in code. Please try again.';
+      setError(message);
+      throw new Error(message);
+    }
+  };
+
+  /** Throws Error('code-wrong' | 'code-expired' | 'too-many-requests' | …) for the form to word. */
+  const signInWithEmailCode = async (email: string, code: string) => {
+    setError(null);
+    setLoading(true);
+    setAuthPhase('authenticating');
     try {
-      // Try custom branded email endpoint first (uses server-side Firebase Admin + custom template)
-      logger.info(`📧 Sending custom magic link email to: ${email}`);
-      const intent = getAuthIntent();
-      const returnUrl =
-        (new URLSearchParams(window.location.search).get("journey") === "seller" ? "/?journey=seller" : intent?.returnPath) ||
-        `${window.location.pathname}${window.location.search}`;
-      const customEmailResponse = await fetch('/api/firebase/send-magic-link-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        // Send the origin the user is actually on. Without it the server has to guess, and
-        // its guess (a public host) differs from where `emailForSignIn` was written — so the
-        // link opened on a different origin, localStorage was empty, and the user was asked
-        // to retype an address we had just masked. It also sent the post-sign-in redirect to
-        // a different environment than the one they started from.
-        body: JSON.stringify({ email, returnUrl, origin: window.location.origin })
+      const res = await fetch('/api/auth/email-code/verify', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, code }),
       });
-
-      if (!customEmailResponse.ok) {
-        const customError = await customEmailResponse.json().catch(() => null);
-        throw new Error(customError?.error || 'Unable to request a sign-in link. Please try again.');
-      }
-
-      logger.info(`✅ Magic-link request accepted for: ${email}`);
-      // The server intentionally returns the same response for known and unknown
-      // accounts. Never bypass that eligibility check with the client SDK.
-      window.localStorage.setItem('emailForSignIn', email);
+      const body = await res.json().catch(() => null);
+      if (!res.ok || !body?.customToken) throw new Error(res.status === 429 ? 'too-many-requests' : body?.error || 'code-failed');
+      const { signInWithCustomToken } = await import('firebase/auth');
+      await signInWithCustomToken(auth, body.customToken);
+      await rememberAuthMethod(email, 'email-link');
+      setPendingSync(true);
     } catch (e: any) {
-      logger.error('❌ Error sending magic link email:', e);
-      setError(e.message);
+      setAuthPhase(auth.currentUser ? 'ready' : 'idle');
       throw e;
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -1486,7 +1489,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signInWithGoogle,
         authenticateWithGoogle,
         discardPendingGoogleRegistration,
-        sendEmailLink,
+        sendSignInCode,
+        signInWithEmailCode,
         handleEmailLinkSignIn,
         isUserVerified,
         updateUserVerification,

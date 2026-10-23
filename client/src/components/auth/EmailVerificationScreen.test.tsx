@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import EmailVerificationScreen from "./EmailVerificationScreen";
@@ -13,6 +13,7 @@ describe("EmailVerificationScreen", () => {
   });
   it("keeps the user on an actionable screen when verification is not visible yet", async () => {
     const onCheckVerified = vi.fn().mockResolvedValue(false);
+    vi.useFakeTimers();
 
     render(
       <EmailVerificationScreen
@@ -23,6 +24,10 @@ describe("EmailVerificationScreen", () => {
       />,
     );
 
+    // The page continues by itself; the manual check only appears as a backup after 20 s.
+    expect(screen.queryByRole("button", { name: "I have verified my email" })).not.toBeInTheDocument();
+    act(() => { vi.advanceTimersByTime(20_000); });
+    vi.useRealTimers();
     fireEvent.click(screen.getByRole("button", { name: "I have verified my email" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("haven't detected verification yet");

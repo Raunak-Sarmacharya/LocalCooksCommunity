@@ -60,8 +60,8 @@ export default function EmailVerificationScreen({
   const [verificationError, setVerificationError] = useState<string | null>(null);
   const [isChecking, setIsChecking] = useState(false);
   const [isLeaving, setIsLeaving] = useState(false);
-  // Tapping the link (here or on a phone) continues this screen by itself; the button stays as a fallback.
-  useEmailVerifiedWatch(mode === "verification" && !!onCheckVerified, () => onCheckVerified?.());
+  // Tapping the link (here or on a phone) continues this screen by itself; the button only appears as a backup.
+  const showManualCheck = useEmailVerifiedWatch(mode === "verification" && !!onCheckVerified, () => onCheckVerified?.());
 
   const handleGoBack = async () => {
     if (isLeaving) return;
@@ -126,7 +126,7 @@ export default function EmailVerificationScreen({
       </motion.div>
 
       <motion.div variants={itemVariants} className="space-y-3">
-        {!isMagicLink && (
+        {!isMagicLink && showManualCheck && (
           <Button
             type="button"
             onClick={async () => {

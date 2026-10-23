@@ -8,6 +8,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Icon } from "@iconify/react";
 import { Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -109,7 +111,7 @@ export default function EnhancedLoginForm({
   const { t } = useTranslation("auth");
   const [challenge, setChallenge] = useState<LoginChallenge>(initialChallenge);
   const loginSchema = useLoginSchema();
-  const { login, sendEmailLink, resendEmailVerification } =
+  const { login, sendSignInCode, signInWithEmailCode, resendEmailVerification } =
     useFirebaseAuth();
   const [authState, setAuthState] = useState<AuthState>("idle");
   const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
@@ -118,6 +120,9 @@ export default function EnhancedLoginForm({
   const [unverifiedPassword, setUnverifiedPassword] = useState("");
   const [showMagicLinkNudge, setShowMagicLinkNudge] = useState(false);
   const [emailLinkCooldown, setEmailLinkCooldown] = useState(0);
+  const [code, setCode] = useState("");
+  const [codeError, setCodeError] = useState<string | null>(null);
+  const [codeBusy, setCodeBusy] = useState(false);
   const autoSendStartedRef = useRef(false);
   const { showAlert } = useCustomAlerts();
 
@@ -150,7 +155,9 @@ export default function EnhancedLoginForm({
     const email = data.email.trim();
 
     try {
-      await sendEmailLink(email);
+      await sendSignInCode(email);
+      setCode("");
+      setCodeError(null);
       setAuthState("success");
       setShowMagicLinkNudge(true);
       setEmailLinkCooldown(30);
@@ -188,6 +195,31 @@ export default function EnhancedLoginForm({
     autoSendStartedRef.current = true;
     void handleEmailLinkSubmit({ email: initialEmail, password: "" });
   }, [autoSendEmailLink, initialChallenge, initialEmail]);
+
+  const handleCodeSubmit = async (value: string) => {
+    if (codeBusy || value.length !== 6) return;
+    setCodeBusy(true);
+    setCodeError(null);
+    setShowLoadingOverlay(true);
+    try {
+      await signInWithEmailCode(form.getValues("email").trim(), value);
+      await onSuccess?.();
+      setShowLoadingOverlay(false);
+    } catch (e: unknown) {
+      setShowLoadingOverlay(false);
+      const message = e instanceof Error ? e.message : "";
+      setCode("");
+      setCodeError(message === "code-wrong"
+        ? t("codeWrong", "That code isn't right. Check the email and try again.")
+        : message === "code-expired"
+          ? t("codeExpired", "That code has expired or was already used. Send a new one.")
+          : message.includes("too-many-requests")
+            ? t("errTooManyAttempts", "Too many attempts. Please wait a few minutes before trying again.")
+            : t("codeCheckFailed", "We couldn't check the code. Please try again."));
+    } finally {
+      setCodeBusy(false);
+    }
+  };
 
   const handlePasswordSubmit = async (data: LoginFormData) => {
     const password = data.password?.trim() ?? "";
@@ -279,7 +311,7 @@ export default function EnhancedLoginForm({
       default: showMagicLinkNudge
         ? emailLinkCooldown > 0
           ? t("resendEmailCountdown", { defaultValue: "Resend in {seconds}s", seconds: emailLinkCooldown })
-          : t("resendSignInLink", "Resend sign-in link")
+          : t("resendSignInCode", "Send a new code")
         : t("btnContinueWithEmail", "Continue with email"),
       loading: t("btnSendingLink", "Sending..."),
       success: t("btnEmailSent", "Email sent"),
@@ -349,25 +381,62 @@ export default function EnhancedLoginForm({
           </h2>
           <p className="mt-2.5 text-sm leading-relaxed text-gray-600">
             {accountConfirmed
-              ? t("signInEmailWaitingLead", "We sent a secure sign-in link to")
-              : t("signInEmailSentLead", "If an account exists for this email, we sent a secure sign-in link to")}
+              ? t("signInCodeWaitingLead", "We sent a 6-digit sign-in code to")
+              : t("signInCodeSentLead", "If an account exists for this email, we sent a 6-digit sign-in code to")}
           </p>
           <p className="mt-1 break-all text-sm font-medium text-gray-950">{maskedTarget}</p>
         </div>
 
+        <LoadingOverlay
+          isVisible={showLoadingOverlay}
+          message={t("btnSigningYouIn", "Signing you in...")}
+          submessage={t("overlayVerifyCredentials", "Please wait while we verify your credentials securely.")}
+          type="loading"
+        />
+        <form
+          className="mb-4 space-y-2"
+          onSubmit={(event) => { event.preventDefault(); void handleCodeSubmit(code); }}
+        >
+          <Label htmlFor="email-sign-in-code">{t("signInCodeLabel", "Sign-in code")}</Label>
+          <Input
+            id="email-sign-in-code"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            autoFocus
+            maxLength={6}
+            value={code}
+            aria-invalid={!!codeError}
+            aria-describedby={codeError ? "email-sign-in-code-error" : undefined}
+            disabled={codeBusy}
+            className="h-12 text-center font-mono text-xl tracking-[0.4em]"
+            onChange={(event) => {
+              const next = event.target.value.replace(/\D/g, "").slice(0, 6);
+              setCode(next);
+              if (codeError) setCodeError(null);
+              // Six digits typed or pasted signs in, as Slack and Notion do.
+              if (next.length === 6) void handleCodeSubmit(next);
+            }}
+          />
+          {codeError && <p id="email-sign-in-code-error" role="alert" className="text-sm text-red-600">{codeError}</p>}
+          <Button type="submit" disabled={codeBusy || code.length !== 6} className="w-full bg-[#C90832] text-white hover:bg-[#C00930]">
+            {t("btnSignIn", "Sign In")}
+          </Button>
+        </form>
+
         <div className="space-y-3">
           <AnimatedButton
             type="button"
+            variant="outline"
             state={buttonState()}
             loadingText={t("btnSendingLink", "Sending...")}
             successText={t("btnEmailSent", "Email sent")}
             errorText={t("btnTryAgain", "Try again")}
-            disabled={busy || emailLinkCooldown > 0}
+            disabled={busy || codeBusy || emailLinkCooldown > 0}
             onClick={() => void handleEmailLinkSubmit(form.getValues())}
           >
             {emailLinkCooldown > 0
               ? t("resendEmailCountdown", { defaultValue: "Resend in {seconds}s", seconds: emailLinkCooldown })
-              : t("resendSignInLink", "Resend sign-in link")}
+              : t("resendSignInCode", "Send a new code")}
           </AnimatedButton>
 
           {onTryAnotherWay && (
@@ -386,7 +455,7 @@ export default function EnhancedLoginForm({
         {/* Two balanced lines, each its own sentence — the same shape the verification screen
             uses. As one paragraph this pair wrapped into a long line plus a two-word orphan. */}
         <div className="mt-5 text-center text-xs leading-relaxed text-slate-500">
-          <p>{t("signInEmailOpenOnDevice", "Open the link on this device to sign in.")}</p>
+          <p>{t("signInCodeExpiry", "The code works once and expires in 10 minutes.")}</p>
           <p className="mt-1">
             {t("signInEmailSpamHint", "Nothing yet? Check your spam or promotions folder.")}
           </p>
@@ -587,7 +656,7 @@ export default function EnhancedLoginForm({
                 disabled={busy}
                 className="w-full rounded-full border border-gray-200 bg-white py-2 text-sm font-medium text-gray-700 transition-colors hover:border-[#E10939]/40 hover:bg-[#FFF7F9] hover:text-[#E10939] disabled:opacity-50"
               >
-                {t("emailMeASignInLink", "Email me a sign-in link instead")}
+                {t("emailMeASignInCode", "Email me a sign-in code instead")}
               </button>
             ) : null}
             {availableChallenges.some((candidate) => candidate !== challenge) && <p className="text-xs text-gray-500 px-2">
@@ -597,8 +666,8 @@ export default function EnhancedLoginForm({
                     "Have a password, or need to set one up?"
                   )
                 : t(
-                    "emailLinkChallengeHint",
-                    "Prefer not to use a password? We'll email you a one-time sign-in link."
+                    "emailCodeChallengeHint",
+                    "Prefer not to use a password? We'll email you a one-time sign-in code."
                   )}
             </p>}
           </motion.div>}

@@ -344,7 +344,7 @@ export function registerSecurityMiddleware(app: Express): void {
   // brute-force budget capped at 30 per 15 min in production, which real browsing
   // exhausts. It cannot be brute-forced anyway: it requires a valid Firebase ID token
   // and the account is resolved from that token's uid. It stays under the global limiter.
-  app.use('/api/firebase/send-magic-link-email', authLimiter);
+  app.use('/api/auth/email-code', authLimiter);
   app.use('/api/firebase/auth-method-hints', authLimiter);
   app.use('/api/firebase/send-verification-email', authLimiter);
   app.use('/api/firebase/forgot-password', authLimiter);

@@ -451,8 +451,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Send Magic Link Email (Firebase Backend Custom Email)
-  // Custom branded passwordless sign-in email with CTA button instead of raw Firebase template
   app.post("/api/firebase/auth-method-hints", async (req, res) => {
     res.set("Cache-Control", "no-store");
     const rawIdentifier = typeof req.body?.identifier === "string"
@@ -555,219 +553,74 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/firebase/send-magic-link-email", async (req, res) => {
+  // Sign in with an emailed 6-digit code (replaces the sign-in link, owner Oct 23): typed on the device that asked, so
+  // asking on a PC and reading the email on a phone still signs the PC in. Same eligibility as the link: an existing
+  // account whose Firebase and Neon identities agree; answers never reveal whether an account exists.
+  const signInCodeAccount = async (email: string) => {
+    const { getAuth } = await import('firebase-admin/auth');
+    const { initializeFirebaseAdmin } = await import('./firebase-setup');
+    const firebaseApp = initializeFirebaseAdmin();
+    if (!firebaseApp) throw new Error('Firebase Admin not initialized');
+    const user = await userService.getUserByUsername(email);
+    if (!user?.firebaseUid) return null;
+    const firebaseUser = await getAuth(firebaseApp).getUser(user.firebaseUid).catch(() => null);
+    if (!firebaseUser?.email || firebaseUser.email.trim().toLowerCase() !== email) return null;
+    return { user, firebaseUser, auth: getAuth(firebaseApp) };
+  };
+  const signInCodeEmail = (body: any) => {
+    const email = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : '';
+    return /^\S+@\S+\.\S+$/.test(email) && email.length <= 254 ? email : null;
+  };
+
+  app.post("/api/auth/email-code/send", async (req, res) => {
+    const email = signInCodeEmail(req.body);
+    if (!email) return res.status(400).json({ error: "Email is required" });
     try {
-      const email = typeof req.body?.email === 'string'
-        ? req.body.email.trim().toLowerCase()
-        : '';
-      const { returnUrl } = req.body;
-      if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
-        return res.status(400).json({ error: "Email is required" });
+      const account = await signInCodeAccount(email);
+      if (!account) {
+        logger.warn(`Sign-in code request suppressed for an unlinked or unknown account`);
+        return res.json({ success: true });
       }
-
-      // Initialize Firebase Admin
-      const { getAuth } = await import('firebase-admin/auth');
-      const { initializeFirebaseAdmin } = await import('./firebase-setup');
-
-      const firebaseApp = initializeFirebaseAdmin();
-      if (!firebaseApp) {
-        throw new Error('Firebase Admin not initialized');
+      const { issueSignInCode } = await import('./sign-in-codes');
+      const code = await issueSignInCode((text, params) => pool.query(text, params as any[]), email);
+      if (!code) {
+        logger.warn(`Sign-in code request over the hourly limit for user ${account.user.id}`);
+        return res.json({ success: true });
       }
-
-      // Passwordless sign-in is login-only. Firebase email links can create a
-      // brand-new Firebase identity, so never generate one until both identity
-      // stores agree that this is an existing linked account. The response is
-      // deliberately indistinguishable from the success response to prevent
-      // account enumeration.
-      const existingUser = await userService.getUserByUsername(email);
-      const genericResponse = { success: true, message: "If an account exists, a sign-in link has been sent." };
-      if (!existingUser?.firebaseUid) {
-        logger.warn(`Magic-link request suppressed for an unlinked or unknown account: ${email}`);
-        return res.json(genericResponse);
-      }
-
-      const firebaseUser = await getAuth(firebaseApp).getUser(existingUser.firebaseUid).catch(() => null);
-      if (!firebaseUser?.email || firebaseUser.email.trim().toLowerCase() !== email) {
-        logger.error(`Magic-link request suppressed because Firebase/Neon identity linkage is inconsistent for user ${existingUser.id}`);
-        return res.json(genericResponse);
-      }
-
-      const userRole = existingUser.role === 'manager'
-        ? 'manager'
-        : existingUser.role === 'admin'
-          ? 'admin'
-          : 'chef';
-
-      // Determine the correct subdomain for the action code URL
-      // EmailAction handles cross-subdomain routing, but we set a sensible default here
-      const { getEmailLinkOrigin } = await import('./email');
-      const userType = userRole === 'manager' ? 'kitchen' : userRole === 'admin' ? 'admin' : 'chef';
-
-      // The post-sign-in redirect path (role-based) — EmailAction may override with
-      // cross-subdomain redirect if the user's role doesn't match the current subdomain,
-      // but this provides a good default for the continueUrl
-      const postSignInPath = userRole === 'manager'
-        ? '/manager/dashboard'
-        : userRole === 'admin'
-          ? '/admin'
-          : '/dashboard';
-
-      // When the client saved a kitchen-preview intent (tour/book), honour it
-      // so magic-link sign-in returns the user to complete their flow.
-      let redirectPath = postSignInPath;
-      if (returnUrl && typeof returnUrl === 'string' && returnUrl.startsWith('/')) {
-        const blocked = ['/email-action', '/auth', '/login'];
-        const belongsToRole = userRole === 'manager'
-          ? returnUrl.startsWith('/manager/')
-          : userRole === 'admin'
-            ? returnUrl.startsWith('/admin')
-            : !returnUrl.startsWith('/manager/') && !returnUrl.startsWith('/admin');
-        if (belongsToRole && !blocked.some((p) => returnUrl.startsWith(p))) {
-          redirectPath = returnUrl;
-        }
-      }
-
-      // One origin for the whole email. `getEmailLinkOrigin` deliberately resolves to a
-      // *public* host so a link sent from a local API is still openable elsewhere — but the
-      // continue URL used to be built with a different helper (`getSubdomainUrl`, i.e.
-      // BASE_URL/localhost in local dev), so a single email carried two origins. The link
-      // opened on one host and completing it redirected to another; worse, the
-      // `emailForSignIn` sendEmailLink() had just stored was on a different origin than the
-      // link, so the user was asked to retype an address we had masked.
-      //
-      // `resolveAuthEmailLink` resolves the caller's own origin (when trusted for this role)
-      // once and derives BOTH URLs from it, so they cannot diverge again.
-      const { resolveAuthEmailLink } = await import('./email-verification');
-      const { linkOrigin, continueUrl } = resolveAuthEmailLink({
-        callerOrigin: req.body?.origin,
-        role: userRole,
-        redirectPath,
-        fallbackOrigin: getEmailLinkOrigin(userType),
-      });
-
-      // Action code settings: handleCodeInApp=true sends mode=signIn to /email-action
-      // (instead of Firebase's default auth handler URL), which we process in EmailAction.tsx
-      const actionCodeSettings = {
-        url: continueUrl,
-        handleCodeInApp: true,
-      };
-
-      // Generate the Firebase sign-in link (magic link) using Admin SDK
-      let signInUrl = await getAuth(firebaseApp).generateSignInWithEmailLink(email, actionCodeSettings);
-
-      // -------------------------------------------------------------------
-      // MAGIC LINK URL REWRITE (Local Dev + Vercel Preview)
-      //
-      // Firebase Admin SDK uses the project-level Action URL (configured in
-      // Firebase Console) which is typically the production domain. This
-      // causes magic links to open Firebase's DEFAULT auth handler page
-      // (e.g. formauth-9e620.firebaseapp.com/__/auth/action) which does
-      // NOT support mode=signIn — it shows "unknown action: signIn".
-      //
-      // Fix strategy:
-      //   Rewrite the origin of the Firebase-generated URL so the magic
-      //   link opens OUR app's /email-action page (which handles signIn).
-      //   - Local dev:      rewrite to BASE_URL (e.g. http://localhost:5001)
-      //   - Vercel preview:  rewrite to the role-based dev subdomain
-      //                      (e.g. https://dev-chef.localcooks.ca)
-      //   - Production:     rewrite to the role-based prod subdomain
-      //                      (e.g. https://chef.localcooks.ca)
-      //
-      //   Role/subdomain correctness is then handled CLIENT-SIDE by the
-      //   EmailAction page via `redirectIfWrongSubdomain()`, which bounces
-      //   users to the correct role-based subdomain while preserving all
-      //   query params (mode, oobCode, apiKey, etc.).
-      // -------------------------------------------------------------------
-      const isLocalDev = process.env.NODE_ENV === 'development' && !process.env.VERCEL_ENV;
-      const isVercelPreview = process.env.VERCEL_ENV === 'preview';
-
-      // Always rewrite: local dev, Vercel preview (dev-*), AND production.
-      // Firebase's default handler never supports mode=signIn, so we must
-      // always redirect to our own /email-action page.
-      {
-        try {
-          const generatedUrl = new URL(signInUrl);
-
-          // Determine the target origin based on environment:
-          //   - Local dev: the caller's own origin (e.g. http://chef.localhost:5001)
-          //   - Vercel preview: role-based dev subdomain (dev-chef.localcooks.ca)
-          //   - Production: role-based prod subdomain (chef.localcooks.ca)
-          let targetOrigin: string;
-          let envLabel: string;
-          if (isLocalDev) {
-            targetOrigin = linkOrigin;
-            envLabel = 'LOCAL DEV (caller origin)';
-          } else {
-            targetOrigin = linkOrigin;
-            envLabel = isVercelPreview ? 'VERCEL PREVIEW' : 'PRODUCTION';
-          }
-
-          const targetUrlObj = new URL(targetOrigin);
-
-          logger.info(`🔧 ${envLabel} REWRITE CONTEXT:`, {
-            userRole,
-            userType,
-            firebaseGeneratedOrigin: generatedUrl.origin,
-            targetOrigin,
-            targetScheme: targetUrlObj.protocol,
-            targetHost: targetUrlObj.hostname,
-            targetPort: targetUrlObj.port || '(default)',
-            generatedPathname: generatedUrl.pathname,
-            generatedQueryPreview: generatedUrl.search.length > 80 ? generatedUrl.search.slice(0, 80) + '...' : generatedUrl.search,
-          });
-
-          // Firebase always generates path as /__/auth/action — our SPA route is /email-action.
-          // Rewrite the path unconditionally. Also rewrite origin if it doesn't match.
-          const query = generatedUrl.search; // e.g., '?apiKey=...&mode=signIn&...'
-          const finalOrigin = (generatedUrl.origin !== targetUrlObj.origin) ? targetOrigin : generatedUrl.origin;
-          const originalPath = generatedUrl.pathname;
-          const rewrittenPath = '/email-action';
-          signInUrl = `${finalOrigin}${rewrittenPath}${query}`;
-
-          if (generatedUrl.origin !== targetUrlObj.origin || originalPath !== rewrittenPath) {
-            logger.info(`🔧 ${envLabel}: Rewrote magic link — ORIGIN: ${generatedUrl.origin} → ${finalOrigin}, PATH: ${originalPath} → ${rewrittenPath}`);
-          } else {
-            logger.info(`🔧 ${envLabel}: URL already correct, no rewrite needed.`);
-          }
-        } catch (rewriteError) {
-          logger.error('⚠️ Failed to rewrite magic link URL:', rewriteError instanceof Error ? rewriteError.message : String(rewriteError));
-        }
-      }
-
-      // Import email functions
-      const { sendEmail, generateMagicLinkEmail } = await import('./email');
-
-      // Determine display name for the email greeting
-      const rawFirstName = existingUser ? ((existingUser as any).firstName || (existingUser as any).first_name) : null;
-      const rawLastName = existingUser ? ((existingUser as any).lastName || (existingUser as any).last_name) : null;
-      const fullName = rawFirstName ? `${rawFirstName} ${rawLastName || ''}`.trim() : email.split('@')[0];
-
-      // Get locale from user if available
-      const userLocale = existingUser ? (existingUser as any).locale : null;
-
-      // Build the custom branded email with the magic link hidden in a CTA button
-      const emailContent = generateMagicLinkEmail({
-        fullName,
-        email,
-        signInUrl,
-        locale: userLocale,
-      });
-
-      const emailSent = await sendEmail(emailContent, {
-        trackingId: `magic_link_${existingUser?.id || email}_${Date.now()}`
-      });
-
-      if (!emailSent) {
-        throw new Error('Failed to send magic link email');
-      }
-
-      logger.info(`✅ Custom branded magic link email sent to ${email} (role: ${userRole})`);
-      res.json(genericResponse);
-    } catch (error: any) {
-      logger.error("Error sending magic link email:", error);
-      res.status(500).json({ error: "Failed to send sign-in link" });
+      const { sendEmail, generateSignInCodeEmail } = await import('./email');
+      const first = (account.user as any).firstName || (account.user as any).first_name;
+      const last = (account.user as any).lastName || (account.user as any).last_name;
+      const sent = await sendEmail(generateSignInCodeEmail({
+        fullName: first ? `${first} ${last || ''}`.trim() : email.split('@')[0],
+        email, code, locale: (account.user as any).locale,
+      }), { trackingId: `sign_in_code_${account.user.id}_${Date.now()}` });
+      if (!sent) throw new Error('Failed to send sign-in code email');
+      res.json({ success: true });
+    } catch (error) {
+      logger.error("Error sending sign-in code:", error);
+      res.status(500).json({ error: "Failed to send sign-in code" });
     }
   });
+
+  app.post("/api/auth/email-code/verify", async (req, res) => {
+    const email = signInCodeEmail(req.body);
+    const code = typeof req.body?.code === 'string' ? req.body.code.replace(/\D/g, '') : '';
+    if (!email || !code) return res.status(400).json({ error: "Enter the 6-digit code" });
+    try {
+      const { checkSignInCode } = await import('./sign-in-codes');
+      const result = await checkSignInCode((text, params) => pool.query(text, params as any[]), email, code);
+      if (result !== 'ok') return res.status(401).json({ error: result === 'expired' ? 'code-expired' : 'code-wrong' });
+      const account = await signInCodeAccount(email);
+      if (!account) return res.status(401).json({ error: 'code-expired' });
+      // The code proves the inbox, as the sign-in link did (Firebase marks a link sign-in's email verified too).
+      if (!account.firebaseUser.emailVerified) await account.auth.updateUser(account.firebaseUser.uid, { emailVerified: true });
+      res.json({ customToken: await account.auth.createCustomToken(account.firebaseUser.uid) });
+    } catch (error) {
+      logger.error("Error checking sign-in code:", error);
+      res.status(500).json({ error: "Couldn't check the code" });
+    }
+  });
+
 
   // Manager Forgot Password (backward-compatible alias — both endpoints now use the same role-aware logic)
   app.post("/api/manager/forgot-password", async (req, res) => {
