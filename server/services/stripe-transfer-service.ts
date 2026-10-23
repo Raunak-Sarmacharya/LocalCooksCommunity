@@ -289,6 +289,10 @@ async function transferLockedSource(params: TransferToManagerParams, connection:
   // preceded a failed local commit or an out-of-order fee-availability event.
   const capturedCharge = await stripe.charges.retrieve(params.chargeId);
   let managerRefundedCents = 0;
+  // A Local Cooks-funded refund leaves less on the charge than the kitchen's unchanged share. A transfer tied to the charge
+  // can't exceed what remains, so that payout comes from the platform balance (as claim compensation does).
+  const chargeLeft = Number(capturedCharge.amount) - Number(capturedCharge.amount_refunded || 0);
+  const chargeSource = (cents: number) => Number.isFinite(chargeLeft) && cents > chargeLeft ? {} : { source_transaction: params.chargeId };
 
   // Idempotency: if PT already has a transfer recorded, return it
   try {
@@ -386,7 +390,7 @@ async function transferLockedSource(params: TransferToManagerParams, connection:
               amount: expectedTransferCents,
               currency: existingTransfer.currency,
               destination: existingDestination,
-              source_transaction: params.chargeId,
+              ...chargeSource(expectedTransferCents),
               transfer_group: params.transferGroup,
               description: `Corrected manager payout for ${params.paymentIntentId}`,
               metadata: {
@@ -500,7 +504,7 @@ async function transferLockedSource(params: TransferToManagerParams, connection:
         // source_transaction ensures the transfer is paid from the funds collected by this charge,
         // not from arbitrary platform balance. Required when funds may not yet be available
         // (Stripe queues the transfer until the charge's funds are available).
-        source_transaction: params.chargeId,
+        ...chargeSource(transferredCents),
         transfer_group: params.transferGroup,
         description: `Manager payout for ${params.paymentIntentId}`,
         metadata: {
@@ -516,7 +520,8 @@ async function transferLockedSource(params: TransferToManagerParams, connection:
       },
       {
         // Idempotency: webhook retries should return the same transfer, not duplicate it.
-        idempotencyKey: `transfer:${params.paymentIntentId}`,
+        // A platform-funded payout is a different request than a charge-linked one (a refused charge-linked try may hold the key).
+        idempotencyKey: `transfer:${params.paymentIntentId}${'source_transaction' in chargeSource(transferredCents) ? '' : ':platform'}`,
       },
     );
 

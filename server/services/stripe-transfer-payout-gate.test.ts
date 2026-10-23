@@ -70,6 +70,17 @@ describe('payout-after-closeout gate in the transfer engine', () => {
     expect(state.create.mock.calls[0][1]).toEqual({ idempotencyKey: 'transfer:pi_one' });
     expect(state.record).toHaveBeenCalledWith(1, expect.objectContaining({ transferId: 'tr_released' }), expect.anything());
   });
+  it('after a Local Cooks-funded refund the unchanged kitchen share comes from the platform balance, under its own key (#229 on dev)', async () => {
+    // $120 charged, $100 refunded by Local Cooks: $20 left on the charge, the kitchen's $109.42 is unchanged.
+    state.source.payoutReleasedAt = new Date(); state.source.refundAmount = '10000';
+    state.source.metadata = { refunds: [{ id: 're_lc', customerReceived: 10000, managerDebited: 0, platformServiceFeeReturned: 0, platformGoodwillCents: 10000 }] };
+    state.retrieve.mockResolvedValue({ amount: 12000, amount_refunded: 10000 });
+    const result = await transferToManagerForBooking(params);
+    expect(result).toMatchObject({ transferred: true, transferredCents: 10942 });
+    expect(state.create.mock.calls[0][0]).toMatchObject({ amount: 10942, destination: 'acct_kitchen' });
+    expect(state.create.mock.calls[0][0]).not.toHaveProperty('source_transaction');
+    expect(state.create.mock.calls[0][1]).toEqual({ idempotencyKey: 'transfer:pi_one:platform' });
+  });
   it('a refund before release reduces the transfer instead of reversing anything', async () => {
     state.source.payoutReleasedAt = new Date(); state.source.refundAmount = '2000';
     state.source.metadata = { refunds: [{ id: 're_1', customerReceived: 2000, managerDebited: 2000, platformServiceFeeReturned: 0 }] };
