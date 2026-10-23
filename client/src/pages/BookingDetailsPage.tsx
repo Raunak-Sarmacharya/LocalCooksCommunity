@@ -1830,8 +1830,7 @@ export default function BookingDetailsPage() {
       onFix={isManagerView ? () => openFix() : undefined} />
   );
 
-  // From checkout, as on Airbnb: the card asks the server and shows nothing while feedback isn't open.
-  const feedback = booking && ['checkout_review', 'visit_ended', 'completed', 'no_show', 'issue'].includes(phase) && (
+  const feedback = booking && ['completed', 'no_show', 'issue'].includes(phase) && (
     <BookingFeedbackCard compact bookingId={booking.id} role={isManagerView ? 'manager' : 'chef'} otherPartyName={isManagerView ? chefName : kitchenName} timezone={booking.location?.timezone || 'America/St_Johns'} />
   );
 

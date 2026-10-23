@@ -135,7 +135,7 @@ describe('issuing documents', () => {
     const [refund] = of(after, 'refund', 'chef');
     expect(refund).toMatchObject({ number: 'LC-RF-000007', amountCents: -1000, referencesDocumentId: of(before, 'payment', 'chef')[0].id });
     expect(refund.snapshot.references).toEqual({ number: 'LC-R-000001' });
-    expect(refund.snapshot.sections[0].lines[0].label).toBe('Goodwill refund from Local Cooks');
+    expect(refund.snapshot.sections[0].lines[0].label).toBe('Refund from Local Cooks');
     // Goodwill is funded by Local Cooks: the kitchen keeps its payout, so no payout adjustment.
     expect(of(after, 'refund', 'manager')).toEqual([]);
     expect(of(after, 'statement', 'chef')).toEqual(of(before, 'statement', 'chef'));
