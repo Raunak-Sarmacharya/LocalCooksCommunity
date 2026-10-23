@@ -66,7 +66,7 @@ const lockContext = new AsyncLocalStorage<number[]>();
 function matches(table: string, condition: any, rows: any[]) {
   if (!condition) return rows;
   const query = dialect.sqlToQuery(condition);
-  for (const column of (table === 'users' ? [] : ['id', 'tracking_id', 'recipient_email', 'status', 'category'])) {
+  for (const column of (table === 'users' ? [] : ['id', 'tracking_id', 'recipient_email', 'status', 'category', 'retry_count'])) {
     const regex = new RegExp(`"${table}"\\."${column}" = \\$(\\d+)`, 'g');
     const values = [...query.sql.matchAll(regex)].map(match => query.params[Number(match[1]) - 1]);
     if (values.length) rows = rows.filter(row => values.includes(row[column.replace(/_([a-z])/g, (_, c) => c.toUpperCase())]));
@@ -318,6 +318,11 @@ describe('actual producer → persisted intent → worker → admin replay', () 
     await deliverOutcomeEmails(10);
     expect(tries()).toEqual([3, 4, 2, 4]);
     expect(state.tables.email_logs.find(item => item.id === 4)).toMatchObject({ status: 'failed', errorMessage: expect.stringContaining('automatic retries stopped') });
+    // After an action, a timer or a webhook only never-tried notices go; retries stay with the worker.
+    state.tables.email_logs.push(row(5, 0, 'fresh@example.test'));
+    await deliverOutcomeEmails(10, 20_000, undefined, true);
+    expect(tries()).toEqual([3, 4, 2, 4]);
+    expect(state.tables.email_logs.find(item => item.id === 5)!.retryCount).toBe(1);
     expect(state.tables.email_logs.find(item => item.id === 2)!.retryCount).toBe(4);
   });
   it('commits clearance with its chef notice and rolls back when the outbox fails', async () => {

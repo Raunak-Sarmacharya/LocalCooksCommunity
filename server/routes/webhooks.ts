@@ -250,6 +250,8 @@ router.post("/stripe", async (req: Request, res: Response) => {
 
     // Only a handler that returned normally marks the event done; a thrown error above skips this and Stripe retries.
     await markStripeWebhookEventProcessed(webhookEventId);
+    // Payment events queue outcome notices (refund, failed charge); send them now, after Stripe has its answer.
+    (await import('../services/outcome-delivery')).attemptOutcomeDeliveryAfterResponse();
     res.json({ received: true });
   } catch (err: any) {
     logger.error("Unhandled webhook error:", err);

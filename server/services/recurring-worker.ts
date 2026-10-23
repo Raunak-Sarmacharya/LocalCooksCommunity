@@ -154,6 +154,8 @@ export async function runRecurringWorker(cancellations: () => Promise<unknown>, 
       ];
       // Every tick reserves delivery opportunities. Background reconciliation and
       // business tasks rotate through durable checkpoints in the remaining time.
+      // New outcome notices (an urgent report, a claim decision) go every tick, not only on the outcome task's turn in the rotation.
+      if (workerRemaining() >= 6_000 + deliveryReserve()) try { await deliverOutcomeEmails(3, 6_000, undefined, true); } catch (error) { if (!isWorkerBudgetError(error)) logger.error('[Worker] Fresh outcome delivery requires recovery', error); }
       const deliveryState = { nextTask: state.deliveryNext || 0, cursors: {} };
       const delivery = await runFairTasks([
         { name: 'advance', budgetMs: deliveryTaskMs, run: async () => ({ ...await armUpcomingReminderTimers(), ...await dispatchAdvanceReminders({ limit: 3, budgetMs: deliveryTaskMs }) }) },

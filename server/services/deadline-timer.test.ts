@@ -23,6 +23,7 @@ vi.mock('./session-extensions', () => ({ expireSessionExtension: state.expireExt
 vi.mock('./storage-rentals', () => ({ expireRental: state.expireStorage }));
 vi.mock('./kitchen-booking-changes', () => ({ expireKitchenChangeForBooking: state.expireChange, changeProviderStripe: async () => ({ paymentIntents: {} }) }));
 vi.mock('./auth-expiry-service', () => ({ lazyExpireKitchenBookingAuth: state.lazyExpire }));
+vi.mock('./outcome-delivery', () => ({ deliverOutcomeEmails: async () => ({ completed: 0 }) }));
 vi.mock('./clock-closeout', () => ({ persistBookingCloseout: state.persist }));
 vi.mock('./kitchen-payout-service', () => ({ releaseKitchenPayout: state.release }));
 vi.mock('./advance-reminders', () => ({ dispatchAdvanceReminders: state.dispatch }));
@@ -152,11 +153,12 @@ describe('deadline-timer Inngest function', () => {
   it('sleeps until dueAt (plus a few seconds), then runs the scoped expiry once; sleeping is the only wait', async () => {
     const { runDeadlineTimer } = await load();
     const calls: string[] = [];
-    const step = { sleepUntil: vi.fn(async () => { calls.push('sleep'); }), run: vi.fn(async (_id: string, action: () => Promise<unknown>) => { calls.push('expire'); return action(); }) };
+    const step = { sleepUntil: vi.fn(async () => { calls.push('sleep'); }), run: vi.fn(async (id: string, action: () => Promise<unknown>) => { calls.push(id); return action(); }) };
     const dueAt = '2026-10-15T20:30:56.000Z';
     state.rows = [{ id: 21 }];
     const result = await runDeadlineTimer({ event: { data: { kind: 'booking_request', id: 21, dueAt } }, step });
-    expect(calls).toEqual(['sleep', 'expire']);
+    // The expiry, then a send of any outcome notices it queued, each its own step.
+    expect(calls).toEqual(['sleep', 'expire-at-deadline', 'deliver-new-outcomes']);
     expect(step.sleepUntil).toHaveBeenCalledWith('wait-for-deadline', new Date(Date.parse(dueAt) + deadlineGraceMs));
     expect(state.lazyExpire).toHaveBeenCalledTimes(1);
     expect(result).toEqual({ kind: 'booking_request', expired: true });

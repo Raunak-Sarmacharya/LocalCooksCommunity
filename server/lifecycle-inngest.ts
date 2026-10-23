@@ -76,7 +76,10 @@ export async function runDeadlineTimer({ event, step }: {
   if (!deadlineKinds.includes(kind as DeadlineKind) || typeof id !== 'number' || !Number.isSafeInteger(id) || id <= 0 || !Number.isFinite(due))
     throw Error('Invalid deadline timer identity');
   await step.sleepUntil('wait-for-deadline', new Date(due + deadlineGraceMs));
-  return step.run('expire-at-deadline', () => runDeadlineExpiry(kind as DeadlineKind, id));
+  const result = await step.run('expire-at-deadline', () => runDeadlineExpiry(kind as DeadlineKind, id));
+  // An expiry can queue outcome notices (claim, payment, overstay); send them now rather than on a later tick.
+  await step.run('deliver-new-outcomes', async () => (await import('./services/outcome-delivery')).deliverOutcomeEmails(5, 15_000, undefined, true));
+  return result;
 }
 export const deadlineTimer = inngest.createFunction({ id: 'deadline-timer', retries: 3,
   triggers: [{ event: deadlineScheduledEvent }],

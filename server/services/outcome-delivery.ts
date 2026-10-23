@@ -55,7 +55,8 @@ export async function queueClaimOutcome(tx: Transaction, history: typeof damageC
 /** Automatic sends per notice. After that it stays failed for an admin to retry from Email logs (they were alerted on the first failure). */
 export const OUTCOME_MAX_ATTEMPTS = 4;
 
-export async function deliverOutcomeEmails(limit = 10, budgetMs = 20_000, onlyLogId?: number) {
+/** `freshOnly`: only never-tried notices, for paths that run after an action, a timer or a webhook (retries are the worker's). */
+export async function deliverOutcomeEmails(limit = 10, budgetMs = 20_000, onlyLogId?: number, freshOnly = false) {
   if (isE2eOutboundSuppressed()) return { completed: 0 };
   const deadline = Date.now() + budgetMs;
   let completed = 0;
@@ -67,7 +68,7 @@ export async function deliverOutcomeEmails(limit = 10, budgetMs = 20_000, onlyLo
         sql`(${emailLogs.trackingId} LIKE 'checkout-outcome:%' OR ${emailLogs.trackingId} LIKE 'claim-outcome:%' OR ${emailLogs.trackingId} LIKE 'payment-outcome:%' OR ${emailLogs.trackingId} LIKE 'overstay-outcome:%' OR ${emailLogs.trackingId} LIKE 'storage-outcome:%' OR ${emailLogs.trackingId} LIKE 'storage-rental:%' OR ${emailLogs.trackingId} LIKE 'problem-outcome:%')`,
         attempted.length ? sql`${emailLogs.id} NOT IN (${sql.join(attempted.map(id => sql`${id}`), sql`,`)})` : undefined,
         onlyLogId ? undefined : sql`(${emailLogs.retriedAt} IS NULL OR ${emailLogs.retriedAt} < CURRENT_TIMESTAMP - interval '1 minute')`,
-        onlyLogId ? undefined : lt(emailLogs.retryCount, OUTCOME_MAX_ATTEMPTS)))
+        onlyLogId ? undefined : freshOnly ? eq(emailLogs.retryCount, 0) : lt(emailLogs.retryCount, OUTCOME_MAX_ATTEMPTS)))
         // Never-tried notices first: a new urgent report must not wait behind retries to addresses that keep refusing.
         .orderBy(asc(emailLogs.retryCount), sql`${emailLogs.retriedAt} ASC NULLS FIRST`, asc(emailLogs.id)).limit(1).for('update', { skipLocked: true });
       if (!intent) return null;
@@ -253,7 +254,7 @@ export async function attemptOutcomeDelivery() {
  * one action queues a notice per person (customer, kitchen, each admin) and the worker sends only one per tick.
  */
 export function attemptOutcomeDeliveryAfterResponse() {
-  waitUntil(deliverOutcomeEmails(10, 15_000).catch(() => undefined));
+  waitUntil(deliverOutcomeEmails(10, 15_000, undefined, true).catch(() => undefined));
 }
 
 /** Called with payment history and the recorded provider result in their transaction. */
