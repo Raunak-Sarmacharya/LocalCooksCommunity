@@ -18,7 +18,7 @@ export function readPreferredSchedule(kitchenId: string): PreferredSchedule {
   const fromDay = typeof dates?.from === "string" ? dates.from.slice(0, 10) : null;
   const days = (Array.isArray(dates?.dates) ? dates.dates : fromDay ? [fromDay] : []).filter((day: unknown): day is string => typeof day === "string" && DAY.test(day));
   const times = (Array.isArray(prefs?.slots) ? prefs.slots : []).filter((time: unknown): time is string => typeof time === "string" && TIME.test(time));
-  return { days: Array.from(new Set(days)).sort().slice(0, 14), pricingMode: prefs?.pricingMode === "daily" ? "daily" : "hourly", times };
+  return { days: Array.from(new Set<string>(days)).sort().slice(0, 14), pricingMode: prefs?.pricingMode === "daily" ? "daily" : "hourly", times };
 }
 
 export function writePreferredSchedule(kitchenId: string, schedule: PreferredSchedule) {
