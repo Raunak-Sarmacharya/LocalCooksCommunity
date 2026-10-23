@@ -83,10 +83,16 @@ const EXTENSION_SOURCE: Record<string, { chef: string; manager: string }> = {
   extra_time: { chef: 'extra time charged after the session', manager: 'extra time you charged' },
   early_start: { chef: 'earlier start', manager: 'earlier start' },
 };
+const clockAfter = (time: string, minutes: number) => {
+  const total = (toMin(time) + minutes) % 1440;
+  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+};
 function extensionItem(ext: ExtensionRow, date: string, audience: DocumentAudience) {
-  const range = ext.kind === 'early_start' ? formatTimeRange(ext.endTime, ext.originalEndTime) : formatTimeRange(ext.originalEndTime, ext.endTime);
+  // An after-the-visit charge keeps the booked end as its end; the billed block runs from there.
+  const range = ext.kind === 'early_start' ? formatTimeRange(ext.endTime, ext.originalEndTime)
+    : ext.kind === 'extra_time' ? formatTimeRange(ext.originalEndTime, clockAfter(ext.originalEndTime, ext.minutes)) : formatTimeRange(ext.originalEndTime, ext.endTime);
   const source = EXTENSION_SOURCE[ext.kind]?.[audience] || '';
-  return { label: ext.kind === 'early_start' ? 'Earlier start' : 'More time',
+  return { label: ext.kind === 'early_start' ? 'Earlier start' : ext.kind === 'extra_time' ? 'Extra time' : 'More time',
     detail: `${formatDay(date)} · ${range} (${formatMinutes(ext.minutes)}${source ? ` · ${source}` : ''})` };
 }
 

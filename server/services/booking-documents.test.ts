@@ -77,6 +77,13 @@ describe('booking #175 money facts', () => {
     ]);
     expect(money.freeTime).toEqual([{ label: 'More time', detail: 'Thu, Oct 15 · 4:55–5:25 p.m. (30 min) · added by the kitchen' }]);
   });
+  it('an extra-time charge after the visit reads as the billed block from the booked end, not an empty range (#229)', () => {
+    const rows = booking175();
+    rows.payments[1].metadata = { ...rows.payments[1].metadata, extensionKind: 'extra_time' };
+    rows.extensions[1] = { ...rows.extensions[1], kind: 'extra_time', originalEndTime: '17:55', endTime: '17:55' };
+    expect(deriveBookingMoney(rows).payments[1].items).toEqual([{ label: 'Extra time',
+      detail: 'Thu, Oct 15 · 5:55–6:25 p.m. (30 min · extra time charged after the session)', subtotalCents: 1250 }]);
+  });
 });
 
 describe('issuing documents', () => {
