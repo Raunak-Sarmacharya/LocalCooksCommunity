@@ -43,7 +43,7 @@ export async function readBookingHistory(bookingId: number, actor: AttendanceAct
     minutes: kitchenBookingExtensions.minutes, amountCents: kitchenBookingExtensions.amountCents, free: kitchenBookingExtensions.free,
     autoApprove: kitchenBookingExtensions.autoApprove, createdAt: kitchenBookingExtensions.createdAt, updatedAt: kitchenBookingExtensions.updatedAt,
     authorizedAt: kitchenBookingExtensions.authorizedAt, paidAt: kitchenBookingExtensions.paidAt, appliedAt: kitchenBookingExtensions.appliedAt,
-    refundedAt: kitchenBookingExtensions.refundedAt, operation: kitchenBookingExtensions.operation })
+    refundedAt: kitchenBookingExtensions.refundedAt, operation: kitchenBookingExtensions.operation, resolution: kitchenBookingExtensions.resolution })
     .from(kitchenBookingExtensions).where(eq(kitchenBookingExtensions.bookingId, bookingId)).orderBy(asc(kitchenBookingExtensions.id));
   return buildBookingHistory(context.booking, [...records,
     ...goodwill.map(row => ({ id: row.id, key: `payment-${row.id}`, kind: 'goodwill_refunded', createdAt: row.createdAt, metadata: row.metadata }))], visits, extensions);

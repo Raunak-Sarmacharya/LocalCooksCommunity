@@ -164,4 +164,14 @@ describe('extra time in the history', () => {
   it('a free offer applies at once, so there is no "accepted" line', () => {
     expect(extensionHistoryEvents([row({ free: true, amountCents: 0 }) as never]).map(event => event.kind)).toEqual(['ext_offered']);
   });
+  it('a disputed charge Local Cooks lowered reads as asked, questioned, decided, paid (as #229)', () => {
+    const events = extensionHistoryEvents([row({ kind: 'extra_time', status: 'paid', amountCents: 750, paidAt: '2026-10-23T01:21:49.000Z', appliedAt: null,
+      resolution: { disputedAt: '2026-10-23T00:52:46.000Z', outcome: 'reduced', decidedAt: '2026-10-23T01:20:36.000Z', originalAmountCents: 1526 } }) as never]);
+    expect(events.map(event => [event.kind, event.amountCents])).toEqual([['ext_requested', 1526], ['ext_disputed', undefined], ['ext_lc_decided', 750], ['ext_paid', 750]]);
+  });
+  it('waived by Local Cooks is not the kitchen choosing no charge', () => {
+    const events = extensionHistoryEvents([row({ kind: 'extra_time', status: 'waived', free: true, amountCents: 0, appliedAt: null,
+      resolution: { disputedAt: '2026-10-23T00:52:46.000Z', outcome: 'waived', decidedAt: '2026-10-23T01:20:36.000Z', originalAmountCents: 1526 } }) as never]);
+    expect(events.map(event => event.kind)).toEqual(['ext_requested', 'ext_disputed', 'ext_lc_waived']);
+  });
 });

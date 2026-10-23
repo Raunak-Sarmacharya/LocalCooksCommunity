@@ -45,7 +45,8 @@ export function BookingHistoryPanel({ id, version, reference, role, timezone, ca
       : event.kind === 'ext_approved' ? `approved_ask_${role}` : event.kind === 'ext_accepted' ? `accepted_offer_${role}`
       : event.kind === 'ext_paid' ? `paid_${role}` : event.kind === 'ext_declined' ? `declined_${flowKey}_${role}`
       : event.kind === 'ext_expired' ? `expired_${flowKey}` : event.kind === 'ext_withdrawn' ? `withdrawn_${flowKey}`
-      : event.kind === 'ext_waived' ? `waived_${role}` : 'refunded';
+      : event.kind === 'ext_waived' ? `waived_${role}` : event.kind === 'ext_disputed' ? `disputed_${role}`
+      : event.kind === 'ext_lc_decided' ? 'lc_decided' : event.kind === 'ext_lc_waived' ? 'lc_waived' : 'refunded';
     return t(`historyExt_${name}` as 'historyGoodwill_chef', { minutes: event.minutes ?? 0, amount: money(event.amountCents ?? 0), chef: who });
   };
   // "Thu, Nov 5 cancelled by the kitchen · $250.10 refunded": which day, who, and what came back.

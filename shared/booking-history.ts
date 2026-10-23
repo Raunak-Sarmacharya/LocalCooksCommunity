@@ -3,7 +3,7 @@ const kinds = ['requested', 'confirmed', 'cancelled', 'cancellation_requested', 
   'checkin_recorded', 'checkout_requested', 'checkout_cleared', 'checkout_claim_filed',
   'report_no_show', 'report_attended', 'withdraw_attendance', 'kitchen_change_requested', 'kitchen_change_applied',
   'kitchen_change_declined', 'kitchen_change_withdrawn', 'kitchen_change_expired',
-  'ext_requested', 'ext_offered', 'ext_approved', 'ext_accepted', 'ext_paid', 'ext_declined', 'ext_expired', 'ext_withdrawn', 'ext_waived', 'ext_refunded',
+  'ext_requested', 'ext_offered', 'ext_approved', 'ext_accepted', 'ext_paid', 'ext_declined', 'ext_expired', 'ext_withdrawn', 'ext_waived', 'ext_refunded', 'ext_disputed', 'ext_lc_decided', 'ext_lc_waived',
   'replaced_by', 'replaces'] as const;
 /** Same-instant events read in lifecycle order (requested before confirmed), then by key. */
 export function compareHistoryEvents(a: { kind: string; recordedAt: string; key: string }, b: { kind: string; recordedAt: string; key: string }): number {
@@ -36,7 +36,9 @@ const positiveId = (value: unknown): value is number => Number.isSafeInteger(val
 
 /** Project recorded facts only. Delivery messages, payment identifiers and internal notes stay private. */
 export type ExtensionRow = { id: number; kind: string; status: string; minutes: number; amountCents: number; free?: boolean | null; autoApprove?: boolean | null;
-  createdAt: unknown; updatedAt?: unknown; authorizedAt?: unknown; paidAt?: unknown; appliedAt?: unknown; refundedAt?: unknown; operation?: { decidedAt?: unknown } | null };
+  createdAt: unknown; updatedAt?: unknown; authorizedAt?: unknown; paidAt?: unknown; appliedAt?: unknown; refundedAt?: unknown; operation?: { decidedAt?: unknown } | null;
+  /** Dates and amounts only; the notes stay on the charge card. */
+  resolution?: { disputedAt?: string; outcome?: string; decidedAt?: string; originalAmountCents?: number } | null };
 
 /** Extra-time rows (session extensions, offers and charges) as history events. No payment identifiers cross. */
 export function extensionHistoryEvents(rows: ExtensionRow[]): BookingHistoryEvent[] {
@@ -52,9 +54,14 @@ export function extensionHistoryEvents(rows: ExtensionRow[]): BookingHistoryEven
       const at = instant(value), recordedAt = at && created && Date.parse(at) < Date.parse(created) ? created : at;
       if (recordedAt) events.push({ key: `ext-${row.id}-${kind}`, kind, recordedAt, ...base, ...extra });
     };
+    const resolution = extFlow === 'charge' ? row.resolution : null;
     // The kitchen chose "No charge" for a late checkout: one line, nothing was asked for.
-    if (extFlow === 'charge' && row.status === 'waived') { add('ext_waived', row.createdAt); continue; }
-    add(extFlow === 'ask' || extFlow === 'charge' ? 'ext_requested' : 'ext_offered', row.createdAt, extFlow === 'charge' && paid ? { amountCents: row.amountCents } : {});
+    if (extFlow === 'charge' && row.status === 'waived' && resolution?.outcome !== 'waived') { add('ext_waived', row.createdAt); continue; }
+    // A charge reads as the kitchen asked it, even after Local Cooks lowered or waived it.
+    const asked = resolution?.originalAmountCents ?? row.amountCents;
+    add(extFlow === 'ask' || extFlow === 'charge' ? 'ext_requested' : 'ext_offered', row.createdAt, extFlow === 'charge' && asked > 0 ? { amountCents: asked } : {});
+    if (resolution?.disputedAt) add('ext_disputed', resolution.disputedAt);
+    if (resolution?.decidedAt) add(resolution.outcome === 'waived' ? 'ext_lc_waived' : 'ext_lc_decided', resolution.decidedAt, resolution.outcome === 'waived' ? {} : { amountCents: row.amountCents });
     const decidedAt = row.operation?.decidedAt ?? row.updatedAt;
     if (['approved', 'paid'].includes(row.status) && extFlow !== 'charge') {
       // An auto-approved request has no kitchen decision to show; the payment line says it all.
