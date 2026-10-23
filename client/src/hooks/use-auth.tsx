@@ -1112,14 +1112,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   /** Throws Error('code-wrong' | 'code-expired' | 'too-many-requests' | …) for the form to word. */
   const signInWithEmailCode = async (email: string, code: string) => {
     setError(null);
+    // Check the code before touching loading/authPhase: hosts swap the form out while authenticating, so a wrong code
+    // must leave the code step exactly where it was.
+    const res = await fetch('/api/auth/email-code/verify', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, code }),
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok || !body?.customToken) throw new Error(res.status === 429 ? 'too-many-requests' : body?.error || 'code-failed');
     setLoading(true);
     setAuthPhase('authenticating');
     try {
-      const res = await fetch('/api/auth/email-code/verify', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, code }),
-      });
-      const body = await res.json().catch(() => null);
-      if (!res.ok || !body?.customToken) throw new Error(res.status === 429 ? 'too-many-requests' : body?.error || 'code-failed');
       const { signInWithCustomToken } = await import('firebase/auth');
       await signInWithCustomToken(auth, body.customToken);
       await rememberAuthMethod(email, 'email-link');

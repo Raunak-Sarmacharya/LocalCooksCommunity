@@ -6,10 +6,11 @@ import { mapPasswordSignInError, rememberAuthMethod, type LoginChallenge } from 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { AnimatePresence, motion } from "framer-motion";
 import { Icon } from "@iconify/react";
-import { Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
+import { REGEXP_ONLY_DIGITS } from "input-otp";
+import { cn } from "@/lib/utils";
 import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -210,7 +211,7 @@ export default function EnhancedLoginForm({
       const message = e instanceof Error ? e.message : "";
       setCode("");
       setCodeError(message === "code-wrong"
-        ? t("codeWrong", "That code isn't right. Check the email and try again.")
+        ? t("codeWrong", "That code isn't right. Try again.")
         : message === "code-expired"
           ? t("codeExpired", "That code has expired or was already used. Send a new one.")
           : message.includes("too-many-requests")
@@ -350,131 +351,104 @@ export default function EnhancedLoginForm({
   }
 
   if (challenge === "email-link" && showMagicLinkNudge) {
-    const target = form.getValues("email");
-    const maskedTarget = maskEmail(target);
     /*
-     * Laid out to match `EmailVerificationScreen`, which is the same moment reached by the
-     * other door: brand-tinted chip, the same heading metrics, the address on ITS OWN LINE
-     * rather than inside the sentence, the spam hint as two balanced sentences, and one named
-     * way out below the actions.
-     *
-     * This state had been left behind on all five counts — a green chip where every other
-     * auth state is brand-tinted, a smaller heading, the address inline so the sentence broke
-     * around it, no spam hint at all once the account was confirmed, and the host's "← Back"
-     * arrow as its only escape. It is the LAST thing a returning single-method account sees,
-     * so it was also the worst place to look unlike the rest of the app.
+     * The code step, laid out like the password step (Notion/Slack): the card keeps its own title, the account is shown
+     * the same way, one line says what to do, six boxes, one primary action. Resend, another way and a different email
+     * are quiet links below; as three stacked buttons they buried the code under the fold on phones.
      */
+    const linkClass = "!min-h-0 !min-w-0 font-medium text-[#C90832] underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none disabled:cursor-default disabled:text-slate-400 disabled:no-underline";
+    const slotClass = "h-12 flex-1 rounded-lg border border-slate-200 bg-white text-lg font-semibold tabular-nums text-slate-950 first:rounded-lg last:rounded-lg sm:h-14 sm:text-xl";
     return (
-      <div className="w-full" aria-live="polite">
-        <div className="mb-5 flex justify-center">
-          <span
-            aria-hidden
-            className="flex h-16 w-16 items-center justify-center rounded-full bg-[#FCE3E9]"
-          >
-            <Mail className="h-7 w-7 text-[#E10939]" />
-          </span>
-        </div>
-
-        <div className="mb-6 text-center">
-          <h2 className="text-2xl font-bold tracking-[-0.03em] text-gray-950">
-            {t("signInEmailSentTitle", "Check your email")}
-          </h2>
-          <p className="mt-2.5 text-sm leading-relaxed text-gray-600">
-            {accountConfirmed
-              ? t("signInCodeWaitingLead", "We sent a 6-digit sign-in code to")
-              : t("signInCodeSentLead", "If an account exists for this email, we sent a 6-digit sign-in code to")}
-          </p>
-          <p className="mt-1 break-all text-sm font-medium text-gray-950">{maskedTarget}</p>
-        </div>
-
+      <div className="mx-auto mt-4 w-full max-w-md">
         <LoadingOverlay
           isVisible={showLoadingOverlay}
           message={t("btnSigningYouIn", "Signing you in...")}
           submessage={t("overlayVerifyCredentials", "Please wait while we verify your credentials securely.")}
           type="loading"
         />
-        <form
-          className="mb-4 space-y-2"
-          onSubmit={(event) => { event.preventDefault(); void handleCodeSubmit(code); }}
-        >
-          <Label htmlFor="email-sign-in-code">{t("signInCodeLabel", "Sign-in code")}</Label>
-          <Input
+        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{t("signingInAs", "Signing in as")}</p>
+          <p className="mt-1 truncate text-sm text-slate-800">{maskEmail(form.getValues("email"))}</p>
+        </div>
+
+        <form className="mt-5" onSubmit={(event) => { event.preventDefault(); void handleCodeSubmit(code); }}>
+          <Label htmlFor="email-sign-in-code" className="text-sm font-medium text-slate-900">
+            {accountConfirmed
+              ? t("signInCodePrompt", "Enter the 6-digit code we emailed you")
+              : t("signInCodePromptMaybe", "If an account exists, we emailed it a 6-digit code. Enter it here.")}
+          </Label>
+          <InputOTP
             id="email-sign-in-code"
+            maxLength={6}
+            pattern={REGEXP_ONLY_DIGITS}
+            // "123-456" or "123 456" pasted from the email still fills the boxes.
+            pasteTransformer={(pasted: string) => pasted.replace(/\D/g, "").slice(0, 6)}
             inputMode="numeric"
             autoComplete="one-time-code"
             autoFocus
-            maxLength={6}
             value={code}
-            aria-invalid={!!codeError}
-            aria-describedby={codeError ? "email-sign-in-code-error" : undefined}
             disabled={codeBusy}
-            className="h-12 text-center font-mono text-xl tracking-[0.4em]"
-            onChange={(event) => {
-              const next = event.target.value.replace(/\D/g, "").slice(0, 6);
+            aria-label={t("signInCodeLabel", "Sign-in code")}
+            aria-invalid={!!codeError}
+            aria-describedby={codeError ? "email-sign-in-code-error" : "email-sign-in-code-hint"}
+            containerClassName="mt-2.5 w-full gap-2 sm:gap-3"
+            onChange={(next) => {
               setCode(next);
               if (codeError) setCodeError(null);
-              // Six digits typed or pasted signs in, as Slack and Notion do.
-              if (next.length === 6) void handleCodeSubmit(next);
             }}
-          />
-          {codeError && <p id="email-sign-in-code-error" role="alert" className="text-sm text-red-600">{codeError}</p>}
-          <Button type="submit" disabled={codeBusy || code.length !== 6} className="w-full bg-[#C90832] text-white hover:bg-[#C00930]">
-            {t("btnSignIn", "Sign In")}
-          </Button>
+            // Six digits typed or pasted sign in, as Slack and Notion do.
+            onComplete={(next: string) => void handleCodeSubmit(next)}
+          >
+            <InputOTPGroup className="flex flex-1 gap-1.5 sm:gap-2">
+              {[0, 1, 2].map((index) => <InputOTPSlot key={index} index={index} className={cn(slotClass, codeError && "border-red-300")} />)}
+            </InputOTPGroup>
+            <span aria-hidden className="h-px w-2.5 shrink-0 bg-slate-300" />
+            <InputOTPGroup className="flex flex-1 gap-1.5 sm:gap-2">
+              {[3, 4, 5].map((index) => <InputOTPSlot key={index} index={index} className={cn(slotClass, codeError && "border-red-300")} />)}
+            </InputOTPGroup>
+          </InputOTP>
+          {codeError
+            ? <p id="email-sign-in-code-error" role="alert" className="mt-2 text-sm text-red-600">{codeError}</p>
+            : <p id="email-sign-in-code-hint" className="mt-2 text-xs text-slate-500">{t("signInCodeExpiry", "The code works once and expires in 10 minutes.")}</p>}
+          <div className="mt-5">
+            <AnimatedButton
+              type="submit"
+              state={codeBusy ? "loading" : "idle"}
+              loadingText={t("btnSigningYouIn", "Signing you in...")}
+              disabled={codeBusy || code.length !== 6}
+            >
+              {t("btnContinue", "Continue")}
+            </AnimatedButton>
+          </div>
         </form>
 
-        <div className="space-y-3">
-          <AnimatedButton
-            type="button"
-            variant="outline"
-            state={buttonState()}
-            loadingText={t("btnSendingLink", "Sending...")}
-            successText={t("btnEmailSent", "Email sent")}
-            errorText={t("btnTryAgain", "Try again")}
-            disabled={busy || codeBusy || emailLinkCooldown > 0}
-            onClick={() => void handleEmailLinkSubmit(form.getValues())}
-          >
-            {emailLinkCooldown > 0
-              ? t("resendEmailCountdown", { defaultValue: "Resend in {seconds}s", seconds: emailLinkCooldown })
-              : t("resendSignInCode", "Send a new code")}
-          </AnimatedButton>
-
-          {onTryAnotherWay && (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onTryAnotherWay}
-              disabled={busy}
-              className="w-full border-slate-200"
-            >
-              {t("tryAnotherWay", "Try another way")}
-            </Button>
-          )}
-        </div>
-
-        {/* Two balanced lines, each its own sentence — the same shape the verification screen
-            uses. As one paragraph this pair wrapped into a long line plus a two-word orphan. */}
-        <div className="mt-5 text-center text-xs leading-relaxed text-slate-500">
-          <p>{t("signInCodeExpiry", "The code works once and expires in 10 minutes.")}</p>
-          <p className="mt-1">
-            {t("signInEmailSpamHint", "Nothing yet? Check your spam or promotions folder.")}
-          </p>
-        </div>
-
-        {onUseDifferentEmail && (
-          <p className="mt-5 text-center text-sm text-slate-600">
-            {t("wrongEmailPrompt", "Wrong email?")}{" "}
-            <button
-              type="button"
-              onClick={onUseDifferentEmail}
-              // index.css forces min-height/min-width 44px on EVERY button, which would blow
-              // this inline link out of its line.
-              className="!min-h-0 !min-w-0 font-medium text-[#C90832] underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none"
-            >
-              {t("useDifferentEmail", "Use a different email")}
+        <div className="mt-5 space-y-2 text-center text-sm text-slate-600" aria-live="polite">
+          <p>
+            {t("signInCodeNoEmail", "Didn't get it? Check spam, or")}{" "}
+            <button type="button" className={linkClass} disabled={busy || codeBusy || emailLinkCooldown > 0} onClick={() => void handleEmailLinkSubmit(form.getValues())}>
+              {busy
+                ? t("btnSendingLink", "Sending...")
+                : emailLinkCooldown > 0
+                  ? t("resendCodeCountdown", { defaultValue: "send a new code in {seconds}s", seconds: emailLinkCooldown })
+                  : t("resendSignInCodeLower", "send a new code")}
             </button>
           </p>
-        )}
+          {onTryAnotherWay && (
+            <p>
+              <button type="button" className={linkClass} onClick={onTryAnotherWay} disabled={codeBusy}>
+                {t("tryAnotherWay", "Try another way")}
+              </button>
+            </p>
+          )}
+          {onUseDifferentEmail && (
+            <p>
+              {t("wrongEmailPrompt", "Wrong email?")}{" "}
+              <button type="button" onClick={onUseDifferentEmail} className={linkClass} disabled={codeBusy}>
+                {t("useDifferentEmail", "Use a different email")}
+              </button>
+            </p>
+          )}
+        </div>
       </div>
     );
   }

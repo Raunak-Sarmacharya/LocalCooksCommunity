@@ -36,6 +36,7 @@ export function resolvePasswordFormMode(input: {
   }
 
   if (!hasPasswordProvider) return "set-link";
-  if (signInProvider === "emailLink") return "set-update";
+  // Email code sign-in arrives as a custom token ("custom"); like a link, it proved the inbox.
+  if (signInProvider === "emailLink" || signInProvider === "custom") return "set-update";
   return "change";
 }

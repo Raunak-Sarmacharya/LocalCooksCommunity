@@ -76,7 +76,7 @@ export default function AuthMethodChooser({
         {onEmailLink && (
           <button type="button" onClick={onEmailLink} className="flex w-full items-center gap-3 px-4 py-4 text-left hover:bg-slate-50">
             <Mail className="h-5 w-5 text-slate-600" />
-            <span><span className="block text-sm font-medium">{t("emailMeASignInLink", "Email me a sign-in link")}</span><span className="block text-xs text-slate-500">{emailMethodHint}</span></span>
+            <span><span className="block text-sm font-medium">{t("emailMeACode", "Email me a sign-in code")}</span><span className="block text-xs text-slate-500">{emailMethodHint}</span></span>
           </button>
         )}
         {onPassword && (

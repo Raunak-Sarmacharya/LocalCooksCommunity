@@ -588,7 +588,7 @@ function SetPasswordForm({
 
       toast.success("Password set successfully", {
         description: isEmailLinkSet
-          ? "You can now sign in with your email and password, or keep using email links."
+          ? "You can now sign in with your email and password, or keep using email sign-in codes."
           : "You can now sign in with your email and password as an alternative to Google.",
       });
 
@@ -603,7 +603,7 @@ function SetPasswordForm({
         errorMessage = isPlaceholderPassword
           ? "For security reasons, please sign out and sign back in, then try again."
           : isEmailLinkSet
-            ? "For security reasons, please sign out and sign back in with your email link, then try again."
+            ? "For security reasons, please sign out and sign back in with an email code, then try again."
             : "For security reasons, please sign out and sign back in with Google, then try again.";
       } else if (error.code === 'auth/provider-already-linked') {
         errorMessage = "A password is already linked to this account. Try changing your password instead.";
@@ -622,7 +622,7 @@ function SetPasswordForm({
       : isPlaceholderPassword
         ? "You have not set a password yet. Choose one to also sign in with email and password."
         : isEmailLinkSet
-          ? "You signed in with an email link. Choose a password to also sign in with email and password."
+          ? "You signed in with an email code. Choose a password to also sign in with email and password."
           : null;
 
   const hint =

@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 export type EmailContinueVariant = "sign-in" | "verify" | "reset";
 
 const ACTION_COPY: Record<EmailContinueVariant, string> = {
-  "sign-in": "Click the sign-in link in the email to continue.",
+  "sign-in": "Enter the code from the email to continue.",
   verify: "Click the verification link in the email to continue.",
   reset: "Click the password reset link in the email to continue.",
 };

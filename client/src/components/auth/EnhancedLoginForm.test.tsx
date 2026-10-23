@@ -26,6 +26,9 @@ vi.mock("./LoadingOverlay", () => ({ default: () => null }));
 
 import EnhancedLoginForm from "./EnhancedLoginForm";
 
+// input-otp measures the page for password-manager badges; jsdom has no layout.
+document.elementFromPoint = () => null;
+
 describe("EnhancedLoginForm email sign-in code", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -47,9 +50,9 @@ describe("EnhancedLoginForm email sign-in code", () => {
 
     await waitFor(() => expect(authMocks.sendSignInCode).toHaveBeenCalledTimes(1));
     expect(authMocks.sendSignInCode).toHaveBeenCalledWith("linked@example.com");
-    expect(await screen.findByRole("heading", { name: "Check your email" })).toBeInTheDocument();
+    expect(await screen.findByLabelText("Sign-in code")).toBeInTheDocument();
     expect(screen.getByText(/li\*\*\*@example\.com/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Email sent" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /send a new code in/ })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Try another way" })).toBeInTheDocument();
     expect(screen.queryByLabelText(/Email Address/)).not.toBeInTheDocument();
   });
@@ -72,11 +75,11 @@ describe("EnhancedLoginForm email sign-in code", () => {
     // the sentence read as two ragged fragments.
     const address = await screen.findByText("li***@example.com");
     expect(address.tagName).toBe("P");
-    expect(screen.getByText("We sent a 6-digit sign-in code to")).toBeInTheDocument();
+    expect(screen.getByText("Enter the 6-digit code we emailed you")).toBeInTheDocument();
 
     // The spam hint is the point of this screen, and it was missing entirely once the account
     // was confirmed — the one case where the visitor knows the address is right.
-    expect(screen.getByText("Nothing yet? Check your spam or promotions folder.")).toBeInTheDocument();
+    expect(screen.getByText(/Didn't get it\? Check spam/)).toBeInTheDocument();
     expect(screen.getByText("The code works once and expires in 10 minutes.")).toBeInTheDocument();
 
     // A NAMED way out, not an arrow. `AuthFlow` renders "← Back" above the card for
@@ -105,14 +108,14 @@ describe("EnhancedLoginForm email sign-in code", () => {
     expect(screen.getByRole("button", { name: "Use a different email" })).toBeInTheDocument();
   });
 
-  it("signs in on this device with the 6 digits (typed or pasted), and says when a code is wrong", async () => {
+  it("signs in on this device once all 6 digits are in, and says when a code is wrong", async () => {
     const onSuccess = vi.fn();
     authMocks.signInWithEmailCode.mockRejectedValueOnce(new Error("code-wrong")).mockResolvedValueOnce(undefined);
     render(<EnhancedLoginForm initialEmail="linked@example.com" initialChallenge="email-link" accountConfirmed autoSendEmailLink showChallengeSwitcher={false} onSuccess={onSuccess} />);
     const input = await screen.findByLabelText("Sign-in code");
-    fireEvent.change(input, { target: { value: "12 34 5" } });
+    fireEvent.change(input, { target: { value: "12345" } });
     expect(authMocks.signInWithEmailCode).not.toHaveBeenCalled();
-    fireEvent.change(input, { target: { value: "123-456" } });
+    fireEvent.change(input, { target: { value: "123456" } });
     await waitFor(() => expect(authMocks.signInWithEmailCode).toHaveBeenCalledWith("linked@example.com", "123456"));
     expect(await screen.findByRole("alert")).toHaveTextContent("That code isn't right");
     fireEvent.change(input, { target: { value: "654321" } });

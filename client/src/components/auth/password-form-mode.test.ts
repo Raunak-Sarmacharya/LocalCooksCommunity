@@ -51,6 +51,10 @@ describe("resolvePasswordFormMode", () => {
     ).toBe("set-update");
   });
 
+  it("updates without current password after an email code sign-in (custom token)", () => {
+    expect(resolvePasswordFormMode({ hasPasswordProvider: true, signInProvider: "custom", treatPasswordAsKnown: false, passwordSetByUser: true })).toBe("set-update");
+  });
+
   it("requires current password after password sign-in by a user who chose it", () => {
     expect(
       resolvePasswordFormMode({
