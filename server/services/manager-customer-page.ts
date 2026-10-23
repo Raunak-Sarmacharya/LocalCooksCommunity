@@ -63,7 +63,7 @@ export type OpenItem = {
 };
 export type ActivityItem = {
   at: string; type: 'booked' | 'requested' | 'cancelled' | 'rental_day_cancelled' | 'visit_ended' | 'no_show_reported' | 'no_show_disputed' | 'claim_filed'
-    | 'storage_rented' | 'applied' | 'local_cooks_approved' | 'documents_sent' | 'access_approved';
+    | 'storage_rented' | 'applied' | 'documents_sent' | 'documents_waived' | 'access_approved';
   category: 'booking' | 'money' | 'access'; actor: 'you' | 'customer' | 'local_cooks';
   bookingId?: number; reference?: string | null; startsAt?: string | null; endsAt?: string | null; amountCents?: number; refundedCents?: number;
   rentals?: Rental[]; name?: string; date?: string; status?: string; startOn?: string | null; endOn?: string | null;
@@ -340,8 +340,9 @@ export async function getCustomerPage(managerId: number, chefId: number, request
     name: row.name, startOn: row.startOn, endOn: row.paidThrough, amountCents: Math.round(Number(row.totalCents ?? 0)) });
   if (app) {
     activity.push({ at: app.createdAt.toISOString(), type: 'applied', category: 'access', actor: 'customer' });
-    if (app.tier1CompletedAt) activity.push({ at: app.tier1CompletedAt.toISOString(), type: 'local_cooks_approved', category: 'access', actor: 'local_cooks' });
-    if (app.tier2CompletedAt) activity.push({ at: app.tier2CompletedAt.toISOString(), type: 'documents_sent', category: 'access', actor: 'customer' });
+    // Kitchens never see Local Cooks' first step (owner, Oct 23).
+    if (app.documentsWaivedAt) activity.push({ at: app.documentsWaivedAt.toISOString(), type: 'documents_waived', category: 'access', actor: 'you' });
+    else if (app.tier2CompletedAt) activity.push({ at: app.tier2CompletedAt.toISOString(), type: 'documents_sent', category: 'access', actor: 'customer' });
     if (youApprovedAt) activity.push({ at: youApprovedAt.toISOString(), type: 'access_approved', category: 'access', actor: 'you' });
   }
   activity.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
@@ -374,12 +375,13 @@ export async function getCustomerPage(managerId: number, chefId: number, request
     upcoming, past: options.allPast ? past : past.slice(0, 10), pastTotal: past.length, pastHasMore: !options.allPast && past.length > 10,
     application: app ? {
       id: app.id, status: app.status, tier: app.currentTier,
+      // Kitchens never see Local Cooks' first step (owner, Oct 23): the request reads as coming to them.
       stages: [
         { key: 'requested', at: app.createdAt.toISOString() },
-        { key: 'localCooksApproved', at: app.tier1CompletedAt?.toISOString() ?? null },
-        { key: 'documentsSubmitted', at: app.tier2CompletedAt?.toISOString() ?? null },
+        app.documentsWaivedAt ? { key: 'documentsWaived', at: app.documentsWaivedAt.toISOString() } : { key: 'documentsSubmitted', at: app.tier2CompletedAt?.toISOString() ?? null },
         { key: 'youApproved', at: youApprovedAt?.toISOString() ?? null },
       ],
+      documentsWaivedAt: app.documentsWaivedAt?.toISOString() ?? null,
       documents,
     } : null,
     tours: visibleTours.map(tour => ({ id: tour.id, scheduledAt: tour.scheduledAt.toISOString(), durationMinutes: tour.durationMinutes, status: tour.status,

@@ -1,4 +1,5 @@
 import { logger } from "@/lib/logger";
+import { fromCalendarDate } from "@/lib/calendar-date";
 import { preferredScheduleForRequest } from "@/lib/preferred-schedule";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useEmailVerificationGuard } from "@/hooks/use-email-verification-guard";
@@ -403,7 +404,7 @@ export default function KitchenApplicationForm({
    */
   const expiryLabel = (value?: string | null): string | null => {
     if (!value || !Number.isFinite(Date.parse(value))) return null;
-    return t("expiresOn", { defaultValue: "Expires {date}", date: new Date(value).toLocaleDateString() });
+    return t("expiresOn", { defaultValue: "Expires {date}", date: fromCalendarDate(value).toLocaleDateString() });
   };
 
   /** One line describing where a stored document stands, shown on its row. */
@@ -448,8 +449,13 @@ export default function KitchenApplicationForm({
    * all agree on whether one is already on file. Previously only the validation read
    * it, so a returning chef saw an empty upload box for a document they had submitted.
    */
-  const existingInsuranceUrl = (tierData.tierFiles as Record<string, any> | undefined)
-    ?.tier2_insurance_document as string | undefined;
+  const existingInsuranceUrl = (application?.insuranceUrl || (tierData.tierFiles as Record<string, any> | undefined)
+    ?.tier2_insurance_document) as string | undefined;
+  // Insurance is a dated document (owner, Oct 23): its expiry is asked with the upload.
+  const [insuranceExpiry, setInsuranceExpiry] = useState("");
+  // The kitchen's choice per document: shown when tracked or required, or when one is already on file.
+  const showEstablishment = !!(requirements?.tier2_food_establishment_cert_required || requirements?.food_establishment_cert_tracked || application?.foodEstablishmentCertUrl);
+  const showInsurance = !!(requirements?.tier2_insurance_document_required || requirements?.insurance_tracked || existingInsuranceUrl);
   const [fileErrors, setFileErrors] = useState<{
     businessLicense?: string;
     insurance?: string;
@@ -1342,6 +1348,10 @@ export default function KitchenApplicationForm({
         nextFileErrors.insurance = t("valFieldReq", { defaultValue: "Insurance document is required", label: "Insurance" });
         messages.push(t("uploadInsurance", { defaultValue: "Upload your insurance document" }));
       }
+      if ((insuranceFile || (existingInsuranceUrl && !application?.insuranceExpiry)) && !insuranceExpiry) {
+        nextFileErrors.insurance = t("insuranceExpiryNeeded", { defaultValue: "Add the insurance expiry date" });
+        messages.push(t("insuranceExpiryNeeded", { defaultValue: "Add the insurance expiry date" }));
+      }
     }
 
     return { nextFileErrors, messages };
@@ -1600,6 +1610,7 @@ export default function KitchenApplicationForm({
 
       // Add tier-specific file uploads
       if (insuranceFile) formData.append("tier2_insurance_document", insuranceFile);
+      if (insuranceExpiry) formData.append("insuranceExpiry", insuranceExpiry);
 
       // Add custom field file uploads
       // Files are appended with prefix 'customFile_' + fieldId so server can identify them
@@ -2693,7 +2704,7 @@ export default function KitchenApplicationForm({
                       </div>
 
                       {/* Food Establishment License/Permit */}
-                        <div className="rounded-xl border p-4 sm:col-span-2">
+                        {showEstablishment && <div className="rounded-xl border p-4 sm:col-span-2">
                           <Label className="text-sm font-medium block">
                             {t("foodEstablishmentLicenseLabel", { defaultValue: "Food Establishment License/Permit" })}{" "}
                             <RequirementMarker flag={requirements?.tier2_food_establishment_cert_required} defaultRequired={true} />
@@ -2756,10 +2767,10 @@ export default function KitchenApplicationForm({
                             />
                           </div>
                           )}
-                        </div>
+                        </div>}
 
                       {/* Insurance Document */}
-                        <div className="rounded-xl border p-4 sm:col-span-2">
+                        {showInsurance && <div className="rounded-xl border p-4 sm:col-span-2">
                           <Label className="text-sm font-medium block">
                             {t("insuranceDocument", { defaultValue: "Insurance Document" })}{" "}
                             <RequirementMarker flag={requirements?.tier2_insurance_document_required} defaultRequired={false} />
@@ -2772,7 +2783,10 @@ export default function KitchenApplicationForm({
                             accept=".pdf,.jpg,.jpeg,.png"
                             file={insuranceFile}
                             existingName={existingInsuranceUrl ? t("insuranceDocument", { defaultValue: "Insurance Document" }) : null}
-                            existingNote={t("documentAlreadyOnFile", { defaultValue: "Document already on file" })}
+                            existingNote={application?.insuranceStatus ? storedDocumentNote(application.insuranceStatus, application.insuranceExpiry) : t("documentAlreadyOnFile", { defaultValue: "Document already on file" })}
+                            existingExpiry={application?.insuranceExpiry}
+                            existingTrailing={application?.insuranceStatus ? <VerifiedDocumentChip status={application.insuranceStatus} url={existingInsuranceUrl} expiry={application.insuranceExpiry} /> : undefined}
+                            existingVerified={application?.insuranceStatus === 'approved'}
                             existingHint={t("currentFileKeptUnlessChanged", { defaultValue: "Your current file stays on record unless you choose another" })}
                             existingUrl={existingInsuranceUrl}
                             label={t("clickToUploadInsurance", { defaultValue: "Click to upload insurance document" })}
@@ -2787,7 +2801,13 @@ export default function KitchenApplicationForm({
                           {fileErrors.insurance && (
                             <p className="text-sm font-medium text-destructive mt-2">{fileErrors.insurance}</p>
                           )}
-                        </div>
+                          {(insuranceFile || (existingInsuranceUrl && !application?.insuranceExpiry)) && (
+                            <div className="mt-3 border-t pt-3">
+                              <Label className="text-sm font-medium">{t("insuranceExpiryLabel", { defaultValue: "Insurance expiry date" })} <span className="text-destructive">*</span></Label>
+                              <div className="mt-2"><KitchenDocumentDatePicker value={insuranceExpiry} onChange={setInsuranceExpiry} /></div>
+                            </div>
+                          )}
+                        </div>}
                       </div>
 
                       {/* Kitchen Experience Description */}

@@ -1,4 +1,5 @@
 import { logger } from "@/lib/logger";
+import { fromCalendarDate } from "@/lib/calendar-date";
 import { formatPreferredSchedule } from "@/lib/preferred-schedule";
 import { useAdminKitchenApplications } from "@/hooks/use-admin-kitchen-applications";
 import { useToast } from "@/hooks/use-toast";
@@ -429,7 +430,7 @@ export function AdminKitchenApplicationsStep1Section({
             <SecureDocumentLink url={application.foodSafetyLicenseUrl} label="View" showIcon={false} />
             {application.foodSafetyLicenseExpiry && (
               <p className="mt-1 text-xs text-muted-foreground">
-                Expires {new Date(application.foodSafetyLicenseExpiry).toLocaleDateString()}
+                Expires {fromCalendarDate(application.foodSafetyLicenseExpiry).toLocaleDateString()}
               </p>
             )}
             <div className="mt-3 flex gap-2">

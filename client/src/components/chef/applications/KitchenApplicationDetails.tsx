@@ -1,5 +1,6 @@
 import { Fragment } from "react";
 import { formatPreferredSchedule } from "@/lib/preferred-schedule";
+import { fromCalendarDate } from "@/lib/calendar-date";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
@@ -30,7 +31,7 @@ export function KitchenApplicationDetails({ app, display, onBookKitchen, compact
   const frequency = REQUEST_TO_APPLY_FREQUENCIES.find(option => option.value === business?.usageFrequency);
   const durations: Record<string, [string, string]> = { "2-4": ["dur2to4", "2–4 hours"], "4-8": ["dur4to8", "4–8 hours"], "8-12": ["dur8to12", "8–12 hours (full day)"], "12+": ["dur12plus", "12+ hours (extended)"] };
   const duration = business?.sessionDuration ? durations[business.sessionDuration] : undefined;
-  const date = (value: string | Date | null | undefined) => value && !Number.isNaN(new Date(value).getTime()) ? new Date(value).toLocaleDateString(i18n.language, { year: "numeric", month: "short", day: "numeric" }) : t("apptabNotProvided", "Not provided");
+  const date = (value: string | Date | null | undefined) => value && !Number.isNaN(fromCalendarDate(value).getTime()) ? fromCalendarDate(value).toLocaleDateString(i18n.language, { year: "numeric", month: "short", day: "numeric" }) : t("apptabNotProvided", "Not provided");
   const value = (item: unknown): string => item == null || item === "" ? t("apptabNotProvided", "Not provided") : typeof item === "boolean" ? item ? t("apptabYes", "Yes") : t("apptabNo", "No") : Array.isArray(item) ? item.map(value).join(", ") : typeof item === "object" ? Object.values(item).map(value).join(", ") : String(item);
   const fields = (items: [string, unknown][]) => <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2">{items.map(([label, item]) => <div key={label} className="min-w-0"><dt className="text-xs text-muted-foreground">{label}</dt><dd className="mt-1 whitespace-pre-wrap break-words text-sm [overflow-wrap:anywhere]">{value(item)}</dd></div>)}</dl>;
   const section = (title: string, children: React.ReactNode) => <section className="rounded-xl border bg-card p-5 sm:p-6"><h2 className="mb-5 text-base font-semibold">{title}</h2>{children}</section>;

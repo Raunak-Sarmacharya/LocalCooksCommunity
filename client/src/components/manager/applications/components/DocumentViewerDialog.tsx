@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react";
+import { fromCalendarDate } from "@/lib/calendar-date";
 import {
     Dialog,
     DialogContent,
@@ -23,7 +24,7 @@ import {
 } from "@/components/ui/manager-icons";
 import { cn } from "@/lib/utils";
 
-export type DocumentVerificationField = "foodSafetyLicenseStatus" | "foodEstablishmentCertStatus";
+export type DocumentVerificationField = "foodSafetyLicenseStatus" | "foodEstablishmentCertStatus" | "insuranceStatus";
 export type DocumentVerificationStatus = "pending" | "approved" | "rejected" | null | undefined;
 
 type PendingAction = "approve" | null;
@@ -184,7 +185,7 @@ export function DocumentViewerDialog({
                                 ) : null}
                                 {expiry ? (
                                     <p className="mt-1 text-xs text-muted-foreground">
-                                        {labels.expires.replace("{date}", new Date(expiry).toLocaleDateString())}
+                                        {labels.expires.replace("{date}", fromCalendarDate(expiry).toLocaleDateString())}
                                     </p>
                                 ) : null}
                             </div>

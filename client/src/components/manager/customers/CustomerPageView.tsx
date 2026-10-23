@@ -12,6 +12,7 @@ import { badge, btnPrimary, btnSecondary, card, cardBody, cardHead, cardMeta, ca
 import { RevokeLocationAccessDialog } from '@/components/manager/applications/components/RevokeLocationAccessDialog';
 import { DocumentViewerDialog } from '@/components/manager/applications/components/DocumentViewerDialog';
 import { CustomerNotes } from './CustomerNotes';
+import { CustomerDocumentActions } from './CustomerDocumentActions';
 import type { CustomerDocument, CustomerPageData, CustomerStatus } from './customer-types';
 import { clockRange, customerHref, documentLabel, formatCalendarDay, formatDay, formatMoney, relativeDay, statusLabelKey } from './customer-format';
 import { CustomersRequestError, resolveConversationId, useCustomerPage, useRevokeCustomerAccess } from './use-customers';
@@ -214,6 +215,10 @@ function Profile({ data }: { data: CustomerPageData }) {
             {data.application?.documents.length ? data.application.documents.map(document => (
               <DocumentRow key={document.key} document={document} locale={locale} onView={() => setViewing(document)} />
             )) : <p className="pt-3 text-[13px] text-stone-600">{data.application ? mt('cpNoDocuments') : mt('cuNoApplication')}</p>}
+            {data.application && (data.application.documentsWaivedAt || (data.application.status === 'approved' && data.application.tier >= 3)) && (
+              <CustomerDocumentActions applicationId={data.application.id} name={name} waivedAt={data.application.documentsWaivedAt}
+                canChange={data.application.status === 'approved' && data.application.tier >= 3} />
+            )}
           </Card>
           <Card id="cp-notes" title={mt('cuSecNotes')}>
             <CustomerNotes chefId={customer.chefId} locationId={location.id} name={name} timezone={timezone} />
@@ -247,7 +252,7 @@ function Profile({ data }: { data: CustomerPageData }) {
       )}
       {data.application && (
         <DocumentViewerDialog applicationId={data.application.id} open={viewing !== null} onOpenChange={open => { if (!open) setViewing(null); }}
-          title={viewing ? documentLabel(mt, viewing.key === 'foodEstablishmentCert' ? 'foodEstablishmentCert' : 'foodSafetyLicense') : ''}
+          title={viewing ? documentLabel(mt, viewing.key) : ''}
           url={viewing?.url} status={viewing?.status as 'pending' | 'approved' | 'rejected' | undefined} expiry={viewing?.expiry}
           labels={{ verified: mt('verified'), pending: mt('pending'), rejected: mt('rejected'), needsReplacement: mt('needsAReplacement'), expired: mt('licenseExpired'),
             verify: mt('verifyDocument'), openInNewTab: mt('openInNewTab'), close: mt('close'), loading: mt('loadingDocument'), loadFailed: mt('documentUnavailable'),
@@ -300,7 +305,7 @@ function DocumentRow({ document, locale, onView }: { document: CustomerDocument;
       <div className="min-w-0">
         <div className="font-medium text-stone-900">{label}</div>
         <div className="text-[13px] leading-[18px] text-stone-600">
-          <span className={cn(ok && 'text-emerald-700', !ok && 'text-amber-800')}>{status}</span> · <span className={warn} data-expiry-stage={document.stage ?? 'ok'}>{expiry}</span>
+          {document.mode !== 'none' && <>{document.mode === 'required' ? document.required ? mt('cpDocModeRequired') : mt('cpDocModeWaived') : mt('cpDocModeTrack')} · </>}<span className={cn(ok && 'text-emerald-700', !ok && 'text-amber-800')}>{status}</span> · <span className={warn} data-expiry-stage={document.stage ?? 'ok'}>{expiry}</span>
         </div>
         {document.renewalPending && <div className="text-[13px] leading-[18px] text-stone-600">{mt('cuRenewalPending')}</div>}
       </div>

@@ -2062,9 +2062,6 @@ router.patch('/manager/kitchen-applications/:id/status', requireFirebaseAuthWith
         }
 
         logger.info(`✅ Application ${applicationId} ${status} by Manager ${user.id}${waiveDocuments ? ' (documents waived)' : ''}`);
-        if (waiveDocuments && updatedApplication) {
-            await notifyAdminsOfWaiver(updatedApplication as any, { id: user.id, role: 'manager' }).catch(error => logger.error('Error notifying admins about a document waiver:', error));
-        }
 
         // Confirm access only after final approval, once for this status transition.
         // A document review that leaves the application at tier 2 does not grant booking access.
@@ -2221,6 +2218,11 @@ router.patch('/manager/kitchen-applications/:id/status', requireFirebaseAuthWith
                     // For now, just logging and NOT granting access.
                 }
             }
+        }
+
+        // After access is granted, so the customer can book the moment the kitchen sees "Approved".
+        if (waiveDocuments && updatedApplication) {
+            await notifyAdminsOfWaiver(updatedApplication as any, { id: user.id, role: 'manager' }).catch(error => logger.error('Error notifying admins about a document waiver:', error));
         }
 
         res.json({

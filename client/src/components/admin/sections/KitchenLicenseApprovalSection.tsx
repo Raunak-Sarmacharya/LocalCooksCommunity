@@ -1,4 +1,5 @@
 import { logger } from "@/lib/logger";
+import { fromCalendarDate } from "@/lib/calendar-date";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
@@ -230,7 +231,7 @@ export function KitchenLicenseApprovalSection() {
                                 <Calendar className="h-4 w-4 text-muted-foreground" />
                                 <span className="text-muted-foreground">Expires:</span>
                                 <span className={new Date(license.kitchenLicenseExpiry) < new Date() ? "text-destructive font-semibold" : "font-medium"}>
-                                  {new Date(license.kitchenLicenseExpiry).toLocaleDateString()}
+                                  {fromCalendarDate(license.kitchenLicenseExpiry).toLocaleDateString()}
                                   {new Date(license.kitchenLicenseExpiry) < new Date() && " (Expired)"}
                                 </span>
                               </div>

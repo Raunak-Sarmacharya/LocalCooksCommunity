@@ -46,6 +46,10 @@ export interface LocationRequirements {
   tier2_food_establishment_expiry_required?: boolean;
   tier2_insurance_document_required?: boolean;
   tier2_insurance_minimum_amount?: number;
+  // "Track it": asked as optional, kept with its expiry date and reminded, never pauses booking.
+  food_handler_cert_tracked?: boolean;
+  food_establishment_cert_tracked?: boolean;
+  insurance_tracked?: boolean;
   tier2_kitchen_experience_required?: boolean;
   tier2_custom_fields?: CustomField[];
   // Facility Information
@@ -141,7 +145,7 @@ export const STEP2_BUILT_IN_FIELDS: FieldGroupConfig[] = [
       { 
         key: 'tier2_insurance_document_required', 
         label: 'Liability Insurance', 
-        description: 'Certificate of insurance or policy documentation',
+        description: 'Certificate of insurance with its expiry date',
         recommended: true 
       },
     ]

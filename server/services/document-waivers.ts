@@ -82,10 +82,11 @@ async function notifyAdminsOfWaiver(app: typeof chefKitchenApplications.$inferSe
   for (const admin of admins) {
     await notificationService.createForManager({ managerId: admin.id, type: 'system_announcement', priority: 'normal', title: subject, message,
       metadata: { applicationId: app.id, locationId: app.locationId, workflow: 'kitchen', documentsWaived: true }, actionUrl: path, actionLabel: 'View application' });
-    const content = renderTransactionalEmail({ to: admin.username!, recipientName: 'Local Cooks', subject, message, facts,
-      actionLabel: 'View application', actionUrl: `${getAppBaseUrl('admin')}${path}` });
-    await sendAdminNotificationEmail(content, { trackingId: `document_waiver_admin_${admin.id}_${app.id}_${Date.now()}` });
   }
+  // Emails in parallel; each admin's own email setting decides whether theirs is sent.
+  await Promise.allSettled(admins.map(admin => sendAdminNotificationEmail(
+    renderTransactionalEmail({ to: admin.username!, recipientName: 'Local Cooks', subject, message, facts, actionLabel: 'View application', actionUrl: `${getAppBaseUrl('admin')}${path}` }),
+    { trackingId: `document_waiver_admin_${admin.id}_${app.id}_${Date.now()}` })));
 }
 
 export { notifyAdminsOfWaiver };

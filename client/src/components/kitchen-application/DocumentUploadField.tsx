@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { fromCalendarDate } from "@/lib/calendar-date";
 import { Check, FileText, Upload } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
@@ -112,7 +113,7 @@ export function DocumentUploadField({
 
   const expiryText =
     existingExpiry && Number.isFinite(Date.parse(existingExpiry))
-      ? t("expiresOn", { defaultValue: "Expires {date}", date: new Date(existingExpiry).toLocaleDateString() })
+      ? t("expiresOn", { defaultValue: "Expires {date}", date: fromCalendarDate(existingExpiry).toLocaleDateString() })
       : null;
 
   if (showStoredRow) {

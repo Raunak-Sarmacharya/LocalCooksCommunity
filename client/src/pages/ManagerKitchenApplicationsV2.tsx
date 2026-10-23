@@ -400,6 +400,18 @@ export function ManagerKitchenApplicationsContent({
         }
     };
 
+    // "Approve without documents" (owner, Oct 23): the panel has already asked the kitchen to confirm responsibility.
+    const handleApproveWithoutDocuments = async () => {
+        if (!selectedApplication) return;
+        try {
+            await updateApplicationStatus.mutateAsync({ applicationId: selectedApplication.id, status: 'approved', currentTier: 3, waiveDocuments: true });
+            toast({ title: mt("waiverDoneTitle"), description: mt("waiverDoneBody") });
+            closeDetailSheet();
+        } catch (error: any) {
+            toast({ title: mt('error'), description: error.message || 'Could not approve this customer.', variant: 'destructive' });
+        }
+    };
+
     const handleApproveTier2 = () => {
         if (!selectedApplication) return;
         const plan = getKitchenDocumentApprovalPlan(selectedApplication, locationRequirements);
@@ -422,7 +434,7 @@ export function ManagerKitchenApplicationsContent({
         }
     };
 
-    const handleVerifyDocument = async (field: 'foodSafetyLicenseStatus' | 'foodEstablishmentCertStatus', status: 'approved' | 'rejected') => {
+    const handleVerifyDocument = async (field: 'foodSafetyLicenseStatus' | 'foodEstablishmentCertStatus' | 'insuranceStatus', status: 'approved' | 'rejected') => {
         if (!selectedApplication) return;
         try {
             await verifyDocuments.mutateAsync({ applicationId: selectedApplication.id, [field]: status });
@@ -433,7 +445,7 @@ export function ManagerKitchenApplicationsContent({
         }
     };
 
-    const handleReviewRenewal = async (field: 'foodSafetyLicenseStatus' | 'foodEstablishmentCertStatus', decision: 'approved' | 'rejected', reason?: string) => {
+    const handleReviewRenewal = async (field: 'foodSafetyLicenseStatus' | 'foodEstablishmentCertStatus' | 'insuranceStatus', decision: 'approved' | 'rejected', reason?: string) => {
         if (!selectedApplication) return;
         const key = field === 'foodSafetyLicenseStatus' ? 'foodSafetyLicense' : 'foodEstablishmentCert';
         const renewal = (selectedApplication.documentRenewals || []).find(item => item.key === key && item.status === 'pending');
@@ -551,6 +563,7 @@ export function ManagerKitchenApplicationsContent({
                             onApproveTier2={handleApproveTier2}
                             onVerifyDocument={handleVerifyDocument}
                             onReviewRenewal={handleReviewRenewal}
+                            onApproveWithoutDocuments={handleApproveWithoutDocuments}
                             onReject={handleReject}
                             onRevokeAccess={handleRevokeAccess}
                             onOpenChat={() => openChat(selectedApplication)}

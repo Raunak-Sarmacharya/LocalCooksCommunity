@@ -45,7 +45,7 @@ export type OpenItem = VisitRef & {
 };
 export type ActivityItem = VisitRef & {
   at: string; type: 'booked' | 'requested' | 'cancelled' | 'rental_day_cancelled' | 'visit_ended' | 'no_show_reported' | 'no_show_disputed' | 'claim_filed'
-    | 'storage_rented' | 'applied' | 'local_cooks_approved' | 'documents_sent' | 'access_approved';
+    | 'storage_rented' | 'applied' | 'documents_sent' | 'documents_waived' | 'access_approved';
   category: 'booking' | 'money' | 'access'; actor: 'you' | 'customer' | 'local_cooks';
   amountCents?: number; refundedCents?: number; rentals?: Rental[]; name?: string; date?: string; status?: string; startOn?: string | null; endOn?: string | null;
 };
@@ -74,7 +74,9 @@ export type CustomerPageData = {
   past: PastBooking[]; pastTotal: number; pastHasMore: boolean;
   application: null | {
     id: number; status: string; tier: number;
-    stages: { key: 'requested' | 'localCooksApproved' | 'documentsSubmitted' | 'youApproved'; at: string | null }[];
+    stages: { key: 'requested' | 'documentsSubmitted' | 'documentsWaived' | 'youApproved'; at: string | null }[];
+    /** The kitchen approved this customer for booking without its documents. */
+    documentsWaivedAt: string | null;
     documents: CustomerDocument[];
   };
   tours: { id: number; scheduledAt: string; durationMinutes: number; status: string; kitchenName: string | null; feedbackSubmitted: boolean }[];

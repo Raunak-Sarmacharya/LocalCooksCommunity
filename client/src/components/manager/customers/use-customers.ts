@@ -107,3 +107,38 @@ export function useRevokeCustomerAccess() {
     },
   });
 }
+
+/** "Documents not required for this customer" on or off (owner, Oct 23). Off pauses new bookings until documents are approved. */
+export function useDocumentWaiver() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ applicationId, waived }: { applicationId: number; waived: boolean }) =>
+      request<{ application: unknown }>(`/api/manager/kitchen-applications/${applicationId}/documents-waiver`,
+        { method: 'PATCH', body: JSON.stringify({ waived, confirm_responsibility: waived }) }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: customersKey });
+      void queryClient.invalidateQueries({ queryKey: ['/api/manager/kitchen-applications'] });
+    },
+  });
+}
+
+/** The kitchen adds one of the three tracked documents for its customer; it counts as approved by the kitchen. */
+export function useAddCustomerDocument() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ applicationId, key, file, expiry }: { applicationId: number; key: 'foodSafetyLicense' | 'foodEstablishmentCert' | 'insurance'; file: File; expiry: string }) => {
+      const body = new FormData();
+      body.append('key', key); body.append('expiry', expiry); body.append('file', file);
+      const token = await auth.currentUser?.getIdToken();
+      const response = await fetch(`/api/manager/kitchen-applications/${applicationId}/documents`, {
+        method: 'POST', body, credentials: 'include', headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) throw new CustomersRequestError(data?.error || response.statusText || 'Request failed', response.status);
+      return data;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: customersKey });
+      void queryClient.invalidateQueries({ queryKey: ['/api/manager/kitchen-applications'] });
+    },
+  });
+}

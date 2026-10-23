@@ -1,4 +1,5 @@
 import { RenewAccessDocuments } from "./applications/RenewAccessDocuments";
+import { fromCalendarDate } from "@/lib/calendar-date";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
@@ -38,7 +39,7 @@ export default function ChefKitchenApplications({ onOpenChat }: { onOpenChat?: (
   });
   useEffect(() => { window.scrollTo(0, 0); }, [applicationId]);
   const open = (id: number) => navigate(`/dashboard?view=kitchen-requests&application=${id}`);
-  const formatDate = (value: string | Date | null) => value && !Number.isNaN(new Date(value).getTime()) ? new Date(value).toLocaleDateString(i18n.language, { month: "short", day: "numeric", year: "numeric" }) : "—";
+  const formatDate = (value: string | Date | null) => value && !Number.isNaN(fromCalendarDate(value).getTime()) ? fromCalendarDate(value).toLocaleDateString(i18n.language, { month: "short", day: "numeric", year: "numeric" }) : "—";
   const displayFor = (app: KitchenApplicationWithLocation) => getKitchenDisplayStatus(app, t);
   const matchesGroup = (app: KitchenApplicationWithLocation, key: string) => key === "all" || (key === "action" ? ["complete-step", "discover"].includes(displayFor(app).actionKind) : key === "approved" ? app.status === "approved" && (app.current_tier ?? 1) >= 3 : displayFor(app).actionKind === "wait" && !displayFor(app).listingPaused);
   const filtered = useMemo(() => applications.filter(app => matchesGroup(app, group) && [`APPLICATION-${app.id}`, app.location?.name, app.location?.address, app.fullName, displayFor(app).label].some(value => value?.toLowerCase().includes(query.trim().toLowerCase()))), [applications, group, query, t]);

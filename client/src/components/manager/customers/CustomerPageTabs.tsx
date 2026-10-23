@@ -193,7 +193,7 @@ function activityText(item: ActivityItem, data: CustomerPageData, locale: string
     case 'claim_filed': return { title: mt('cpActYouFiledClaim'), facts: [item.name, money(item.amountCents), item.status ? claimStatus(item.status, name) : null, item.reference], tone: 'warn' };
     case 'storage_rented': return { title: mt('cpActRented', { name: item.name }), facts: [dateSpan(item.startOn, item.endOn, locale), money(item.amountCents), item.reference], tone: 'plain' };
     case 'applied': return { title: mt('cpActApplied'), facts: [data.location.name], tone: 'plain' };
-    case 'local_cooks_approved': return { title: mt('cpActLocalCooksApproved'), facts: [], tone: 'plain' };
+    case 'documents_waived': return { title: mt('cpActDocumentsWaived'), facts: [], tone: 'plain' };
     case 'documents_sent': return { title: mt('cpActDocumentsSent'), facts: [], tone: 'plain' };
     case 'access_approved': return { title: mt('cpActYouApproved'), facts: [data.location.name], tone: 'you' };
   }
@@ -463,7 +463,7 @@ export function MoneyTab({ data, locale }: TabProps) {
 
 /* ───────────── Access and documents ───────────── */
 
-const stageKey = { requested: 'cuStageRequested', localCooksApproved: 'cuStageLocalCooks', documentsSubmitted: 'cpStageDocumentsSent', youApproved: 'cuStageYou' } as const;
+const stageKey = { requested: 'cuStageRequested', documentsSubmitted: 'cpStageDocumentsSent', documentsWaived: 'cpStageDocumentsWaived', youApproved: 'cuStageYou' } as const;
 const tourStatusKey: Record<string, string> = {
   pending: 'cuTourStatusPending', pending_local_cooks: 'cuTourStatusPending', confirmed: 'cuTourStatusConfirmed', completed: 'cuTourStatusCompleted',
   cancelled: 'cuTourStatusCancelled', no_show: 'cuTourStatusNoShow',
@@ -475,7 +475,7 @@ export function DocsTab({ data, locale, applicationHref }: TabProps & { applicat
     <div className="flex flex-col gap-4 sm:gap-5">
       <Card id="cp-application" title={mt('cpAccessApplication')} action={applicationHref ? <TertiaryLink href={applicationHref}>{mt('cpOpenApplication')}</TertiaryLink> : undefined}>
         {data.application ? <>
-          <ol className="mb-2 mt-1 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <ol className="mb-2 mt-1 grid grid-cols-3 gap-3">
             {data.application.stages.map(stage => (
               <li key={stage.key} className={cn('border-t-[3px] pt-2.5 text-[13px] leading-[18px]', stage.at ? 'border-emerald-500' : 'border-stone-200')}>
                 <b className="block text-sm font-medium leading-5 text-stone-900">{mt(stageKey[stage.key])}</b>

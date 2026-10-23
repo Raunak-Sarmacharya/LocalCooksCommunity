@@ -1,4 +1,5 @@
 import { logger } from "@/lib/logger";
+import { fromCalendarDate } from "@/lib/calendar-date";
 import { mt } from "@/i18n/manager";
 /**
  * Manager Kitchen Applications Page - Enterprise Edition
@@ -437,7 +438,7 @@ function ManagerKitchenApplicationsContentLegacy({
       return <span className="font-medium">{value ? 'Yes' : 'No'}</span>;
     }
     if (field.type === 'date') {
-      return <span className="font-medium">{new Date(value).toLocaleDateString()}</span>;
+      return <span className="font-medium">{fromCalendarDate(value).toLocaleDateString()}</span>;
     }
     return <span className="font-medium">{String(value)}</span>;
   };
@@ -886,7 +887,7 @@ function ManagerKitchenApplicationsContentLegacy({
                               <p className="font-medium text-gray-900 text-sm">{mt("foodEstablishmentCertificate")}</p>
                               <p className="text-xs text-gray-500">
                                 {selectedApplication.foodEstablishmentCertExpiry
-                                  ? `Expires: ${new Date(selectedApplication.foodEstablishmentCertExpiry).toLocaleDateString()}`
+                                  ? `Expires: ${fromCalendarDate(selectedApplication.foodEstablishmentCertExpiry).toLocaleDateString()}`
                                   : 'Customer Application Requirements requirement'}
                               </p>
                             </div>

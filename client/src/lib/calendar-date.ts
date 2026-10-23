@@ -34,3 +34,11 @@ export function formatCalendarDate(value: string | Date | null | undefined, loca
     return new Intl.DateTimeFormat(locale, { ...options, timeZone: 'UTC' }).format(new Date(`${key}T12:00:00Z`));
   } catch { return ''; }
 }
+
+/**
+ * A stored date ("2027-06-15", a `date` column such as a document expiry) as a Date at local noon, so formatting it in
+ * the browser never lands on the day before (UTC midnight is the previous evening in NL). Timestamps pass through.
+ */
+export function fromCalendarDate(value: string | Date): Date {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T12:00:00`) : new Date(value);
+}

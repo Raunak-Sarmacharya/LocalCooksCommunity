@@ -46,7 +46,7 @@ export function formatMoney(cents: number, locale: string, currency = 'CAD') {
   return new Intl.NumberFormat(locale, { style: 'currency', currency, currencyDisplay: 'narrowSymbol' }).format(cents / 100);
 }
 
-const documentLabelKey = (key: string | null) => key === 'foodEstablishmentCert' ? 'cuDocEstablishment' : 'cuDocFoodSafety';
+const documentLabelKey = (key: string | null) => key === 'foodEstablishmentCert' ? 'cuDocEstablishment' : key === 'insurance' ? 'cuDocInsurance' : 'cuDocFoodSafety';
 export const documentLabel = (t: Translate, key: string | null) => t(documentLabelKey(key));
 
 export const statusLabelKey: Record<CustomerStatus, string> = {

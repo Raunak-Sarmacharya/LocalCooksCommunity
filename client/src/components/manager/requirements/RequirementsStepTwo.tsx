@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useState } from "react";
 import { CustomFieldBuilder } from "./CustomFieldBuilder";
+import { SegmentedControl } from "@/components/manager/revenue/components/SegmentedControl";
 import { LocationRequirements, CustomField, STEP2_BUILT_IN_FIELDS } from "./types";
 
 interface RequirementsStepTwoProps {
@@ -28,6 +29,13 @@ const FIELD_ROWS = STEP2_BUILT_IN_FIELDS.flatMap((group) => group.fields);
 const SAFETY_KEY = 'requireFoodHandlerCert';
 const ESTABLISHMENT_KEY = 'tier2_food_establishment_cert_required';
 const isComplianceField = (key: keyof LocationRequirements) => key === SAFETY_KEY || key === ESTABLISHMENT_KEY;
+/** The three dated documents: each is Not needed, Track it (date and reminders, never pauses booking) or Required. */
+const TRACKED_KEY: Partial<Record<keyof LocationRequirements, keyof LocationRequirements>> = {
+  requireFoodHandlerCert: 'food_handler_cert_tracked',
+  tier2_food_establishment_cert_required: 'food_establishment_cert_tracked',
+  tier2_insurance_document_required: 'insurance_tracked',
+};
+type DocumentMode = 'none' | 'track' | 'required';
 const COMPLIANCE_HELP = {
   [SAFETY_KEY]: {
     text: 'Newfoundland and Labrador requires current food safety training to be present at covered licensed food premises. We ask customers for their certificate and expiry date to help kitchens check coverage.',
@@ -55,6 +63,19 @@ export function RequirementsStepTwo({
     onRequirementsChange(key === SAFETY_KEY ? { requireFoodHandlerCert: value, requireFoodHandlerExpiry: value } : { [key]: value });
   };
 
+  const modeOf = (key: keyof LocationRequirements): DocumentMode =>
+    requirements[key] === true ? 'required' : requirements[TRACKED_KEY[key]!] === true ? 'track' : 'none';
+  const setMode = (key: keyof LocationRequirements, mode: DocumentMode) => {
+    if (mode === 'none' && isComplianceField(key)) { setPendingDisable(key); return; }
+    applyMode(key, mode);
+  };
+  function applyMode(key: keyof LocationRequirements, mode: DocumentMode) {
+    const updates: Partial<LocationRequirements> = { [key]: mode === 'required', [TRACKED_KEY[key]!]: mode === 'track' };
+    // The certificate's date is collected whenever the certificate is asked for.
+    if (key === SAFETY_KEY) updates.requireFoodHandlerExpiry = mode !== 'none';
+    onRequirementsChange(updates);
+  }
+
   const handleCustomFieldsChange = (fields: CustomField[]) => {
     onRequirementsChange({ tier2_custom_fields: fields });
   };
@@ -67,7 +88,7 @@ export function RequirementsStepTwo({
       <Card>
         <CardHeader className="p-4 pb-2">
           <CardTitle className="text-lg">{mt("step2Documents")}</CardTitle>
-          <CardDescription>{mt("theseAreCollectedAfterInitialApproval")}</CardDescription>
+          <CardDescription>{mt("documentModesHelp")}</CardDescription>
         </CardHeader>
 
         <CardContent className="divide-y divide-border p-0">
@@ -80,6 +101,19 @@ export function RequirementsStepTwo({
             const hint = field.recommended
               ? `${field.description ?? ""}${field.description ? " · " : ""}${mt("recommended")}`
               : field.description;
+
+            const tracked = TRACKED_KEY[field.key];
+            if (tracked) {
+              const mode = modeOf(field.key);
+              return (
+                <SettingsRow key={field.key} id={controlId} label={field.label} hint={hint}
+                  badge={complianceHelp && <Badge variant="secondary" className="text-[10px] font-medium">Compliance</Badge>}
+                  help={complianceHelp && <span>{complianceHelp.text} <a href={complianceHelp.url} target="_blank" rel="noopener noreferrer" className="font-medium text-primary underline">{complianceHelp.link}</a></span>}>
+                  <SegmentedControl<DocumentMode> label={field.label} value={mode} onChange={(next) => setMode(field.key, next)}
+                    options={[{ value: 'none', label: mt("docModeNone") }, { value: 'track', label: mt("docModeTrack") }, { value: 'required', label: mt("docModeRequired") }]} />
+                </SettingsRow>
+              );
+            }
 
             return (
               <SettingsRow key={field.key} id={controlId} label={field.label} hint={hint}
@@ -142,7 +176,8 @@ export function RequirementsStepTwo({
   );
 
   function handleConfirmedDisable(key: keyof LocationRequirements) {
-    onRequirementsChange(key === SAFETY_KEY ? { requireFoodHandlerCert: false, requireFoodHandlerExpiry: false } : { [key]: false });
+    if (TRACKED_KEY[key]) applyMode(key, 'none');
+    else onRequirementsChange(key === SAFETY_KEY ? { requireFoodHandlerCert: false, requireFoodHandlerExpiry: false } : { [key]: false });
     setPendingDisable(null);
   }
 }

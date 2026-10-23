@@ -1,4 +1,5 @@
 import { accessDocumentStage } from "@shared/location-booking-eligibility";
+import { fromCalendarDate } from "@/lib/calendar-date";
 "use client"
 import { formatPreferredSchedule } from "@/lib/preferred-schedule";
 import { mt } from "@/i18n/manager";
@@ -19,6 +20,8 @@ import {
     type DocumentVerificationStatus,
 } from "./DocumentViewerDialog"
 import { DocumentRenewalReview } from "./DocumentRenewalReview"
+import { Checkbox } from "@/components/ui/checkbox"
+import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { parseBusinessInfo } from "@/utils/parseBusinessInfo"
 import { Mail, Phone, Building2, Calendar, FileText, Check, X, Clock, MessageCircle, CheckCircle, Eye } from "@/components/ui/manager-icons"
 import { cn } from "@/lib/utils"
@@ -40,6 +43,8 @@ interface LocationRequirements {
     }>;
     tier2_insurance_document_required?: boolean;
     tier2_food_establishment_cert_required?: boolean;
+    food_establishment_cert_tracked?: boolean;
+    insurance_tracked?: boolean;
     /** The admin's request-phase question flag (not used for tier-2 gating). */
     requireFoodHandlerCert?: boolean;
     /** The kitchen's tier-2 upload flag, served by the public requirements endpoint. */
@@ -51,8 +56,10 @@ interface ApplicationDetailPanelProps {
     locationRequirements?: LocationRequirements | null;
     onApprove: () => void;
     onApproveTier2: () => void;
-    onVerifyDocument: (field: 'foodSafetyLicenseStatus' | 'foodEstablishmentCertStatus', status: 'approved' | 'rejected') => void;
-    onReviewRenewal?: (field: 'foodSafetyLicenseStatus' | 'foodEstablishmentCertStatus', decision: 'approved' | 'rejected', reason?: string) => void | Promise<void>;
+    onVerifyDocument: (field: DocumentVerificationField, status: 'approved' | 'rejected') => void;
+    onReviewRenewal?: (field: DocumentVerificationField, decision: 'approved' | 'rejected', reason?: string) => void | Promise<void>;
+    /** Approve for booking without documents (the kitchen confirmed it takes responsibility). */
+    onApproveWithoutDocuments?: () => void | Promise<void>;
     onReject: () => void;
     onRevokeAccess: () => void;
     onOpenChat: () => void;
@@ -84,8 +91,11 @@ export function ApplicationDetailPanel({
     onOpenChat,
     isUpdating,
     reviewFeedback,
-    onFeedbackChange
+    onFeedbackChange,
+    onApproveWithoutDocuments,
 }: ApplicationDetailPanelProps) {
+    const [waiverOpen, setWaiverOpen] = useState(false);
+    const [waiverConfirmed, setWaiverConfirmed] = useState(false);
 
     const [activeAction, setActiveAction] = useState<string | null>(null);
     const [openDocument, setOpenDocument] = useState<OpenDocument | null>(null);
@@ -118,15 +128,21 @@ export function ApplicationDetailPanel({
     // Stage 2 document data lives on the tier payload.
     const tierData = (application.tier_data || {}) as Record<string, any>;
     const tierFiles = (tierData.tierFiles || {}) as Record<string, any>;
-    const insuranceUrl = tierFiles.tier2_insurance_document;
+    const insuranceUrl = application.insuranceUrl || tierFiles.tier2_insurance_document;
     const insuranceRequired = locationRequirements?.tier2_insurance_document_required;
+    // A document the kitchen doesn't track or require shows only when one is on file anyway.
+    const showInsurance = !!(insuranceRequired || locationRequirements?.insurance_tracked || insuranceUrl);
+    const showEstablishment = !!(locationRequirements?.tier2_food_establishment_cert_required || locationRequirements?.food_establishment_cert_tracked || application.foodEstablishmentCertUrl);
+    const documentsWaived = !!application.documentsWaivedAt;
+    // Available once the first request is approved, before or after the customer sends documents.
+    const canWaive = !!onApproveWithoutDocuments && application.status === 'approved' && tier < 3 && !documentsWaived;
     // The KITCHEN's flag: whether this kitchen makes the certificate upload
     // compulsory. It does not control visibility — a document carried over from
     // the request phase is always shown so the manager can review it.
     const licenseRequired = locationRequirements?.requireFoodSafetyUpload;
 
     // The renewal is reviewed on its own; the current document is untouched until it is approved.
-    const renewalReview = (key: 'foodSafetyLicense' | 'foodEstablishmentCert', title: string, field: 'foodSafetyLicenseStatus' | 'foodEstablishmentCertStatus') => {
+    const renewalReview = (key: 'foodSafetyLicense' | 'foodEstablishmentCert' | 'insurance', title: string, field: DocumentVerificationField) => {
         const renewal = (application.documentRenewals || []).find(item => item.key === key && item.status === 'pending');
         if (!renewal || !onReviewRenewal) return null;
         return <DocumentRenewalReview renewal={renewal} document={title} busy={isUpdating}
@@ -167,7 +183,7 @@ export function ApplicationDetailPanel({
         if (field.type === 'date') {
             return (
                 <span className="text-foreground">
-                    {new Date(value).toLocaleDateString('en-US', {
+                    {fromCalendarDate(value).toLocaleDateString('en-US', {
                         month: 'long',
                         day: 'numeric',
                         year: 'numeric'
@@ -421,21 +437,28 @@ export function ApplicationDetailPanel({
                                     <div className="space-y-3">
                                         <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{mt("step2Documents")}</h4>
 
-                                        {/* Insurance Document — read-only */}
-                                        <DocumentCard
+                                        {/* Insurance — a dated document the kitchen reviews like the licence */}
+                                        {showInsurance && <DocumentCard
                                             title={mt("insuranceDocument")}
                                             subtitle={mt("commercialLiabilityInsurance")}
                                             url={insuranceUrl}
                                             status={insuranceUrl ? 'complete' : insuranceRequired ? 'required' : 'optional'}
+                                            expiry={application.insuranceExpiry}
+                                            verificationStatus={application.insuranceStatus}
                                             onView={() => setOpenDocument({
                                                 title: mt("insuranceDocument"),
                                                 subtitle: mt("commercialLiabilityInsurance"),
                                                 url: insuranceUrl,
+                                                status: application.insuranceStatus,
+                                                expiry: application.insuranceExpiry,
+                                                reviewNote: reviewNoteFor(application.insuranceStatus, application.insuranceExpiry, tierData.documentVerification?.insurance),
+                                                reviewField: application.insuranceUrl && (isStep2NeedsReview || isFullyApproved) ? 'insuranceStatus' : undefined,
                                             })}
-                                        />
+                                        />}
+                                        {showInsurance && renewalReview('insurance', mt("insuranceDocument"), 'insuranceStatus')}
 
                                         {/* Food Establishment Certificate */}
-                                        <DocumentCard
+                                        {showEstablishment && <DocumentCard
                                             title={mt("foodEstablishmentCertificate")}
                                             subtitle={application.foodEstablishmentCertUrl
                                                 ? application.foodEstablishmentCertStatus === 'rejected' ? mt("needsAReplacement") : mt("uploadedForThisKitchen")
@@ -453,8 +476,8 @@ export function ApplicationDetailPanel({
                                                 reviewNote: reviewNoteFor(application.foodEstablishmentCertStatus, application.foodEstablishmentCertExpiry, tierData.documentVerification?.foodEstablishmentCert),
                                                 reviewField: isStep2NeedsReview || isFullyApproved ? 'foodEstablishmentCertStatus' : undefined,
                                             })}
-                                        />
-                                        {renewalReview('foodEstablishmentCert', mt("foodEstablishmentCertificate"), 'foodEstablishmentCertStatus')}
+                                        />}
+                                        {showEstablishment && renewalReview('foodEstablishmentCert', mt("foodEstablishmentCertificate"), 'foodEstablishmentCertStatus')}
                                     </div>
 
                                     {/* Stage 2 Custom Fields */}
@@ -503,7 +526,17 @@ export function ApplicationDetailPanel({
                         </div>
                     )}
 
+                    {documentsWaived && (
+                        <p className="mb-4 rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground" data-testid="documents-waived-note">
+                            {mt("documentsWaivedNote")}
+                        </p>
+                    )}
                     <div className="flex flex-wrap items-center justify-end gap-3">
+                        {canWaive && (
+                            <Button variant="outline" onClick={() => { setWaiverConfirmed(false); setWaiverOpen(true); }} disabled={isUpdating} data-testid="approve-without-documents">
+                                {mt("approveWithoutDocuments")}
+                            </Button>
+                        )}
                         {isPending && (
                             <div className="flex-1 rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
                                 The customer’s request is being reviewed. You can review the application after the customer uploads the kitchen documents.
@@ -542,6 +575,26 @@ export function ApplicationDetailPanel({
                     </div>
                 </div>
             </div>
+
+            {/* "Approve without documents": who, what it skips, and the kitchen's responsibility, before it happens. */}
+            <AlertDialog open={waiverOpen} onOpenChange={setWaiverOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>{mt("waiverTitle", { name: application.fullName })}</AlertDialogTitle>
+                        <AlertDialogDescription>{mt("waiverBody")}</AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <label className="flex items-start gap-3 rounded-lg border border-border p-3 text-sm">
+                        <Checkbox checked={waiverConfirmed} onCheckedChange={(checked) => setWaiverConfirmed(checked === true)} className="mt-0.5" aria-label={mt("waiverConfirm")} />
+                        <span>{mt("waiverConfirm")}</span>
+                    </label>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>{mt("cancel")}</AlertDialogCancel>
+                        <Button disabled={!waiverConfirmed || isUpdating} onClick={async () => { setActiveAction('waive'); await onApproveWithoutDocuments?.(); setWaiverOpen(false); }}>
+                            {mt("waiverApprove")}
+                        </Button>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
 
             {/* Document viewer — the single place where a manager reviews a document */}
             <DocumentViewerDialog
@@ -627,7 +680,7 @@ function DocumentCard({
                     <p className="text-xs text-muted-foreground">{subtitle}</p>
                     {expiry && (
                         <p className="mt-1 text-xs text-muted-foreground">
-                            {mt("expiresLabel", { date: new Date(expiry).toLocaleDateString() })}
+                            {mt("expiresLabel", { date: fromCalendarDate(expiry).toLocaleDateString() })}
                         </p>
                     )}
                     {stateNote && (

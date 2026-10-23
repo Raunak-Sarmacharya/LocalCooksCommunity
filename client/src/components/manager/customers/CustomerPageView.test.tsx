@@ -57,8 +57,8 @@ const page = (overrides: Record<string, unknown> = {}) => ({
     { key: 'requested', at: '2026-08-01T12:00:00.000Z' }, { key: 'localCooksApproved', at: '2026-08-05T12:00:00.000Z' },
     { key: 'documentsSubmitted', at: '2026-08-10T12:00:00.000Z' }, { key: 'youApproved', at: '2026-08-15T12:00:00.000Z' }],
     documents: [
-      { key: 'foodSafetyLicense', required: true, uploaded: true, status: 'approved', expiry: '2027-06-15', daysLeft: 237, stage: null, url: '/api/files/documents/licence.pdf', renewalPending: false },
-      { key: 'foodEstablishmentCert', required: true, uploaded: true, status: 'approved', expiry: '2026-10-25', daysLeft: 4, stage: '7_day', url: null, renewalPending: true },
+      { key: 'foodSafetyLicense', mode: 'required', required: true, uploaded: true, status: 'approved', expiry: '2027-06-15', daysLeft: 237, stage: null, url: '/api/files/documents/licence.pdf', renewalPending: false },
+      { key: 'foodEstablishmentCert', mode: 'required', required: true, uploaded: true, status: 'approved', expiry: '2026-10-25', daysLeft: 4, stage: '14_day', url: null, renewalPending: true },
     ] },
   tours: [],
   money: { paidCents: 506194, refundedCents: 143917, heldCents: 3050, outstandingCents: 0, currency: 'CAD', paymentCount: 88, holdCount: 1, claimsCollectedCents: 29500, claimsCollectedCount: 5 },
@@ -324,8 +324,8 @@ it('lists the submitted documents with expiry and opens a file only when there i
   await heading();
   const access = screen.getByRole('region', { name: 'Access and documents' });
   expect(access).toHaveTextContent('You approved Aug 15, 2026');
-  expect(access).toHaveTextContent('Food safety certificateVerified · expires Jun 15, 2027');
-  expect(within(access).getByText('expires Oct 25, 2026')).toHaveAttribute('data-expiry-stage', '7_day');
+  expect(access).toHaveTextContent('Food safety certificateRequired · Verified · expires Jun 15, 2027');
+  expect(within(access).getByText('expires Oct 25, 2026')).toHaveAttribute('data-expiry-stage', '14_day');
   expect(within(access).getAllByRole('button', { name: /View file/ })).toHaveLength(1);
   fireEvent.click(within(access).getByRole('button', { name: 'View file: Food safety certificate' }));
   expect(screen.getByRole('dialog', { name: 'Food safety certificate' })).toHaveTextContent('/api/files/documents/licence.pdf');

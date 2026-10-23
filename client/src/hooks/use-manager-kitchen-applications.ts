@@ -29,11 +29,18 @@ export interface KitchenApplicationForManager {
   foodEstablishmentCertStatus: "pending" | "approved" | "rejected";
   foodEstablishmentCertExpiry?: string | null;
   
+  // Insurance, a dated document like the two above (0109)
+  insuranceUrl?: string | null;
+  insuranceStatus?: "pending" | "approved" | "rejected" | null;
+  insuranceExpiry?: string | null;
+  /** The kitchen approved this customer for booking without its documents. */
+  documentsWaivedAt?: string | null;
+
   // Expiry dates
   foodSafetyLicenseExpiry?: string | null;
 
   /** Renewed documents waiting for review; the current document stays valid until it expires. */
-  documentRenewals?: Array<{ id: number; key: "foodSafetyLicense" | "foodEstablishmentCert"; url: string; expiry: string; status: string; submittedAt?: string | null }>;
+  documentRenewals?: Array<{ id: number; key: "foodSafetyLicense" | "foodEstablishmentCert" | "insurance"; url: string; expiry: string; status: string; submittedAt?: string | null }>;
 
   // Status
   status: "inReview" | "approved" | "rejected" | "cancelled";
@@ -134,13 +141,16 @@ export function useManagerKitchenApplications() {
       currentTier,
       tierData,
       verifyDocuments,
+      waiveDocuments,
     }: {
       applicationId: number;
       status: "approved" | "rejected" | "inReview";
       feedback?: string;
       currentTier?: number;
       tierData?: any;
-      verifyDocuments?: Array<"foodSafetyLicenseStatus" | "foodEstablishmentCertStatus">;
+      verifyDocuments?: Array<"foodSafetyLicenseStatus" | "foodEstablishmentCertStatus" | "insuranceStatus">;
+      /** Approve for booking without documents; the kitchen has confirmed it takes responsibility. */
+      waiveDocuments?: boolean;
     }) => {
       const headers = await getAuthHeaders();
       const response = await fetch(
@@ -155,6 +165,7 @@ export function useManagerKitchenApplications() {
             ...(currentTier !== undefined && { current_tier: currentTier }),
             ...(tierData !== undefined && { tier_data: tierData }),
             ...(verifyDocuments?.length && { verify_documents: verifyDocuments }),
+            ...(waiveDocuments && { waive_documents: true, confirm_responsibility: true }),
           }),
         }
       );
@@ -179,11 +190,13 @@ export function useManagerKitchenApplications() {
       applicationId,
       foodSafetyLicenseStatus,
       foodEstablishmentCertStatus,
+      insuranceStatus,
       rejectionReason,
     }: {
       applicationId: number;
       foodSafetyLicenseStatus?: "approved" | "rejected";
       foodEstablishmentCertStatus?: "approved" | "rejected";
+      insuranceStatus?: "approved" | "rejected";
       /** Required by the server when rejecting a renewal: the chef is told why. */
       rejectionReason?: string;
     }) => {
@@ -197,6 +210,7 @@ export function useManagerKitchenApplications() {
           body: JSON.stringify({
             foodSafetyLicenseStatus,
             foodEstablishmentCertStatus,
+            insuranceStatus,
             rejectionReason,
           }),
         }
