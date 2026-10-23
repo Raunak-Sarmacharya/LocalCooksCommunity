@@ -1,4 +1,5 @@
 import { logger } from "@/lib/logger";
+import { formatPreferredSchedule } from "@/lib/preferred-schedule";
 import { useAdminKitchenApplications } from "@/hooks/use-admin-kitchen-applications";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Shield } from "lucide-react";
@@ -28,7 +29,7 @@ interface ManagerKitchenApplicationsProps {
 }
 
 const humanizeKey = (key: string) =>
-  key.replace(/^custom_/, "").replace(/[_-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+  key.replace(/^custom_/, "").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/[_-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 
 /**
  * Which approval the admin is actually being asked for.
@@ -67,7 +68,8 @@ function ApplicationData({ data }: { data: unknown }) {
         <div key={key} className="min-w-0 rounded-lg border bg-background p-3">
           <dt className="text-xs font-medium text-muted-foreground">{humanizeKey(key)}</dt>
           <dd className="mt-1 break-words text-sm text-foreground">
-            {Array.isArray(value)
+            {key === "preferredSchedule" ? formatPreferredSchedule(value, "en-CA", "Full day")
+              : Array.isArray(value)
               ? value.join(", ")
               : typeof value === "boolean"
                 ? value ? "Yes" : "No"

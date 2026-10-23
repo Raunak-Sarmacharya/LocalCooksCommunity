@@ -18,7 +18,7 @@ import { useTranslation } from "react-i18next";
 import { kt } from "@/i18n/kitchen-ns";
 import { formatHourSlotRange } from "@/lib/formatters";
 import { saveAuthIntent } from "@/lib/auth-intent";
-import { KitchenBookingPreferencesPanel } from "@/components/kitchen-application/KitchenBookingPreferencesPanel";
+import { PreferredDaysPicker } from "@/components/kitchen-application/PreferredDaysPicker";
 import KitchenJourneyAuth, { useKitchenJourneyEmailVerified } from "@/components/auth/KitchenJourneyAuth";
 import KitchenJourneyLayout, { KitchenJourneySteps } from "@/components/kitchen-application/KitchenJourneyLayout";
 import { getKitchenDisplayStatus, hasStep2BeenSubmitted } from "@/components/chef/applications/status";
@@ -328,7 +328,7 @@ export default function ApplyToKitchen() {
         {requestStep === "plan" ? (
           <div className="space-y-5">
             <div><h2 className="text-xl font-semibold">Booking preferences <span className="text-base font-normal text-muted-foreground">(optional)</span></h2><p className="mt-1 text-sm leading-6 text-muted-foreground">Choose a date and hours for a later booking, or continue without them. You can change them after approval.</p></div>
-            {kitchenId && <KitchenBookingPreferencesPanel kitchenId={kitchenId} stage="schedule" wide />}
+            {kitchenId && <PreferredDaysPicker kitchenId={kitchenId} />}
             <Button size="lg" className="w-full sm:w-auto" onClick={() => setRequestStep("details")}>Continue {user && emailVerified ? "to request" : "to account"} →</Button>
           </div>
         ) : (

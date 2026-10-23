@@ -24,6 +24,8 @@ export interface BusinessInfo {
     usageFrequency?: string;
     /** Typical session duration in hours */
     sessionDuration?: string;
+    /** Days and hours picked before applying (lib/preferred-schedule). */
+    preferredSchedule?: { days: string[]; pricingMode: "hourly" | "daily"; times: string[] } | null;
     /** Food handler certificate expiry date (ISO string) */
     foodHandlerCertExpiry?: string;
     /** Food establishment certificate expiry date (ISO string) */

@@ -1812,6 +1812,8 @@
   "selectYourLicenseFilePDFJPGOrPNGMax10MB": "Sélectionnez votre fichier de licence (PDF, JPG ou PNG, max 10 Mo)",
   "selectedItemsHaveBeenCancelled": "Les articles sélectionnés ont été annulés.",
   "sessionDuration": "Durée de la séance",
+  "preferredDays": "Jours souhaités",
+  "fullDay": "Journée complète",
   "sessionLength": "Durée de la séance :",
   "sessionRateCAD": "Tarif de la session (CAD)",
   "sessionsScheduled": "Séances programmées",

@@ -15,7 +15,7 @@ vi.mock('@/components/auth/KitchenJourneyAuth', () => ({ default: () => <div>Aut
 vi.mock('@/layouts/chef-shell-context', () => ({ useChefShellChrome: () => true }));
 vi.mock('@/layouts/ChefDashboardLayout', () => ({ default: ({ children }: any) => <main>{children}</main> }));
 vi.mock('@/components/kitchen-application/KitchenJourneyLayout', () => ({ default: ({ children }: any) => <main>{children}</main>, KitchenJourneySteps: () => null }));
-vi.mock('@/components/kitchen-application/KitchenBookingPreferencesPanel', () => ({ KitchenBookingPreferencesPanel: () => null }));
+vi.mock('@/components/kitchen-application/PreferredDaysPicker', () => ({ PreferredDaysPicker: () => null }));
 vi.mock('@/lib/auth-intent', () => ({ saveAuthIntent: vi.fn() }));
 vi.mock('@/i18n/kitchen-ns', () => ({ kt: (key: string) => key }));
 vi.mock('@/lib/queryClient', () => ({ apiRequest: vi.fn() }));

@@ -1,4 +1,5 @@
 import { Fragment } from "react";
+import { formatPreferredSchedule } from "@/lib/preferred-schedule";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
@@ -57,6 +58,7 @@ export function KitchenApplicationDetails({ app, display, onBookKitchen, compact
       [t("apptabDescription", "Description"), business?.description],
       [t("apptabUsageFrequency", "Usage frequency"), frequency ? tKitchen(frequency.key, frequency.fallback) : business?.usageFrequency],
       [t("apptabSessionDuration", "Session duration"), duration ? tKitchen(duration[0], duration[1]) : business?.sessionDuration],
+      [t("apptabPreferredDays", "Preferred days"), formatPreferredSchedule(business?.preferredSchedule, i18n.language, t("fullDay", "Full day"))],
       [t("apptabFoodSafetyLicense", "Food safety certification"), app.foodSafetyLicense === "yes" ? t("apptabYes", "Yes") : app.foodSafetyLicense === "no" ? t("apptabNo", "No") : t("apptabNotSure", "Not sure")],
     ]))}
     {custom(app.customFieldsData as Record<string, unknown>, requirements?.tier1_custom_fields) && section(t("applicationRequestAnswers", "Additional request information"), custom(app.customFieldsData as Record<string, unknown>, requirements?.tier1_custom_fields))}

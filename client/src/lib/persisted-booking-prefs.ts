@@ -23,7 +23,7 @@ function toLocalDateString(date: Date): string {
 
 function readStoredDate(kitchenId: string): Date | undefined {
   try {
-    const raw = sessionStorage.getItem(`kitchen_dates_${kitchenId}`);
+    const raw = (sessionStorage.getItem(`kitchen_dates_${kitchenId}`) ?? localStorage.getItem(`kitchen_dates_${kitchenId}`));
     if (!raw) return undefined;
     const parsed = JSON.parse(raw);
     const from = parsed.from ? new Date(parsed.from) : undefined;
@@ -38,7 +38,7 @@ function readStoredDate(kitchenId: string): Date | undefined {
 /** Days picked on the kitchen page (YYYY-MM-DD, local); absent for older single-date writers. */
 function readStoredDays(kitchenId: string): string[] | undefined {
   try {
-    const dates = JSON.parse(sessionStorage.getItem(`kitchen_dates_${kitchenId}`) ?? "null")?.dates;
+    const dates = JSON.parse((sessionStorage.getItem(`kitchen_dates_${kitchenId}`) ?? localStorage.getItem(`kitchen_dates_${kitchenId}`)) ?? "null")?.dates;
     if (!Array.isArray(dates) || !dates.length || dates.length > 14) return undefined;
     const valid = dates.filter((date): date is string => typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date));
     return valid.length === dates.length ? Array.from(new Set(valid)).sort() : undefined;
@@ -49,7 +49,7 @@ function readStoredDays(kitchenId: string): string[] | undefined {
 
 function readStoredSlots(kitchenId: string): string[] {
   try {
-    const raw = sessionStorage.getItem(`kitchen_booking_prefs_${kitchenId}`);
+    const raw = (sessionStorage.getItem(`kitchen_booking_prefs_${kitchenId}`) ?? localStorage.getItem(`kitchen_booking_prefs_${kitchenId}`));
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed.slots) ? parsed.slots.map(String) : [];

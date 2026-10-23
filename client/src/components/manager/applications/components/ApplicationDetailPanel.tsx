@@ -1,6 +1,8 @@
 import { accessDocumentStage } from "@shared/location-booking-eligibility";
 "use client"
+import { formatPreferredSchedule } from "@/lib/preferred-schedule";
 import { mt } from "@/i18n/manager";
+import i18n from "@/i18n";
 
 import { useState, useEffect, useRef } from "react"
 import { Application } from "../types"
@@ -111,6 +113,7 @@ export function ApplicationDetailPanel({
     const isStep2NeedsReview = application.status === 'approved' && tier === 2 && hasStep2;
     const isPending = application.status === 'inReview';
     const businessInfo = parseBusinessInfo(application.businessDescription);
+    const preferredDays = formatPreferredSchedule(businessInfo?.preferredSchedule, i18n.language, mt("fullDay"));
 
     // Stage 2 document data lives on the tier payload.
     const tierData = (application.tier_data || {}) as Record<string, any>;
@@ -327,6 +330,7 @@ export function ApplicationDetailPanel({
                                         {businessInfo.sessionDuration && (
                                             <InfoCard label={mt("sessionDuration")} value={mt("hoursSession", { count: businessInfo.sessionDuration })} />
                                         )}
+                                        {preferredDays && <InfoCard label={mt("preferredDays")} value={preferredDays} />}
                                     </div>
                                     {businessInfo.description && (
                                         <div className="rounded-xl border border-border bg-card p-4">

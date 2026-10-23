@@ -1810,6 +1810,8 @@
   "selectYourLicenseFilePDFJPGOrPNGMax10MB": "Select your license file (PDF, JPG, or PNG, max 10MB)",
   "selectedItemsHaveBeenCancelled": "Selected items have been cancelled.",
   "sessionDuration": "Session Duration",
+  "preferredDays": "Preferred days",
+  "fullDay": "Full day",
   "sessionLength": "Session Length:",
   "sessionRateCAD": "Session Rate (CAD)",
   "sessionsScheduled": "Sessions scheduled",

@@ -1,4 +1,5 @@
 import { logger } from "@/lib/logger";
+import { preferredScheduleForRequest } from "@/lib/preferred-schedule";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useEmailVerificationGuard } from "@/hooks/use-email-verification-guard";
 import { useChefKitchenApplications, useChefKitchenApplicationForLocation } from "@/hooks/use-chef-kitchen-applications";
@@ -1465,6 +1466,9 @@ export default function KitchenApplicationForm({
         foodHandlerCertExpiry: data.foodHandlerCertExpiry || existingBusinessInfo.foodHandlerCertExpiry || null,
         foodEstablishmentCertExpiry:
           data.foodEstablishmentCertExpiry || existingBusinessInfo.foodEstablishmentCertExpiry || null,
+        // The days and hours picked before applying, so Local Cooks and the kitchen see when they'd like to cook.
+        preferredSchedule: existingBusinessInfo.preferredSchedule
+          || preferredScheduleForRequest(new URLSearchParams(window.location.search).get("kitchenId")),
       });
       formData.append("businessDescription", businessInfo);
       if (data.businessName || existingBusinessInfo.businessName || application?.shopName) {

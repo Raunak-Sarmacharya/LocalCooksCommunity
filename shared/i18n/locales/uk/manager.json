@@ -1820,6 +1820,8 @@
   "selectYourLicenseFilePDFJPGOrPNGMax10MB": "Виберіть файл ліцензії (PDF, JPG або PNG, максимум 10 МБ)",
   "selectedItemsHaveBeenCancelled": "Вибрані позиції скасовано.",
   "sessionDuration": "Тривалість сеансу",
+  "preferredDays": "Бажані дні",
+  "fullDay": "Повний день",
   "sessionLength": "Тривалість сесії:",
   "sessionRateCAD": "Коефіцієнт сеансу (CAD)",
   "sessionsScheduled": "Сеанси заплановані",
