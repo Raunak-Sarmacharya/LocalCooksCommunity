@@ -303,6 +303,7 @@ export default function KitchenBookingFlow({
   // State
   const [selectedKitchen, setSelectedKitchen] = useState<any | null>(null);
   const [bookableThrough, setBookableThrough] = useState<string | null>(null);
+  const lastBookableMonth = bookableThrough ? new Date(`${bookableThrough}T12:00:00`) : undefined;
   const [dayRules, setDayRules] = useState<{ allowMultiDayBookings?: boolean; multidayCreationEnabled?: boolean; maxBookingDays?: number; minimumBookingWindowHours?: number }>({});
   const multipleAllowed = dayRules.allowMultiDayBookings === true && dayRules.multidayCreationEnabled === true;
   useEffect(() => {
@@ -1504,7 +1505,7 @@ export default function KitchenBookingFlow({
               <p className="mb-2 text-sm text-muted-foreground">{t('mdSelectHelp', { count: Math.min(dayRules.maxBookingDays ?? 7, 14) })}</p>
               <UICalendar mode="multiple" numberOfMonths={2} pagedNavigation showOutsideDays={false}
                 selected={selectedDates.map(date => new Date(`${date}T12:00:00`))} onSelect={selectMultipleDates}
-                month={calendarMonth} onMonthChange={setCalendarMonth} disabled={date => !!blockedDateReason(date)}
+                month={calendarMonth} onMonthChange={setCalendarMonth} disabled={date => !!blockedDateReason(date)} fromMonth={new Date()} toMonth={lastBookableMonth}
                 components={{ Day: DatedCalendarDay }}
                 className="w-full bg-transparent p-1" classNames={{ ...BOOKING_CALENDAR_TWO_MONTH_CLASS_NAMES, day: `${BOOKING_CALENDAR_CLASS_NAMES.day} h-11 w-11 max-w-[44px]`, cell: 'relative h-11 p-0 text-center text-sm' }} />
               <p className="mt-2 flex items-center gap-1.5 px-1 text-xs text-muted-foreground"><span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-amber-500" />{t("bkDayLimited")}</p>
@@ -1519,6 +1520,9 @@ export default function KitchenBookingFlow({
               selected={selectedDate ?? undefined}
               onSelect={handleDateClick}
               month={calendarMonth}
+              // The arrows stop at this month and the last bookable one, not at empty struck-out months.
+              fromMonth={new Date()}
+              toMonth={lastBookableMonth}
               onMonthChange={(month) => {
                 setCalendarMonth(new Date(month.getFullYear(), month.getMonth(), 1));
               }}
