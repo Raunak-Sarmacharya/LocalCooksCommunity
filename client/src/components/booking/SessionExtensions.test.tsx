@@ -291,6 +291,25 @@ describe("booking page: extra time", () => {
     fireEvent.click(send);
     await waitFor(() => expect(posts()[0].body).toEqual({ action: "dispute", note: "I left at 4" }));
   });
+  it("after Local Cooks lowers a disputed charge: both sides read the decision, its note and the pay-by; the chef can pay but not dispute again", async () => {
+    const decided = item({ kind: "extra_time", status: "offered", minutes: 30, actualMinutes: 40, amountCents: 750, note: "Fryer cleanup", escalated: true,
+      upheldAt: "2026-10-15T12:00:00.000Z", payBy: "2026-10-22T12:00:00.000Z",
+      resolution: { disputeNote: "I left at 4", outcome: "reduced", note: "Half of the time is fair.", originalAmountCents: 1501 } });
+    responses.push({ match: /\/extensions$/, method: "GET", body: state({ inSession: false, canRequest: false, history: [decided] }) });
+    const chef = render(<SessionExtensionsCard bookingId={10} manager={false} chefName="" />);
+    const card = await screen.findByTestId("extension-upheld");
+    expect(card).toHaveTextContent("Local Cooks reviewed this and lowered the charge from $15.01 to $7.50. Pay by Oct 22 so you can keep making new bookings.");
+    expect(card).toHaveTextContent("Note from Local Cooks: Half of the time is fair.");
+    expect(screen.getByText("What you told Local Cooks: I left at 4")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Pay $7.50" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "This isn’t right" })).not.toBeInTheDocument();
+    chef.unmount();
+    responses.push({ match: /\/extensions$/, method: "GET", body: state({ inSession: false, canRequest: false, history: [decided] }) });
+    render(<SessionExtensionsCard bookingId={10} manager chefName="Maya Chen" />);
+    expect(await screen.findByTestId("extension-upheld")).toHaveTextContent("Local Cooks lowered the charge from $15.01 to $7.50. Maya Chen has until Oct 22 to pay.");
+    expect(screen.getByText("What Maya Chen said: I left at 4")).toBeInTheDocument();
+    expect(screen.queryByText(/No answer after 48 hours/)).not.toBeInTheDocument();
+  });
   it("manager charge form is prefilled and can only be lowered", async () => {
     responses.push({ match: /\/extensions$/, method: "GET", body: state({ inSession: false, extraTime: { actualMinutes: 40, minutes: 60, maximumAmountCents: 3000, amountCents: 3000, kitchenGrossCents: 2875 } }) });
     render(<SessionExtensionsCard bookingId={10} manager chefName="Maya Chen" />);

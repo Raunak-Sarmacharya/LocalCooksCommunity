@@ -51,7 +51,7 @@ describe('copy per moment', () => {
   it('chef completion never mentions the kitchen review deadline', () => {
     expect(sentence('completed', 'chef')).toBe('Visit complete.');
     expect(sentence('completed', 'chef', { inspectionOutcome: 'manager_cleared' })).toBe('Visit complete.');
-    expect(sentence('checkout_review', 'chef')).toBe('Checkout submitted at 11:50 a.m. You’re all set — we’ll let you know if the kitchen reports anything.');
+    expect(sentence('checkout_review', 'chef')).toBe('Checkout submitted at 11:50 a.m. We’ll let you know if the kitchen reports anything.');
   });
   it('manager in session: the check-in method is said once, inside the sentence', () => {
     expect(sentence('in_session', 'manager')).toBe('Ada Lovelace is in the kitchen until 12:00 p.m. Checked in 10:02 a.m. with the check-in code.');

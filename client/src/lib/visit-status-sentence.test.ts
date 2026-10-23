@@ -24,7 +24,7 @@ describe("visitStatusSentence", () => {
   });
   it("carries the checkout time and never a review deadline", () => {
     const result = say({ checkinStatus: "checkout_requested", checkoutTime: "10:31 a.m." });
-    expect(result.text).toBe("You checked out at 10:31 a.m. You’re all set.");
+    expect(result.text).toBe("You checked out at 10:31 a.m.");
     expect(result.coversCheckout).toBe(true);
     expect(result.text).not.toMatch(/review|inspect|deadline|due/i);
   });

@@ -554,7 +554,7 @@ describe("full-page kitchen visit", () => {
   it("after checkout is submitted it says when, and never mentions the kitchen's review deadline", async () => {
     status = visit({ checkinStatus: "checkout_requested", checkedInAt: "2026-10-12T09:28:00Z", checkoutRequestedAt: "2026-10-12T10:31:00Z", checkoutReviewDeadline: "2026-10-13T10:31:00Z" });
     setup();
-    expect(await screen.findByTestId("visit-next-step")).toHaveTextContent("You checked out at 10:31 a.m. You’re all set.");
+    expect(await screen.findByTestId("visit-next-step")).toHaveTextContent("You checked out at 10:31 a.m.");
     expect(screen.queryByText("Review due by")).not.toBeInTheDocument();
     expect(screen.queryByText(/Inspection due/i)).not.toBeInTheDocument();
     expect((document.body.textContent || "").match(/10:31\s*a\.m\./g)).toHaveLength(1);
@@ -566,7 +566,7 @@ describe("full-page kitchen visit", () => {
     const summary = await screen.findByRole("region", { name: "Visit status" });
     expect(screen.getByRole("heading", { level: 1, name: "Checking out" })).toBeInTheDocument();
     expect(screen.getByText("Checked out")).toBeInTheDocument();
-    expect(within(summary).getByText(/^You checked out at \d{1,2}:\d{2}\s[ap]\.m\. You’re all set\.$/)).toBeInTheDocument();
+    expect(within(summary).getByText(/^You checked out at \d{1,2}:\d{2}\s[ap]\.m\.$/)).toBeInTheDocument();
     // The review deadline is the kitchen's business, not the chef's.
     expect(summary).not.toHaveTextContent(/Review due by|inspection|paid|payout|refund|complete/i);
     expect(screen.queryByRole("button", { name: /Check in|Check out/ })).not.toBeInTheDocument();

@@ -117,6 +117,7 @@ export function SessionExtensionsCard({ bookingId, manager, chefName, onChanged,
   const freeBy = state?.checkoutAt ? new Intl.DateTimeFormat(locale, { timeZone: zone, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
     .format(new Date(Date.parse(state.checkoutAt) + 24 * 3_600_000)) : null
   const cash = (cents: number) => money(cents, currency, locale)
+  const day = (at: string) => new Intl.DateTimeFormat(locale, { timeZone: zone, month: "short", day: "numeric" }).format(new Date(at))
   const length = (minutes: number) => lengthText(minutes, (key, options) => String(t(key as never, options as never)), "sxb")
   const duration = (minutes: number) => isQuickPick(minutes)
     ? t(`sxbDuration${minutes}`, { defaultValue: minutes === 30 ? "30 more minutes" : minutes === 60 ? "1 more hour" : "2 more hours" })
@@ -242,8 +243,15 @@ export function SessionExtensionsCard({ bookingId, manager, chefName, onChanged,
           : t("sxbChargeChef", { defaultValue: "You stayed {stayed} past your booking at {kitchen}. They’ve asked for {amount} for the extra time.",
             stayed: minutesText(item.actualMinutes ?? item.minutes), kitchen, amount: cash(item.amountCents) })}</p>
         {item.note && <p className="text-sm whitespace-pre-wrap">{manager ? t("sxbYourNote", { defaultValue: "Your note: {note}", note: item.note }) : t("sxbKitchenNote", { defaultValue: "Note from {kitchen}: {note}", kitchen, note: item.note })}</p>}
+        {item.resolution?.disputeNote && <p className="text-sm whitespace-pre-wrap">{manager ? t("sxbChefSaid", { chef: chefName, note: item.resolution.disputeNote }) : t("sxbYouSaid", { note: item.resolution.disputeNote })}</p>}
+        {/* Local Cooks decided: who pays what by when, and its note; the customer can pay but not dispute again. */}
+        {item.upheldAt && item.payBy && <div className="space-y-1" data-testid="extension-upheld">
+          <p className="text-sm font-medium">{t(item.resolution?.outcome === "reduced" ? (manager ? "sxbReducedManager" : "sxbReducedChef") : (manager ? "sxbUpheldManager" : "sxbUpheldChef"),
+            { amount: cash(item.amountCents), original: cash(item.resolution?.originalAmountCents ?? item.amountCents), date: day(item.payBy), chef: chefName })}</p>
+          {item.resolution?.note && <p className="text-sm whitespace-pre-wrap">{t("sxbLocalCooksNote", { note: item.resolution.note })}</p>}
+        </div>}
         {item.status === "disputed" ? <p className="text-sm" role="status">{t("sxbDisputed", { defaultValue: "Local Cooks is reviewing this charge. Nothing was charged." })}</p>
-          : manager ? <><p className="text-xs text-muted-foreground">{item.escalated ? t("sxbEscalated", { defaultValue: "No answer after 48 hours, so Local Cooks is following up. Nothing has been charged." })
+          : manager ? <><p className="text-xs text-muted-foreground">{item.upheldAt ? t("sxbChargeWaiting", { defaultValue: "Waiting for {chef}. Their card is only charged if they pay.", chef: chefName }) : item.escalated ? t("sxbEscalated", { defaultValue: "No answer after 48 hours, so Local Cooks is following up. Nothing has been charged." })
             : t("sxbChargeWaiting", { defaultValue: "Waiting for {chef}. Their card is only charged if they pay.", chef: chefName })}</p>
             {/* Taking it back is always the kitchen's call while it's unpaid; the customer is told nothing is owed. */}
             {item.status === "offered" && !item.escalated && <Button type="button" variant="outline" size="sm" className="mt-2 flex min-h-11 sm:min-h-9" disabled={!!busy}
@@ -255,11 +263,12 @@ export function SessionExtensionsCard({ bookingId, manager, chefName, onChanged,
               <Button type="button" className={tap} {...answer(`pay-${item.id}`)} disabled={!!busy} onClick={() => void act(`pay-${item.id}`, () => decide(item, "pay", { expectedAmountCents: item.amountCents }),
                 t("sxbPaid", { defaultValue: "Paid. Thank you!" }))}>
                 {busy === `pay-${item.id}` && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" aria-hidden />}{t(item.cardFailedAt ? "sxbAnotherCard" : "sxbPay", { amount: cash(item.amountCents) })}</Button>
-              <Button type="button" variant="outline" className={tap} disabled={!!busy} onClick={() => { setDisputing(item.id); setDisputeNote("") }}>{t("sxbNotRight", { defaultValue: "This isn’t right" })}</Button>
+              {!item.upheldAt && <Button type="button" variant="outline" className={tap} disabled={!!busy} onClick={() => { setDisputing(item.id); setDisputeNote("") }}>{t("sxbNotRight", { defaultValue: "This isn’t right" })}</Button>}
             </div>
             {disputing === item.id && <div className="space-y-2">
               <label htmlFor={`extra-dispute-${item.id}`} className="block text-sm font-medium">{t("sxbDisputeLabel", { defaultValue: "What isn’t right? Local Cooks will review it with {kitchen}.", kitchen })}</label>
-              <Textarea id={`extra-dispute-${item.id}`} value={disputeNote} maxLength={1000} rows={3} onChange={event => setDisputeNote(event.target.value)} />
+              {/* Focus brings it into view; the bottom margin keeps it clear of the phone's sticky Message bar. */}
+              <Textarea id={`extra-dispute-${item.id}`} autoFocus className="scroll-mb-32" value={disputeNote} maxLength={1000} rows={3} onChange={event => setDisputeNote(event.target.value)} />
               <Button type="button" className={tap} variant={nowMode ? "outline" : "default"} disabled={!!busy || !disputeNote.trim()} onClick={() => void act(`dispute-${item.id}`, () => decide(item, "dispute", { note: disputeNote.trim() }),
                 t("sxbDisputeSent", { defaultValue: "Thanks — Local Cooks will review this and get back to you. Nothing was charged." })).then(() => setDisputing(null))}>
                 {t("sxbSendToSupport", { defaultValue: "Send to Local Cooks" })}</Button>
@@ -382,7 +391,10 @@ export function SessionExtensionsCard({ bookingId, manager, chefName, onChanged,
             {t("sxbNoCharge", { defaultValue: "No charge" })}</Button>
         </div>
       </NowAttentionRow>)
-  const waivedLines = view.waived.map(item => <p key={item.id} className="text-sm text-muted-foreground" data-testid="extension-waived">{manager
+  const waivedLines = view.waived.map(item => item.resolution?.outcome === "waived"
+    ? <div key={item.id} className="space-y-1 text-sm text-muted-foreground" data-testid="extension-waived"><p>{t(manager ? "sxbLcWaivedManager" : "sxbLcWaivedChef", { amount: cash(item.resolution.originalAmountCents ?? 0) })}</p>
+      {item.resolution.note && <p className="whitespace-pre-wrap">{t("sxbLocalCooksNote", { note: item.resolution.note })}</p>}</div>
+    : <p key={item.id} className="text-sm text-muted-foreground" data-testid="extension-waived">{manager
     ? t("sxbWaivedManager", { defaultValue: "You didn’t charge {chef} for the extra time.", chef: chefName })
     : t("sxbWaivedChef", { defaultValue: "{kitchen} didn’t charge you for the extra time.", kitchen })}</p>)
 

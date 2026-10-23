@@ -93,7 +93,7 @@ const cases: Case[] = [
   { name: "checkout requested", now: START + 3 * 3_600_000, booking: { status: "confirmed", paymentStatus: "paid", checkinStatus: "checkout_requested",
       checkedInAt: "2030-01-15T13:32:00Z", checkoutRequestedAt: "2030-01-15T15:20:00Z", closeout: closeout("2030-01-16T15:30:00Z") },
     pill: { chef: "Checkout submitted", manager: "Checkout to review" },
-    next: { chef: /^Checkout submitted at 11:50 a\.m\. You’re all set — we’ll let you know if the kitchen reports anything\.$/, manager: /^Ada Lovelace checked out\. Review the kitchen by Jan 16 at 12:00 p\.m\.$/ },
+    next: { chef: /^Checkout submitted at 11:50 a\.m\. We’ll let you know if the kitchen reports anything\.$/, manager: /^Ada Lovelace checked out\. Review the kitchen by Jan 16 at 12:00 p\.m\.$/ },
     primary: { chef: null, manager: "Review checkout" }, message: true },
   { name: "completed", now: START + 3 * 86_400_000, booking: { status: "completed", paymentStatus: "paid", checkinStatus: "checked_out",
       checkedInAt: "2030-01-15T13:32:00Z", checkoutRequestedAt: "2030-01-15T15:20:00Z" },

@@ -75,8 +75,8 @@ function buildSentence(input: VisitSentenceInput, t: VisitSentenceTranslate): Vi
     }
     case "checkout_requested":
       return checkoutTime
-        ? { text: t("kvCheckedOut", "You checked out at {time}. You’re all set.", { time: checkoutTime }), coversCheckin: false, coversCheckout: true }
-        : plain(t("kvCheckedOutNoTime", "You checked out. You’re all set."))
+        ? { text: t("kvCheckedOut", "You checked out at {time}.", { time: checkoutTime }), coversCheckin: false, coversCheckout: true }
+        : plain(t("kvCheckedOutNoTime", "You checked out."))
     case "checked_out":
       return plain(inspectionOutcome === "manager_cleared"
         ? t("kvVisitCompleteCleared", "{kitchen} checked the space and it’s all good.", { kitchen })
