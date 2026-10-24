@@ -1245,7 +1245,7 @@ describe('private tour feedback notices', () => {
   });
   it('records unknown closure without implying cancellation, absence or completed attendance', () => {
     const event = payload('status', 'cancelled'); event.after.disruptionReason = 'outcome_unknown'; event.after.visitResult = 'unrecorded';
-    event.after.sharedManagerNotes = 'Neither participant could verify what happened.';
+    event.after.sharedManagerNotes = 'Neither participant could verify what happened.'; event.actorRole = 'admin'; // Local Cooks' shared explanation
     const chef = tourEventMessages(event).find(message => message.key === 'chef-email')!.email!;
     expect(chef.subject).toContain('Your tour is closed'); expect(chef.text).toContain(event.after.sharedManagerNotes);
     expect(chef.text).not.toMatch(/was cancelled|tour disrupted|visitor no-show|check out when/i);
@@ -1259,7 +1259,8 @@ describe('single completion application receipt', () => {
     event.after.noShowReason = 'visitor_absent'; event.after.sharedManagerNotes = 'Shared visit note';
     const text = tourEventMessages(event).find(message => message.key === 'manager')!.notification!.message;
     expect(text).toContain('didn’t come to the tour of Fixture room');
-    expect(text).toContain('Shared visit note');
+    // Old pre-visit notes stay off a result the kitchen recorded or that closed on its own; Local Cooks' shared note shows.
+    if (actorRole === 'admin') expect(text).toContain('Shared visit note'); else expect(text).not.toContain('Shared visit note');
     expect(text).not.toContain('kitchen manager marked');
   });
   const completed = () => {
@@ -1400,7 +1401,7 @@ describe('Tour C outcomes and factual retry recovery', () => {
   it.each(['completed', 'visitor_absent', 'unknown', 'manager_absent', 'access_unavailable', 'weather', 'corrected'])('renders concise real %s outcome receipts, private notes excluded and unknown evidence truthful', branch => {
     const event = payload('status', ['manager_absent', 'access_unavailable', 'weather'].includes(branch) ? 'cancelled' : branch === 'completed' || branch === 'corrected' ? 'completed' : 'no_show');
     event.before.scheduledAt = new Date('2026-10-04T11:00:00Z'); event.after.scheduledAt = event.before.scheduledAt; event.after.updatedAt = new Date('2026-10-05T11:00:00Z');
-    event.actorId = 2; event.after.sharedManagerNotes = 'Door <closed> & assistance available';
+    event.actorId = 2; event.actorRole = 'admin'; event.after.sharedManagerNotes = 'Door <closed> & assistance available'; // a shared note Local Cooks recorded
     if (branch === 'visitor_absent') event.after.noShowReason = 'visitor_absent';
     if (['manager_absent', 'access_unavailable', 'weather'].includes(branch)) event.after.disruptionReason = branch;
     if (branch === 'corrected') event.before = { ...tour, status: 'no_show', noShowReason: 'visitor_absent' };

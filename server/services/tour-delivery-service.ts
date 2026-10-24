@@ -186,7 +186,8 @@ export function tourEventMessages(payload: Payload, calendarSequence = 0): Messa
   const notice = (person: Recipient, title: string, message: string) => visitKey && !(payload.unrecordedReason && isAdminRecipient(person)) ? {
     title: tEmail(person.locale, kind === 'status' && (['completed', 'no_show'].includes(before.status) || before.disruptionReason) ? 'tourVisitResultCorrectedTitle' : `${sideKey(person)}Title`), message: [tEmail(person.locale, `${sideKey(person)}Body`, { visitor: chef.name, kitchen: kitchenName }),
       kind === 'status' && after.disruptionReason && after.disruptionReason !== 'outcome_unknown' ? tEmail(person.locale, `tourVisitDisruption_${after.disruptionReason}`) : null,
-      kind === 'status' && after.sharedManagerNotes ? `${tEmail(person.locale, 'tourManagerNotes')}: ${after.sharedManagerNotes}` : null].filter(Boolean).join(' ') } : { title, message };
+      // Old pre-visit notes (entrance, parking) don't belong on a result the kitchen recorded or that closed on its own; Local Cooks' shared explanations do.
+      kind === 'status' && after.sharedManagerNotes && (!['manager', 'automated'].includes(payload.actorRole || '') || after.disruptionReason && after.disruptionReason !== 'outcome_unknown' || ['completed', 'no_show'].includes(before.status) || before.disruptionReason) ? `${tEmail(person.locale, 'tourManagerNotes')}: ${after.sharedManagerNotes}` : null].filter(Boolean).join(' ') } : { title, message };
   const notify = (key: string, person: Recipient, target: 'chef' | 'manager', title: string, message: string,
     type: CreateNotificationParams['type'] = 'booking_confirmed', actionUrl?: string) => messages.push({ key,
       notification: { userId: person.id, target, locationId: after.locationId, type,

@@ -475,7 +475,9 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
           : record)
       )
       queryClient.invalidateQueries({ queryKey: [queryUrl] })
-      closeDialog()
+      // After "They came" / no-show, stay on the tour so the kitchen sees its next step (Add as customer).
+      if (statusAction === 'complete' || statusAction === 'no_show') closeRecord()
+      else closeDialog()
       queryClient.invalidateQueries({ queryKey: ["tour-decision-context"] })
       if (updated.notificationDeliveryFailed) toast.warning(mt("tourSavedDeliveryFailed"))
       else toast.success(mt("viewingStatusUpdated"))
