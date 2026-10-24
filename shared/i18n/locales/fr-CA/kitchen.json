@@ -1789,5 +1789,13 @@
   "onePageAgreeTerms": "conditions et politiques d’utilisation des cuisines de Local Cooks",
   "onePageAgreeKitchen": ", les conditions de {name} ci-dessus",
   "onePageAgreeAnd": " et la",
-  "onePageAgreeAccurate": ", et je confirme que mes réponses sont exactes."
+  "onePageAgreeAccurate": ", et je confirme que mes réponses sont exactes.",
+  "valNumberMin": "Saisissez {min} ou plus",
+  "valNumberMax": "Saisissez {max} ou moins",
+  "valDateTodayOrLater": "Choisissez aujourd’hui ou une date ultérieure",
+  "valExpiryReq": "Ajoutez la date d’expiration",
+  "valExpiredDocument": "Ce document est expiré. Téléversez-en un valide.",
+  "documentExpiryLabel": "Date d’expiration",
+  "step2CertRequiredHelp": "Cette cuisine demande votre certificat valide et sa date d’expiration.",
+  "step2CertOptionalHelp": "Partagez votre certificat si vous en avez un. Tout document de votre première demande reste au dossier."
 }

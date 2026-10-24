@@ -409,14 +409,14 @@ describe("rail items are reachable from the form", () => {
     // The kitchen's upload flag drives this step; the admin's `requireFoodHandlerCert` only decides
     // whether the chef is asked the certificate question during the request phase.
     //
-    // Asserted as a DIFFERENCE, because the form always renders the label once: the extra matches
-    // when the flag is on are the two tracker instances adding the row.
+    // Asserted as a DIFFERENCE: with the flag off and nothing tracked or on file the certificate is not
+    // asked at all (owner, Oct 24); with it on, the field and the tracker rows add matches.
     state.application = { current_tier: 2, status: "approved", fullName: "Test Chef" };
     state.hasApplication = true;
 
     state.requirements = { ...FULL_REQUIREMENTS, requireFoodSafetyUpload: false };
     const { unmount } = render(<KitchenApplicationForm location={location} />);
-    const without = screen.getAllByText(/Food safety certificate/).length;
+    const without = screen.queryAllByText(/Food safety certificate/).length;
     unmount();
 
     state.requirements = { ...FULL_REQUIREMENTS, requireFoodSafetyUpload: true };

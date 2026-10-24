@@ -120,6 +120,46 @@ function YesNoChoice({
  * the same as every other field — a stacked label *inside* the control made this one 4px taller
  * than its row neighbours and read unlike anything else on the page.
  */
+/** Today as YYYY-MM-DD in the customer's time zone, the format the date fields store. */
+const todayKey = () => new Date().toLocaleDateString("en-CA");
+
+/**
+ * The rule for each kitchen or admin question, shared by both steps so a question never renders without the rule
+ * that enforces it. Required-ness matches the server's isCustomAnswerFilled; a dated document also needs its expiry.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- the typed TFunction only accepts known keys; these are new ones with defaults
+function customFieldsRules(fields: CustomField[], t: (key: any, options?: any) => string) {
+  const rules: Record<string, z.ZodTypeAny> = {};
+  for (const field of fields) {
+    const required = t("valFieldReq", { defaultValue: "{label} is required", label: field.label });
+    const text = field.required ? z.string({ required_error: required }).min(1, required) : z.string().optional().nullable();
+    let rule: z.ZodTypeAny;
+    if (field.type === "number") {
+      let n = z.number({ required_error: required, invalid_type_error: required });
+      if (typeof field.min === "number") n = n.min(field.min, t("valNumberMin", { defaultValue: "Enter {min} or more", min: field.min }));
+      if (typeof field.max === "number") n = n.max(field.max, t("valNumberMax", { defaultValue: "Enter {max} or less", max: field.max }));
+      // An untouched number field holds "", which means no answer.
+      rule = z.preprocess(v => (v === "" || v === null ? undefined : v), field.required ? n : n.optional());
+    } else if (field.type === "select") {
+      rule = field.required ? z.string().min(1, t("valSelectFieldReq", { defaultValue: "Please select {label}", label: field.label })) : z.string().optional().nullable();
+    } else if (field.type === "checkbox") {
+      rule = field.options?.length
+        ? (field.required ? z.array(z.string()).min(1, t("valSelectOptionReq", { defaultValue: "Please select at least one option for {label}", label: field.label })) : z.array(z.string()).optional())
+        : (field.required ? z.boolean().refine(v => v === true, required) : z.boolean().optional());
+    } else if (field.type === "date" && field.futureOnly) {
+      rule = text.refine(v => !v || v >= todayKey(), t("valDateTodayOrLater", { defaultValue: "Choose today or a later date" }));
+    } else {
+      rule = text;
+    }
+    rules[`custom_${field.id}`] = rule;
+    if (field.expires) {
+      const expiry = field.required ? z.string({ required_error: t("valExpiryReq", { defaultValue: "Add the expiry date" }) }).min(1, t("valExpiryReq", { defaultValue: "Add the expiry date" })) : z.string().optional().nullable();
+      rules[`custom_${field.id}__expiry`] = expiry.refine(v => !v || v >= todayKey(), t("valExpiredDocument", { defaultValue: "This document has expired. Upload a current one." }));
+    }
+  }
+  return rules;
+}
+
 function KitchenDocumentDatePicker({
   value,
   onChange,
@@ -219,6 +259,12 @@ interface CustomField {
   required: boolean;
   placeholder?: string;
   options?: string[];
+  description?: string;
+  min?: number;
+  max?: number;
+  futureOnly?: boolean;
+  /** A kitchen document with an expiry date; its date is stored as `<id>__expiry`. */
+  expires?: boolean;
 }
 
 interface LocationInfo {
@@ -456,6 +502,11 @@ export default function KitchenApplicationForm({
   // The kitchen's choice per document: shown when tracked or required, or when one is already on file.
   const showEstablishment = !!(requirements?.tier2_food_establishment_cert_required || requirements?.food_establishment_cert_tracked || application?.foodEstablishmentCertUrl);
   const showInsurance = !!(requirements?.tier2_insurance_document_required || requirements?.insurance_tracked || existingInsuranceUrl);
+  // Step 2 certificate (owner, Oct 24): Required asks only for the upload and its date; Track it keeps the Yes/No; Not needed hides it.
+  // The first request keeps its own Yes/No and optional upload.
+  const certRequiredStep2 = currentTier >= 2 && !!requirements?.requireFoodSafetyUpload;
+  const showFoodSafetyStep2 = certRequiredStep2 || !!requirements?.food_handler_cert_tracked || !!existingFoodHandlerUrl;
+  useEffect(() => { if (certRequiredStep2) setFoodSafetyAnswer("yes"); }, [certRequiredStep2, application?.foodSafetyLicense]);
   const [fileErrors, setFileErrors] = useState<{
     businessLicense?: string;
     insurance?: string;
@@ -562,39 +613,7 @@ export default function KitchenApplicationForm({
           : z.string().optional(),
       };
 
-      const customFieldsSchema: Record<string, z.ZodTypeAny> = {};
-      customFieldsForTier.forEach((field: CustomField) => {
-        if (field.required) {
-          switch (field.type) {
-            case 'text':
-            case 'textarea':
-              customFieldsSchema[`custom_${field.id}`] = z.string().min(1, t("valFieldReq", { defaultValue: "{label} is required", label: field.label }));
-              break;
-            case 'number':
-              customFieldsSchema[`custom_${field.id}`] = z.number({ required_error: t("valFieldReq", { defaultValue: "{label} is required", label: field.label }) });
-              break;
-            case 'select':
-              customFieldsSchema[`custom_${field.id}`] = z.string().min(1, t("valSelectFieldReq", { defaultValue: "Please select {label}", label: field.label }));
-              break;
-            case 'checkbox':
-              if (field.options && field.options.length > 0) {
-                customFieldsSchema[`custom_${field.id}`] = z.array(z.string()).min(1, t("valSelectOptionReq", { defaultValue: "Please select at least one option for {label}", label: field.label }));
-              } else {
-                customFieldsSchema[`custom_${field.id}`] = z.boolean().refine(val => val === true, t("valFieldReq", { defaultValue: "{label} is required", label: field.label }));
-              }
-              break;
-            case 'date':
-              customFieldsSchema[`custom_${field.id}`] = z.string().min(1, t("valFieldReq", { defaultValue: "{label} is required", label: field.label }));
-              break;
-            case 'file':
-            case 'cloudflare_upload':
-              customFieldsSchema[`custom_${field.id}`] = z.string().min(1, t("valFieldReq", { defaultValue: "{label} is required", label: field.label }));
-              break;
-          }
-        } else {
-          customFieldsSchema[`custom_${field.id}`] = z.any().optional();
-        }
-      });
+      const customFieldsSchema = customFieldsRules(customFieldsForTier, t);
 
       return z.object({ ...step2Fields, ...customFieldsSchema });
     }
@@ -631,62 +650,7 @@ export default function KitchenApplicationForm({
 
     // Add custom fields to schema — the same set the UI renders, so a required
     // question can never render without a rule that enforces it.
-    const customFieldsSchema: Record<string, z.ZodTypeAny> = {};
-    customFieldsForTier.forEach((field: CustomField) => {
-      if (field.required) {
-        switch (field.type) {
-          case 'text':
-          case 'textarea':
-            customFieldsSchema[`custom_${field.id}`] = z.string().min(1, t("valFieldReq", { defaultValue: "{label} is required", label: field.label }));
-            break;
-          case 'number':
-            customFieldsSchema[`custom_${field.id}`] = z.number({ required_error: t("valFieldReq", { defaultValue: "{label} is required", label: field.label }) });
-            break;
-          case 'select':
-            customFieldsSchema[`custom_${field.id}`] = z.string().min(1, t("valSelectFieldReq", { defaultValue: "Please select {label}", label: field.label }));
-            break;
-          case 'checkbox':
-            // If checkbox has options, it's a multi-checkbox (array), otherwise single checkbox (boolean)
-            if (field.options && field.options.length > 0) {
-              customFieldsSchema[`custom_${field.id}`] = z.array(z.string()).min(1, t("valSelectOptionReq", { defaultValue: "Please select at least one option for {label}", label: field.label }));
-            } else {
-              customFieldsSchema[`custom_${field.id}`] = z.boolean().refine(val => val === true, t("valFieldReq", { defaultValue: "{label} is required", label: field.label }));
-            }
-            break;
-          case 'date':
-            customFieldsSchema[`custom_${field.id}`] = z.string().min(1, t("valFieldReq", { defaultValue: "{label} is required", label: field.label }));
-            break;
-          case 'file':
-          case 'cloudflare_upload':
-            customFieldsSchema[`custom_${field.id}`] = z.string().min(1, t("valFieldReq", { defaultValue: "{label} is required", label: field.label }));
-            break;
-        }
-      } else {
-        switch (field.type) {
-          case 'text':
-          case 'textarea':
-          case 'select':
-          case 'date':
-            customFieldsSchema[`custom_${field.id}`] = z.string().optional();
-            break;
-          case 'number':
-            customFieldsSchema[`custom_${field.id}`] = z.number().optional();
-            break;
-          case 'checkbox':
-            // If checkbox has options, it's a multi-checkbox (array), otherwise single checkbox (boolean)
-            if (field.options && field.options.length > 0) {
-              customFieldsSchema[`custom_${field.id}`] = z.array(z.string()).optional();
-            } else {
-              customFieldsSchema[`custom_${field.id}`] = z.boolean().optional();
-            }
-            break;
-          case 'file':
-          case 'cloudflare_upload':
-            customFieldsSchema[`custom_${field.id}`] = z.string().optional();
-            break;
-        }
-      }
-    });
+    const customFieldsSchema = customFieldsRules(customFieldsForTier, t);
 
     return z.object({ ...baseFields, ...customFieldsSchema });
   }, [requirements, currentTier, t, application?.phone, globalApp, chefProfile?.phone]);
@@ -977,7 +941,8 @@ export default function KitchenApplicationForm({
         (field: CustomField) => {
           if (!field?.id || !field.type) return;
           const value = watchedValues[`custom_${field.id}` as keyof KitchenApplicationFormData];
-          const filled = Array.isArray(value) ? value.length > 0 : Boolean(value);
+          const filled = (Array.isArray(value) ? value.length > 0 : Boolean(value))
+            && (!field.expires || Boolean(watchedValues[`custom_${field.id}__expiry` as keyof KitchenApplicationFormData]));
           const item: ProgressItem = {
             id: `custom_${field.id}`,
             label: field.label,
@@ -1580,6 +1545,8 @@ export default function KitchenApplicationForm({
             customFieldsData[field.id] = value;
           }
         }
+        const expiry = field.expires ? data[`custom_${field.id}__expiry` as keyof typeof data] : undefined;
+        if (typeof expiry === "string" && expiry) customFieldsData[`${field.id}__expiry`] = expiry;
       });
       
       logger.info('[KitchenApplicationForm] Custom fields data:', {
@@ -2401,6 +2368,8 @@ export default function KitchenApplicationForm({
                                   inputElement = (
                                     <Input
                                       type="number"
+                                      min={field.min}
+                                      max={field.max}
                                       placeholder={field.placeholder}
                                       className="h-10"
                                       value={typeof formField.value === 'number' ? formField.value : (typeof formField.value === 'string' ? formField.value : '') as string | number}
@@ -2477,8 +2446,8 @@ export default function KitchenApplicationForm({
                                       value={(formField.value as string) || ''}
                                       onChange={formField.onChange}
                                       placeholder={tt("selectDate")}
-                                      // Applicant-supplied dates may be in the past.
-                                      minToday={false}
+                                      // Past dates are fine unless the kitchen asked for today or later.
+                                      minToday={!!field.futureOnly}
                                       className="h-10 w-full"
                                     />
                                   );
@@ -2538,6 +2507,7 @@ export default function KitchenApplicationForm({
                                       {field.label}
                                       <RequirementMarker flag={field.required} defaultRequired={false} />
                                     </FormLabel>
+                                    {field.description && <p className="-mt-1 text-xs leading-5 text-muted-foreground">{field.description}</p>}
                                     <FormControl>
                                       {inputElement}
                                     </FormControl>
@@ -2629,7 +2599,7 @@ export default function KitchenApplicationForm({
                       {/* Kitchen document sections span the full form width. */}
                       <div className="grid gap-4 sm:grid-cols-2 items-start">
                       {/* The answer and document from the initial request carry into this step. */}
-                      <div className="rounded-xl border p-4 sm:col-span-2">
+                      {showFoodSafetyStep2 && <div className="rounded-xl border p-4 sm:col-span-2">
                         {/* Question and answer share one line — the pills never need their own row.
                             Same shape as the request-phase question above. */}
                         <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
@@ -2638,10 +2608,10 @@ export default function KitchenApplicationForm({
                               Food safety certificate <RequirementMarker flag={requirements?.requireFoodSafetyUpload} defaultRequired={true} />
                             </Label>
                             <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
-                              {isRequiredField(requirements?.requireFoodSafetyUpload, true) ? 'This kitchen asks for a current certificate and its expiry date.' : 'You can share a certificate if you have one. Any document from your first request stays on file.'}
+                              {certRequiredStep2 ? t("step2CertRequiredHelp", { defaultValue: "This kitchen asks for your current certificate and its expiry date." }) : t("step2CertOptionalHelp", { defaultValue: "Share your certificate if you have one. Any document from your first request stays on file." })}
                             </p>
                           </div>
-                          <YesNoChoice
+                          {!certRequiredStep2 && <YesNoChoice
                             className="shrink-0"
                             ariaLabel="step2-food-safety-answer"
                             value={foodSafetyAnswer}
@@ -2651,7 +2621,7 @@ export default function KitchenApplicationForm({
                             }}
                             yesLabel={t("optionYes", { defaultValue: "Yes" })}
                             noLabel={t("optionNo", { defaultValue: "No" })}
-                          />
+                          />}
                         </div>
                         {/* The answer's follow-on fields sit below a divider, the same rhythm the
                             request-phase block uses. Without it the document card hugged the
@@ -2701,7 +2671,7 @@ export default function KitchenApplicationForm({
                         )}
                       />}
                       </div>}
-                      </div>
+                      </div>}
 
                       {/* Food Establishment License/Permit */}
                         {showEstablishment && <div className="rounded-xl border p-4 sm:col-span-2">
@@ -2844,9 +2814,9 @@ export default function KitchenApplicationForm({
                       {requirements?.tier2_custom_fields && Array.isArray(requirements.tier2_custom_fields) && requirements.tier2_custom_fields.length > 0 && (
                         <div className="rounded-xl border p-4 sm:col-span-2">
                           <p className="mb-4 text-sm font-semibold text-foreground">{t("additionalRequirements", { defaultValue: "Additional requirements" })}</p>
-                          {/* Two columns: short inputs pair up; textareas and uploads take the full width. */}
-                          <div className="grid gap-4 sm:grid-cols-2">
-                            {requirements.tier2_custom_fields.map((field: CustomField) => {
+                          {/* One column: every answer gets the full width, as on the rest of this step. Dated documents come first. */}
+                          <div className="grid gap-5">
+                            {[...requirements.tier2_custom_fields].sort((a: CustomField, b: CustomField) => Number(!!b?.expires) - Number(!!a?.expires)).map((field: CustomField) => {
                               if (!field || !field.id || !field.type) return null;
                               const fieldName = `custom_${field.id}` as keyof KitchenApplicationFormData;
                               // A control that wants real width gets it; everything short shares a row.
@@ -2881,6 +2851,8 @@ export default function KitchenApplicationForm({
                                       inputElement = (
                                         <Input
                                           type="number"
+                                          min={field.min}
+                                          max={field.max}
                                           placeholder={field.placeholder}
                                           className="h-10"
                                           value={formField.value !== undefined ? String(formField.value) : ''}
@@ -2955,8 +2927,8 @@ export default function KitchenApplicationForm({
                                           value={(formField.value as string) || ''}
                                           onChange={formField.onChange}
                                           placeholder={tt("selectDate")}
-                                          // Applicant-supplied dates may be in the past.
-                                          minToday={false}
+                                          // Past dates are fine unless the kitchen asked for today or later.
+                                          minToday={!!field.futureOnly}
                                           className="h-10 w-full"
                                         />
                                       );
@@ -2992,6 +2964,17 @@ export default function KitchenApplicationForm({
                                           removeLabel={t("removeFile", { defaultValue: "Remove file" })}
                                         />
                                       );
+                                      // The kitchen tracks this document's expiry, like the certificate above.
+                                      if (field.expires && formField.value) inputElement = <div>
+                                        {inputElement}
+                                        <FormField control={form.control} name={`custom_${field.id}__expiry` as keyof KitchenApplicationFormData} render={({ field: expiryField }) => (
+                                          <FormItem className="mt-3 border-t pt-3">
+                                            <FormLabel className="text-sm font-medium">{t("documentExpiryLabel", { defaultValue: "Expiry date" })} <RequirementMarker flag={field.required} defaultRequired={false} /></FormLabel>
+                                            <FormControl><KitchenDocumentDatePicker value={(expiryField.value as string) || ""} onChange={expiryField.onChange} /></FormControl>
+                                            <FormMessage />
+                                          </FormItem>
+                                        )} />
+                                      </div>;
                                     }
 
                                     // If no input element was created, show unsupported type message
@@ -3016,6 +2999,7 @@ export default function KitchenApplicationForm({
                                           {field.label}
                                           <RequirementMarker flag={field.required} defaultRequired={false} />
                                         </FormLabel>
+                                        {field.description && <p className="-mt-1 text-xs leading-5 text-muted-foreground">{field.description}</p>}
                                         <FormControl>
                                           {inputElement}
                                         </FormControl>

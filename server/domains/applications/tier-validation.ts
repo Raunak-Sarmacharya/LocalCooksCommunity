@@ -40,6 +40,8 @@ export interface CustomQuestion {
     type: string;
     required?: boolean;
     options?: string[] | null;
+    /** A kitchen document with an expiry date: its answer is stored with `<id>__expiry`. */
+    expires?: boolean;
 }
 
 /**
@@ -69,6 +71,8 @@ export function isCustomAnswerFilled(
     }
 
     if (question.type === 'file' || question.type === 'cloudflare_upload') {
+        const expiry = answers ? answers[`${question.id}__expiry`] : undefined;
+        if (question.expires && !(typeof expiry === 'string' && expiry.trim() !== '')) return false;
         if (typeof value === 'string' && value.trim() !== '') return true;
         const stored = fileUrls ? fileUrls[question.id] : undefined;
         return typeof stored === 'string' && stored !== '';

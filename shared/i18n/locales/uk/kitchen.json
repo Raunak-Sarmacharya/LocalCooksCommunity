@@ -1789,5 +1789,13 @@
   "onePageAgreeTerms": "умовами та правилами користування кухнями Local Cooks",
   "onePageAgreeKitchen": ", умовами {name} вище",
   "onePageAgreeAnd": " і",
-  "onePageAgreeAccurate": ", і підтверджую, що мої відповіді правдиві."
+  "onePageAgreeAccurate": ", і підтверджую, що мої відповіді правдиві.",
+  "valNumberMin": "Введіть {min} або більше",
+  "valNumberMax": "Введіть {max} або менше",
+  "valDateTodayOrLater": "Виберіть сьогодні або пізнішу дату",
+  "valExpiryReq": "Додайте дату закінчення",
+  "valExpiredDocument": "Термін дії документа минув. Завантажте чинний.",
+  "documentExpiryLabel": "Дата закінчення",
+  "step2CertRequiredHelp": "Ця кухня просить ваш чинний сертифікат і дату його закінчення.",
+  "step2CertOptionalHelp": "Поділіться сертифікатом, якщо він є. Документ із першого запиту лишається в записі."
 }

@@ -33,7 +33,7 @@ describe("RequirementsStepTwo compliance badge placement", () => {
   it("orders the label line as label → ⓘ → badge", () => {
     renderRows();
 
-    const label = screen.getByText("Food Safety Certificate");
+    const label = screen.getByText("Food safety certificate");
     const labelLine = label.parentElement!;
     const children = Array.from(labelLine.children);
 

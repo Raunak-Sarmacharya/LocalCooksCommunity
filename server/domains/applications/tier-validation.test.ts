@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { tierValidationService } from './tier-validation';
+import { isCustomAnswerFilled, tierValidationService } from './tier-validation';
 import type { chefKitchenApplications, LocationRequirements } from '@shared/schema';
 
 type Application = typeof chefKitchenApplications.$inferSelect;
@@ -35,5 +35,14 @@ describe('Kitchen Coordination document approval', () => {
       2,
     );
     expect(result.valid).toBe(true);
+  });
+});
+
+describe('a kitchen document with an expiry date', () => {
+  const pestControl = { id: 'pest', label: 'Pest control certificate', type: 'file', required: true, expires: true };
+  it('needs both the file and its expiry date', () => {
+    expect(isCustomAnswerFilled(pestControl, { pest: 'https://example.test/pest.pdf' })).toBe(false);
+    expect(isCustomAnswerFilled(pestControl, { pest: 'https://example.test/pest.pdf', pest__expiry: '2027-01-31' })).toBe(true);
+    expect(isCustomAnswerFilled(pestControl, { pest__expiry: '2027-01-31' })).toBe(false);
   });
 });

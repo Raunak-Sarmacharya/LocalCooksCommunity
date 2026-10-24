@@ -1143,6 +1143,13 @@ export const customFieldSchema = z.object({
   placeholder: z.string().optional(),
   options: z.array(z.string()).optional(), // For select fields
   tier: z.number().min(1).max(3), // Tier assignment for the field
+  description: z.string().max(500).optional(),
+  min: z.number().optional(),
+  max: z.number().optional(),
+  futureOnly: z.boolean().optional(),
+  // A kitchen document with an expiry date, tracked like the built-in three (owner, Oct 24).
+  expires: z.boolean().optional(),
+  mode: z.enum(["track", "required"]).optional(),
 });
 
 export const updateLocationRequirementsSchema = z.object({

@@ -11,6 +11,19 @@ export interface CustomField {
   placeholder?: string;
   options?: string[];
   tier: 1 | 2 | 3;
+  /** Shown under the question on the customer's form. */
+  description?: string;
+  /** Number questions: the accepted range. */
+  min?: number;
+  max?: number;
+  /** Date questions: today or later only. */
+  futureOnly?: boolean;
+  /**
+   * A file the kitchen treats as a document with an expiry date (owner, Oct 24): listed with the built-in documents and
+   * tracked the same way. `mode` replaces `required` for these: 'required' pauses new bookings when missing or expired.
+   */
+  expires?: boolean;
+  mode?: 'track' | 'required';
 }
 
 export interface LocationRequirements {
@@ -126,13 +139,13 @@ export const STEP2_BUILT_IN_FIELDS: FieldGroupConfig[] = [
     fields: [
       {
         key: 'requireFoodHandlerCert',
-        label: 'Food Safety Certificate',
+        label: 'Food safety certificate',
         description: 'Certificate and expiry date are collected together',
         recommended: true,
       },
       {
         key: 'tier2_food_establishment_cert_required',
-        label: 'Food Establishment License',
+        label: 'Food establishment licence',
         description: 'Licence and expiry date are collected together',
         recommended: true
       },
@@ -144,20 +157,16 @@ export const STEP2_BUILT_IN_FIELDS: FieldGroupConfig[] = [
     fields: [
       { 
         key: 'tier2_insurance_document_required', 
-        label: 'Liability Insurance', 
+        label: 'Liability insurance', 
         description: 'Certificate of insurance with its expiry date',
         recommended: true 
       },
     ]
   },
-  {
-    title: 'Experience & Background',
-    description: 'Customer experience with commercial kitchen operations',
-    fields: [
-      { key: 'tier2_kitchen_experience_required', label: 'Kitchen Experience Description', description: 'Description of their commercial kitchen experience' },
-    ]
-  },
 ];
+
+/** Asked with the kitchen's own questions (owner, Oct 24): on means asked and required, off means not asked. */
+export const KITCHEN_EXPERIENCE_FIELD = { key: 'tier2_kitchen_experience_required' as const, label: 'Kitchen experience', description: 'Their experience in commercial kitchens' };
 
 /**
  * Common requests a kitchen manager can ask a chef for, offered by the "choose
@@ -192,15 +201,38 @@ export const COMMON_REQUIREMENT_FIELDS: {
 ];
 
 export const CUSTOM_FIELD_TYPES = [
-  { value: 'text', label: 'Text Input', description: 'Single line text field' },
-  { value: 'textarea', label: 'Text Area', description: 'Multi-line text for longer responses' },
-  { value: 'number', label: 'Number', description: 'Numeric input' },
-  { value: 'select', label: 'Dropdown', description: 'Single selection from options' },
-  { value: 'checkbox', label: 'Checkbox Group', description: 'Multiple selections allowed' },
-  { value: 'date', label: 'Date Picker', description: 'Calendar date selection' },
-  { value: 'file', label: 'File Upload', description: 'Document or image upload' },
-  { value: 'cloudflare_upload', label: 'Large File Upload', description: 'For larger files via Cloudflare' },
+  { value: 'text', label: 'Short answer', description: 'One line of text' },
+  { value: 'textarea', label: 'Paragraph', description: 'A longer written answer' },
+  { value: 'number', label: 'Number', description: 'A number, with limits if you want' },
+  { value: 'select', label: 'Dropdown', description: 'Pick one from a list' },
+  { value: 'checkbox', label: 'Checkboxes', description: 'Pick any from a list' },
+  { value: 'date', label: 'Date', description: 'A calendar date' },
+  { value: 'file', label: 'File upload', description: 'A document or photo' },
+  // Older questions only; the builder offers one File upload type (owner, Oct 24).
+  { value: 'cloudflare_upload', label: 'File upload', description: 'A document or photo' },
 ] as const;
+
+/**
+ * The answer types the builder offers, by what the kitchen means rather than the stored type: an Agreement is a
+ * checkbox with no options (the form and server already treat that as "tick to confirm"), and both stored file
+ * types are one File upload.
+ */
+export type QuestionKind = 'text' | 'textarea' | 'number' | 'select' | 'checkbox' | 'agreement' | 'date' | 'file';
+export const QUESTION_KINDS: { value: QuestionKind; labelKey: string; hintKey: string }[] = [
+  { value: 'text', labelKey: 'qbKindText', hintKey: 'qbKindTextHint' },
+  { value: 'textarea', labelKey: 'qbKindTextarea', hintKey: 'qbKindTextareaHint' },
+  { value: 'number', labelKey: 'qbKindNumber', hintKey: 'qbKindNumberHint' },
+  { value: 'select', labelKey: 'qbKindSelect', hintKey: 'qbKindSelectHint' },
+  { value: 'checkbox', labelKey: 'qbKindCheckbox', hintKey: 'qbKindCheckboxHint' },
+  { value: 'agreement', labelKey: 'qbKindAgreement', hintKey: 'qbKindAgreementHint' },
+  { value: 'date', labelKey: 'qbKindDate', hintKey: 'qbKindDateHint' },
+  { value: 'file', labelKey: 'qbKindFile', hintKey: 'qbKindFileHint' },
+];
+export function questionKind(field: Pick<CustomField, 'type'> & { options?: string[] }): QuestionKind {
+  if (field.type === 'checkbox') return field.options?.length ? 'checkbox' : 'agreement';
+  if (field.type === 'cloudflare_upload') return 'file';
+  return field.type;
+}
 
 /**
  * One named requirement a chef is asked for, and whether it is compulsory.
@@ -219,9 +251,11 @@ export interface ResolvedRequirement {
   /** What it is for — shown quietly under the name, so a name alone is not a riddle. */
   description?: string;
   required: boolean;
+  /** Documents only: Not needed, Track it or Required, as the kitchen chose. */
+  mode?: 'none' | 'track' | 'required';
 }
 
-/** The document rows the wizard actually renders switches for. */
+/** The built-in document rows the wizard renders. */
 const BUILT_IN_DOC_ROWS = STEP2_BUILT_IN_FIELDS.flatMap((group) => group.fields);
 
 /**
@@ -240,12 +274,21 @@ const BUILT_IN_DOC_ROWS = STEP2_BUILT_IN_FIELDS.flatMap((group) => group.fields)
 export function resolveDocumentRequirements(
   requirements: Partial<LocationRequirements> | null | undefined,
 ): ResolvedRequirement[] {
-  return BUILT_IN_DOC_ROWS.map((field) => ({
-    key: String(field.key),
-    label: field.label,
-    description: field.description,
-    required: requirements?.[field.key] === true,
-  }));
+  const tracked: Record<string, keyof LocationRequirements> = {
+    requireFoodHandlerCert: 'food_handler_cert_tracked',
+    tier2_food_establishment_cert_required: 'food_establishment_cert_tracked',
+    tier2_insurance_document_required: 'insurance_tracked',
+  };
+  const builtIn: ResolvedRequirement[] = BUILT_IN_DOC_ROWS.map((field) => {
+    const required = requirements?.[field.key] === true;
+    return { key: String(field.key), label: field.label, description: field.description, required,
+      mode: required ? 'required' : requirements?.[tracked[String(field.key)]] === true ? 'track' : 'none' };
+  });
+  // The kitchen's own dated documents sit in the same list (owner, Oct 24).
+  const own = ((requirements as { tier2_custom_fields?: CustomField[] } | null | undefined)?.tier2_custom_fields ?? [])
+    .filter((field) => field?.expires)
+    .map((field): ResolvedRequirement => ({ key: field.id, label: field.label, description: field.description, required: field.required === true, mode: field.required ? 'required' : 'track' }));
+  return [...builtIn, ...own];
 }
 
 /**
@@ -300,13 +343,16 @@ export function resolveCustomRequirements(
    * step never populates — so a manager's own questions were invisible on this screen.
    */
   const fields = (requirements as { tier2_custom_fields?: CustomField[] } | null | undefined)?.tier2_custom_fields;
-  if (!Array.isArray(fields)) return [];
-  return fields.map((field, index) => ({
+  const experience: ResolvedRequirement[] = requirements?.tier2_kitchen_experience_required
+    ? [{ key: KITCHEN_EXPERIENCE_FIELD.key, label: KITCHEN_EXPERIENCE_FIELD.label, description: 'Paragraph', required: true }]
+    : [];
+  if (!Array.isArray(fields)) return experience;
+  return [...experience, ...fields.filter((field) => !field?.expires).map((field, index) => ({
     key: field.id || `custom-${index}`,
     label: field.label,
-    // The field type is worth naming: "Dropdown" and "File Upload" are different asks,
+    // The answer type is worth naming: "Dropdown" and "File upload" are different asks,
     // and the review is where the manager checks which they picked.
-    description: CUSTOM_FIELD_TYPES.find((type) => type.value === field.type)?.label ?? field.type,
+    description: questionKind(field) === 'agreement' ? 'Agreement' : CUSTOM_FIELD_TYPES.find((type) => type.value === field.type)?.label ?? field.type,
     required: field.required === true,
-  }));
+  }))];
 }

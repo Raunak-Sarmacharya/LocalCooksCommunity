@@ -145,7 +145,7 @@ export default function ApplicationRequirementsStep() {
        * sub-groups instead would re-order the list into a shape the manager never saw, and
        * the reason to come here is to check the list they DID see.
        */
-      tag: row.required ? mt("requirementsSummaryRequired") : mt("requirementsSummaryOptional"),
+      tag: row.mode === "track" ? mt("docModeTrack") : row.mode === "none" ? mt("docModeNone") : row.required ? mt("requirementsSummaryRequired") : mt("requirementsSummaryOptional"),
       tagStrong: row.required,
     });
 
