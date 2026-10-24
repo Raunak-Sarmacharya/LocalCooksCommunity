@@ -126,6 +126,7 @@ export function ApplicationDetailPanel({
     const firstName = application.fullName.split(/\s+/)[0] || application.fullName;
     const reviewable = isStep2NeedsReview || isApproved;
     const sent = !!application.tier2_completed_at;
+    const addedByKitchen = !!(application.tier_data as Record<string, any> | null)?.addedByKitchen;
 
     const businessInfo = parseBusinessInfo(application.businessDescription);
     const preferredDays = formatPreferredSchedule(businessInfo?.preferredSchedule, i18n.language, mt("fullDay"));
@@ -210,7 +211,8 @@ export function ApplicationDetailPanel({
 
     // Where the request stands, in the customer's journey.
     const stages = [
-        { title: mt("arStageRequest"), note: mt("arStageApproved", { date: dayOf(application.tier1_completed_at || application.reviewedAt) || '' }), state: 'done' as const },
+        // A customer the kitchen added skipped Request to apply (owner, Oct 24).
+        { title: addedByKitchen ? mt("arStageAdded") : mt("arStageRequest"), note: mt(addedByKitchen ? "arStageAddedOn" : "arStageApproved", { date: dayOf(application.tier1_completed_at || application.reviewedAt) || '' }), state: 'done' as const },
         { title: mt("step2"), note: documentsWaived ? mt("arStageWaived") : sent ? mt("arStageSent", { date: dayOf(application.tier2_completed_at) }) : mt("arStageWaiting"), state: (isApproved ? 'done' : 'current') as 'done' | 'current' },
         { title: mt("arStageCanBook"), note: isApproved ? mt("arStageCanBookNote") : null, state: (isApproved ? 'done' : 'next') as 'done' | 'next' },
     ];
@@ -375,8 +377,8 @@ export function ApplicationDetailPanel({
                 {/* What the customer sent with their request to apply */}
                 <section className="rounded-xl border bg-card">
                     <div className="border-b px-4 py-3 sm:px-5">
-                        <h2 className="text-base font-semibold text-foreground">{mt("arStageRequest")}</h2>
-                        <p className="text-sm text-muted-foreground">{mt("arRequestSent", { date: dayOf(application.createdAt) })}</p>
+                        <h2 className="text-base font-semibold text-foreground">{addedByKitchen ? mt("arAddedTitle") : mt("arStageRequest")}</h2>
+                        <p className="text-sm text-muted-foreground">{addedByKitchen ? mt("arAddedOn", { date: dayOf(application.createdAt) }) : mt("arRequestSent", { date: dayOf(application.createdAt) })}</p>
                     </div>
                     <dl className="grid gap-x-6 px-4 py-2 sm:grid-cols-2 sm:px-5">
                         {requestRows.filter(([, value]) => value !== null && value !== undefined && value !== '').map(([label, value]) => (

@@ -45,11 +45,17 @@ export function accessRequestLine(app: Application): string {
 const sortKey = (app: Application) => Date.parse(app.tier2_completed_at || app.updatedAt || app.createdAt) || 0;
 const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]!.toUpperCase()).join("") || "?";
 
-export function AccessRequestsList({ applications, unreadCounts, onOpen, onOpenRequirements }: {
+/** A customer the kitchen added who hasn't accepted yet (owner, Oct 24). */
+export type CustomerInvite = { id: number; locationId: number; locationName: string; email: string; fullName: string; status: string; sentAt: string; expiresAt: string };
+
+export function AccessRequestsList({ applications, invites = [], unreadCounts, onOpen, onOpenRequirements, onResend, onWithdraw }: {
   applications: Application[];
+  invites?: CustomerInvite[];
   unreadCounts: Record<number, number>;
   onOpen: (application: Application) => void;
   onOpenRequirements: () => void;
+  onResend?: (invite: CustomerInvite) => void;
+  onWithdraw?: (invite: CustomerInvite) => void;
 }) {
   const grouped = useMemo(() => {
     const groups: Record<AccessRequestTab, Application[]> = { review: [], waiting: [], declined: [] };
@@ -67,6 +73,11 @@ export function AccessRequestsList({ applications, unreadCounts, onOpen, onOpenR
     const q = query.trim().toLowerCase();
     return q ? grouped[tab].filter((app) => [app.fullName, app.email, app.location?.name].some((value) => value?.toLowerCase().includes(q))) : grouped[tab];
   }, [grouped, tab, query]);
+
+  const shownInvites = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return q ? invites.filter((invite) => [invite.fullName, invite.email, invite.locationName].some((value) => value?.toLowerCase().includes(q))) : invites;
+  }, [invites, query]);
 
   const tabs: { id: AccessRequestTab; label: string }[] = [
     { id: "review", label: mt("arTabReview") },
@@ -88,7 +99,7 @@ export function AccessRequestsList({ applications, unreadCounts, onOpen, onOpenR
         <div role="tablist" aria-label={mt("navRequests")} className="-mb-px flex gap-5 overflow-x-auto pr-4">
           {tabs.map(({ id, label }) => {
             const active = tab === id;
-            const count = grouped[id].length;
+            const count = grouped[id].length + (id === "waiting" ? invites.length : 0);
             return (
               <button key={id} type="button" role="tab" aria-selected={active} onClick={() => setTab(id)}
                 className={cn("!min-h-0 flex shrink-0 items-center gap-2 border-b-2 pb-3 pt-1 text-sm font-medium transition-colors",
@@ -106,7 +117,28 @@ export function AccessRequestsList({ applications, unreadCounts, onOpen, onOpenR
         </div>
       </div>
 
-      {rows.length ? (
+      {tab === "waiting" && shownInvites.length > 0 && (
+        <ul aria-label={mt("arInvitedTitle")} className="divide-y rounded-xl border bg-card">
+          {shownInvites.map((invite) => (
+            <li key={`invite-${invite.id}`} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-4 sm:px-5">
+              <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-dashed text-sm font-medium text-muted-foreground">{initials(invite.fullName)}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium text-foreground">{invite.fullName}</span>
+                <span className="mt-0.5 block text-sm text-muted-foreground">
+                  <span className="block truncate sm:inline">{invite.locationName}<span className="hidden sm:inline"> · </span></span>
+                  <span className="block sm:inline">{invite.status === "expired" ? mt("arInviteExpired", { date: day(invite.expiresAt) }) : mt("arInvited", { date: day(invite.sentAt), email: invite.email })}</span>
+                </span>
+              </span>
+              <span className="flex shrink-0 gap-2">
+                {onWithdraw && <Button type="button" variant="ghost" size="sm" onClick={() => onWithdraw(invite)}>{mt("arWithdraw")}</Button>}
+                {onResend && <Button type="button" variant="outline" size="sm" onClick={() => onResend(invite)}>{mt("arResend")}</Button>}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {rows.length || (tab === "waiting" && shownInvites.length) ? rows.length > 0 && (
         <ul role="tabpanel" className="divide-y rounded-xl border bg-card">
           {rows.map((app) => {
             const unread = unreadCounts[app.id] || 0;

@@ -2078,6 +2078,28 @@ export const kitchenDocumentWaiverEvents = pgTable("kitchen_document_waiver_even
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+/** Kitchen "Add customer" (owner, Oct 24): an emailed invitation the customer accepts with that email. Migration 0110. */
+export const kitchenCustomerInvites = pgTable("kitchen_customer_invites", {
+  id: serial("id").primaryKey(),
+  locationId: integer("location_id").references(() => locations.id, { onDelete: "cascade" }).notNull(),
+  invitedBy: integer("invited_by").references(() => users.id, { onDelete: "set null" }),
+  email: text("email").notNull(),
+  fullName: text("full_name").notNull(),
+  phone: text("phone"),
+  businessName: text("business_name"),
+  requirementsChoice: text("requirements_choice").notNull(), // 'customer' | 'uploaded' | 'waived'
+  /** Documents the kitchen uploaded: key -> { url, expiry }. Copied to the application, approved, on accept. */
+  documents: jsonb("documents").notNull().default({}),
+  tokenHash: text("token_hash").notNull(),
+  status: text("status").notNull().default("sent"), // 'sent' | 'accepted' | 'withdrawn' | 'expired'
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  sentAt: timestamp("sent_at", { withTimezone: true }).defaultNow().notNull(),
+  acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+  acceptedBy: integer("accepted_by").references(() => users.id, { onDelete: "set null" }),
+  applicationId: integer("application_id").references(() => chefKitchenApplications.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 export const chefDocumentRenewals = pgTable("chef_document_renewals", {
   id: serial("id").primaryKey(),
   applicationId: integer("application_id").references(() => chefKitchenApplications.id, { onDelete: "cascade" }).notNull(),

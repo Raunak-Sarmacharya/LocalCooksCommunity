@@ -1803,5 +1803,6 @@
   "kitchenDocuments": "Exigences de réservation",
   "step2DocsInReview": "Vos exigences de réservation sont en cours d’examen.",
   "requestInReview": "Votre demande est en cours d’examen.",
-  "submitDocuments": "Envoyer les exigences de réservation"
+  "submitDocuments": "Envoyer les exigences de réservation",
+  "documentApprovedOnFile": "Approuvé et au dossier"
 }

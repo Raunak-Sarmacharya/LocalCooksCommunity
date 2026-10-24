@@ -462,7 +462,7 @@ export default function KitchenApplicationForm({
     }
     if (status === 'rejected') return "Needs a replacement";
     if (status !== 'approved') return "Review pending";
-    return "Already uploaded with your request";
+    return t("documentApprovedOnFile", { defaultValue: "Approved and on file" });
   };
 
 
@@ -2464,7 +2464,7 @@ export default function KitchenApplicationForm({
                                       hint={t("fileFormatMax10MB_doc", { defaultValue: "PDF, JPG, PNG, DOC (max 10MB)" })}
                                       existingHint={t("previouslyUploaded", { defaultValue: "Previously uploaded" })}
                                       existingUrl={!existingFile && typeof formField.value === "string" ? formField.value : null}
-                                      existingName={!existingFile && formField.value ? (typeof formField.value === "string" ? formField.value : t("documentAlreadyOnFile", { defaultValue: "Document already on file" })) : null}
+                                      existingName={!existingFile && formField.value ? field.label : null}
                                       chooseLabel={t("chooseFile", { defaultValue: "Choose file" })}
                                       changeLabel={t("changeFile", { defaultValue: "Change file" })}
                                       onChange={(e) => {
@@ -2637,7 +2637,7 @@ export default function KitchenApplicationForm({
                           id="step2-foodSafetyLicense"
                           accept=".pdf,.jpg,.jpeg,.png"
                           file={foodHandlerFile}
-                          existingName={existingFoodHandlerUrl ? t("foodSafetyLicense", { defaultValue: "Food Safety License" }) : null}
+                          existingName={existingFoodHandlerUrl ? t("foodSafetyLicense", { defaultValue: "Food safety certificate" }) : null}
                           existingNote={storedDocumentNote(application?.foodSafetyLicenseStatus, application?.foodSafetyLicenseExpiry)}
                           existingExpiry={application?.foodSafetyLicenseExpiry}
                           existingUrl={existingFoodHandlerUrl}
@@ -2945,7 +2945,7 @@ export default function KitchenApplicationForm({
                                           hint={t("fileFormatMax10MB_doc", { defaultValue: "PDF, JPG, PNG, DOC (max 10MB)" })}
                                           existingHint={t("documentAlreadyOnFile", { defaultValue: "Document already on file" })}
                                           existingUrl={!existingFile && typeof formField.value === "string" ? formField.value : null}
-                                          existingName={!existingFile && formField.value ? (typeof formField.value === "string" ? formField.value : t("documentAlreadyOnFile", { defaultValue: "Document already on file" })) : null}
+                                          existingName={!existingFile && formField.value ? field.label : null}
                                           chooseLabel={t("chooseFile", { defaultValue: "Choose file" })}
                                           changeLabel={t("changeFile", { defaultValue: "Change file" })}
                                           onChange={(e) => {

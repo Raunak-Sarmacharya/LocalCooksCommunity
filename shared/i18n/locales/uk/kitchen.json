@@ -1803,5 +1803,6 @@
   "kitchenDocuments": "Вимоги до бронювання",
   "step2DocsInReview": "Ваші вимоги до бронювання на перевірці.",
   "requestInReview": "Ваш запит на перевірці.",
-  "submitDocuments": "Надіслати вимоги до бронювання"
+  "submitDocuments": "Надіслати вимоги до бронювання",
+  "documentApprovedOnFile": "Схвалено й збережено"
 }

@@ -14,6 +14,7 @@ import { customerFilters, customerSorts, type CustomerFilter, type CustomerSort 
 import type { CustomerListRow } from './customer-types';
 import { customerHref, formatDay, formatVisit, nextActionLine, statusLabelKey, statusVariant } from './customer-format';
 import { useCustomerList, useCustomerUnread, type CustomerListParams } from './use-customers';
+import { AddCustomer } from './AddCustomer';
 
 const filterLabel: Record<CustomerFilter, string> = {
   all: 'cuFilterAll', needs_action: 'cuFilterNeedsAction', applied: 'cuStatusApplied', in_review: 'cuStatusInReview', approved: 'cuStatusApproved',
@@ -58,6 +59,20 @@ export function CustomersList({ locations, selectedLocationId }: { locations: Sc
   const defaultLocation = selectedLocationId ? String(selectedLocationId) : 'all';
   const initial = useMemo(() => readUrl(defaultLocation), [defaultLocation]);
   const [state, setState] = useState<CustomerListParams>({ location: initial.location, status: initial.status, sort: initial.sort, q: initial.q });
+  // "Add customer" (owner, Oct 24) is its own page inside Customers; ?add=1 keeps Back and refresh on it.
+  const [adding, setAdding] = useState(() => new URLSearchParams(window.location.search).get('add') === '1');
+  const [sentTo, setSentTo] = useState<string | null>(null);
+  const openAdd = (open: boolean) => {
+    const url = new URL(window.location.href);
+    if (open) url.searchParams.set('add', '1'); else url.searchParams.delete('add');
+    window.history.pushState({}, '', url);
+    setAdding(open);
+  };
+  useEffect(() => {
+    const sync = () => setAdding(new URLSearchParams(window.location.search).get('add') === '1');
+    window.addEventListener('popstate', sync);
+    return () => window.removeEventListener('popstate', sync);
+  }, []);
   // Until the manager picks a location here, the list follows the dashboard's own selection as it loads.
   const pickedLocation = useRef(new URLSearchParams(window.location.search).has('location'));
   useEffect(() => { if (!pickedLocation.current) setState(current => current.location === defaultLocation ? current : { ...current, location: defaultLocation }); }, [defaultLocation]);
@@ -90,13 +105,24 @@ export function CustomersList({ locations, selectedLocationId }: { locations: Sc
     setState(current => ({ ...current, ...patch }));
   };
   const showLocations = state.location === 'all' && locations.length > 1;
+  if (adding) return <AddCustomer locations={locations} defaultLocationId={scopeLocation?.id ?? selectedLocationId}
+    onDone={sent => { openAdd(false); setSentTo(sent); }} />;
 
   return (
     <div className="space-y-4">
-      <header className="space-y-1">
-        <h2 className="text-2xl font-semibold tracking-tight md:hidden">{mt('cuTitle')}</h2>
-        <p className="text-muted-foreground">{scopeLocation ? mt('cuIntro', { location: scopeLocation.name }) : mt('cuIntroAll')}</p>
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div className="min-w-0 space-y-1">
+          <h2 className="text-2xl font-semibold tracking-tight md:hidden">{mt('cuTitle')}</h2>
+          <p className="text-muted-foreground">{scopeLocation ? mt('cuIntro', { location: scopeLocation.name }) : mt('cuIntroAll')}</p>
+        </div>
+        <Button type="button" onClick={() => openAdd(true)}>{mt('acTitleShort')}</Button>
       </header>
+      {sentTo && (
+        <p role="status" className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+          <span>{mt('acSent', { email: sentTo })}</span>
+          <Link href="/manager/dashboard?view=applications" className="font-medium underline underline-offset-4">{mt('acSeeInvites')}</Link>
+        </p>
+      )}
 
       <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_auto]">
         <div className="space-y-1.5">

@@ -1803,5 +1803,7 @@
   "kitchenDocuments": "Booking requirements",
   "step2DocsInReview": "Your booking requirements are in review.",
   "requestInReview": "Your request to apply is in review.",
-  "submitDocuments": "Send booking requirements"
+  "submitDocuments": "Send booking requirements",
+  "documentApprovedOnFile": "Approved and on file",
+  "foodSafetyLicense": "Food safety certificate"
 }

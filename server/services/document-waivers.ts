@@ -71,22 +71,28 @@ async function tellCustomerWaiverEnded(app: typeof chefKitchenApplications.$infe
 async function notifyAdminsOfWaiver(app: typeof chefKitchenApplications.$inferSelect, actor: Actor) {
   const [location] = await db.select().from(locations).where(eq(locations.id, app.locationId)).limit(1);
   const [by] = await db.select({ username: users.username }).from(users).where(eq(users.id, actor.id)).limit(1);
-  const admins = await db.select({ id: users.id, username: users.username }).from(users)
-    .where(and(eq(users.role, 'admin'), isNotNull(users.username), ne(users.username, '')));
   const locationName = location?.name || 'a location';
   const subject = `${locationName} approved ${app.fullName} without documents`;
   const message = `${locationName} approved ${app.fullName} for booking without its required documents. The kitchen took responsibility for this; you can end the waiver from the application.`;
   const facts = [{ label: 'Customer', value: `${app.fullName} (${app.email})` }, { label: 'Location', value: locationName },
     { label: 'Approved by', value: by?.username || `user ${actor.id}` }, { label: 'Application', value: `APPLICATION-${app.id}` }];
   const path = `/admin?section=kitchen-applications-step1&application=${app.id}`;
+  await notifyAdmins({ subject, message, facts, path, trackingPrefix: `document_waiver_admin_${app.id}`,
+    metadata: { applicationId: app.id, locationId: app.locationId, workflow: 'kitchen', documentsWaived: true } });
+}
+
+/** Every admin in-app; by email only those with admin email turned on (owner, Oct 22). */
+export async function notifyAdmins(input: { subject: string; message: string; facts: { label: string; value: string }[]; path: string; trackingPrefix: string; metadata: Record<string, unknown> }) {
+  const admins = await db.select({ id: users.id, username: users.username }).from(users)
+    .where(and(eq(users.role, 'admin'), isNotNull(users.username), ne(users.username, '')));
   for (const admin of admins) {
-    await notificationService.createForManager({ managerId: admin.id, type: 'system_announcement', priority: 'normal', title: subject, message,
-      metadata: { applicationId: app.id, locationId: app.locationId, workflow: 'kitchen', documentsWaived: true }, actionUrl: path, actionLabel: 'View application' });
+    await notificationService.createForManager({ managerId: admin.id, type: 'system_announcement', priority: 'normal', title: input.subject, message: input.message,
+      metadata: input.metadata, actionUrl: input.path, actionLabel: 'View application' });
   }
   // Emails in parallel; each admin's own email setting decides whether theirs is sent.
   await Promise.allSettled(admins.map(admin => sendAdminNotificationEmail(
-    renderTransactionalEmail({ to: admin.username!, recipientName: 'Local Cooks', subject, message, facts, actionLabel: 'View application', actionUrl: `${getAppBaseUrl('admin')}${path}` }),
-    { trackingId: `document_waiver_admin_${admin.id}_${app.id}_${Date.now()}` })));
+    renderTransactionalEmail({ to: admin.username!, recipientName: 'Local Cooks', subject: input.subject, message: input.message, facts: input.facts, actionLabel: 'View application', actionUrl: `${getAppBaseUrl('admin')}${input.path}` }),
+    { trackingId: `${input.trackingPrefix}_${admin.id}_${Date.now()}` })));
 }
 
 export { notifyAdminsOfWaiver };

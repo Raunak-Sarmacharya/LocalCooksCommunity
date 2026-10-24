@@ -46,6 +46,8 @@ function isContactVerificationRecoveryRoute(req: Request): boolean {
     // A new account's request to cook is held here until its email is verified (owner, Oct 23); sending it still
     // goes through the request route, which requires a verified email.
     '/api/firebase/chef/kitchen-request-draft',
+    // Accepting a kitchen's invitation: the emailed link proves the inbox, so it verifies the email (owner, Oct 24).
+    '/api/firebase/chef/customer-invites/accept',
   ].some((allowed) => path === allowed.replace(/\/$/, '') || path.startsWith(allowed));
 }
 

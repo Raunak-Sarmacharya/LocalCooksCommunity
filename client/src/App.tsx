@@ -76,6 +76,7 @@ const ChefStorageRentalPage = lazy(() => import("@/pages/ChefStorageRentalPage")
 const ManagerInspectionPage = lazy(() => import("@/pages/ManagerInspectionPage"));
 const ManagerRequestReviewPage = lazy(() => import("@/pages/ManagerRequestReviewPage"));
 const ApplyToKitchen = lazy(() => import("@/pages/ApplyToKitchen"));
+const JoinKitchenPage = lazy(() => import("@/pages/JoinKitchenPage"));
 const RequestTourPage = lazy(() => import("@/pages/RequestTourPage"));
 
 const AdminManageLocations = lazy(() => import("@/pages/AdminManageLocations"));
@@ -308,6 +309,8 @@ function Router() {
         </SubdomainRoute>
 
         {/* Kitchen Application Routes */}
+        {/* A kitchen's "Add customer" invitation (owner, Oct 24); the token is in the fragment. */}
+        <SubdomainRoute path="/join" component={JoinKitchenPage} subdomain={subdomain} />
         <SubdomainRoute path="/apply-kitchen/:locationId" component={ApplyToKitchen} subdomain={subdomain} />
         {localePublicRoutes("/apply-kitchen/:locationId", ApplyToKitchen)}
         <SubdomainRoute path="/request-tour/:locationId" component={RequestTourPage} subdomain={subdomain} />

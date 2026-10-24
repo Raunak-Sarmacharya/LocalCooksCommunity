@@ -17,7 +17,8 @@ import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import UnifiedChatView from "@/components/chat/UnifiedChatView";
 import { getConversationForApplication, createConversation } from "@/services/chat-service";
 import { useLocation } from "wouter";
-import { AccessRequestsList } from "@/components/manager/applications/AccessRequestsList";
+import { AccessRequestsList, type CustomerInvite } from "@/components/manager/applications/AccessRequestsList";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { ApplicationDetailPanel } from "@/components/manager/applications/components/ApplicationDetailPanel";
 import { KitchenDocumentApprovalDialog, getKitchenDocumentApprovalPlan, type KitchenDocumentField } from "@/components/common/KitchenDocumentApprovalDialog";
 import { Application } from "@/components/manager/applications/types";
@@ -107,6 +108,32 @@ export function ManagerKitchenApplicationsContent({
     });
 
     const managerId = managerInfo?.id || null;
+
+    // Customers the kitchen added who haven't accepted yet (owner, Oct 24).
+    const invitesQuery = useQuery<CustomerInvite[]>({
+        queryKey: ['/api/manager/customer-invites'],
+        queryFn: async () => {
+            const { auth } = await import('@/lib/firebase');
+            const token = await auth.currentUser?.getIdToken();
+            const response = await fetch('/api/manager/customer-invites', { headers: token ? { Authorization: `Bearer ${token}` } : {}, credentials: 'include' });
+            return response.ok ? response.json() : [];
+        },
+    });
+    const invites = (invitesQuery.data || []).filter(invite => !selectedLocationId || invite.locationId === selectedLocationId);
+    const [withdrawing, setWithdrawing] = useState<CustomerInvite | null>(null);
+    const inviteAction = async (invite: CustomerInvite, action: 'resend' | 'withdraw') => {
+        try {
+            const { auth } = await import('@/lib/firebase');
+            const token = await auth.currentUser?.getIdToken();
+            const response = await fetch(`/api/manager/customer-invites/${invite.id}/${action}`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, credentials: 'include' });
+            const data = await response.json().catch(() => null);
+            if (!response.ok) throw new Error(data?.error || mt('error'));
+            toast({ title: action === 'resend' ? mt('arResent', { email: invite.email }) : mt('arWithdrawn') });
+            void invitesQuery.refetch();
+        } catch (error: any) {
+            toast({ title: mt('error'), description: error.message, variant: 'destructive' });
+        }
+    };
 
     // Fetch location requirements for selected application
     const { data: locationRequirements } = useQuery({
@@ -510,6 +537,9 @@ export function ManagerKitchenApplicationsContent({
             ) : (
                 <AccessRequestsList
                     applications={locationFilteredApplications}
+                    invites={invites}
+                    onResend={(invite) => void inviteAction(invite, 'resend')}
+                    onWithdraw={setWithdrawing}
                     unreadCounts={unreadCounts}
                     onOpen={openDetailSheet}
                     onOpenRequirements={() => {
@@ -519,6 +549,18 @@ export function ManagerKitchenApplicationsContent({
                     }}
                 />
             )}
+            <AlertDialog open={withdrawing !== null} onOpenChange={(open) => { if (!open) setWithdrawing(null); }}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>{mt('arWithdrawTitle', { name: withdrawing?.fullName ?? '' })}</AlertDialogTitle>
+                        <AlertDialogDescription>{mt('arWithdrawBody')}</AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>{mt('qbKeep')}</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => { if (withdrawing) void inviteAction(withdrawing, 'withdraw'); setWithdrawing(null); }}>{mt('arWithdraw')}</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
             <KitchenDocumentApprovalDialog
                 open={showApprovalDialog}
                 onOpenChange={setShowApprovalDialog}

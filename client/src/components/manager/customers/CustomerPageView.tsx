@@ -166,6 +166,10 @@ function Profile({ data }: { data: CustomerPageData }) {
         </div>
       </section>
       {messageNote && <p role="alert" className="-mt-2 mb-4 text-sm text-stone-600">{messageNote}</p>}
+      {/* Invite to book appears once they can book; until then say why (owner, Oct 24). */}
+      {!actions.canInvite && !actions.revokedNote && data.application?.status === 'approved' && data.application.tier < 3 && !data.application.documentsWaivedAt && (
+        <p className="-mt-2 mb-4 text-sm text-stone-600">{mt('cuInviteAfterRequirements')}</p>
+      )}
       {actions.revokedNote && (
         <p className="mb-4 rounded-lg bg-stone-100 px-3 py-2 text-sm">
           {mt('cuRevokedNote', { location: location.name })}{' '}
