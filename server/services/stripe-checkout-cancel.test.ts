@@ -19,7 +19,7 @@ let createPendingCheckoutSession: typeof import('./stripe-checkout-service').cre
 beforeAll(async () => {
   vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_cancel_check');
   ({ expireAbandonedCheckoutSession, createPendingCheckoutSession } = await import('./stripe-checkout-service'));
-});
+}, 30_000); // Cold import of the Stripe checkout service; slow under the full parallel server run.
 
 beforeEach(() => {
   stripeSessions.create.mockReset();

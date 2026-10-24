@@ -24,6 +24,7 @@ vi.mock('stripe', () => ({
 describe('kitchen invitation checkout metadata', () => {
   beforeAll(() => { process.env.STRIPE_SECRET_KEY = 'sk_test_fake'; });
 
+  // Cold-imports the Stripe checkout service; under the full parallel server run that alone can pass 5 s.
   it('records the fixed invitation contract and uses a provider idempotency key', async () => {
     vi.resetModules();
     const { createPendingCheckoutSession } = await import('./stripe-checkout-service');
@@ -55,5 +56,5 @@ describe('kitchen invitation checkout metadata', () => {
       invitation_offered_subtotal_cents: '10000',
     });
     expect(request.payment_intent_data.capture_method).toBe('manual');
-  });
+  }, 30_000);
 });

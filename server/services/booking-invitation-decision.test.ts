@@ -58,6 +58,7 @@ describe('atomic invitation capture completion', () => {
       metadata: { type: 'kitchen_booking', chef_id: '3', kitchen_id: '4', fee_model: 'separate-charge-commission-v1',
         total_price_cents: '2000', tax_cents: '300', tax_rate_percent: '15', platform_fee_cents: '140', addon_prices: '{"s":[],"e":[[8,1000]]}' } });
   });
+  // Cold-imports the Stripe checkout service; under the full parallel server run that alone can pass 5 s.
   it('rolls back invitation, booking and decision completion together and recovers the original capture', async () => {
     mocks.state.kitchen_bookings[0].invitationId = 'inv_one';
     mocks.state.kitchen_invitations = [{ id: 'inv_one', version: 1, status: 'accepted_pending_payment', managerId: 2, listCents: 3000, offeredCents: 2000 }];
@@ -80,5 +81,5 @@ describe('atomic invitation capture completion', () => {
     expect(mocks.capture).toHaveBeenCalledOnce();
     expect(expiry.lazy).not.toHaveBeenCalled();
     expect(mocks.state.kitchen_invitation_events).toHaveLength(1);
-  });
+  }, 30_000);
 });
