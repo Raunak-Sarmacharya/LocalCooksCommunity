@@ -33,6 +33,9 @@ describe("kitchen editor section summaries", () => {
     expect(sectionSummary("details", { review: review([], true), locale: "en-CA" }).mark).toBeNull();
     expect(sectionSummary("storage", { review: review([]), extras: { storage: { total: 2, listed: 1 }, equipment: { total: 0, listed: 0 } }, locale: "en-CA" }).line)
       .toBe('ksListedOfTotal {"listed":1,"total":2}');
+    // Switched on but not complete (e.g. no move-in instructions) is a draft, not listed.
+    expect(sectionSummary("storage", { review: review([]), extras: { storage: { total: 1, listed: 0 }, equipment: { total: 0, listed: 0 } }, locale: "en-CA" }).line)
+      .toBe('ksNotListedYet {"count":1}');
     expect(sectionSummary("tours", { review: review([], true), tours: { enabled: true, ready: true, scheduled: true }, locale: "en-CA" }).mark).toBe("live");
   });
 

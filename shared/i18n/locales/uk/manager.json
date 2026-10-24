@@ -5147,5 +5147,6 @@
   "ksOpenStorageRentals": "Відкрити оренду зберігання",
   "ksStorageRentalsNote": "Оренда, запити та заселення — на сторінці «Зберігання».",
   "ksNextStep": "Далі: {step}",
-  "bpTaxChangeIn": "Змінити в {page}"
+  "bpTaxChangeIn": "Змінити в {page}",
+  "ksNotListedYet": "{count, plural, one {# ще не опубліковано} other {# ще не опубліковано}}"
 }

@@ -1,4 +1,5 @@
 import { storageListingReadiness } from "@shared/storage-listing-readiness";
+import { storageInstructions } from "../services/storage-listing-readiness";
 import { bookingDaysCap, bookingWindowCap } from '../services/booking-policy-settings';
 import { readManagerRevenue, revenueQuery } from '../services/manager-revenue-service';
 import { bufferWritePatch, isBookingBufferMinutes, validBookingDays, validBookingWindowDays, validWeeklyChefHoursLimit } from '@shared/kitchen-booking-policies';
@@ -3170,9 +3171,9 @@ router.get("/locations/:locationId/kitchen-summaries", requireFirebaseAuthWithUs
       }).from(kitchenBookings).innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
         .where(and(eq(kitchens.locationId, locationId), inArray(kitchenBookings.status, ["pending", "confirmed"]), upcoming))
         .groupBy(kitchenBookings.kitchenId),
-      db.select({ kitchenId: storageListings.kitchenId, total: sql<number>`count(*)::int`, listed: sql<number>`count(*) FILTER (WHERE ${storageListings.isActive})::int` })
-        .from(storageListings).innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
-        .where(eq(kitchens.locationId, locationId)).groupBy(storageListings.kitchenId),
+      // Rows, not counts: "listed" is the same rule customers see (switched on, complete, approved, with move-in/out instructions).
+      db.select({ listing: storageListings }).from(storageListings).innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
+        .where(eq(kitchens.locationId, locationId)),
       db.select({ kitchenId: equipmentListings.kitchenId, total: sql<number>`count(*)::int`, listed: sql<number>`count(*) FILTER (WHERE ${equipmentListings.isActive})::int` })
         .from(equipmentListings).innerJoin(kitchens, eq(equipmentListings.kitchenId, kitchens.id))
         .where(and(eq(kitchens.locationId, locationId), sql`${equipmentListings.archivedAt} IS NULL`)).groupBy(equipmentListings.kitchenId),
@@ -3180,7 +3181,12 @@ router.get("/locations/:locationId/kitchen-summaries", requireFirebaseAuthWithUs
     const byKitchen = new Map<number, Record<string, unknown>>();
     const row = (id: number) => byKitchen.get(id) ?? byKitchen.set(id, { kitchenId: id, bookingsThisWeek: 0, pendingRequests: 0, nextBooking: null, storage: { total: 0, listed: 0 }, equipment: { total: 0, listed: 0 } }).get(id)!;
     for (const b of bookingRows) Object.assign(row(b.kitchenId), { bookingsThisWeek: b.weekCount, pendingRequests: b.requests, nextBooking: b.next });
-    for (const s of storageRows) row(s.kitchenId).storage = { total: s.total, listed: s.listed };
+    const instructions = await storageInstructions(locationId);
+    for (const { listing } of storageRows) {
+      const counts = row(listing.kitchenId).storage as { total: number; listed: number };
+      counts.total += 1;
+      if (storageListingReadiness(listing, instructions).visible) counts.listed += 1;
+    }
     for (const e of equipmentRows) row(e.kitchenId).equipment = { total: e.total, listed: e.listed };
     res.json({ timezone: tz, kitchens: Array.from(byKitchen.values()) });
   } catch (error) { return errorResponse(res, error); }

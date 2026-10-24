@@ -103,7 +103,8 @@ export function sectionSummary(section: KitchenSection, input: SectionInputs): S
     case "equipment": {
       const counts = input.extras?.[section];
       if (!counts?.total) return { line: mt(section === "storage" ? "ksStorageHint" : "ksEquipmentHint"), mark: null };
-      return { line: counts.listed === counts.total ? mt("ksListedCount", { count: counts.listed }) : mt("ksListedOfTotal", { listed: counts.listed, total: counts.total }), mark: null };
+      return { line: counts.listed === counts.total ? mt("ksListedCount", { count: counts.listed })
+        : counts.listed === 0 ? mt("ksNotListedYet", { count: counts.total }) : mt("ksListedOfTotal", { listed: counts.listed, total: counts.total }), mark: null };
     }
     case "tours": {
       const tours = input.tours;

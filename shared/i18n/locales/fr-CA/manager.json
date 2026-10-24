@@ -5147,5 +5147,6 @@
   "ksOpenStorageRentals": "Ouvrir les locations d'entreposage",
   "ksStorageRentalsNote": "Les locations, demandes et emménagements se gèrent dans la page Entreposage.",
   "ksNextStep": "Prochaine étape : {step}",
-  "bpTaxChangeIn": "Modifier dans {page}"
+  "bpTaxChangeIn": "Modifier dans {page}",
+  "ksNotListedYet": "{count, plural, one {# pas encore affiché} other {# pas encore affichés}}"
 }

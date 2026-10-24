@@ -5147,5 +5147,6 @@
   "ksOpenStorageRentals": "Open storage rentals",
   "ksStorageRentalsNote": "Rentals, requests and move-ins are handled on the Storage page.",
   "ksNextStep": "Next: {step}",
-  "bpTaxChangeIn": "Change in {page}"
+  "bpTaxChangeIn": "Change in {page}",
+  "ksNotListedYet": "{count, plural, one {# not listed yet} other {# not listed yet}}"
 }
