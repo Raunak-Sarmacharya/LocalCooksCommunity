@@ -1005,11 +1005,31 @@ router.get('/firebase/chef/kitchen-applications', requireFirebaseAuthWithUser, a
             managerNames.set(id, await getUserDisplayName(id, 'manager'));
         }));
 
+        // "My documents" (owner, Oct 23): what each location holds, and what it asks for.
+        const requirementsByLocation = new Map<number, any>();
+        await Promise.all(Array.from(new Set(applications.map(application => application.locationId))).map(async locationId => {
+            requirementsByLocation.set(locationId, await locationService.getLocationRequirementsWithDefaults(locationId));
+        }));
+        const renewals = await readDocumentRenewals(applications.map(application => application.id));
+        const { documentModes, documentFields, accessDocumentStage, accessDocumentDaysLeft: daysLeft } = await import('@shared/location-booking-eligibility');
+        const documentsFor = (application: any) => {
+            const modes = documentModes(requirementsByLocation.get(application.locationId) || {});
+            const timezone = application.location?.timezone || undefined;
+            return DOCUMENT_KEYS.flatMap(key => {
+                const { url, status, expiry } = documentFields(application, key);
+                if (!url && modes[key] === 'none') return [];
+                return [{ key, label: DOCUMENT_LABELS[key], mode: modes[key], waived: !!application.documentsWaivedAt && modes[key] === 'required',
+                    uploaded: !!url, status: status ?? null, expiry: expiry ?? null, daysLeft: daysLeft(expiry, timezone), stage: accessDocumentStage(expiry, timezone),
+                    renewalPending: renewals.some(renewal => renewal.applicationId === application.id && renewal.key === key && renewal.status === 'pending') }];
+            });
+        };
+
         res.json(applications.map((application) => ({
             ...application,
             managerName: application.location?.managerId
                 ? managerNames.get(application.location.managerId) ?? null
                 : null,
+            documents: documentsFor(application),
         })));
     } catch (error) {
         logger.error('Error getting chef kitchen applications:', error);

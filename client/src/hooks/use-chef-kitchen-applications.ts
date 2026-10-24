@@ -25,6 +25,8 @@ export interface KitchenApplicationWithLocation extends ChefKitchenApplication {
   /** The server's `locationListed` flag. `undefined` means it did not say — test `=== false`. */
   locationListed?: boolean;
   bookingEligibility?: { canBook: boolean; status: string; message: string; actionUrl?: string; renewals?: Array<{ key: string; status: string; expiry?: string | null; rejectionReason?: string | null }> };
+  /** Each document this location tracks or requires (or holds anyway), for "Your documents" (owner, Oct 23). */
+  documents?: import("@/components/chef/applications/MyDocuments").ApplicationDocument[];
 }
 
 interface KitchenAccessStatus {

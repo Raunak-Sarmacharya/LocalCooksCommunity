@@ -5,9 +5,12 @@ import { Button } from '@/components/ui/button';
 import { DateField } from '@/components/ui/date-field';
 import { Input } from '@/components/ui/input';
 
-export function RenewAccessDocuments({ applicationId, renewals = [], onRenewed }: { applicationId: number; renewals?: Array<{ key: string; status: string; expiry?: string | null; rejectionReason?: string | null }>; onRenewed: () => void }) {
+type DocKey = 'foodSafetyLicense' | 'foodEstablishmentCert' | 'insurance';
+export function RenewAccessDocuments({ applicationId, renewals = [], documents, onRenewed }: { applicationId: number; renewals?: Array<{ key: string; status: string; expiry?: string | null; rejectionReason?: string | null }>; documents?: Array<{ key: DocKey; mode: string; uploaded: boolean }>; onRenewed: () => void }) {
   const { t, i18n } = useTranslation('chef');
-  const documentName = (key: string) => key === 'foodEstablishmentCert' ? t('foodEstablishmentCertRenewal') : t('foodSafetyLicense');
+  const documentName = (key: string) => key === 'foodEstablishmentCert' ? t('foodEstablishmentCertRenewal') : key === 'insurance' ? t('mdInsurance', 'Insurance') : t('foodSafetyLicense');
+  // The documents this location uses (insurance included); the older two by default.
+  const fields: DocKey[] = documents?.length ? documents.filter(doc => doc.mode !== 'none' || doc.uploaded).map(doc => doc.key) : ['foodSafetyLicense', 'foodEstablishmentCert'];
   const dateOf = (expiry?: string | null) => expiry ? new Intl.DateTimeFormat(i18n.language, { dateStyle: 'long', timeZone: 'UTC' }).format(new Date(`${expiry}T00:00:00Z`)) : '';
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState('');
@@ -17,11 +20,11 @@ export function RenewAccessDocuments({ applicationId, renewals = [], onRenewed }
   return <form className="space-y-4 rounded-xl border bg-card p-5" onSubmit={async event => {
     event.preventDefault();
     const body = new FormData(event.currentTarget);
-    for (const field of ['foodSafetyLicenseFile', 'foodEstablishmentCertFile']) {
+    for (const field of ['foodSafetyLicenseFile', 'foodEstablishmentCertFile', 'insuranceFile']) {
       const file = body.get(field);
       if (file instanceof File && !file.size) body.delete(field);
     }
-    if (!body.has('foodSafetyLicenseFile') && !body.has('foodEstablishmentCertFile')) { setMessage(t('renewDocumentChooseFile')); return; }
+    if (!body.has('foodSafetyLicenseFile') && !body.has('foodEstablishmentCertFile') && !body.has('insuranceFile')) { setMessage(t('renewDocumentChooseFile')); return; }
     setPending(true); setMessage('');
     try {
       const token = await auth.currentUser?.getIdToken();
@@ -35,8 +38,8 @@ export function RenewAccessDocuments({ applicationId, renewals = [], onRenewed }
     {renewals.filter(renewal => renewal.status === 'pending' || (renewal.status === 'rejected' && renewal.rejectionReason)).map(renewal => <p key={renewal.key} role="status" className="rounded-lg border bg-muted/40 p-3 text-sm">{renewal.status === 'pending'
       ? t('renewalPendingNote', { document: documentName(renewal.key), date: dateOf(renewal.expiry) })
       : t('renewalRejectedNote', { document: documentName(renewal.key), reason: renewal.rejectionReason })}</p>)}
-    {(['foodSafetyLicense', 'foodEstablishmentCert'] as const).map(field => <fieldset key={field} disabled={pending} className="space-y-2">
-      <label htmlFor={`${field}File`} className="text-sm font-medium">{field === 'foodSafetyLicense' ? t('foodSafetyLicense') : t('foodEstablishmentCertRenewal')}</label>
+    {fields.map(field => <fieldset key={field} disabled={pending} className="space-y-2">
+      <label htmlFor={`${field}File`} className="text-sm font-medium">{documentName(field)}</label>
       <Input id={`${field}File`} name={`${field}File`} type="file" accept="application/pdf,image/jpeg,image/png" />
       <label htmlFor={`${field}Expiry`} className="text-sm">{t('renewDocumentExpiry')}</label>
       <DateField id={`${field}Expiry`} minToday={false} value={expiries[field] || ''}

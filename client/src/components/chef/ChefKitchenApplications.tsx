@@ -1,4 +1,5 @@
 import { RenewAccessDocuments } from "./applications/RenewAccessDocuments";
+import { MyDocuments, documentNeedsAction } from "./applications/MyDocuments";
 import { fromCalendarDate } from "@/lib/calendar-date";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -27,6 +28,8 @@ export default function ChefKitchenApplications({ onOpenChat }: { onOpenChat?: (
   const [query, setQuery] = useState("");
   const [group, setGroup] = useState("all");
   const renewLocation = Number(new URLSearchParams(search).get('renewLocation'));
+  // The renewal form opens from a Renew link, or by itself when something needs renewing.
+  const renewRequested = !!renewLocation || new URLSearchParams(search).get('renew') === '1';
   const selected = applications.find(app => app.id === applicationId || app.locationId === renewLocation);
   const definitions = useQuery<ApplicationFieldDefinitions>({
     queryKey: [`/api/public/locations/${selected?.locationId}/requirements`],
@@ -70,7 +73,7 @@ export default function ChefKitchenApplications({ onOpenChat }: { onOpenChat?: (
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="min-w-0 space-y-6">
           <section className="space-y-3 rounded-xl border border-primary/20 bg-primary/5 p-5"><h2 className="text-sm font-semibold">{t("applicationWhatNext", "What to do next")}</h2><p className="text-sm leading-6">{nextCopy}</p><div className="flex flex-wrap gap-2">{display.actionKind === "book" && <Button size="sm" onClick={book}>{t("apptabBookKitchen", "Book kitchen")}</Button>}{display.actionKind === "complete-step" && (display.bookingBlocked ? <Button size="sm" onClick={renew}>{t("renewDocumentsTitle", "Renew documents")}</Button> : <Button size="sm" asChild><Link href={`/apply-kitchen/${selected.locationId}`}>{t("continueKitchenApplication", "Continue application")}</Link></Button>)}{display.actionKind === "discover" && <Button variant="outline" size="sm" asChild><Link href={`/apply-kitchen/${selected.locationId}`}>{t("kdApplyAgain", "Apply again")}</Link></Button>}{selected.chat_conversation_id && onOpenChat && <Button variant="outline" size="sm" onClick={() => onOpenChat(selected)}><MessageCircle className="mr-1.5 size-4" />{t("openChat", "Open chat")}</Button>}</div></section>
-          {selected.status === "approved" && (selected.current_tier ?? 1) >= 3 && <div id="renew-access-documents" tabIndex={-1} className="scroll-mt-4 outline-none"><RenewAccessDocuments applicationId={selected.id} renewals={selected.bookingEligibility?.renewals} onRenewed={() => void refetch()} /></div>}
+          {selected.status === "approved" && (selected.current_tier ?? 1) >= 3 && (renewRequested || selected.documents?.some(documentNeedsAction) || selected.bookingEligibility?.canBook === false) && <div id="renew-access-documents" tabIndex={-1} className="scroll-mt-4 outline-none"><RenewAccessDocuments applicationId={selected.id} renewals={selected.bookingEligibility?.renewals} documents={selected.documents} onRenewed={() => void refetch()} /></div>}
           {definitions.isLoading ? <Skeleton className="h-96 rounded-xl" /> : definitions.error ? <div role="alert" className="space-y-3 rounded-xl border bg-card p-5"><p className="text-sm">{t("applicationFieldsFailed", "We couldn’t load your submitted answer labels.")}</p><Button variant="outline" size="sm" onClick={() => void definitions.refetch()}>{t("applicationRetry", "Try again")}</Button><KitchenApplicationDetails app={selected} display={display} onBookKitchen={book} compact showActions={false} /></div> : <KitchenApplicationDetails app={selected} display={display} onBookKitchen={book} compact requirements={definitions.data} showActions={false} />}
         </div>
         <aside className="space-y-4 lg:sticky lg:top-4">
@@ -86,5 +89,6 @@ export default function ChefKitchenApplications({ onOpenChat }: { onOpenChat?: (
     <Input aria-label={t("applicationSearch", "Search kitchen applications")} placeholder={t("applicationSearch", "Search kitchen applications")} value={query} onChange={event => setQuery(event.target.value)} className="sm:max-w-md" />
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">{[["all", t("applicationAll", "All applications")], ["action", t("applicationActionRequired", "Action required")], ["review", t("kdInReview", "In review")], ["approved", t("kdApproved", "Approved")]].map(([key, label]) => <button key={key} type="button" aria-pressed={group === key} onClick={() => setGroup(key)} className={`rounded-xl border p-3 text-left sm:p-4 ${group === key ? "border-primary bg-primary/[0.04]" : "bg-card hover:bg-muted/30"}`}><p className="text-xs text-muted-foreground">{label}</p><p className="mt-2 text-2xl font-semibold">{applications.filter(app => matchesGroup(app, key)).length}</p></button>)}</div>
     <DataTable columns={columns} data={filtered} defaultSorting={[{ id: "createdAt", desc: true }]} pageSize={15} onRowClick={app => open(app.id)} />
+    <MyDocuments applications={applications} />
   </div>;
 }
