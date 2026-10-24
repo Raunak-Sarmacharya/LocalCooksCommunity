@@ -31,7 +31,7 @@ export function useScrollCues<T extends HTMLElement>() {
 export function ScrollCues({ top, bottom }: { top: boolean; bottom: boolean }) {
   return <>
     {top && <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 z-20 h-6 bg-gradient-to-b from-background/90 to-transparent" />}
-    {bottom && <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex h-10 items-end justify-center bg-gradient-to-t from-background/90 to-transparent pb-1"><ChevronDown className="h-4 w-4 animate-bounce text-muted-foreground opacity-70" /></div>}
+    {bottom && <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex h-10 items-end justify-center bg-gradient-to-t from-background/90 to-transparent pb-1"><ChevronDown className="h-4 w-4 text-muted-foreground opacity-70" /></div>}
   </>;
 }
 
