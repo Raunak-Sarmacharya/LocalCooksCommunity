@@ -97,6 +97,23 @@ export function AdminKitchenApplicationsStep1Section({
   } = useAdminKitchenApplications();
 
   const { toast } = useToast();
+  const [endingWaiver, setEndingWaiver] = useState(false);
+  // Ends a kitchen's "approve without documents": the customer's new bookings pause until required documents are approved.
+  const endWaiver = async (application: Application) => {
+    setEndingWaiver(true);
+    try {
+      const { auth } = await import('@/lib/firebase');
+      const token = await auth.currentUser?.getIdToken();
+      const response = await fetch(`/api/firebase/admin/kitchen-applications/${application.id}/documents-waiver`, {
+        method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify({ waived: false }) });
+      if (!response.ok) throw new Error((await response.json().catch(() => null))?.error || 'Could not end the waiver');
+      toast({ title: 'Waiver ended', description: 'The customer now needs the kitchen’s required documents; they have been told what is needed.' });
+      setSelectedApplication({ ...application, documentsWaivedAt: null } as Application);
+      refetch();
+    } catch (error) {
+      toast({ title: 'Error', description: error instanceof Error ? error.message : undefined, variant: 'destructive' });
+    } finally { setEndingWaiver(false); }
+  };
   const [selectedApplication, setSelectedApplication] = useState<Application | null>(null);
   const [showReviewDialog, setShowReviewDialog] = useState(false);
   const [reviewFeedback, setReviewFeedback] = useState("");
@@ -596,6 +613,18 @@ export function AdminKitchenApplicationsStep1Section({
                 <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Phone</p><p className="mt-1 text-sm font-medium">{selectedApplication.phone || "On chef profile"}</p></div>
                 <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Kitchen type</p><p className="mt-1 text-sm font-medium capitalize">{selectedApplication.kitchenPreference}</p></div>
               </div>
+
+              {selectedApplication.documentsWaivedAt && (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3" data-testid="admin-waiver">
+                  <div className="min-w-0 text-sm">
+                    <p className="font-medium text-amber-900">Approved by the kitchen without documents</p>
+                    <p className="text-amber-900/80">On {fromCalendarDate(String(selectedApplication.documentsWaivedAt)).toLocaleDateString()}. The kitchen took responsibility for this customer’s documents.</p>
+                  </div>
+                  <Button size="sm" variant="outline" disabled={endingWaiver} onClick={() => void endWaiver(selectedApplication)}>
+                    {endingWaiver ? 'Ending…' : 'End waiver'}
+                  </Button>
+                </div>
+              )}
 
               <div className="rounded-lg border p-3">
                 <p className="text-xs text-muted-foreground">Food safety licence</p>
