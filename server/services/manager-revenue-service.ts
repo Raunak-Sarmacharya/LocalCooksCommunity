@@ -40,7 +40,11 @@ export async function readManagerRevenue(managerId: number, query: RevenueQuery)
     locations: Array.from(new Map(owned.map(k => [k.locationId, { id: k.locationId, name: k.locationName }])).values()) };
   const allowed = owned.filter(k => (!query.locationId || k.locationId === query.locationId) && (!query.kitchenId || k.id === query.kitchenId));
   if (!allowed.length) return buildManagerRevenue([], [], [], query, filters);
-  const rows = await db.select({ source: paymentTransactions, booking: kitchenBookings, rental: storageBookings,
+  // One Stripe payment is one ledger row. Before Oct 17 two webhooks could each record a holdover payment; count the first.
+  const seenIntents = new Set<string>();
+  const onePerIntent = <T extends { source: { paymentIntentId: string | null } }>(found: T[]) =>
+    found.filter(r => !r.source.paymentIntentId || (!seenIntents.has(r.source.paymentIntentId) && !!seenIntents.add(r.source.paymentIntentId)));
+  const rows = onePerIntent(await db.select({ source: paymentTransactions, booking: kitchenBookings, rental: storageBookings,
     equipmentBooking: equipmentBookings, term: storageRentalTerms, kitchen: kitchens, location: locations,
     chefName: chefDisplayName, claim: damageClaims,
     claimPaidAt: sql`(SELECT MAX(h.created_at) FROM damage_claim_history h WHERE h.damage_claim_id = ${damageClaims.id} AND h.action = 'kitchen_paid')`.mapWith(damageClaimHistory.createdAt),
@@ -61,7 +65,7 @@ export async function readManagerRevenue(managerId: number, query: RevenueQuery)
     .leftJoin(damageClaims, eq(damageClaims.paymentTransactionId, paymentTransactions.id))
     .where(and(eq(locations.managerId, managerId), inArray(kitchens.id, allowed.map(k => k.id)),
       inArray(paymentTransactions.status, ['succeeded', 'partially_refunded', 'refunded']),
-      sql`COALESCE(${paymentTransactions.metadata}->>'platformRecovery', 'false') <> 'true'`)).orderBy(asc(paymentTransactions.id));
+      sql`COALESCE(${paymentTransactions.metadata}->>'platformRecovery', 'false') <> 'true'`)).orderBy(asc(paymentTransactions.id)));
   const bookingIds = Array.from(new Set(rows.filter(r => r.booking).map(r => r.booking!.id)));
   const sourceIds = rows.map(r => r.source.id);
   const [visits, allocations, rawDays, liveDays, projected, transferHistory] = await Promise.all([

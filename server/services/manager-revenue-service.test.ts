@@ -38,6 +38,17 @@ describe('manager revenue read scope', () => {
     state.payments[0].claimPaidAt = new Date('2026-10-15T12:00:00Z');
     expect((await readManagerRevenue(10, query)).paid[0].paidAt).toBe('2026-10-15T12:00:00.000Z');
   });
+  it('counts one Stripe payment once even if it was recorded twice', async () => {
+    const row = (id: number) => ({ source: { id, bookingId: 7, bookingType: 'storage', status: 'succeeded', paymentIntentId: 'pi_same', transferId: 'tr_same',
+      amount: '518', baseAmount: '450', serviceFee: '0', taxAmount: '68', managerRevenue: '401', chefId: 2, metadata: { type: 'overstay_penalty', transfer: { transferredCents: 401 } },
+      paidAt: new Date('2026-10-17T02:41:00Z'), createdAt: new Date('2026-10-17T02:41:00Z') },
+      rental: { id: 7, referenceCode: 'SB-7' }, kitchen: { id: 3, name: 'East' }, location: { id: 4, name: 'Main', timezone: 'America/St_Johns' },
+      chefName: 'Jamie', equipmentCents: 0, storageCents: 0 });
+    state.payments = [row(173), row(174)];
+    const ledger = await readManagerRevenue(10, { startDate: '2026-10-01', endDate: '2026-10-31' });
+    expect(ledger.paid).toHaveLength(1);
+    expect(ledger.summary.paidOut).toBe(401);
+  });
   it('rejects invalid, reversed and oversized ranges and invalid IDs', () => {
     const base = { startDate: '2026-10-01', endDate: '2026-10-31' };
     for (const change of [{ startDate: '2026-02-30' }, { endDate: '2026-09-01' }, { startDate: '2020-01-01' }, { locationId: '-1' }, { kitchenId: 'no' }])
