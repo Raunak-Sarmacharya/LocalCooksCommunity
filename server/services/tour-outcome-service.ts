@@ -6,7 +6,7 @@ import { queueTourEvent, deliverTourEvents, attemptTourDelivery } from './tour-d
 import { tourRequestEscalationDue, tourRequestEscalationKey } from '@shared/tour-request-decision';
 import { workerAfter, workerRecord, workerPageEnd, inRecurringWorker } from './worker-context';
 import { queueTourReconfirmations, queueTourReconfirmation } from './tour-reconfirmation-service';
-import { tourFeedbackEventKey, tourFeedbackMissingDue, tourFeedbackOpen } from '@shared/tour-feedback';
+import { tourFeedbackEventKey, tourResultDue, tourFeedbackOpen, tourFeedbackReminderDue } from '@shared/tour-feedback';
 import { readTourFeedbackStatus } from './tour-feedback-service';
 import { scheduleTourTimer } from './deadline-timer';
 
@@ -43,17 +43,19 @@ export async function escalateTourRequest(id: number) {
   });
 }
 
-/** Asks both sides for private feedback once the confirmed tour has ended. Returns how many events it queued. */
-export async function requestTourFeedback(id: number) {
+/** Asks both sides for private feedback once the confirmed tour has ended, then reminds whoever hasn't answered on day 3. Returns how many events it queued. */
+export async function requestTourFeedback(id: number, kind: 'feedback_requested' | 'feedback_reminder' = 'feedback_requested') {
   return db.transaction(async tx => {
     const [current] = await tx.select().from(kitchenViewings).where(eq(kitchenViewings.id, id)).limit(1).for('update');
-    if (!current || !tourFeedbackOpen(current)) return 0;
-    if (!(await readTourFeedbackStatus(tx, current)).missing) return 0;
+    if (!current || !(kind === 'feedback_reminder' ? tourFeedbackReminderDue(current) : tourFeedbackOpen(current))) return 0;
+    const status = await readTourFeedbackStatus(tx, current);
+    if (!status.missing) return 0;
     const [requested] = await tx.select({ id: tourDeliveryEvents.id }).from(tourDeliveryEvents)
-      .where(eq(tourDeliveryEvents.eventKey, tourFeedbackEventKey(current, 'feedback_requested'))).limit(1);
+      .where(eq(tourDeliveryEvents.eventKey, tourFeedbackEventKey(current, kind))).limit(1);
     if (requested) return 0;
-    await queueTourEvent(tx, { kind: 'feedback_requested', before: current, after: current, actorRole: 'automated' });
-    await tx.update(kitchenViewings).set({ feedbackRequestedAt: new Date() }).where(eq(kitchenViewings.id, current.id));
+    await queueTourEvent(tx, { kind, before: current, after: current, actorRole: 'automated',
+      feedbackStatus: { chef: status.chef, manager: status.manager, conflict: status.conflict } });
+    if (kind === 'feedback_requested') await tx.update(kitchenViewings).set({ feedbackRequestedAt: new Date() }).where(eq(kitchenViewings.id, current.id));
     return 1;
   });
 }
@@ -62,7 +64,7 @@ export async function requestTourFeedback(id: number) {
 export async function closeUnrecordedTour(id: number, now = new Date()) {
   return db.transaction(async tx => {
     const [current] = await tx.select().from(kitchenViewings).where(eq(kitchenViewings.id, id)).limit(1).for('update');
-    if (!current || !tourFeedbackMissingDue(current, now)) return null;
+    if (!current || !tourResultDue(current, now)) return null;
     const answer = (await readTourFeedbackStatus(tx, current)).current.find(row => row.respondentRole === 'chef' && row.respondentId === current.chefId);
     const happened = answer?.happened === true;
     const status = happened ? 'completed' : 'cancelled';
@@ -98,7 +100,8 @@ export async function advanceTour(id: number, now = new Date()) {
   await step(start > t && tourRequestEscalationDue(tour, t), () => escalateTourRequest(id));
   await step(tour.status === 'confirmed' && start > t && start - 24 * 3_600_000 <= t, () => queueTourReconfirmation(id));
   await step(tourFeedbackOpen(tour, now), () => requestTourFeedback(id));
-  await step(tourFeedbackMissingDue(tour, now), () => closeUnrecordedTour(id, now));
+  await step(tourFeedbackReminderDue(tour, now), () => requestTourFeedback(id, 'feedback_reminder'));
+  await step(tourResultDue(tour, now), () => closeUnrecordedTour(id, now));
   const [fresh] = changed ? await db.select().from(kitchenViewings).where(eq(kitchenViewings.id, id)).limit(1) : [tour];
   scheduleTourTimer(fresh, t);
   if (changed) await attemptTourDelivery(id);
@@ -180,15 +183,18 @@ export async function remindUnrecordedTourOutcomes({ budgetMs = 20_000, maxTours
   const tours = await db.select({ viewing: kitchenViewings, managerId: locations.managerId,
     locationName: locations.name }).from(kitchenViewings)
     .innerJoin(locations, eq(kitchenViewings.locationId, locations.id))
-    .where(and(eq(kitchenViewings.status, 'confirmed'),
+    .where(and(inArray(kitchenViewings.status, ['confirmed', 'completed']),
       workerAfter('tourOutcome', kitchenViewings.id),
-      sql`${kitchenViewings.scheduledAt} + ${kitchenViewings.durationMinutes} * interval '1 minute' <= CURRENT_TIMESTAMP`)).orderBy(kitchenViewings.id).limit(maxTours);
+      sql`${kitchenViewings.scheduledAt} + ${kitchenViewings.durationMinutes} * interval '1 minute' <= CURRENT_TIMESTAMP`,
+      // Completed tours only matter while their 14-day feedback window is open.
+      or(eq(kitchenViewings.status, 'confirmed'), sql`${kitchenViewings.scheduledAt} > CURRENT_TIMESTAMP - interval '15 days'`))).orderBy(kitchenViewings.id).limit(maxTours);
   await workerPageEnd('tourOutcome', tours.length);
   for (const { viewing } of tours) {
     if (deadline - Date.now() < (inRecurringWorker() ? 1_000 : 5_000)) break;
     await workerRecord('tourOutcome', viewing.id);
     try {
-      const queued = await requestTourFeedback(viewing.id) + (await closeUnrecordedTour(viewing.id) ? 1 : 0);
+      const queued = await requestTourFeedback(viewing.id) + await requestTourFeedback(viewing.id, 'feedback_reminder')
+        + (await closeUnrecordedTour(viewing.id) ? 1 : 0);
       result.reminded += queued;
     } catch (error) {
       result.errors++;

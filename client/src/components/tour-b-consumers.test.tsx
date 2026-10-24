@@ -12,7 +12,8 @@ vi.mock('@/components/ui/data-table',()=>({DataTable:({data,onRowClick}:any)=><b
 vi.mock('@/components/chat/TourChatButton',()=>({TourChatButton:()=>null}));
 const clients:QueryClient[]=[];
 afterEach(()=>{cleanup();clients.forEach(client=>client.clear());clients.length=0;vi.unstubAllGlobals();window.history.replaceState({},'','/');});
-const tour={id:42,chefId:8,locationId:33,targetedKitchenId:40,status:'confirmed',confirmationVerified:true,scheduledAt:'2026-10-05T12:00:00.000Z',updatedAt:'2026-10-05T10:00:00.000Z',durationMinutes:30};
+// Ended a few hours ago: inside the 14-day feedback window (owner, Oct 24).
+const tour={id:42,chefId:8,locationId:33,targetedKitchenId:40,status:'confirmed',confirmationVerified:true,scheduledAt:new Date(Date.now()-3*3600000).toISOString(),updatedAt:'2026-10-05T10:00:00.000Z',durationMinutes:30};
 function mount(role:'chef'|'manager',future=false){
  const record={viewing:{...tour,...(future?{scheduledAt:'2099-10-05T12:00:00.000Z'}:{})},locationName:'Fixture kitchen'};
  const feedback={available:!future,scheduledAt:record.viewing.scheduledAt,appointmentRevision:1,response:null,chefSubmitted:false,managerSubmitted:false,conflict:false};
@@ -35,6 +36,7 @@ it.each(['chef','manager'] as const)('offers no feedback or attendance actions b
  mount(role,true);await screen.findByText('Fixture kitchen');expect(screen.queryByRole('region',{name:'tourFeedbackTitle'})).not.toBeInTheDocument();
 });
 it('stops the manager feedback task after own immutable submission',()=>{
- expect(tourNextAction(tour,Date.parse('2026-10-05T13:00:00Z'))).toBe('overviewTourFeedback');
- expect(tourNextAction({...tour,managerFeedbackSubmitted:true},Date.parse('2026-10-05T13:00:00Z'))).toBeNull();
+ const fixed={...tour,scheduledAt:'2026-10-05T12:00:00.000Z'};
+ expect(tourNextAction(fixed,Date.parse('2026-10-05T13:00:00Z'))).toBe('overviewTourFeedback');
+ expect(tourNextAction({...fixed,managerFeedbackSubmitted:true},Date.parse('2026-10-05T13:00:00Z'))).toBeNull();
 });

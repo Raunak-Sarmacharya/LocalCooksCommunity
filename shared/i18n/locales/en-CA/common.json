@@ -495,7 +495,7 @@
   "tourFunnelRecoveryDefinition": "Recovery is a later completed kitchen tour after recorded absence, disruption, expiry, decline or cancellation. Each affected journey counts once. Elapsed time identifies missing records only; it never proves that a visit happened or that someone was absent.",
   "tourFunnelBookingDefinition": "Booked means a current confirmed or completed chef booking in the attributed tour’s kitchen, created after the application’s recorded approval and normal booking eligibility. Approval times for individual bookings are not recorded, so bookings created earlier are excluded.",
   "tourFunnelAsOf": "As of",
-  "tourFeedbackTitle": "Tour Feedback",
+  "tourFeedbackTitle": "Tour feedback",
   "tourFeedbackPrivacy": "Only you and Local Cooks can see your feedback.",
   "tourFeedbackLoadError": "Unable to load tour feedback.",
   "tourFeedbackSaveError": "Unable to save feedback. Review the refreshed details and try again.",

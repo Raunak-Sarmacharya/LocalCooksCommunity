@@ -18,7 +18,7 @@ function mount(role:'chef'|'manager'|'admin'='chef', data:any=initial, writeOk=t
 }
 async function openForm() {
   fireEvent.click(await screen.findByRole('button', { name: 'Share feedback' }));
-  await screen.findByRole('dialog', { name: 'Tour Feedback' });
+  await screen.findByRole('dialog', { name: 'Tour feedback' });
 }
 afterEach(()=>{cleanup();clients.forEach(client=>client.clear());clients.length=0;vi.unstubAllGlobals();window.history.replaceState({},'','/');});
 describe('private post-tour feedback',()=>{
@@ -49,12 +49,12 @@ describe('private post-tour feedback',()=>{
   expect(screen.getByText(/current chef and manager responses disagree/)).toBeInTheDocument();expect(screen.queryByRole('radio')).not.toBeInTheDocument();
  });
  it('does not post anything from a feedback deep link and focuses the panel',async()=>{
-  window.history.replaceState({},'','/?feedback=1');const{fetcher}=mount();const dialog=await screen.findByRole('dialog',{name:'Tour Feedback'});
+  window.history.replaceState({},'','/?feedback=1');const{fetcher}=mount();const dialog=await screen.findByRole('dialog',{name:'Tour feedback'});
   await waitFor(()=>expect(dialog).toContainElement(document.activeElement as HTMLElement));expect(fetcher.mock.calls.every(([,options])=>!options?.method)).toBe(true);
  });
  it('does not focus a different tour in an admin list from a targeted feedback link',async()=>{
   window.history.replaceState({},'','/?viewing=99&feedback=1');mount('admin',{...initial,responses:[]});
-  const region=await screen.findByRole('region',{name:'Tour Feedback'});expect(document.activeElement).not.toBe(region);
+  const region=await screen.findByRole('region',{name:'Tour feedback'});expect(document.activeElement).not.toBe(region);
  });
  it('retains editable input and reports a failed save instead of inventing a submission',async()=>{
   const{fetcher}=mount('chef',initial,false);await openForm();fireEvent.click(screen.getByRole('radio',{name:'Yes'}));fireEvent.click(screen.getByRole('button',{name:'Submit feedback'}));

@@ -142,7 +142,7 @@ describe('tour time and downloadable calendar', () => {
   it('describes a cancelled confirmed tour without identifying who cancelled', () => {
     const email = generateTourRejectedChefEmail({ tourId: 42, durationMinutes: 30, chefEmail: base.email, chefName: 'Chef', kitchenName: base.kitchenName,
       tourDate: base.tourDate, startTime: 'ignored', cancelled: true });
-    expect(email.subject).toContain('Kitchen Tour Cancelled');
+    expect(email.subject).toContain('Kitchen tour cancelled');
     expect(email.html).toContain('confirmed kitchen tour');
     expect(email.html).toContain('confirmed kitchen tour was cancelled.');
     expect(email.text + email.html).not.toMatch(/cancelled by|\badmin\b/i);

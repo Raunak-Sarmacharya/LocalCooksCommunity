@@ -7,7 +7,7 @@ import { bookingLifecycleEvents } from '@shared/schema';
 import { scheduleDeadlineTimer } from './deadline-timer';
 import { createBookingDateTime, DEFAULT_TIMEZONE, friendlyTimezoneName } from '@shared/timezone-utils';
 import { makeVisitDuties, readVisitDuties } from '@shared/visit-duties';
-import { tourDateKey, formatTourDate, formatTourSlotRange } from '@shared/tour-time';
+import { formatTourClock, formatTourDate, formatTourSlotRange } from '@shared/tour-time';
 import { getAppBaseUrl } from '../config';
 import { sendEmail, renderTransactionalEmail, emailLocalDateTime, emailZoneName, arrivalModeLine, type ArrivalMode } from '../email';
 import { operationalEmailAllowedForUser } from './admin-email-preferences';
@@ -48,6 +48,7 @@ export type Reminder = {
   locationName?: string;
   address?: string;
   contactEmail?: string;
+  contactPhone?: string;
   referenceCode?: string;
   checkinOpensAt?: string;
   meetingNotes?: string;
@@ -301,11 +302,8 @@ export async function currentReminders(tx: Transaction, source: ReminderSource, 
   const timezone = DEFAULT_TIMEZONE;
   const start = new Date(row.tour.scheduledAt), end = new Date(start.getTime() + row.tour.durationMinutes * 60000);
   if (row.tour.status !== 'confirmed' || row.tour.disruptionReason || row.tour.requestExpiredAt || now >= start) return [];
-  const prepMinute = timing.tourPreparationMinuteOfDay;
-  const prep = createBookingDateTime(tourDateKey(start), `${String(Math.floor(prepMinute / 60)).padStart(2, '0')}:${String(prepMinute % 60).padStart(2, '0')}`, timezone).getTime();
+  // Same rhythm as bookings (owner, Oct 24): "Still coming?" with the details 24h before, then this short reminder 2h before, both sides.
   const arrivalDue = start.getTime() - timing.tourArrivalReminderMinutes * 60000;
-  // Early tours still get preparation before they start, using the existing reminder lead.
-  const preparationDue = prep < start.getTime() ? prep : arrivalDue;
   const chef = people.find(person => person.id === row.tour.chefId && person.role === 'chef');
   const manager = people.find(person => person.id === hostId && person.role === 'manager');
   const [visitorName, managerName] = await Promise.all([
@@ -316,23 +314,22 @@ export async function currentReminders(tx: Transaction, source: ReminderSource, 
     .where(eq(kitchens.id, row.tour.targetedKitchenId)).limit(1) : [];
   const [tourSettings] = row.tour.targetedKitchenId ? await tx.select().from(kitchenViewingSettings)
     .where(eq(kitchenViewingSettings.kitchenId, row.tour.targetedKitchenId)).limit(1) : [];
-  // Preparation is the chef's final routine email; managers retain their arrival reminder.
   return [chef, manager].filter((person): person is typeof users.$inferSelect => !!person).flatMap(person => {
     const role = person.id === row.tour.chefId ? 'chef' as const : 'manager' as const;
-    const kinds: Reminder['kind'][] = [
-      ...(role === 'chef' && timing.tourPreparationEnabled ? ['preparation' as const] : []),
-      ...(role === 'manager' && timing.tourArrivalEnabled ? ['arrival' as const] : []),
-    ];
+    const kinds: Reminder['kind'][] = timing.tourArrivalEnabled ? ['arrival'] : [];
     return kinds.map(kind => {
-      const due = kind === 'preparation' ? preparationDue : arrivalDue;
+      const due = arrivalDue;
       const contact = role === 'chef' ? manager?.username : chef?.username;
-      const message = role === 'manager' ? `${visitorName} is visiting for a confirmed kitchen tour. Open the tour details to coordinate their arrival.`
-        : 'Your kitchen tour is confirmed. Review the details below before your visit.';
+      const at = formatTourClock(start);
+      const message = role === 'manager' ? `${visitorName} is touring your kitchen at ${at}. Their arrival instructions are below.`
+        : `Your kitchen tour starts at ${at}. Here’s how to get in.`;
       return { source, reservationId: id, resource: `location-${row.location.id}`, kind, recipientId: person.id, role,
         email: person.username || '', timezone, start: start.toISOString(), end: end.toISOString(), due: new Date(due).toISOString(),
         recipientName: role === 'chef' ? visitorName : managerName, visitorName, managerName,
         kitchenName: kitchen?.name || row.location.name, locationName: row.location.name, address: row.location.address || 'See tour details',
         contactEmail: contact || undefined,
+        // Verified account phone only (one phone per account).
+        contactPhone: (role === 'chef' ? manager : chef)?.phoneVerifiedAt ? (role === 'chef' ? manager : chef)?.phoneNumber || undefined : undefined,
         meetingNotes: row.tour.sharedManagerNotes || undefined,
         ...(role === 'chef' && tourSettings?.arrivalNotes ? { arrivalNotes: tourSettings.arrivalNotes } : {}),
         ...(role === 'chef' && tourSettings?.departureNotes ? { departureNotes: tourSettings.departureNotes } : {}),
@@ -402,7 +399,7 @@ export async function scheduleAdvanceReminders(tx: Transaction, source: Reminder
       continue;
     }
     const [created] = await tx.insert(emailLogs).values({ recipientEmail: reminder.email, recipientUserId: reminder.recipientId,
-      recipientRole: reminder.role, subject: reminder.kind === 'manager_decision' || reminder.kind === 'deadline' ? reminder.title : reminder.source === 'booking' ? bookingReminderSubject(reminder) : `${reminder.title}: ${reminder.kind}`, category, status: 'scheduled',
+      recipientRole: reminder.role, subject: reminder.kind === 'manager_decision' || reminder.kind === 'deadline' ? reminder.title : reminder.source === 'booking' ? bookingReminderSubject(reminder) : reminder.source === 'tour' ? reminder.role === 'chef' ? 'Your kitchen tour is coming up' : `${reminder.visitorName || 'Your visitor'} is due soon` : `${reminder.title}: ${reminder.kind}`, category, status: 'scheduled',
       trackingId: key, textBody: JSON.stringify({ reminder, channel }), previewText: reminder.message }).returning({ id: emailLogs.id });
     armed.push({ id: created.id, due: reminder.due });
   }
@@ -412,7 +409,8 @@ export async function scheduleAdvanceReminders(tx: Transaction, source: Reminder
 
 export function reminderEligibility(r: Reminder, now: Date, policy?: ReminderPolicy) {
   if (r.source === 'booking' && r.kind === 'departure') return 'consolidated';
-  if (r.source === 'tour' && (['departure', 'checkin_open'].includes(r.kind) || r.role === 'chef' && r.kind === 'arrival')) return 'obsolete';
+  // Tours: one 2-hour reminder for both sides (owner, Oct 24); the old preparation, departure and check-in notices never send.
+  if (r.source === 'tour' && ['departure', 'checkin_open', 'preparation'].includes(r.kind)) return 'obsolete';
   if (r.source === 'tour' ? !policy?.tourEnabled : !policy?.approval) return 'policy_pending';
   if (r.source !== 'tour' && r.shortVisit && r.kind === 'departure' && !policy?.shortVisit) return 'policy_pending';
   if (r.source !== 'tour' && r.shortVisit && r.kind === 'departure' && policy?.shortVisit === 'arrival_guidance') return 'consolidated';
@@ -500,16 +498,17 @@ export function renderTourReminder(r: Reminder, url = `${getAppBaseUrl(r.role ==
       ...(r.locationName ? [{ label: 'Location', value: r.locationName }] : []),
       { label: 'Date', value: formatTourDate(new Date(r.start)) },
       { label: 'Time', value: formatTourSlotRange(r.start, (Date.parse(r.end) - Date.parse(r.start)) / 60000, true) },
-      { label: isManager ? 'Visiting chef' : 'Kitchen manager', value: (isManager ? r.visitorName : r.managerName) || 'See tour details' },
+      { label: isManager ? 'Customer' : 'Kitchen manager', value: (isManager ? r.visitorName : r.managerName) || 'See tour details' },
       { label: 'Reference', value: `TOUR-${r.reservationId}` }] },
       { title: isManager ? 'Coordinate the visit' : 'Arrival and departure', facts: [
       ...(r.address ? [{ label: 'Address', value: r.address, url: 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(r.address) }] : []),
       ...(r.contactEmail ? [{ label: isManager ? 'Customer contact' : 'Arrival contact', value: r.contactEmail }] : []),
+      ...(r.contactPhone ? [{ label: 'Phone', value: r.contactPhone, url: `tel:${r.contactPhone}` }] : []),
       ...(r.meetingNotes ? [{ label: 'Manager notes', value: r.meetingNotes }] : []),
       ...(r.arrivalNotes ? [{ label: 'Arrival instructions', value: r.arrivalNotes }] : []),
       ...(r.departureNotes ? [{ label: 'Departure instructions', value: r.departureNotes }] : [])] }],
     actionLabel: 'View tour', actionUrl: url,
-    secondaryButton: { label: isManager ? 'Message chef' : 'Message manager', url: url + '&action=message' } });
+    secondaryButton: { label: isManager ? 'Message customer' : 'Message manager', url: url + '&action=message' } });
 }
 
 /** Reminders due before the next tick get an exact timer (rows made before timers existed, or more than 6 days ahead).
@@ -618,7 +617,7 @@ export async function dispatchAdvanceReminders(options: { now?: Date; policy?: R
       if (!sent) try {
         if (channel === 'notification') {
           await notificationService.create({ userId: r.recipientId, target: r.role, type: 'system_announcement',
-            title: r.kind === 'manager_decision' ? r.title : intent.subject, message: r.message, actionUrl: r.path, actionLabel: r.kind === 'manager_decision' ? 'Review request' : r.kind === 'manager_no_checkin' ? tEmail(r.locale, 'managerMessageChefAction', { chef: r.visitorName || tEmail(r.locale, 'payoutChefFallback') }) : 'View current reservation',
+            title: r.kind === 'manager_decision' ? r.title : intent.subject, message: r.message, actionUrl: r.path, actionLabel: r.kind === 'manager_decision' ? 'Review request' : r.kind === 'manager_no_checkin' ? tEmail(r.locale, 'managerMessageChefAction', { chef: r.visitorName || tEmail(r.locale, 'payoutChefFallback') }) : r.source === 'tour' ? 'View tour' : 'View current reservation',
             metadata: { reminderKey: intent.trackingId, reservationId: r.reservationId } }, tx);
           sent = true;
         } else sent = !!r.email && await sendEmail(r.source === 'tour' ? renderTourReminder(r, url, deliveryNow.getTime()) : r.source === 'booking' ? renderBookingVisitReminder(r, url) : renderTransactionalEmail({ to: r.email, locale: r.locale, subject: r.kind === 'manager_decision' ? r.title : intent.subject, recipientName: r.recipientName || 'there', message: r.message, facts: [{ label: tEmail(r.locale, 'bookingReference'), value: `${r.source === 'storage_arrival' ? 'Storage' : 'KB'}-${r.reservationId}` }, { label: 'Respond by', value: emailLocalDateTime(r.kind === 'manager_decision' ? r.end : r.due, r.timezone, r.locale || 'en-CA') }], actionLabel: r.kind === 'manager_decision' ? 'Review request' : tEmail(r.locale, r.source === 'storage_arrival' ? 'bookingViewStorage' : 'bookingOpen'), actionUrl: url }),

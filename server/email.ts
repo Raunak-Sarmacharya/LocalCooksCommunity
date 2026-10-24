@@ -3858,7 +3858,7 @@ const kitchenApplicationFacts = (data: KitchenApplicationEmailDetails, includeCh
   ...(data.applicationId ? [{ label: 'Reference', value: 'APPLICATION-' + data.applicationId }] : []),
 ];
 const kitchenApplicationMessageLink = (data: KitchenApplicationEmailDetails, role: 'chef' | 'kitchen') => data.conversationId
-  ? { label: role === 'chef' ? 'Message kitchen manager' : 'Message chef', url: getSubdomainUrl(role) + (role === 'chef' ? '/dashboard' : '/manager/dashboard') + '?view=messages&conversation=' + encodeURIComponent(data.conversationId) + '&action=message' }
+  ? { label: role === 'chef' ? 'Message kitchen manager' : 'Message customer', url: getSubdomainUrl(role) + (role === 'chef' ? '/dashboard' : '/manager/dashboard') + '?view=messages&conversation=' + encodeURIComponent(data.conversationId) + '&action=message' }
   : undefined;
 
 export const generateKitchenApplicationAdminEmail = (data: KitchenApplicationEmailDetails & { recipientEmail: string; documentsSubmitted?: boolean; submittedAt?: Date }): EmailContent =>
@@ -3883,7 +3883,7 @@ export const generateKitchenApplicationClearedManagerEmail = (data: Omit<Kitchen
   if (data.touredAt) return renderTransactionalEmail({ to: data.managerEmail, recipientName: data.managerName || 'Kitchen manager',
     subject: 'Access request — ' + data.chefName + kitchenApplicationReference(details),
     heading: data.chefName + ' wants to book ' + data.locationName,
-    message: data.chefName + ', who toured ' + data.locationName + ' on ' + new Date(data.touredAt).toLocaleDateString('en-CA', { month: 'long', day: 'numeric' }) + ', sent an access request. They can now send your booking requirements. Keep talking in the same chat you used for the tour.',
+    message: data.chefName + ', who toured ' + data.locationName + ' on ' + formatTourDate(new Date(data.touredAt)) + ', sent an access request. They can now send your booking requirements. Keep talking in the same chat you used for the tour.',
     facts: kitchenApplicationFacts(details, 'kitchen'), actionLabel: viewApplication.label, actionUrl: viewApplication.url,
     secondaryLink: messageChef ? { label: 'Open your chat', url: messageChef.url } : undefined, note: LOCAL_COOKS_COMMUNICATION_NOTE });
   return renderTransactionalEmail({ to: data.managerEmail, recipientName: data.managerName || 'Kitchen manager',
@@ -4356,7 +4356,7 @@ function tourRequestFacts(data: TourRequestEmailDetails) {
 
 export const generateTourRequestedChefEmail = (data: TourRequestEmailDetails & { chefEmail: string; chefName: string }): EmailContent =>
   renderTransactionalEmail({ to: data.chefEmail, recipientName: data.chefName, tour: data,
-    subject: 'Tour request received — ' + data.kitchenName,
+    subject: 'Tour request received · ' + data.kitchenName,
     heading: 'Your kitchen tour request is sent',
     message: 'We’ve received your request to tour ' + data.kitchenName + '. Your requested time is not yet confirmed. We’ll email you when it’s confirmed or declined. Please wait for confirmation before visiting.',
     facts: tourRequestFacts(data), actionLabel: 'View details',
@@ -4368,18 +4368,18 @@ export const generateTourRequestedChefEmail = (data: TourRequestEmailDetails & {
 
 export const generateTourRequestedLocalCooksEmail = (data: TourRequestEmailDetails & { recipientEmail: string; chefName: string }): EmailContent =>
   renderTransactionalEmail({ to: data.recipientEmail, recipientName: 'Local Cooks', tour: data,
-    subject: 'Tour request awaiting review — ' + data.kitchenName,
+    subject: 'Tour request awaiting review · ' + data.kitchenName,
     message: data.chefName + ' requested a kitchen tour. Review the request to forward it to the current kitchen manager or decline it. Forwarding does not confirm the appointment.',
     facts: [{ label: 'Visitor', value: data.chefName }, ...tourRequestFacts(data)], actionLabel: 'Review tour request',
     actionUrl: getSubdomainUrl('admin') + '/admin?section=tour-requests&viewing=' + data.tourId });
 
-export const generateTourManagerChangeEmail = (data: { tourId: number; durationMinutes: number; managerEmail: string; managerName?: string; chefName: string; kitchenName: string; locationName?: string; address?: string; kind: 'cancelled' | 'reschedule_requested'; scheduledAt: Date; requestedAt?: Date; timezone: string }): EmailContent => {
+export const generateTourManagerChangeEmail = (data: { tourId: number; durationMinutes: number; managerEmail: string; managerName?: string; chefName: string; kitchenName: string; locationName?: string; address?: string; kind: 'cancelled' | 'reschedule_requested'; scheduledAt: Date; requestedAt?: Date; timezone: string; withdrawn?: boolean }): EmailContent => {
   const when = (date: Date) => `${formatTourDate(date)}, ${formatTourSlotRange(date, data.durationMinutes, true)}`;
   const cancelled = data.kind === 'cancelled';
   return renderTransactionalEmail({ to: data.managerEmail, recipientName: data.managerName || 'Manager',
     tour: { tourId: data.tourId, tourDate: data.scheduledAt, durationMinutes: data.durationMinutes },
-    subject: `${cancelled ? 'Kitchen tour cancelled' : 'Kitchen tour reschedule requested'} · TOUR-${data.tourId}`,
-    message: cancelled ? `${data.chefName}’s tour of ${data.kitchenName} was cancelled.` : `${data.chefName} would like a new time for their tour of ${data.kitchenName}. Review the proposed time below. The original time remains confirmed until the change is accepted.`,
+    subject: `${data.withdrawn ? 'Tour request withdrawn' : cancelled ? 'Kitchen tour cancelled' : 'Kitchen tour reschedule requested'} · TOUR-${data.tourId}`,
+    message: data.withdrawn ? `${data.chefName} withdrew their tour request for ${data.kitchenName}. Nothing was confirmed, so no action is needed.` : cancelled ? `${data.chefName}’s tour of ${data.kitchenName} was cancelled.` : `${data.chefName} would like a new time for their tour of ${data.kitchenName}. Review the proposed time below. The original time remains confirmed until the change is accepted.`,
     facts: [{ label: 'Kitchen', value: data.kitchenName },
       ...(data.locationName ? [{ label: 'Location', value: data.locationName }] : []),
       ...(data.address ? [{ label: 'Address', value: data.address, url: 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(data.address) }] : []),
@@ -4388,25 +4388,25 @@ export const generateTourManagerChangeEmail = (data: { tourId: number; durationM
       { label: 'Reference', value: `TOUR-${data.tourId}` }],
     actionLabel: cancelled ? 'View cancelled tour' : 'Review reschedule request',
     actionUrl: `${getSubdomainUrl('kitchen')}/manager/dashboard?view=viewings&viewing=${data.tourId}${cancelled ? '' : '&action=review-reschedule'}`,
-    ...(!cancelled ? { secondaryButton: { label: 'Message chef', url: `${getSubdomainUrl('kitchen')}/manager/dashboard?view=viewings&viewing=${data.tourId}&action=message` } } : {}),
-    note: cancelled ? 'Saved calendar events do not update automatically; remove the cancelled tour from your calendar.' : undefined,
+    ...(!cancelled ? { secondaryButton: { label: 'Message customer', url: `${getSubdomainUrl('kitchen')}/manager/dashboard?view=viewings&viewing=${data.tourId}&action=message` } } : {}),
+    note: cancelled && !data.withdrawn ? 'Saved calendar events do not update automatically; remove the cancelled tour from your calendar.' : undefined,
   });
 };
 
 export const generateTourRequestedManagerEmail = (data: TourRequestEmailDetails & { managerEmail: string; managerName: string; chefName: string; chefNotes?: string }): EmailContent =>
   renderTransactionalEmail({ to: data.managerEmail, recipientName: data.managerName, tour: data,
-    subject: 'Tour request from ' + data.chefName + ' — ' + data.kitchenName,
+    subject: 'Tour request from ' + data.chefName + ' · ' + data.kitchenName,
     heading: data.chefName + ' would like to tour your kitchen',
     message: data.chefName + ' requested a tour of ' + data.kitchenName + '. Confirm the requested time, offer alternatives, or decline the request.',
     facts: [{ label: 'Visitor', value: data.chefName }, ...tourRequestFacts(data),
       ...(data.chefNotes ? [{ label: 'Visitor notes', value: data.chefNotes }] : [])],
     actionLabel: 'Confirm tour', actionUrl: getSubdomainUrl('kitchen') + '/manager/dashboard?view=viewings&viewing=' + data.tourId + '&action=confirm',
     secondaryButton: { label: 'Offer alternative times', url: getSubdomainUrl('kitchen') + '/manager/dashboard?view=viewings&viewing=' + data.tourId + '&action=reschedule' },
-    actions: [{ label: 'Message chef', url: getSubdomainUrl('kitchen') + '/manager/dashboard?view=viewings&viewing=' + data.tourId + '&action=message' },
+    actions: [{ label: 'Message customer', url: getSubdomainUrl('kitchen') + '/manager/dashboard?view=viewings&viewing=' + data.tourId + '&action=message' },
       { label: 'Decline request', url: getSubdomainUrl('kitchen') + '/manager/dashboard?view=viewings&viewing=' + data.tourId + '&action=cancel' }] });
 
 function tourCalendarDescription(data: { kitchenName: string; notes?: string; arrivalNotes?: string | null; departureNotes?: string | null; sharedManagerNotes?: string | null }) {
-  return [`Kitchen Tour at ${data.kitchenName}.`, data.arrivalNotes?.trim() ? `Arrival instructions: ${data.arrivalNotes.trim()}` : '', data.departureNotes?.trim() ? `Departure instructions: ${data.departureNotes.trim()}` : '', data.sharedManagerNotes?.trim() ? `Manager notes: ${data.sharedManagerNotes.trim()}` : '', data.notes?.trim() ? `Notes: ${data.notes.trim()}` : ''].filter(Boolean).join('\n\n');
+  return [`Kitchen tour at ${data.kitchenName}.`, data.arrivalNotes?.trim() ? `Arrival instructions: ${data.arrivalNotes.trim()}` : '', data.departureNotes?.trim() ? `Departure instructions: ${data.departureNotes.trim()}` : '', data.sharedManagerNotes?.trim() ? `Manager notes: ${data.sharedManagerNotes.trim()}` : '', data.notes?.trim() ? `Notes: ${data.notes.trim()}` : ''].filter(Boolean).join('\n\n');
 }
 
 export function generateTourCalendarAttachment(data: {
@@ -4421,13 +4421,13 @@ export function generateTourCalendarAttachment(data: {
     throw new Error('Invalid tour calendar details');
   }
   return { filename: 'kitchen-tour.ics', contentType: `text/calendar; charset=utf-8; method=${data.cancelled ? 'CANCEL' : 'PUBLISH'}`,
-    content: generateIcsFile(`Kitchen Tour at ${data.kitchenName}`, start, end, data.locationAddress,
+    content: generateIcsFile(`Kitchen tour at ${data.kitchenName}`, start, end, data.locationAddress,
       tourCalendarDescription(data),
       data.organizerEmail, data.attendeeEmails, `tour-${data.tourId}@localcooks.com`,
       { sequence: data.calendarSequence ?? 0, modifiedAt: data.updatedAt, cancelled: data.cancelled }) };
 }
 
-export const generateTourConfirmedEmail = (data: { tourId: number; durationMinutes: number; isManager: boolean; email: string; recipientName: string; otherPartyName: string; kitchenName: string; locationAddress: string; tourDate: string | Date; timezone?: string; notes?: string; arrivalNotes?: string | null; departureNotes?: string | null; sharedManagerNotes?: string | null; confirmedAt?: Date | null; organizerEmail?: string; attendeeEmails?: string[]; contactEmail?: string; calendarSequence?: number; updatedAt?: Date; previousTourDate?: Date; canReschedule?: boolean; canCancel?: boolean }): EmailContent => {
+export const generateTourConfirmedEmail = (data: { tourId: number; durationMinutes: number; isManager: boolean; email: string; recipientName: string; otherPartyName: string; kitchenName: string; locationAddress: string; tourDate: string | Date; timezone?: string; notes?: string; arrivalNotes?: string | null; departureNotes?: string | null; sharedManagerNotes?: string | null; confirmedAt?: Date | null; organizerEmail?: string; attendeeEmails?: string[]; contactEmail?: string; contactPhone?: string | null; calendarSequence?: number; updatedAt?: Date; previousTourDate?: Date; canReschedule?: boolean; canCancel?: boolean }): EmailContent => {
   const startDateTimeObj = new Date(data.tourDate);
   const endDateTimeObj = new Date(startDateTimeObj.getTime() + data.durationMinutes * 60_000);
   if (!Number.isSafeInteger(data.tourId) || data.tourId <= 0 || !Number.isFinite(startDateTimeObj.getTime())
@@ -4436,7 +4436,7 @@ export const generateTourConfirmedEmail = (data: { tourId: number; durationMinut
   }
   const dateStr = formatTourDate(startDateTimeObj);
   const startTime = formatTourSlotRange(startDateTimeObj, data.durationMinutes, true);
-  const title = `Kitchen Tour at ${data.kitchenName}`;
+  const title = `Kitchen tour at ${data.kitchenName}`;
   const actionUrl = `${getSubdomainUrl(data.isManager ? 'kitchen' : 'chef')}${data.isManager ? '/manager/dashboard' : '/dashboard'}?view=viewings&viewing=${data.tourId}`;
   const canReschedule = data.canReschedule !== false && (data.isManager ? canManagerProposeReschedule : canChefRequestReschedule)({ status: 'confirmed', scheduledAt: data.tourDate });
   const canCancel = data.canCancel !== false && startDateTimeObj.getTime() > Date.now();
@@ -4452,13 +4452,13 @@ export const generateTourConfirmedEmail = (data: { tourId: number; durationMinut
   );
 
   return {
-    ...renderTransactionalEmail({ to: data.email, tour: data, subject: `${data.previousTourDate ? 'Tour rescheduled' : 'Confirmed: Kitchen Tour'} at ${data.kitchenName}`,
+    ...renderTransactionalEmail({ to: data.email, tour: data, subject: `${data.previousTourDate ? 'Tour rescheduled' : 'Kitchen tour confirmed'} at ${data.kitchenName}`,
       recipientName: data.recipientName, message: data.previousTourDate ? data.isManager
         ? `${data.otherPartyName}’s new tour time at ${data.kitchenName} is confirmed. Review the updated visit details below and replace any event you saved in your calendar.`
         : 'Your new tour time is confirmed. Check the updated details below and replace any event you saved in your calendar.'
         : data.isManager ? `${data.otherPartyName} is coming to tour ${data.kitchenName}. Review the visit details and the arrival instructions shared with them below.`
         : `You’re set to tour ${data.kitchenName} with ${data.otherPartyName}. Here’s everything you need for your visit.`,
-      facts: [], sections: [{ title: data.isManager ? 'Tour details' : 'Your visit', facts: [{ label: 'Kitchen', value: data.kitchenName }, { label: data.isManager ? 'Visiting chef' : 'Kitchen manager', value: data.otherPartyName },
+      facts: [], sections: [{ title: data.isManager ? 'Tour details' : 'Your visit', facts: [{ label: 'Kitchen', value: data.kitchenName }, { label: data.isManager ? 'Customer' : 'Kitchen manager', value: data.otherPartyName },
         { label: 'Date', value: dateStr }, { label: 'Time', value: startTime },
         ...(data.previousTourDate ? [{ label: 'Previous time', value: `${formatTourDate(data.previousTourDate)}, ${formatTourSlotRange(data.previousTourDate, data.durationMinutes, true)}` }] : []),
         { label: 'Reference', value: `TOUR-${data.tourId}` }], links: [{ label: 'Add to Google Calendar', url: googleCalendarUrl }] },
@@ -4466,15 +4466,16 @@ export const generateTourConfirmedEmail = (data: { tourId: number; durationMinut
         { label: 'Address', value: data.locationAddress, url: data.locationAddress ? 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(data.locationAddress) : undefined },
         ...(data.arrivalNotes?.trim() ? [{ label: 'Arrival instructions', value: data.arrivalNotes.trim() }] : []),
         ...(data.departureNotes?.trim() ? [{ label: 'Departure instructions', value: data.departureNotes.trim() }] : []),
-        { label: data.contactEmail ? data.isManager ? 'Customer contact' : 'Arrival contact' : 'Tour assistance', value: data.contactEmail || getSupportEmail() }] },
+        { label: data.contactEmail ? data.isManager ? 'Customer contact' : 'Arrival contact' : 'Tour assistance', value: data.contactEmail || getSupportEmail() },
+        ...(data.contactPhone ? [{ label: 'Phone', value: data.contactPhone, url: `tel:${data.contactPhone}` }] : [])] },
         { title: 'Meeting notes', facts: [
         ...(data.sharedManagerNotes?.trim() ? [{ label: 'Manager notes', value: data.sharedManagerNotes.trim() }] : []),
         ...(data.notes ? [{ label: data.isManager ? 'Notes from the customer' : 'Your notes', value: data.notes }] : [])] }],
       heading: data.isManager ? `${data.otherPartyName}’s kitchen tour is ${data.previousTourDate ? 'rescheduled' : 'confirmed'}`
         : data.previousTourDate ? 'Your tour has been rescheduled' : 'Your kitchen tour is confirmed',
       actionLabel: 'View details', actionUrl,
-      secondaryButton: canReschedule ? { label: 'Reschedule tour', url: actionUrl + '&action=reschedule' } : { label: data.isManager ? 'Message chef' : 'Message manager', url: actionUrl + '&action=message' },
-      actions: [...(canReschedule ? [{ label: data.isManager ? 'Message chef' : 'Message manager', url: actionUrl + '&action=message' }] : []),
+      secondaryButton: canReschedule ? { label: 'Reschedule tour', url: actionUrl + '&action=reschedule' } : { label: data.isManager ? 'Message customer' : 'Message manager', url: actionUrl + '&action=message' },
+      actions: [...(canReschedule ? [{ label: data.isManager ? 'Message customer' : 'Message manager', url: actionUrl + '&action=message' }] : []),
         ...(canCancel ? [{ label: 'Cancel tour', url: actionUrl + '&action=cancel' }] : [])],
       note: 'A calendar file is attached. If the tour changes, update the event in your calendar too.',
     }),
@@ -4484,7 +4485,7 @@ export const generateTourConfirmedEmail = (data: { tourId: number; durationMinut
 
 export const generateTourRejectedChefEmail = (data: TourRequestEmailDetails & { chefEmail: string; chefName: string; cancellationReason?: string; managerNotes?: string; cancelled?: boolean }): EmailContent =>
   renderTransactionalEmail({ to: data.chefEmail, recipientName: data.chefName, tour: data,
-    subject: (data.cancelled ? 'Kitchen Tour Cancelled' : 'Kitchen Tour Request Declined') + ' — ' + data.kitchenName,
+    subject: (data.cancelled ? 'Kitchen tour cancelled' : 'Tour request declined') + ' · ' + data.kitchenName,
     message: 'Your ' + (data.cancelled ? 'confirmed kitchen tour was cancelled.' : 'kitchen tour request was declined. This appointment was not confirmed.'),
     facts: [...tourRequestFacts(data).map(fact => fact.label === 'Requested time' && data.cancelled ? { ...fact, label: 'Former time' } : fact),
       ...(publicTourCancellationReason(data.cancellationReason) ? [{ label: 'Reason', value: publicTourCancellationReason(data.cancellationReason)! }] : []),

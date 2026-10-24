@@ -46,7 +46,7 @@ export function describeDelivery(log: Log, original: Log = log, event?: any, now
         : source === 'claim' ? '/admin?section=damage-claims' : source === 'penalty' ? '/admin?section=overstay-penalties-history' : '/admin?section=transactions';
       nextAttemptAt = ['scheduled', 'failed'].includes(original.status)
         ? new Date(Math.max(Date.parse(r.due), original.retriedAt ? new Date(original.retriedAt).getTime() + 60000 : 0)).toISOString() : null;
-      canRetry = ['scheduled', 'failed'].includes(original.status) && eligibility !== 'future' && eligibility !== 'policy_pending';
+      canRetry = ['scheduled', 'failed'].includes(original.status) && !['future', 'policy_pending', 'obsolete'].includes(eligibility);
       recovery = 'Local Cooks: verify contact and current reservation. Check due action reloads current state, records acceptance or suppresses obsolete guidance; it never sends the stored schedule. Correct contact in its existing account/location tool and allow source reconciliation to replace recipients.';
     } catch {
       canRetry = false; recovery = 'Local Cooks must investigate an unreadable schedule. Do not replay its stored content.';
@@ -74,7 +74,7 @@ export function describeDelivery(log: Log, original: Log = log, event?: any, now
     (event.deliveredEmailKeys || event.deliveredKeys || []).includes((original.trackingId || '').split(':').slice(2).join(':')));
   const suppressed = original.status === 'suppressed';
   if (acknowledged || log.status === 'sent' || needsReview || tourRecovery?.deliveryPaused) nextAttemptAt = null;
-  const state = suppressed ? 'Suppressed obsolete action' : attempt?.status === 'verified' ? 'Delivery verified by Local Cooks'
+  const state = suppressed || eligibility === 'obsolete' ? 'Suppressed obsolete action' : attempt?.status === 'verified' ? 'Delivery verified by Local Cooks'
     : acknowledged || log.status === 'sent' ? channel === 'notification' ? 'In-app acknowledgment recorded' : 'SMTP acceptance recorded; inbox unverified'
     : needsReview ? attempt?.status === 'failed' ? 'Automatic retry limit reached; review required' : 'Acceptance uncertain; automatic resend paused'
     : tourRecovery?.deliveryPaused ? 'Automatic delivery paused; review required'

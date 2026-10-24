@@ -2681,7 +2681,7 @@
   "tourStatusUnverified": "Tour closed — no result recorded",
   "tourAwaitingVisitResultHelp": "How did your kitchen tour go? Share your feedback about the visit.",
   "tourConfirmationTitle": "Kitchen tour confirmation",
-  "tourConfirmationHelp": "Your kitchen tour is confirmed. Download your confirmation for the  location, and visit details.",
+  "tourConfirmationHelp": "Your kitchen tour is confirmed. Download your confirmation with the address, time and visit details.",
   "tourKitchenContactTitle": "Coordinate with the kitchen",
   "tourKitchenCoordinationHelp": "Message your kitchen manager about arrival, departure, or changes to your visit.",
   "tourContactNotShared": "Not shared yet",

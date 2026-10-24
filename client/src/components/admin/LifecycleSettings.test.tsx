@@ -1,10 +1,10 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({ refetch: vi.fn(), token: vi.fn(async () => 'test-token'), fetch: vi.fn(), data: {
-  serviceEndGraceMinutes: 15, inspectionAutoCloseHours: 24, tourOutcomeReminderMinutes: 0, historicalVisitReviewAfterHours: 48, preparationReminderHours: 24,
+  serviceEndGraceMinutes: 15, inspectionAutoCloseHours: 24, historicalVisitReviewAfterHours: 48, preparationReminderHours: 24,
   arrivalReminderHours: 2, departureReminderMinutes: 30, managerNoCheckinMinutes: 15, inspectionWarningPercent: 50,
   managerResponseBufferHours: 1, managerDecisionFirstReminderHours: 12, managerDecisionFinalReminderHours: 2,
-  responseWarningHours: 6, cancellationWarningHours: 6, tourPreparationMinuteOfDay: 420, tourArrivalReminderMinutes: 60, tourDepartureReminderMinutes: 10, tourPreparationEnabled: 1, tourArrivalEnabled: 1, tourDepartureEnabled: 1,
+  responseWarningHours: 6, cancellationWarningHours: 6, tourArrivalReminderMinutes: 120, tourArrivalEnabled: 1,
 } }));
 vi.mock('@tanstack/react-query', () => ({ useQuery: () => ({ data: mocks.data, refetch: mocks.refetch }) }));
 vi.mock('@/lib/firebase', () => ({ auth: { currentUser: { getIdToken: mocks.token } } }));
@@ -30,20 +30,17 @@ it('saves edited notification leads alongside outcome settings through the exist
   expect(url).toBe('/api/admin/lifecycle-settings');
   expect(request.method).toBe('PUT');
   expect(JSON.parse(request.body)).toMatchObject({ arrivalReminderHours: 4, preparationReminderHours: 24,
-    inspectionWarningPercent: 25, tourOutcomeReminderMinutes: 0, managerResponseBufferHours: 2, managerDecisionFirstReminderHours: 12, managerDecisionFinalReminderHours: 2 });
+    inspectionWarningPercent: 25, managerResponseBufferHours: 2, managerDecisionFirstReminderHours: 12, managerDecisionFinalReminderHours: 2 });
 });
 
-it('saves the native Newfoundland clock, independent tour leads and disabled control', async () => {
+it('saves the tour reminder lead and its on/off control', async () => {
   mocks.fetch.mockClear(); mocks.fetch.mockResolvedValue({ ok: true, json: async () => ({}) }); vi.stubGlobal('fetch', mocks.fetch);
   render(<LifecycleSettings />);
-  expect(screen.getByRole('combobox', { name: 'Tour preparation clock in Newfoundland' })).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('combobox', { name: 'Tour preparation clock in Newfoundland' }));
-  fireEvent.click(screen.getByRole('option', { name: '8:30 a.m.' }));
-  fireEvent.change(screen.getByLabelText('Manager tour arrival reminder before start'), { target: { value: '90' } });
-  fireEvent.click(screen.getByLabelText('Tour departure reminders enabled'));
+  fireEvent.change(screen.getByLabelText('Tour reminder before start'), { target: { value: '90' } });
+  fireEvent.click(screen.getByLabelText('Tour reminders enabled'));
   fireEvent.click(screen.getByRole('button', { name: 'Save lifecycle timing' }));
   await waitFor(() => expect(mocks.fetch).toHaveBeenCalled());
-  expect(JSON.parse(mocks.fetch.mock.calls[0][1].body)).toMatchObject({ tourPreparationMinuteOfDay: 510, tourArrivalReminderMinutes: 90, tourDepartureEnabled: 0, arrivalReminderHours: 2 });
+  expect(JSON.parse(mocks.fetch.mock.calls[0][1].body)).toMatchObject({ tourArrivalReminderMinutes: 90, tourArrivalEnabled: 0, arrivalReminderHours: 2 });
 });
 
 it('saves the closeout notification start as an exact instant through its own endpoint', async () => {

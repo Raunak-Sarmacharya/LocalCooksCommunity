@@ -30,7 +30,7 @@ type Tour = typeof kitchenViewings.$inferSelect;
 export type TourEventKind = 'requested' | 'request_updated' | 'review_approved' | 'review_denied' | 'reschedule_requested'
   | 'reschedule_accepted' | 'reschedule_declined' | 'reschedule_proposed' | 'reschedule_proposal_accepted' | 'reschedule_proposal_declined' | 'reschedule_proposal_withdrawn'
   | 'reconfirmation_requested' | 'reconfirmation_replied' | 'reconfirmation_escalated' | 'reconfirmation_reminder'
-  | 'feedback_requested' | 'feedback_submitted' | 'feedback_missing'
+  | 'feedback_requested' | 'feedback_reminder' | 'feedback_submitted' | 'feedback_missing'
   | 'instructions_updated' | 'status' | 'reminder' | 'request_escalation' | 'expired' | 'visitor_checkin' | 'visitor_checkout' | 'attendance_assisted' | 'attendance_corrected' | 'evidence_repaired' | 'evidence_review';
 type EventInput = { kind: TourEventKind; before: Tour; after: Tour; actorId?: number; actorRole?: string | null;
   instructionChange?: TourInstructionChanges & { revision: string };
@@ -38,7 +38,8 @@ type EventInput = { kind: TourEventKind; before: Tour; after: Tour; actorId?: nu
   /** The visitor's private "it did not happen" reason, for the admin alert of an auto-closed tour only. */
   unrecordedReason?: string;
   feedbackRespondent?: { role: 'chef' | 'manager'; id: number } };
-type Recipient = { id: number; email: string | null; name: string; available?: boolean; locale?: string | null };
+// phone: the account's verified phone only (one phone per account, owner Oct 22).
+type Recipient = { id: number; email: string | null; name: string; available?: boolean; locale?: string | null; phone?: string | null };
 type Payload = EventInput & { chef: Recipient; manager: Recipient | null; admins: Recipient[];
   locationName: string; kitchenName: string; address: string; arrivalNotes?: string | null; departureNotes?: string | null;
   completionNextStep?: { action: 'apply' | 'continue' | 'view' | 'unavailable'; href?: string | null; applicationId?: number | null } };
@@ -82,14 +83,14 @@ export async function queueTourEvent(tx: Transaction, input: EventInput) {
     .where(eq(kitchens.id, tour.targetedKitchenId)).limit(1) : [];
   const [visitSettings] = tour.targetedKitchenId ? await tx.select({ arrivalNotes: kitchenViewingSettings.arrivalNotes, departureNotes: kitchenViewingSettings.departureNotes }).from(kitchenViewingSettings).where(eq(kitchenViewingSettings.kitchenId, tour.targetedKitchenId)).limit(1) : [];
   const ids = [tour.chefId, location?.managerId].filter((id): id is number => id != null);
-  const people = await tx.select({ id: users.id, email: users.username, role: users.role, profile: users.managerProfileData, locale: users.preferredLocale })
+  const people = await tx.select({ id: users.id, email: users.username, role: users.role, profile: users.managerProfileData, locale: users.preferredLocale, phone: users.phoneNumber, phoneVerifiedAt: users.phoneVerifiedAt })
     .from(users).where(or(inArray(users.id, ids), eq(users.role, 'admin')));
   const names = new Map(await Promise.all(people.filter(person => ids.includes(person.id)).map(async person =>
     [person.id, await getUserDisplayName(person.id, person.role === 'manager' ? 'manager' : 'chef', tx)] as const)));
   const recipient = (id: number, fallback: string): Recipient => {
     const person = people.find(person => person.id === id), profile = person?.profile as Record<string, unknown> | undefined;
     const name = names.get(id) || [profile?.displayName, profile?.fullName].find(value => typeof value === 'string' && value.trim());
-    return { id, email: person?.email || null, name: typeof name === 'string' ? name : fallback, locale: person?.locale };
+    return { id, email: person?.email || null, name: typeof name === 'string' ? name : fallback, locale: person?.locale, phone: person?.phoneVerifiedAt ? person.phone : null };
   };
   const payload: Payload = { ...input, after: tour, chef: recipient(tour.chefId, 'Chef'),
     manager: location?.managerId ? recipient(location.managerId, 'Manager') : null,
@@ -105,7 +106,7 @@ export async function queueTourEvent(tx: Transaction, input: EventInput) {
   for (const message of alerts) await notificationService.create(message.notification!, tx);
   await tx.insert(tourDeliveryEvents).values({ viewingId: tour.id,
     eventKey: input.kind === 'instructions_updated' ? `${tour.id}:instructions_updated:${input.instructionChange!.revision}`
-      : input.kind.startsWith('feedback_') ? tourFeedbackEventKey(tour, input.kind as 'feedback_requested' | 'feedback_submitted' | 'feedback_missing', input.feedbackRespondent)
+      : input.kind.startsWith('feedback_') ? tourFeedbackEventKey(tour, input.kind as 'feedback_requested' | 'feedback_reminder' | 'feedback_submitted' | 'feedback_missing', input.feedbackRespondent)
       : input.kind === 'evidence_review' ? `evidence-review:${tour.id}:${tour.visitEvidenceMigratedAt?.toISOString() || 'unknown'}` : input.kind === 'request_escalation' ? tourRequestEscalationKey(tour)
       : input.kind === 'reconfirmation_requested' || input.kind === 'reconfirmation_escalated' || input.kind === 'reconfirmation_reminder' ? tourReconfirmationEventKey(tour, location?.managerId || null, input.kind)
       : `${tour.id}:${input.kind}:${tour.updatedAt.toISOString()}`, payload,
@@ -150,7 +151,11 @@ export function tourEventMessages(payload: Payload, calendarSequence = 0): Messa
     const instructions = changes.arrival && changes.departure ? 'arrival and departure instructions'
       : changes.arrival ? 'arrival instructions' : 'departure instructions';
     const actionUrl = `${getSubdomainUrl('chef')}/dashboard?view=viewings&viewing=${id}`;
-    return [{ key: 'chef-email', ...(chef.email ? { email: renderTourEmail({
+    return [{ key: 'chef', notification: { userId: chef.id, target: 'chef', locationId: after.locationId, type: 'booking_confirmed', priority: 'normal',
+      title: 'Tour instructions updated', message: `The kitchen manager updated the ${instructions} for your tour of ${kitchenName}.`,
+      metadata: { viewingId: id, locationId: after.locationId, kitchenId: after.targetedKitchenId },
+      actionUrl: `/dashboard?view=viewings&viewing=${id}`, actionLabel: 'View tour' } },
+    { key: 'chef-email', ...(chef.email ? { email: renderTourEmail({
       to: chef.email, recipientName: chef.name, subject: `Tour instructions updated at ${kitchenName}`,
       heading: 'Your tour instructions have been updated',
       message: `The kitchen manager updated the ${instructions} for your tour. Review the latest instructions below.`,
@@ -172,8 +177,13 @@ export function tourEventMessages(payload: Payload, calendarSequence = 0): Messa
     : kind === 'status' && after.status === 'no_show' ? after.noShowReason === 'visitor_absent' ? 'tourVisitAbsent' : 'tourVisitHistorical'
     : kind === 'status' && after.disruptionReason === 'outcome_unknown' ? 'tourVisitUnknown'
     : kind === 'status' && after.disruptionReason ? 'tourVisitDisrupted' : null;
-  const notice = (person: Recipient, title: string, message: string) => visitKey ? {
-    title: tEmail(person.locale, kind === 'status' && (['completed', 'no_show'].includes(before.status) || before.disruptionReason) ? 'tourVisitResultCorrectedTitle' : `${visitKey}Title`), message: [tEmail(person.locale, `${visitKey}Body`, { visitor: chef.name, kitchen: kitchenName }),
+  // Customer and kitchen each get their own wording for a result; admins keep the neutral third-person copy.
+  const sideKey = (person: Recipient) => visitKey && ['tourVisitCompleted', 'tourVisitAbsent', 'tourVisitUnknown'].includes(visitKey)
+    ? `${visitKey}${person.id === chef.id ? 'Chef' : person.id === manager?.id ? 'Kitchen' : ''}` : visitKey;
+  const isAdminRecipient = (person: Recipient) => person.id !== chef.id && person.id !== manager?.id;
+  // The visitor's "it didn't happen" reason must reach admins, so the generic result copy doesn't replace it.
+  const notice = (person: Recipient, title: string, message: string) => visitKey && !(payload.unrecordedReason && isAdminRecipient(person)) ? {
+    title: tEmail(person.locale, kind === 'status' && (['completed', 'no_show'].includes(before.status) || before.disruptionReason) ? 'tourVisitResultCorrectedTitle' : `${sideKey(person)}Title`), message: [tEmail(person.locale, `${sideKey(person)}Body`, { visitor: chef.name, kitchen: kitchenName }),
       kind === 'status' && after.disruptionReason && after.disruptionReason !== 'outcome_unknown' ? tEmail(person.locale, `tourVisitDisruption_${after.disruptionReason}`) : null,
       kind === 'status' && after.sharedManagerNotes ? `${tEmail(person.locale, 'tourManagerNotes')}: ${after.sharedManagerNotes}` : null].filter(Boolean).join(' ') } : { title, message };
   const notify = (key: string, person: Recipient, target: 'chef' | 'manager', title: string, message: string,
@@ -189,7 +199,9 @@ export function tourEventMessages(payload: Payload, calendarSequence = 0): Messa
   const chefCanEditRequest = ['pending_local_cooks', 'pending'].includes(after.status) && canChefRequestReschedule(after);
   const corrected = kind === 'status' && (before.status !== after.status || before.disruptionReason !== after.disruptionReason || before.noShowReason !== after.noShowReason || before.sharedManagerNotes !== after.sharedManagerNotes || before.cancellationReason !== after.cancellationReason)
     && (['completed', 'no_show', 'cancelled'].includes(before.status) || !!before.disruptionReason);
-  const completionStep: Payload['completionNextStep'] | null = initialCompletion(payload) || kind === 'feedback_requested' ? payload.completionNextStep ?? { action: 'apply' as const,
+  // A tour that closed without a result still lets the customer request to apply, as its notice says.
+  const closedUnrecorded = kind === 'status' && after.disruptionReason === 'outcome_unknown' && !corrected;
+  const completionStep: Payload['completionNextStep'] | null = initialCompletion(payload) || closedUnrecorded || kind === 'feedback_requested' || kind === 'feedback_reminder' ? payload.completionNextStep ?? { action: 'apply' as const,
     href: `/apply-kitchen/${after.locationId}?tourId=${id}${after.targetedKitchenId ? `&kitchenId=${after.targetedKitchenId}` : ''}` } : null;
   const applicationAction = completionStep && completionStep.action !== 'unavailable' && completionStep.href
     ? { label: tEmail(chef.locale, completionStep.action === 'apply' ? kind === 'feedback_requested' ? 'tourFeedbackApply' : 'tourCompletionApply' : completionStep.action === 'continue' ? 'tourCompletionContinue'
@@ -231,7 +243,7 @@ export function tourEventMessages(payload: Payload, calendarSequence = 0): Messa
   const requestDetails = { tourId: id, kitchenName, locationName, address, tourDate: date, durationMinutes: after.durationMinutes, timezone };
   const ordinaryCancellation = kind === 'status' && after.status === 'cancelled' && before.status === 'confirmed' && !after.disruptionReason && !corrected;
   const cancellationEmail = (person: Recipient, role: 'chef' | 'kitchen' | 'admin') => ({ ...renderTourEmail({
-    to: person.email!, recipientName: person.name, subject: `Kitchen Tour Cancelled · ${reference}`,
+    to: person.email!, recipientName: person.name, subject: `Kitchen tour cancelled · ${reference}`,
     tour: { tourId: id, tourDate: oldDate, durationMinutes: before.durationMinutes },
     message: role === 'admin' ? `This confirmed kitchen tour was cancelled by ${payload.actorRole === 'chef' ? chef.name : payload.actorRole === 'admin' ? 'Local Cooks' : 'the manager'}.`
       : role === 'kitchen' ? `${chef.name}’s confirmed tour of ${kitchenName} was cancelled.` : 'Your confirmed kitchen tour was cancelled.',
@@ -250,12 +262,18 @@ export function tourEventMessages(payload: Payload, calendarSequence = 0): Messa
   if (kind.startsWith('feedback_')) {
     const feedback = payload.feedbackStatus || { chef: false, manager: false, conflict: false };
     const feedbackPath = (role: 'chef' | 'manager' | 'admin') => `${role === 'admin' ? adminPath : role === 'manager' ? `/manager/dashboard?view=viewings&viewing=${id}` : `/dashboard?view=viewings&viewing=${id}`}&feedback=1`;
-    if (kind === 'feedback_requested') {
+    if (kind === 'feedback_requested' || kind === 'feedback_reminder') {
+      // The day-3 reminder reuses the request, prefixed like booking reminders, and goes only to whoever hasn't answered.
+      const reminder = kind === 'feedback_reminder';
       for (const [person, role] of [[chef, 'chef'], [manager, 'manager']] as const) {
         if (!person || feedback[role]) continue;
         if (person.available === false) { messages.push({ key: `feedback-${role}-email:${person.id}`, recovery: 'Current tour recipient unavailable' }); continue; }
-        const title = tEmail(person.locale, role === 'manager' ? 'tourFeedbackManagerRequestedTitle' : 'tourFeedbackRequestedTitle', { visitor: chef.name });
-        const text = tEmail(person.locale, role === 'manager' ? 'tourFeedbackManagerRequestedBody' : 'tourFeedbackRequestedBody', { visitor: chef.name, kitchen: kitchenName });
+        const asked = tEmail(person.locale, role === 'manager' ? 'tourFeedbackManagerRequestedTitle' : 'tourFeedbackRequestedTitle', { visitor: chef.name });
+        const title = reminder ? tEmail(person.locale, 'tourFeedbackReminderTitle', { title: asked }) : asked;
+        // Once the kitchen recorded "They came", nobody is asked whether the tour happened.
+        const done = after.status === 'completed';
+        const text = tEmail(person.locale, role === 'manager' ? done ? 'tourFeedbackManagerCompletedBody' : 'tourFeedbackManagerRequestedBody'
+          : done ? 'tourFeedbackRequestedCompletedBody' : 'tourFeedbackRequestedBody', { visitor: chef.name, kitchen: kitchenName });
         const path = feedbackPath(role), key = `feedback-${role}:${person.id}`;
         notify(key, person, role, title, text, 'booking_new', path);
         messages.at(-1)!.notification!.actionLabel = tEmail(person.locale, 'tourFeedbackRespond');
@@ -268,7 +286,7 @@ export function tourEventMessages(payload: Payload, calendarSequence = 0): Messa
             role === 'chef' && applicationAction ? tEmail(person.locale, 'tourFeedbackNextStep') : null].filter(Boolean).join('\n\n') }));
       }
       if (!manager && !feedback.manager) messages.push({ key: 'feedback-manager-email:unassigned', recovery: 'Current tour manager unavailable' });
-    } else if (kind === 'feedback_missing' || feedback.conflict || feedback.chef && feedback.manager) {
+    } else if (kind === 'feedback_missing' || feedback.conflict) {
       for (const admin of admins) {
         const title = tEmail(admin.locale, kind === 'feedback_missing' ? 'tourFeedbackMissingTitle' : feedback.conflict ? 'tourFeedbackConflictTitle' : 'tourFeedbackReadyTitle');
         const text = tEmail(admin.locale, kind === 'feedback_missing' ? 'tourFeedbackMissingBody' : feedback.conflict ? 'tourFeedbackConflictBody' : 'tourFeedbackReadyBody');
@@ -288,18 +306,28 @@ export function tourEventMessages(payload: Payload, calendarSequence = 0): Messa
     const reply = after.reconfirmationReply;
     const visitorAsk = kind === 'reconfirmation_requested' || kind === 'reconfirmation_reminder';
     const title = visitorAsk ? kind === 'reconfirmation_reminder' ? 'Reminder: are you still coming to your kitchen tour?' : 'Are you still coming to your kitchen tour?' : kind === 'reconfirmation_escalated' ? reply === 'reschedule' || reply === 'cant_make_it' ? 'Tour reply needs follow-up' : 'Tour reconfirmation awaiting reply' : 'Tour reconfirmation reply saved';
-    const text = visitorAsk ? 'Let the kitchen manager know whether you’re still coming, need a new time, or can’t make it. Your appointment remains confirmed until a separate change is agreed.' : kind === 'reconfirmation_escalated' ? reply === 'reschedule' ? `${chef.name} would like a new time. Review the tour and arrange the change; the original appointment remains confirmed.` : reply === 'cant_make_it' ? `${chef.name} says they can’t make it. Review the tour and arrange the next step; the tour remains confirmed until a cancellation or time change is saved in Local Cooks.` : `${chef.name} hasn’t replied about the upcoming tour. The appointment remains confirmed. Contact the visitor; silence is not a cancellation or a no-show.` : reply === 'still_coming' ? 'The visitor is still coming to the confirmed tour.' : reply === 'reschedule' ? 'The visitor would like to reschedule. This reply does not change the confirmed appointment; arrange a time change from the tour.' : 'The visitor says they can’t make it. This reply does not cancel the appointment; review the tour and arrange the next step.';
+    const text = visitorAsk ? 'Your tour is coming up. Let the kitchen manager know whether you’re still coming, need a new time, or can’t make it. Everything you need to get there is below.' : kind === 'reconfirmation_escalated' ? reply === 'reschedule' ? `${chef.name} would like a new time. Review the tour and arrange the change; the original appointment remains confirmed.` : reply === 'cant_make_it' ? `${chef.name} says they can’t make it. Review the tour and arrange the next step; the tour remains confirmed until a cancellation or time change is saved in Local Cooks.` : `${chef.name} hasn’t replied about the upcoming tour. The appointment remains confirmed. Contact the visitor; silence is not a cancellation or a no-show.` : reply === 'still_coming' ? 'The visitor is still coming to the confirmed tour.' : reply === 'reschedule' ? 'The visitor would like to reschedule. This reply does not change the confirmed appointment; arrange a time change from the tour.' : 'The visitor says they can’t make it. This reply does not cancel the appointment; review the tour and arrange the next step.';
     const reconfirmReceipt = (key: string, person: Recipient, role: 'chef' | 'kitchen' | 'admin', action: boolean) => {
       const path = role === 'admin' ? adminPath : `${role === 'kitchen' ? '/manager' : ''}/dashboard?view=viewings&viewing=${id}${action ? '&action=reconfirm' : ''}`;
       const message = text.replaceAll('The visitor', chef.name);
       notify(key, person, role === 'chef' ? 'chef' : 'manager', title, message, 'booking_new', path);
-      email(key === 'chef' || key === 'manager' ? `${key}-email` : key.replace('admin:', 'admin-email:'), person, renderTourEmail({ to: person.email!, recipientName: person.name, subject: `${title} · ${reference}`, message, facts: [{ label: 'Kitchen', value: kitchenName }, { label: 'Confirmed time', value: when(date) }, { label: 'Reference', value: reference }], actionLabel: action ? 'Reply about your tour' : 'View tour', actionUrl: `${getSubdomainUrl(role)}${path}` }));
+      // The customer's 24-hour ask carries everything they need to get there, like the booking preparation email.
+      const visit = role === 'chef' ? [
+        ...(address ? [{ label: 'Address', value: address, url: 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(address) }] : []),
+        ...(manager ? [{ label: 'Kitchen manager', value: manager.name }] : []),
+        ...(manager?.email ? [{ label: 'Email', value: manager.email }] : []),
+        ...(manager?.phone ? [{ label: 'Phone', value: manager.phone, url: `tel:${manager.phone}` }] : []),
+        ...(payload.arrivalNotes?.trim() ? [{ label: 'Arrival instructions', value: payload.arrivalNotes.trim() }] : []),
+        ...(payload.departureNotes?.trim() ? [{ label: 'Departure instructions', value: payload.departureNotes.trim() }] : []),
+      ] : [];
+      email(key === 'chef' || key === 'manager' ? `${key}-email` : key.replace('admin:', 'admin-email:'), person, renderTourEmail({ to: person.email!, recipientName: person.name, subject: `${title} · ${reference}`, message, facts: [{ label: 'Kitchen', value: kitchenName }, { label: 'Confirmed time', value: when(date) }, { label: 'Reference', value: reference }, ...visit], actionLabel: action ? 'Reply about your tour' : 'View tour', actionUrl: `${getSubdomainUrl(role)}${path}` }));
     };
     if (visitorAsk) reconfirmReceipt('chef', chef, 'chef', true);
     if (!visitorAsk) {
       if (manager) reconfirmReceipt('manager', manager, 'kitchen', false);
       else messages.push({ key: 'manager-email', recovery: 'Current tour manager unavailable' });
-      for (const admin of admins) reconfirmReceipt(`admin:${admin.id}`, admin, 'admin', false);
+      // Local Cooks only needs the overdue or change-of-plans follow-ups, not every "still coming".
+      if (kind === 'reconfirmation_escalated') for (const admin of admins) reconfirmReceipt(`admin:${admin.id}`, admin, 'admin', false);
     }
   } else if (kind === 'request_escalation') {
     const offered = !!after.rescheduleProposedSlots?.length;
@@ -351,7 +379,7 @@ export function tourEventMessages(payload: Payload, calendarSequence = 0): Messa
       notify(`admin:${admin.id}`, admin, 'manager', 'Tour request awaiting Local Cooks review', `${chef.name} requested a tour of ${kitchenName} at ${locationName}.`, 'booking_new', adminPath);
       email(`admin-email:${admin.id}`, admin, generateTourRequestedLocalCooksEmail({ ...requestDetails, recipientEmail: admin.email!, chefName: chef.name }));
     }
-    notify('chef', chef, 'chef', 'Kitchen tour request sent', `Your tour request for ${kitchenName} on ${when(date)} was sent. We will notify you when it is approved or rejected.`);
+    notify('chef', chef, 'chef', 'Kitchen tour request sent', `Your tour request for ${kitchenName} on ${when(date)} was sent. We’ll let you know when it’s confirmed or declined.`);
     email('chef-email', chef, generateTourRequestedChefEmail({ ...requestDetails, chefEmail: chef.email!, chefName: chef.name }));
   } else if (kind === 'request_updated') {
     notify('chef', chef, 'chef', 'Tour request updated', 'Your requested date and time were updated. Your tour is still pending confirmation.');
@@ -381,7 +409,7 @@ export function tourEventMessages(payload: Payload, calendarSequence = 0): Messa
     if (after.status === 'pending' && !manager) messages.push({ key: 'manager-email', recovery: 'Current tour manager unavailable' });
   } else if (kind === 'review_approved') {
     if (manager) {
-    notify('manager', manager, 'manager', 'New Kitchen Tour Request', `${chef.name} requested a tour of ${kitchenName} on ${when(date)}.`, 'booking_new');
+    notify('manager', manager, 'manager', 'New tour request', `${chef.name} requested a tour of ${kitchenName} on ${when(date)}.`, 'booking_new');
     email('manager-email', manager, generateTourRequestedManagerEmail({ ...requestDetails, managerEmail: manager.email!, managerName: manager.name, chefName: chef.name, chefNotes: after.chefNotes || undefined }));
     } else messages.push({ key: 'manager-email', recovery: 'Current tour manager unavailable' });
   } else if (kind === 'review_denied') {
@@ -391,7 +419,7 @@ export function tourEventMessages(payload: Payload, calendarSequence = 0): Messa
     notify('chef', chef, 'chef', 'Reschedule request saved', 'Your reschedule request is awaiting a response. Your original tour remains confirmed until a new time is agreed.');
     receipt('chef-email', chef, 'Reschedule request saved', 'Your reschedule request is awaiting a response. Your original tour remains confirmed until a new time is agreed.', 'chef');
     if (manager) {
-    notify('manager', manager, 'manager', 'Tour reschedule requested', 'A chef requested to reschedule their tour. The original appointment remains confirmed until you decide.', 'booking_new');
+    notify('manager', manager, 'manager', 'Tour reschedule requested', `${chef.name} asked to move their tour. The original time stays confirmed until you decide.`, 'booking_new');
     email('manager-email', manager, generateTourManagerChangeEmail({ tourId: id, durationMinutes: after.durationMinutes, managerName: manager.name, locationName, address, managerEmail: manager.email!, chefName: chef.name, kitchenName, kind: 'reschedule_requested', scheduledAt: date, requestedAt: new Date(after.requestedRescheduleAt!), timezone }));
     } else messages.push({ key: 'manager-email', recovery: 'Current tour manager unavailable' });
   } else if (kind === 'reschedule_proposed') {
@@ -501,8 +529,8 @@ export function tourEventMessages(payload: Payload, calendarSequence = 0): Messa
       receipt('chef-email', chef, 'Kitchen tour outcome corrected', 'The recorded outcome was corrected to confirmed. This correction does not create a new appointment or update a saved calendar.', 'chef');
       if (manager) notify('manager', manager, 'manager', 'Kitchen tour outcome corrected', 'Open the tour for the corrected record.');
     } else if (after.status === 'confirmed') {
-      notify('chef', chef, 'chef', 'Kitchen Tour Confirmed!', `Your tour at ${locationName} is confirmed.`);
-      if (manager) notify('manager', manager, 'manager', 'Kitchen tour confirmed', `The tour for ${chef.name} at ${locationName} is confirmed.`);
+      notify('chef', chef, 'chef', 'Kitchen tour confirmed', `Your tour of ${kitchenName} is confirmed for ${when(date)}.`);
+      if (manager) notify('manager', manager, 'manager', 'Kitchen tour confirmed', `${chef.name}’s tour of ${kitchenName} is confirmed for ${when(date)}.`);
       for (const person of [chef, manager].filter((person): person is Recipient => person != null)) {
         email(`${person.id === chef.id ? 'chef' : 'manager'}-email`, person, generateTourConfirmedEmail({
           isManager: person.id !== chef.id, email: person.email!, recipientName: person.name,
@@ -512,6 +540,7 @@ export function tourEventMessages(payload: Payload, calendarSequence = 0): Messa
           notes: person.id === chef.id ? undefined : after.chefNotes || undefined,
           sharedManagerNotes: after.sharedManagerNotes, arrivalNotes: payload.arrivalNotes, departureNotes: payload.departureNotes, confirmedAt: after.confirmedAt,
           contactEmail: person.id === chef.id ? manager?.email || undefined : chef.email || undefined,
+          contactPhone: person.id === chef.id ? manager?.phone : chef.phone,
           canReschedule: (person.id === chef.id ? canChefRequestReschedule : canManagerProposeReschedule)(after) && !after.disruptionReason,
           canCancel: after.status === 'confirmed' && date.getTime() > Date.now(),
           organizerEmail: manager?.email || undefined, attendeeEmails: [chef.email, manager?.email].filter((email): email is string => !!email) }));
@@ -526,20 +555,22 @@ export function tourEventMessages(payload: Payload, calendarSequence = 0): Messa
       const withdrawn = byChef && ['pending_local_cooks', 'pending'].includes(before.status);
       const rejected = !byChef && before.status === 'pending';
       const reason = disruption || publicTourCancellationReason(after.cancellationReason) || '';
-      notify('chef', chef, 'chef', corrected ? 'Kitchen tour outcome corrected' : disruption ? 'Kitchen tour disrupted' : withdrawn ? 'Tour request withdrawn' : rejected ? 'Tour request rejected' : 'Kitchen tour cancelled',
-        `Your tour at ${locationName} was ${disruption ? 'disrupted' : withdrawn ? 'withdrawn' : rejected ? 'rejected' : 'cancelled'}.${reason ? ` Reason: ${reason}` : ''} This is not a visitor no-show.`, 'booking_cancelled');
+      notify('chef', chef, 'chef', corrected ? 'Kitchen tour outcome corrected' : disruption ? 'Kitchen tour disrupted' : withdrawn ? 'Tour request withdrawn' : rejected ? 'Tour request declined' : 'Kitchen tour cancelled',
+        `Your tour ${withdrawn || rejected ? 'request ' : ''}for ${kitchenName} was ${disruption ? 'disrupted' : withdrawn ? 'withdrawn' : rejected ? 'declined' : 'cancelled'}.${reason ? ` Reason: ${reason}` : ''}`, 'booking_cancelled');
       if (byChef && manager && before.status !== 'pending_local_cooks') {
-        notify('manager', manager, 'manager', 'Kitchen tour cancelled', `The tour at ${locationName} was cancelled.`, 'booking_cancelled');
-        email('manager-email', manager, ordinaryCancellation ? cancellationEmail(manager, 'kitchen') : generateTourManagerChangeEmail({ tourId: id, durationMinutes: after.durationMinutes, managerName: manager.name, locationName, address, managerEmail: manager.email!, chefName: chef.name, kitchenName, kind: 'cancelled', scheduledAt: date, timezone }));
+        notify('manager', manager, 'manager', withdrawn ? 'Tour request withdrawn' : 'Kitchen tour cancelled', withdrawn ? `${chef.name} withdrew their tour request for ${kitchenName}.` : `${chef.name} cancelled their tour of ${kitchenName} on ${when(oldDate)}.`, 'booking_cancelled');
+        email('manager-email', manager, ordinaryCancellation ? cancellationEmail(manager, 'kitchen') : generateTourManagerChangeEmail({ tourId: id, durationMinutes: after.durationMinutes, managerName: manager.name, locationName, address, managerEmail: manager.email!, chefName: chef.name, kitchenName, kind: 'cancelled', scheduledAt: date, timezone, withdrawn }));
       } else if (!byChef && !disruption && !corrected) {
         email('chef-email', chef, ordinaryCancellation ? cancellationEmail(chef, 'chef') : generateTourRejectedChefEmail({ ...requestDetails, chefEmail: chef.email!, chefName: chef.name,
           cancellationReason: reason, managerNotes: after.sharedManagerNotes || undefined, cancelled: !rejected, timezone }));
       }
       if (corrected && !disruption) receipt('chef-email', chef, 'Kitchen tour outcome corrected', `The recorded outcome was corrected to cancelled.${reason ? ` Reason: ${reason}.` : ''} Open the tour for its history and current state. This correction does not update a saved calendar.`, 'chef');
-      if (disruption) receipt('chef-email', chef, corrected ? 'Kitchen tour outcome corrected' : 'Kitchen tour disrupted', `This tour was disrupted. Reason: ${reason}.${after.sharedManagerNotes ? ` Manager notes: ${after.sharedManagerNotes}` : ''} This is not a visitor no-show. Contact Local Cooks through Support if this is incorrect.`, 'chef');
+      if (disruption) receipt('chef-email', chef, corrected ? 'Kitchen tour outcome corrected' : 'Kitchen tour disrupted', `This tour was disrupted. Reason: ${reason}.${after.sharedManagerNotes ? ` Manager notes: ${after.sharedManagerNotes}` : ''} Contact Support if this is wrong.`, 'chef');
       if (byChef && ordinaryCancellation) email('chef-email', chef, cancellationEmail(chef, 'chef'));
-      if (byChef && !ordinaryCancellation) receipt('chef-email', chef, withdrawn ? 'Tour request withdrawn' : 'Kitchen tour cancelled', withdrawn ? 'You withdrew your unconfirmed tour request. You can request another available time from the kitchen page.' : 'This tour was cancelled. It is not a visitor no-show.', 'chef');
-      if (!byChef && manager && before.status !== 'pending_local_cooks') notify('manager', manager, 'manager', corrected ? 'Kitchen tour outcome corrected' : disruption ? 'Kitchen tour disrupted' : rejected ? 'Tour request rejected' : 'Kitchen tour cancelled', `The tour for ${chef.name} was ${disruption ? 'disrupted' : rejected ? 'rejected' : 'cancelled'}.${reason ? ` Reason: ${reason}` : ''}`, 'booking_cancelled');
+      if (byChef && !ordinaryCancellation) receipt('chef-email', chef, withdrawn ? 'Tour request withdrawn' : 'Kitchen tour cancelled', withdrawn ? 'You withdrew your unconfirmed tour request. You can request another available time from the kitchen page.' : 'This tour was cancelled.', 'chef');
+      if (!byChef && manager && before.status !== 'pending_local_cooks') notify('manager', manager, 'manager', corrected ? 'Kitchen tour outcome corrected' : disruption ? 'Kitchen tour disrupted' : rejected ? 'Tour request declined' : 'Kitchen tour cancelled', `The tour for ${chef.name} was ${disruption ? 'disrupted' : rejected ? 'declined' : 'cancelled'}.${reason ? ` Reason: ${reason}` : ''}`, 'booking_cancelled');
+      // The kitchen saved the confirmed tour in its calendar too; send it the cancel file, like the customer.
+      if (!byChef && manager && ordinaryCancellation) email('manager-email', manager, cancellationEmail(manager, 'kitchen'));
     } else if (after.status === 'completed' || after.status === 'no_show') {
       const absent = after.noShowReason === 'visitor_absent' ? 'visitor did not attend' : 'a past no-show report without a shared reason or recorded visit times';
       notify('chef', chef, 'chef', corrected ? 'Kitchen tour outcome corrected' : after.status === 'completed' ? 'Kitchen tour completed' : after.noShowReason === 'visitor_absent' ? 'Kitchen tour recorded as visitor no-show' : 'Kitchen tour historical outcome recorded',
@@ -556,7 +587,7 @@ export function tourEventMessages(payload: Payload, calendarSequence = 0): Messa
   }
   if (!kind.startsWith('feedback_') && !kind.startsWith('reconfirmation_') && !['requested', 'request_updated', 'request_escalation', 'reminder', 'visitor_checkin', 'visitor_checkout', 'attendance_assisted', 'attendance_corrected', 'evidence_repaired', 'evidence_review'].includes(kind)) {
     const title = kind === 'review_approved' ? 'Tour request sent to kitchen manager'
-      : kind === 'review_denied' ? 'Tour request rejected by Local Cooks'
+      : kind === 'review_denied' ? 'Tour request declined by Local Cooks'
       : kind === 'reschedule_requested' ? 'Tour reschedule requested'
       : kind === 'reschedule_accepted' ? 'Tour rescheduled'
       : kind === 'reschedule_declined' ? 'Reschedule request declined'

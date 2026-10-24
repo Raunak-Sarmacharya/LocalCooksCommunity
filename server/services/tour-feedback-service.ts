@@ -50,16 +50,17 @@ export async function getTourFeedback(connection: Connection, tour: Tour, viewer
   const status = await readTourFeedbackStatus(connection, tour);
   const response = role === 'admin' ? null : status.current.find(value => value.respondentId === viewer.id && value.respondentRole === role) ?? null;
   const available = role !== 'admin' && !response && tourFeedbackOpen(tour, now);
-  const reason = response ? 'Your feedback has been submitted.' : status.closed ? 'Local Cooks has recorded the tour result.'
+  const ended = new Date(tour.scheduledAt).getTime() + (tour.durationMinutes ?? 30) * 60_000 <= now.getTime();
+  const reason = response ? 'Your feedback has been submitted.' : status.closed ? 'This tour didn’t go ahead, so there’s no feedback to give.'
     : role === 'admin' ? 'Review the participant feedback and record the tour result.'
-    : available ? undefined : 'Feedback is available after the confirmed tour ends.';
+    : available ? undefined : ended ? 'Feedback for this tour has closed.' : 'Feedback is available after the confirmed tour ends.';
   return { available, ...(reason ? { reason } : {}), scheduledAt: new Date(tour.scheduledAt).toISOString(),
     appointmentRevision: tour.appointmentRevision || 1, response,
     ...(role === 'admin' ? { responses: status.responses.map(value => ({ ...value,
       currentAppointment: status.current.some(current => current.id === value.id),
       currentRespondent: value.respondentRole === 'chef' ? value.respondentId === tour.chefId : value.respondentId === status.managerId })) } : {}),
     chefSubmitted: status.chef, managerSubmitted: status.manager, conflict: role === 'admin' && status.conflict,
-    closed: status.closed, bothReady: status.bothReady };
+    closed: status.closed, bothReady: status.bothReady, recordedHappened: tour.status === 'completed' };
 }
 
 /** Serialize against reschedules, admin closure and simultaneous retries using the tour row lock. */
@@ -86,11 +87,13 @@ export async function submitTourFeedback(tx: Transaction, tour: Tour, viewer: Vi
   }
   if (!tourFeedbackOpen(current, now))
     throw new DomainError('TOUR_FEEDBACK_UNAVAILABLE', 'This appointment no longer accepts feedback, or the confirmed tour has not ended.', 409);
+  if (current.status === 'completed' && !input.happened)
+    throw new DomainError('INVALID_TOUR_FEEDBACK', 'This tour was recorded as having happened. Contact Support if that’s wrong.', 400);
   const [response] = await tx.insert(tourFeedbackResponses).values({ viewingId: current.id, respondentId: viewer.id,
     respondentRole: role, scheduledAt: current.scheduledAt, appointmentRevision: input.appointmentRevision,
     ...answers, createdAt: now }).returning();
   const status = await readTourFeedbackStatus(tx, current);
-  if (status.bothReady || status.conflict) {
+  if (status.conflict) { // The kitchen records results now; Local Cooks only hears when the two answers disagree.
     await queueTourEvent(tx, { kind: 'feedback_submitted', before: current, after: current, actorId: viewer.id,
       actorRole: role, feedbackRespondent: { role, id: viewer.id },
       feedbackStatus: { chef: status.chef, manager: status.manager, conflict: status.conflict } });

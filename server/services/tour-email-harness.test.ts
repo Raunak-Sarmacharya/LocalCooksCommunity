@@ -1,17 +1,20 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const state = vi.hoisted(() => ({ select: vi.fn(() => { throw new Error('Harness must not query a real database'); }), send: vi.fn() }));
 vi.mock('../db', () => ({ db: { select: state.select } }));
 vi.mock('../email', async original => ({ ...await original<typeof import('../email')>(), sendEmail: state.send }));
 import { buildTourEmailSamples } from '../../scripts/tour-email-samples';
 
 describe('tour email preview harness', () => {
-  it('previews chef preparation with complete visit information and arrival reminders only for managers', async () => {
+  // Feedback samples use a 2026-10-07 tour; feedback is now open for 14 days, so pin the clock inside that window.
+  beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-08T12:00:00Z')); });
+  afterEach(() => vi.useRealTimers());
+  it('previews the same 2-hour arrival reminder for the chef and the manager, with complete visit information', async () => {
     const { samples } = await buildTourEmailSamples();
-    const preparation = samples.find(sample => sample.scenario === 'Before the tour · preparation' && sample.role === 'Chef')!;
+    const preparation = samples.find(sample => sample.scenario === 'Before the tour · arrival' && sample.role === 'Chef')!;
     expect(preparation).toBeDefined();
     for (const label of ['Kitchen:', 'Location:', 'Date:', 'Time:', 'Address:', 'Kitchen manager:', 'Arrival contact:', 'Manager notes:', 'Arrival instructions:', 'Departure instructions:', 'Reference: TOUR-42', 'Message manager:'])
       expect(preparation.text).toContain(label);
-    expect(samples.some(sample => sample.role === 'Chef' && sample.scenario.endsWith(' · arrival'))).toBe(false);
+    expect(samples.some(sample => sample.scenario.endsWith(' · preparation'))).toBe(false);
     expect(samples.some(sample => sample.role === 'Manager' && sample.scenario === 'Before the tour · arrival')).toBe(true);
     expect(state.select).not.toHaveBeenCalled(); expect(state.send).not.toHaveBeenCalled();
   });
@@ -20,10 +23,12 @@ describe('tour email preview harness', () => {
     expect(samples.length).toBeGreaterThan(50);
     expect(new Set(samples.map(sample => sample.role))).toEqual(new Set(['Chef', 'Manager', 'Local Cooks']));
     expect(new Set(samples.map(sample => sample.group))).toEqual(new Set(['Requests', 'Confirmation', 'Time changes', 'Cancellations', 'Outcomes', 'Feedback', 'Corrections', 'Edge cases', 'Delivery recovery', 'Reminders', 'Conversation']));
-    expect(notificationOnly).toEqual([]);
+    expect(notificationOnly).toEqual([{ scenario: 'Feedback ready for review', recipients: [] }]); // admins are only alerted to conflicts
     expect(samples.map(sample => sample.id)).toEqual(samples.map((_, index) => String(index)));
     expect(samples.filter(sample => sample.scenario === 'Private feedback requested').map(sample => sample.role)).toEqual(['Chef', 'Manager']);
-    for (const scenario of ['Feedback ready for review', 'Conflicting feedback', 'Feedback missing after 24 hours']) {
+    // Admins are only alerted to conflicting feedback, not to both answers being in.
+    expect(samples.some(sample => sample.scenario === 'Feedback ready for review')).toBe(false);
+    for (const scenario of ['Conflicting feedback', 'Feedback missing after 24 hours']) {
       expect(samples.filter(sample => sample.scenario === scenario).map(sample => sample.role)).toEqual(['Local Cooks']);
     }
     expect(samples.some(sample => sample.scenario === 'Manager prompted for tour outcome')).toBe(false);
@@ -39,7 +44,7 @@ describe('tour email preview harness', () => {
     expect(confirmation.attachments[0].content).toContain('UID:tour-42@localcooks.com');
     for (const role of ['Chef', 'Manager']) {
       const email = samples.find(sample => sample.scenario === 'Tour confirmed' && sample.role === role)!;
-      expect(email.text).toContain(role === 'Chef' ? 'Message manager:' : 'Message chef:');
+      expect(email.text).toContain(role === 'Chef' ? 'Message manager:' : 'Message customer:');
       expect(email.text).toContain('viewing=42&action=message');
       expect(email.text).toContain('https://www.google.com/maps/search/?api=1&query=');
       expect(email.html).toContain('class="email-brand"');
@@ -47,10 +52,9 @@ describe('tour email preview harness', () => {
       expect(email.html).toContain('.email-outer{padding:0 !important}');
       expect(email.html.indexOf('&amp;action=reschedule')).toBeLessThan(email.html.indexOf('&amp;action=message'));
     }
-    const preparation = samples.find(sample => sample.scenario === 'Before the tour · preparation' && sample.role === 'Chef')!;
+    const preparation = samples.find(sample => sample.scenario === 'Before the tour · arrival' && sample.role === 'Chef')!;
     expect(preparation.text).toContain('Arrival contact: morgan+tour@example.com');
     expect(preparation.text).toContain('Kitchen manager: Morgan Lee');
-    expect(samples.some(sample => sample.scenario.endsWith(' · arrival') && sample.role === 'Chef')).toBe(false);
     for (const role of ['Chef', 'Manager']) {
       const message = samples.find(sample => sample.scenario === 'Starting tour message' && sample.role === role)!;
       expect(message.text).toContain('Read message and reply'); expect(message.text).toContain('Message: Hi');

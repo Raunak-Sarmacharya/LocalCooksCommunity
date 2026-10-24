@@ -55,12 +55,17 @@ describe('private immutable appointment feedback', () => {
     expect(state.locks).toEqual(['kitchen_viewings:update', 'users:share']);
     expect(state.tour).toEqual(before); expect(state.queue).not.toHaveBeenCalled();
   });
-  it.each(['manager', 'chef'])('alerts admin when the second %s response makes the feedback ready', async role => {
+  it.each(['manager', 'chef'])('does not alert admin when the second %s response makes the feedback ready (conflict only)', async role => {
     const actor = role === 'chef' ? viewer : { id: 2, role: 'manager' };
     state.responses = [response(role === 'chef' ? 'manager' : 'chef')];
     await submit(input, actor);
-    expect(state.queue).toHaveBeenCalledWith(connection, expect.objectContaining({ kind: 'feedback_submitted',
-      feedbackRespondent: { role, id: actor.id }, feedbackStatus: { chef: true, manager: true, conflict: false } }));
+    expect(state.queue).not.toHaveBeenCalled();
+  });
+  it('keeps feedback open after the kitchen records "They came", but rejects a did-not-happen answer', async () => {
+    state.tour.status = 'completed'; state.tour.visitResult = 'completed'; state.tour.lifecycleState = 'ended';
+    await expect(submit()).resolves.toMatchObject({ changed: true });
+    state.responses = [];
+    await expect(submit({ ...input, happened: false, reason: 'Nobody was there to meet me' })).rejects.toMatchObject({ statusCode: 400 });
   });
   it('alerts admin immediately on disagreement without converting either report into an absence result', async () => {
     state.responses = [response('manager', 2, false)];
@@ -82,7 +87,7 @@ describe('private immutable appointment feedback', () => {
     await expect(submit({ ...input, ...patch })).rejects.toMatchObject({ code: 'STALE_TOUR_FEEDBACK', statusCode: 409 });
     expect(state.insert).not.toHaveBeenCalled();
   });
-  it.each([{ status: 'cancelled' }, { status: 'completed' }, { visitResult: 'unrecorded' },
+  it.each([{ status: 'cancelled' }, { status: 'no_show' }, { visitResult: 'unrecorded' },
     { confirmationVerified: false }, { scheduledAt: new Date('2026-10-07T13:00:00Z') }])('blocks a new report after closure/unconfirmed/early state %j', async patch => {
     Object.assign(state.tour, patch);
     await expect(submit({ ...input, scheduledAt: state.tour.scheduledAt.toISOString() })).rejects.toMatchObject({ code: 'TOUR_FEEDBACK_UNAVAILABLE' });

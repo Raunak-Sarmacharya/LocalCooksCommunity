@@ -35,7 +35,7 @@ import { publicTour, hasTourConfirmation, chefTourCancellationReason } from '@sh
 import { tourAttendance, publicTourAttendanceState } from '@shared/tour-attendance';
 import { tourHistory } from '@shared/tour-history';
 import { tourRequestDecision } from '@shared/tour-request-decision';
-import { tourFeedbackMissingDue } from '@shared/tour-feedback';
+import { tourResultDue } from '@shared/tour-feedback';
 import { tourReconfirmation, tourReconfirmationReplies, resetTourReconfirmation } from '@shared/tour-reconfirmation';
 import { withVisitEvidence, visitEvents, changeVisitEvidence } from '../services/tour-visit-events';
 import { getCheckinSettings } from '../services/kitchen-checkout-service';
@@ -1545,7 +1545,7 @@ router.get(
       const chefName = await getUserDisplayName(chefId, "chef");
       const managerIds = Array.from(new Set(filtered.map((r) => r.managerId).filter((id): id is number => id != null)));
       const managerNames = new Map(await Promise.all(managerIds.map(async (id) => [id, await getUserDisplayName(id, "manager")] as const)));
-      const managerContacts = new Map(await Promise.all(managerIds.map(async (id) => [id, (await db.select({ email: users.username, phone: users.phoneNumber }).from(users).where(eq(users.id, id)).limit(1))[0]] as const)));
+      const managerContacts = new Map(await Promise.all(managerIds.map(async (id) => [id, (await db.select({ email: users.username, phone: users.phoneNumber, phoneVerifiedAt: users.phoneVerifiedAt }).from(users).where(eq(users.id, id)).limit(1))[0]] as const)));
       const attendanceSettings = new Map<number, ReturnType<typeof getCheckinSettings>>();
       const withNames = await Promise.all(
         filtered.map(async (r) => ({
@@ -1556,7 +1556,8 @@ router.get(
           departureNotes: r.viewing.status === "confirmed" || (r.viewing.checkedInAt && !r.viewing.checkedOutAt) ? r.departureNotes : null,
           locationContactEmail: r.viewing.status === "confirmed" ? r.locationContactEmail || (r.managerId && managerContacts.get(r.managerId)?.email) || null : null,
           managerEmail: r.viewing.status === 'confirmed' && r.managerId ? managerContacts.get(r.managerId)?.email || null : null,
-          locationContactPhone: r.viewing.status === "confirmed" ? r.locationContactPhone || (r.managerId && managerContacts.get(r.managerId)?.phone) || null : null,
+          // The manager's verified account phone, like bookings; never the location's business phone (owner, Oct 22).
+          locationContactPhone: r.viewing.status === "confirmed" && r.managerId && managerContacts.get(r.managerId)?.phoneVerifiedAt ? managerContacts.get(r.managerId)?.phone || null : null,
           managerName: r.managerId ? managerNames.get(r.managerId) : null,
           chefName,
         }))
@@ -1598,7 +1599,7 @@ router.get(
         .limit(1);
       if (!record) return res.status(404).json({ error: "Tour not found" });
       if (record.viewing.status !== "confirmed" || record.viewing.scheduledAt.getTime() + record.viewing.durationMinutes * 60_000 < Date.now()) return res.status(409).json({ error: "A confirmation document is available only for upcoming confirmed tours" });
-      const [manager] = record.viewing.managerId ? await db.select({ email: users.username, phone: users.phoneNumber }).from(users).where(eq(users.id, record.viewing.managerId)).limit(1) : [null];
+      const [manager] = record.viewing.managerId ? await db.select({ email: users.username, phone: users.phoneNumber, phoneVerifiedAt: users.phoneVerifiedAt }).from(users).where(eq(users.id, record.viewing.managerId)).limit(1) : [null];
       const [visitNotes] = record.viewing.targetedKitchenId ? await db.select({ arrivalNotes: kitchenViewingSettings.arrivalNotes, departureNotes: kitchenViewingSettings.departureNotes })
         .from(kitchenViewingSettings).where(eq(kitchenViewingSettings.kitchenId, record.viewing.targetedKitchenId)).limit(1) : [];
 
@@ -1610,8 +1611,9 @@ router.get(
         kitchenName: record.kitchenName,
         locationAddress: record.locationAddress,
         managerName: record.viewing.managerId ? await getUserDisplayName(record.viewing.managerId, "manager") : null,
-        managerEmail: record.locationContactEmail || manager?.email || null,
-        managerPhone: record.locationContactPhone || manager?.phone || null,
+        // Same contact as the tour emails: the manager's account email and verified phone, never a business phone (owner, Oct 22).
+        managerEmail: manager?.email || null,
+        managerPhone: manager?.phoneVerifiedAt ? manager.phone : null,
         scheduledAt: record.viewing.scheduledAt,
         durationMinutes: record.viewing.durationMinutes,
         submittedAt: record.viewing.createdAt,
@@ -2176,7 +2178,7 @@ router.patch(
       const managerRecords = isManager && recordingResult && viewing.status === 'confirmed' && !parsed.data.disruptionReason && ['completed', 'no_show'].includes(parsed.data.status);
       if (recordingResult && !isAdmin && !managerRecords)
         throw new DomainError('TOUR_DECISION_INVALID', 'Local Cooks records disruptions and corrects recorded tour results.', 403);
-      if (managerRecords && tourFeedbackMissingDue(viewing))
+      if (managerRecords && tourResultDue(viewing))
         throw new DomainError('TOUR_DECISION_INVALID', 'The recording window for this tour has closed.', 409);
       // Older admin pages submit this as sharedManagerNotes. Treat it as an outcome
       // note too, so a stale page cannot overwrite the manager's message.

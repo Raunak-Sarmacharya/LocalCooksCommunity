@@ -78,8 +78,9 @@ describe('operator delivery summaries', () => {
     row.status = 'sent'; expect(describeDelivery(row, row, undefined, now).state).toContain('SMTP acceptance');
     row.textBody = JSON.stringify({ reminder, channel: 'notification' });
     expect(describeDelivery(row, row, undefined, now).state).toBe('In-app acknowledgment recorded');
+    // Tours dropped the 7 a.m. preparation reminder (owner, Oct 24): a queued one is obsolete, never retried.
     row.status = 'scheduled'; row.textBody = JSON.stringify({ reminder: { ...reminder, kind: 'preparation' }, channel: 'email' });
-    expect(describeDelivery(row, row, undefined, now)).toMatchObject({ state: 'Scheduled', canRetry: false });
+    expect(describeDelivery(row, row, undefined, now)).toMatchObject({ state: 'Suppressed obsolete action', canRetry: false });
     row.textBody = JSON.stringify({ reminder, channel: 'email' });
     // Tour reminders are policy-pending while the tour reminder policy is switched off.
     const tourEnabled = selectedReminderPolicy.tourEnabled; selectedReminderPolicy.tourEnabled = false;

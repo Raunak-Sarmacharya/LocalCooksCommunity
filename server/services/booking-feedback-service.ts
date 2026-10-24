@@ -9,6 +9,7 @@ import { ensureServerI18n, tLocale } from '../i18n';
 import { tEmail } from '../i18n/outbound';
 import { renderTransactionalEmail } from '../email';
 import { getAppBaseUrl } from '../config';
+import { getUserDisplayName } from '../utils/user-display';
 
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type Connection = Pick<typeof db, 'select'>;
@@ -126,7 +127,8 @@ export async function currentBookingFeedbackEmail(bookingId: number, recipientId
   await ensureServerI18n();
   const copy = bookingFeedbackNoticeCopy('feedback_requested', row.kitchenName, person.locale);
   const chef = person.role === 'chef';
-  return renderTransactionalEmail({ to, locale: person.locale, recipientName: '', subject: copy.title, heading: copy.title,
+  const recipientName = await getUserDisplayName(recipientId, chef ? 'chef' : 'manager', reader);
+  return renderTransactionalEmail({ to, locale: person.locale, recipientName, subject: copy.title, heading: copy.title,
     message: copy.message, facts: [], actionLabel: copy.actionLabel,
     actionUrl: `${getAppBaseUrl(chef ? 'chef' : 'kitchen')}${chef ? '' : '/manager'}/booking/${bookingId}#feedback` });
 }

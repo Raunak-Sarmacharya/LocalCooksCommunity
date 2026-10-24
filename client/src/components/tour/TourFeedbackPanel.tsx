@@ -18,7 +18,7 @@ type Response = { id: number; respondentRole: 'chef' | 'manager'; respondentId: 
   currentAppointment?: boolean; currentRespondent?: boolean; appointmentRevision?: number; scheduledAt?: string;
   comments?: string | null; suggestions?: string | null; submittedAt?: string };
 type Feedback = { available: boolean; reason?: string; closed?: boolean; scheduledAt: string; appointmentRevision: number;
-  response: Response | null; responses?: Response[]; chefSubmitted: boolean; managerSubmitted: boolean; conflict: boolean };
+  response: Response | null; responses?: Response[]; chefSubmitted: boolean; managerSubmitted: boolean; conflict: boolean; recordedHappened?: boolean };
 export function TourFeedbackPanel({ id, role, version, open, onOpenChange, triggerRef }: {
   id: number; role: 'chef' | 'manager' | 'admin'; version: string;
   open?: boolean; onOpenChange?: (open: boolean) => void; triggerRef?: RefObject<HTMLButtonElement | null>;
@@ -44,6 +44,9 @@ export function TourFeedbackPanel({ id, role, version, open, onOpenChange, trigg
     if (role === 'admin') { panel.current?.scrollIntoView?.({ block: 'center', behavior: 'smooth' }); panel.current?.focus({ preventScroll: true }); }
     else { setLocalOpen(true); onOpenChange?.(true); }
   } }, [search, query.data, id, role, onOpenChange]);
+  // The kitchen already recorded "They came", so the form skips "Did it happen?".
+  const recordedHappened = !!query.data?.recordedHappened;
+  useEffect(() => { if (recordedHappened) setHappened(true) }, [recordedHappened]);
   const save = async () => {
     if (!query.data || happened == null || saving || !query.data.available || query.data.response) return;
     setSaving(true); setError('');
@@ -93,9 +96,9 @@ export function TourFeedbackPanel({ id, role, version, open, onOpenChange, trigg
         <AppDialogBody className="space-y-5">
           {feedbackState}
           {query.data && (query.data.response ? responseView(query.data.response) : !query.data.available ? <p className="text-sm text-muted-foreground">{t('tourFeedbackUnavailable')}</p> : <fieldset disabled={disabled} className="min-w-0 space-y-5">
-            <div className="space-y-3"><Label id={`tour-feedback-happened-${id}`}>{t('tourFeedbackHappened')}</Label><RadioGroup aria-labelledby={`tour-feedback-happened-${id}`} value={happened == null ? '' : String(happened)} disabled={disabled} onValueChange={value => { setHappened(value === 'true'); if (value === 'false') setRating(''); }} className="grid grid-cols-2 gap-3">
+            {!recordedHappened && <div className="space-y-3"><Label id={`tour-feedback-happened-${id}`}>{t('tourFeedbackHappened')}</Label><RadioGroup aria-labelledby={`tour-feedback-happened-${id}`} value={happened == null ? '' : String(happened)} disabled={disabled} onValueChange={value => { setHappened(value === 'true'); if (value === 'false') setRating(''); }} className="grid grid-cols-2 gap-3">
               {[true, false].map(value => <Label key={String(value)} htmlFor={`tour-happened-${value}-${id}`} className={`flex min-h-12 cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 text-sm ${happened === value ? 'border-primary bg-primary/5' : 'border-border'} ${disabled ? 'cursor-default opacity-60' : ''}`}><RadioGroupItem id={`tour-happened-${value}-${id}`} value={String(value)} />{t(value ? 'yes' : 'no')}</Label>)}
-            </RadioGroup></div>
+            </RadioGroup></div>}
             {happened === true && <div className="space-y-2"><Label htmlFor={`tour-feedback-rating-${id}`}>{t('tourFeedbackRating')}</Label><Select disabled={disabled} value={rating || 'none'} onValueChange={value => setRating(value === 'none' ? '' : value)}><SelectTrigger id={`tour-feedback-rating-${id}`}><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">{t('tourFeedbackOptional')}</SelectItem>{([1, 2, 3, 4, 5] as const).map(value => <SelectItem key={value} value={String(value)}>{value}/5 · {t(`tourFeedbackRating${value}`)}</SelectItem>)}</SelectContent></Select></div>}
             {happened === false && <div className="space-y-2"><Label htmlFor={`tour-feedback-reason-${id}`}>{t('tourFeedbackReason')}</Label><Textarea id={`tour-feedback-reason-${id}`} rows={3} value={reason} onChange={event => setReason(event.target.value)} maxLength={2000} required placeholder={t('tourFeedbackReasonPlaceholder')} aria-describedby={`tour-feedback-reason-help-${id}`} /><p id={`tour-feedback-reason-help-${id}`} className="text-xs text-muted-foreground">{t('tourFeedbackReasonHelp')}</p></div>}
             {([['comments', comments, setComments, 'tourFeedbackComments', 'tourFeedbackCommentsPlaceholder'], ['suggestions', suggestions, setSuggestions, 'tourFeedbackSuggestions', 'tourFeedbackSuggestionsPlaceholder']] as const).map(([field, value, setter, key, placeholder]) => <div key={field} className="space-y-2"><Label htmlFor={`tour-feedback-${field}-${id}`}>{t(key)}</Label><Textarea id={`tour-feedback-${field}-${id}`} rows={3} value={value} onChange={event => setter(event.target.value)} maxLength={2000} placeholder={t(placeholder)} /></div>)}

@@ -74,7 +74,7 @@ it.each(['chat-57', null])('asks managers to message the chef, retains applicati
 it("tells the kitchen the chat carries on when the customer toured first (owner, Oct 24)", () => {
   const toured = generateKitchenApplicationClearedManagerEmail({ ...details, managerEmail: "kitchen@example.test", conversationId: "c1", touredAt: "2026-10-12T15:00:00Z" });
   expect(toured.subject).toContain("Access request");
-  expect(toured.text).toContain("who toured Harbour Kitchen on October 12");
+  expect(toured.text).toContain("who toured Harbour Kitchen on Oct 12, 2026");
   expect(toured.text).toContain("Keep talking in the same chat");
   expect(toured.text).not.toMatch(/can now message|introduce yourself/i);
   const fresh = generateKitchenApplicationClearedManagerEmail({ ...details, managerEmail: "kitchen@example.test", conversationId: "c1" });

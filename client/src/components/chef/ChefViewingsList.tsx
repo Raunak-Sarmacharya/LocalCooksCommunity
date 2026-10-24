@@ -573,12 +573,12 @@ export default function ChefViewingsList({ onExploreKitchens }: { onExploreKitch
                 </div>}
                 {waitingForChange && <p className="text-sm">{t("tourChangeRequested", "Reschedule requested for")} {formatTourWhen(tour.requestedRescheduleAt!, tour.durationMinutes, tour.timezone)}</p>}
                 {showOtherActions && <div className="mt-4 grid gap-2 border-t pt-4 sm:flex sm:flex-wrap sm:items-center [&>div]:min-w-0 [&>div>button]:h-auto [&>div>button]:min-h-11 [&>div>button]:w-full [&>div>button]:whitespace-normal [&>div>button]:py-2 sm:[&>div>button]:min-h-9 sm:[&>div>button]:w-auto [&>button]:h-auto [&>button]:min-h-11 [&>button]:whitespace-normal [&>button]:py-2 [&>a]:min-h-11 [&>a]:whitespace-normal sm:[&>button]:min-h-9">
-                  {showFeedbackAction && <Button ref={feedbackTrigger} size="sm" variant={canShareFeedback ? 'default' : 'outline'} aria-haspopup="dialog" onClick={() => setFeedbackTargetId(tour.id)}>{t(canShareFeedback ? 'common:tourFeedbackOpen' : 'common:tourFeedbackView', canShareFeedback ? 'Share feedback' : 'View your feedback')}</Button>}
+                  {showFeedbackAction && <Button ref={feedbackTrigger} size="sm" variant={canShareFeedback && tour.status !== 'completed' ? 'default' : 'outline'} aria-haspopup="dialog" onClick={() => setFeedbackTargetId(tour.id)}>{t(canShareFeedback ? 'common:tourFeedbackOpen' : 'common:tourFeedbackView', canShareFeedback ? 'Share feedback' : 'View your feedback')}</Button>}
                   {(hasProposal || canEdit && !showAttendanceReply) && <Button variant="outline" size="sm" className="h-9" disabled={reschedulingId !== null || cancellingId !== null} onClick={event => { actionTrigger.current = event.currentTarget; setRescheduleError(null); setRescheduleTargetId(tour.id); }}>{hasProposal ? t('tourReviewInvitation', 'Review invitation') : ['pending_local_cooks', 'pending'].includes(tour.status) ? t('tourEditRequest', 'Edit tour request') : t('tourRequestNewTime', 'Reschedule tour')}</Button>}
                   {canCancel && !showAttendanceReply && <Button variant="outline" size="sm" className="h-9 text-destructive hover:text-destructive" disabled={cancellingId !== null || reschedulingId !== null} onClick={event => { actionTrigger.current = event.currentTarget; setCancelTarget(tour); }}>{t("tourCancel", "Cancel tour")}</Button>}
                   {(expired || ["cancelled", "no_show"].includes(tour.status) || !!tour.disruptionReason) && <Button asChild variant="outline" size="sm"><Link href="/dashboard?view=discover-kitchens">{t("tourListExploreCta", "Discover Kitchens")}</Link></Button>}
                   {hasApplicationNextStep &&
-                    <TourApplicationButton id={tour.id} version={tour.updatedAt} primary={!canShareFeedback} />}
+                    <TourApplicationButton id={tour.id} version={tour.updatedAt} primary={tour.status === 'completed' || !canShareFeedback} />}
 
                 </div>}
               </section>
@@ -586,7 +586,7 @@ export default function ChefViewingsList({ onExploreKitchens }: { onExploreKitch
                 <div className="min-w-0 space-y-4">
                   {tour.status === 'confirmed' && !pastEnd && <section aria-label={t('tourConfirmationTitle', 'Kitchen tour confirmation')} className="grid grid-cols-1 items-center gap-3 rounded-xl border bg-card p-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-x-4 sm:gap-y-2 sm:p-6">
                     <h2 className="min-w-0 text-sm font-semibold">{t('tourConfirmationTitle', 'Kitchen tour confirmation')}</h2>
-                    <p className="row-start-2 min-w-0 text-sm text-muted-foreground">{t('tourConfirmationHelp', 'Your kitchen tour is confirmed. Download your confirmation for the  location, and visit details.')}</p>
+                    <p className="row-start-2 min-w-0 text-sm text-muted-foreground">{t('tourConfirmationHelp', 'Your kitchen tour is confirmed. Download your confirmation with the address, time and visit details.')}</p>
                     <div className="row-start-3 min-w-0 sm:col-start-2 sm:row-start-1 sm:row-span-2">
                       <TourDownloadButton tour={tour} t={t as any} />
                     </div>

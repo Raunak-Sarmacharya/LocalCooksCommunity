@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { hasTourConfirmation } from './tour-outcome';
+import { feedbackReminderMs, feedbackWindowMs } from './booking-feedback';
 
 export type TourFeedbackAppointment = {
   id: number; scheduledAt: Date | string; appointmentRevision?: number; durationMinutes?: number;
@@ -23,22 +24,33 @@ export const tourFeedbackInputSchema = z.object({
   suggestions: input.suggestions || null, reason: input.happened ? null : input.reason! }));
 export type TourFeedbackInput = z.input<typeof tourFeedbackInputSchema>;
 
-/** A tour is closed once it has a recorded result, a disruption, a cancellation or an expired request. */
+// Same windows as booking feedback (owner, Oct 24): open 14 days after the tour, one reminder on day 3.
+export const tourFeedbackWindowMs = feedbackWindowMs;
+export const tourFeedbackReminderMs = feedbackReminderMs;
+const tourEnd = (tour: TourFeedbackAppointment) => new Date(tour.scheduledAt).getTime() + (tour.durationMinutes ?? 30) * 60_000;
+
+/** No feedback for a tour that didn't take place: no-show, cancellation, disruption or an expired request. A completed tour stays open. */
 export function tourFeedbackClosed(tour: TourFeedbackAppointment) {
-  return ['completed', 'no_show', 'cancelled'].includes(tour.status) || tour.lifecycleState === 'closed'
-    || Boolean(tour.visitResult || tour.disruptionReason || tour.requestExpiredAt);
+  return !['confirmed', 'completed'].includes(tour.status) || (tour.lifecycleState === 'closed' && tour.status !== 'completed')
+    || Boolean((tour.visitResult && tour.visitResult !== 'completed') || tour.disruptionReason || tour.requestExpiredAt);
 }
+/** Open for both sides from the tour's end for 14 days; the kitchen recording "They came" doesn't close it. */
 export function tourFeedbackOpen(tour: TourFeedbackAppointment, now = new Date()) {
-  const end = new Date(tour.scheduledAt).getTime() + (tour.durationMinutes ?? 30) * 60_000;
-  return tour.status === 'confirmed' && !tourFeedbackClosed(tour) && hasTourConfirmation(tour)
-    && Number.isFinite(end) && end <= now.getTime();
+  const end = tourEnd(tour);
+  return !tourFeedbackClosed(tour) && hasTourConfirmation(tour)
+    && Number.isFinite(end) && end <= now.getTime() && now.getTime() < end + tourFeedbackWindowMs;
 }
-export function tourFeedbackMissingDue(tour: TourFeedbackAppointment, now = new Date()) {
-  return tourFeedbackOpen(tour, now)
-    && new Date(tour.scheduledAt).getTime() + (tour.durationMinutes ?? 30) * 60_000 + 24 * 60 * 60_000 <= now.getTime();
+export function tourFeedbackReminderDue(tour: TourFeedbackAppointment, now = new Date()) {
+  return tourFeedbackOpen(tour, now) && tourEnd(tour) + tourFeedbackReminderMs <= now.getTime();
+}
+/** 24 hours after an unrecorded confirmed tour: the kitchen can no longer record it and it closes on its own. */
+export function tourResultDue(tour: TourFeedbackAppointment, now = new Date()) {
+  const end = tourEnd(tour);
+  return tour.status === 'confirmed' && !tourFeedbackClosed(tour) && hasTourConfirmation(tour)
+    && Number.isFinite(end) && end + 24 * 60 * 60_000 <= now.getTime();
 }
 export function tourFeedbackEventKey(tour: Pick<TourFeedbackAppointment, 'id' | 'scheduledAt' | 'appointmentRevision'>,
-  kind: 'feedback_requested' | 'feedback_submitted' | 'feedback_missing', respondent?: { role: 'chef' | 'manager'; id: number }) {
+  kind: 'feedback_requested' | 'feedback_reminder' | 'feedback_submitted' | 'feedback_missing', respondent?: { role: 'chef' | 'manager'; id: number }) {
   if (kind === 'feedback_submitted' && !respondent) throw Error('Feedback submission key requires its respondent identity');
   return `feedback:${tour.id}:${tour.appointmentRevision || 1}:${new Date(tour.scheduledAt).toISOString()}:${kind}`
     + (kind === 'feedback_submitted' ? `:${respondent!.role}:${respondent!.id}` : '');
