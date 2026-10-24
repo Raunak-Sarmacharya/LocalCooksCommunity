@@ -2544,7 +2544,7 @@
   "codeFormatSetTo": "Format de code défini sur {format}",
   "minimumBookingDurationUpdated": "Durée minimale de réservation mise à jour",
   "managePhotosForLocation": "Gérer les photos et descriptions pour {name}",
-  "myKitchensDescription": "Configurez et gérez la fiche, les photos, l'espace de rangement et l'équipement de cette cuisine.",
+  "myKitchensDescription": "Configurez et gérez la fiche, les photos, l'espace de rangement et l'équipement de chaque cuisine.",
   "coverPhoto": "Photo de couverture",
   "newKitchenDescription": "Ajoutez l'essentiel dont les clients ont besoin pour comprendre et réserver cet espace.",
   "completeKitchenEssentials": "Ajoutez un nom, une description, une photo de couverture et un taux horaire ou un tarif journalier pour créer cette cuisine.",
