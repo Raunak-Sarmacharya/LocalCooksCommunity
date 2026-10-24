@@ -456,7 +456,7 @@ router.post('/firebase/chef/kitchen-applications',
                 // Get existing application to preserve Step 1 custom fields
                 existingApp = await chefApplicationService.getChefApplication(req.neonUser!.id, locationId);
                 if (!existingApp || existingApp.status !== 'approved' || !existingApp.tier1_completed_at) {
-                    return res.status(403).json({ error: 'Local Cooks must approve the initial request before kitchen documents can be submitted.' });
+                    return res.status(403).json({ error: 'Your request to apply must be approved before you send booking requirements.' });
                 }
 
                 // Preserve the previously collected phone number when Step 2 omits it.
@@ -467,7 +467,7 @@ router.post('/firebase/chef/kitchen-applications',
                     } else {
                         return res.status(400).json({
                             error: 'Validation error',
-                            message: 'Phone number is required with kitchen documents',
+                            message: 'Phone number is required',
                             details: [{
                                 code: 'custom',
                                 message: 'Phone number is required',
@@ -576,7 +576,7 @@ router.post('/firebase/chef/kitchen-applications',
                 const hasFoodSafetyLicense =
                     foodSafetyLicenseUrl || existingApp?.foodSafetyLicenseUrl;
                 if (requirements.requireFoodHandlerCert && (formData.foodSafetyLicense !== 'yes' || !hasFoodSafetyLicense)) {
-                    return rejectStep2('Food Safety License is required with kitchen documents', 'foodSafetyLicenseFile');
+                    return rejectStep2('Food Safety License is required', 'foodSafetyLicenseFile');
                 }
 
                 const hasFoodSafetyExpiry =
@@ -584,13 +584,13 @@ router.post('/firebase/chef/kitchen-applications',
                     businessInfo.foodHandlerCertExpiry ||
                     existingApp?.foodSafetyLicenseExpiry;
                 if (formData.foodSafetyLicense === 'yes' && hasFoodSafetyLicense && (!hasFoodSafetyExpiry || String(hasFoodSafetyExpiry).trim() === '')) {
-                    return rejectStep2('Food Safety License expiry date is required with kitchen documents', 'foodSafetyLicenseExpiry');
+                    return rejectStep2('Food Safety License expiry date is required', 'foodSafetyLicenseExpiry');
                 }
 
                 if (requirements.tier2_food_establishment_cert_required) {
                     const hasFoodEstablishmentCert = foodEstablishmentCertUrl || existingApp?.foodEstablishmentCertUrl;
                     if (!hasFoodEstablishmentCert) {
-                        return rejectStep2('Food Establishment Certificate is required with kitchen documents', 'foodEstablishmentCert');
+                        return rejectStep2('Food Establishment Certificate is required', 'foodEstablishmentCert');
                     }
                 }
 
@@ -600,12 +600,12 @@ router.post('/firebase/chef/kitchen-applications',
                 const hasFoodEstablishmentExpiry = req.body.foodEstablishmentCertExpiry || businessInfo.foodEstablishmentCertExpiry || existingApp?.foodEstablishmentCertExpiry;
                 const foodEstablishmentCertOnFile = foodEstablishmentCertUrl || existingApp?.foodEstablishmentCertUrl;
                 if (foodEstablishmentCertOnFile && !hasFoodEstablishmentExpiry) {
-                    return rejectStep2('Food establishment license expiry date is required with kitchen documents', 'foodEstablishmentCertExpiry');
+                    return rejectStep2('Food establishment license expiry date is required', 'foodEstablishmentCertExpiry');
                 }
 
                 const hasInsuranceDoc = tierFileUrls['tier2_insurance_document'] || existingApp?.insuranceUrl;
                 if (requirements.tier2_insurance_document_required && !hasInsuranceDoc) {
-                    return rejectStep2('Insurance Document is required with kitchen documents', 'tier2_insurance_document');
+                    return rejectStep2('Insurance Document is required', 'tier2_insurance_document');
                 }
                 // Insurance carries its expiry like the licence (0109), whenever one is on file.
                 const insuranceExpiry = String(req.body.insuranceExpiry || '') || existingApp?.insuranceExpiry || '';
@@ -623,7 +623,7 @@ router.post('/firebase/chef/kitchen-applications',
                 if (requirements.tier2_kitchen_experience_required) {
                     const kitchenExperienceDesc = tierData?.kitchen_experience_description;
                     if (!kitchenExperienceDesc || kitchenExperienceDesc.trim() === '') {
-                        return rejectStep2('Kitchen Experience Description is required with kitchen documents', 'kitchenExperienceDescription');
+                        return rejectStep2('Kitchen Experience Description is required', 'kitchenExperienceDescription');
                     }
                 }
             }
@@ -744,10 +744,10 @@ router.post('/firebase/chef/kitchen-applications',
                     chefId: req.neonUser!.id,
                     type: 'application_pending',
                     priority: 'normal',
-                    title: isInitialRequest ? 'Kitchen request received' : 'Kitchen documents received',
+                    title: isInitialRequest ? 'Kitchen request received' : 'Booking requirements received',
                     message: isInitialRequest
                         ? `Your request to apply to ${location.name || 'the kitchen'} was received. We'll notify you when there's an update.`
-                        : `Your kitchen documents for ${location.name || 'the kitchen'} were received. We'll notify you when there's an update.`,
+                        : `Your booking requirements for ${location.name || 'the kitchen'} were received. We'll notify you when there's an update.`,
                     metadata: { applicationId: application.id, locationId: location.id, workflow: 'kitchen', step: currentTierValue },
                     actionUrl: '/dashboard?view=kitchen-requests',
                     actionLabel: 'View kitchen application',
@@ -812,8 +812,8 @@ router.post('/firebase/chef/kitchen-applications',
                             managerId: admin.id,
                             type: 'application_new',
                             priority: 'normal',
-                            title: 'Kitchen documents ready for review',
-                            message: `${formData.fullName || 'A customer'} submitted their Customer Application Requirements for ${location.name || 'a kitchen'}.`,
+                            title: 'Booking requirements ready for review',
+                            message: `${formData.fullName || 'A customer'} submitted their booking requirements for ${location.name || 'a kitchen'}.`,
                             metadata: { applicationId: application.id, chefId: req.neonUser!.id, locationId: location.id, workflow: 'kitchen', step: 2 },
                             actionUrl: '/admin?section=kitchen-applications-step1',
                             actionLabel: 'Review documents',
@@ -1354,7 +1354,7 @@ router.patch('/firebase/admin/kitchen-applications/:id/verify-documents', requir
             return res.status(400).json({ error: 'The certificate needs a current expiry date before it can be verified.' });
         }
         if (foodEstablishmentCertStatus && (!application.tier2_completed_at || !application.foodEstablishmentCertUrl)) {
-            return res.status(400).json({ error: 'Chef Application Requirements must be submitted before review.' });
+            return res.status(400).json({ error: 'Booking requirements must be submitted before review.' });
         }
         if (foodEstablishmentCertStatus === 'approved' && application.foodEstablishmentCertExpiry && (accessDocumentDaysLeft(application.foodEstablishmentCertExpiry, undefined) ?? 0) <= 0) {
             return res.status(400).json({ error: 'The Food Establishment Licence has expired.' });
@@ -1403,7 +1403,7 @@ router.patch('/firebase/admin/kitchen-applications/:id/status', requireFirebaseA
         }
         if (finalApproval) {
             if (status !== 'approved' || Number(req.body.current_tier) !== 3 || previousTier !== 2 || !applicationBeforeUpdate.tier2_completed_at) {
-                return res.status(400).json({ error: 'Chef Application Requirements must be submitted before final approval.' });
+                return res.status(400).json({ error: 'Booking requirements must be submitted before final approval.' });
             }
             const { tierValidationService } = await import('../../domains/applications/tier-validation');
             const requirements = await locationService.getLocationRequirementsWithDefaults(applicationBeforeUpdate.locationId);
@@ -1412,7 +1412,7 @@ router.patch('/firebase/admin/kitchen-applications/:id/status', requireFirebaseA
             catch (error: any) { return res.status(400).json({ error: error.message }); }
             const validation = tierValidationService.validateTierRequirements({ ...applicationBeforeUpdate, ...documentUpdates } as any, requirements, 2);
             if (!validation.valid) {
-                return res.status(400).json({ error: 'Required kitchen documents are incomplete or awaiting approval.', missingRequirements: validation.missingRequirements });
+                return res.status(400).json({ error: 'Some booking requirements are missing or awaiting approval.', missingRequirements: validation.missingRequirements });
             }
             if (Object.keys(documentUpdates).length) {
                 await chefApplicationService.updateApplicationDocuments({ id: applicationId, ...documentUpdates, verifiedBy: 'local_cooks' });
@@ -1551,10 +1551,10 @@ router.patch('/firebase/admin/kitchen-applications/:id/status', requireFirebaseA
                         locationId: applicationBeforeUpdate.locationId,
                         type: 'application_new',
                         priority: 'normal',
-                        title: initialApproval ? 'Kitchen coordination is ready' : 'Kitchen access approved',
+                        title: initialApproval ? 'New access request' : 'Access approved',
                         message: initialApproval
-                            ? `${applicationBeforeUpdate.fullName || 'A chef'} is approved to continue with ${location.name || 'your kitchen'}. Message them to coordinate their Food Establishment Licence before they submit kitchen documents.`
-                            : `${applicationBeforeUpdate.fullName || 'A chef'} has approved access to ${location.name || 'your kitchen'} and can book available time when bookings are open.`,
+                            ? `${applicationBeforeUpdate.fullName || 'A customer'} sent an access request for ${location.name || 'your kitchen'}. Message them to coordinate their Food Establishment Licence before they send their booking requirements.`
+                            : `${applicationBeforeUpdate.fullName || 'A customer'} has approved access to ${location.name || 'your kitchen'} and can book available time when bookings are open.`,
                         metadata: {
                             applicationId: applicationBeforeUpdate.id,
                             chefId: applicationBeforeUpdate.chefId,
@@ -2028,7 +2028,7 @@ router.patch('/manager/kitchen-applications/:id/status', requireFirebaseAuthWith
         const waiveDocuments = req.body.waive_documents === true;
         const firstRequestApproved = (application.current_tier ?? 1) === 2 || (application.status === 'approved' && !!application.tier1_completed_at && (application.current_tier ?? 1) < 3);
         if (!waiveDocuments && (application.current_tier ?? 1) < 2) {
-            return res.status(403).json({ error: 'Chef Application Requirements must be submitted before the manager can review this application.' });
+            return res.status(403).json({ error: 'Booking requirements must be submitted before the manager can review this application.' });
         }
 
         if (waiveDocuments) {
@@ -2041,10 +2041,10 @@ router.patch('/manager/kitchen-applications/:id/status', requireFirebaseAuthWith
             await recordDocumentWaiver(db, applicationId, { id: user.id, role: 'manager' });
         } else if (req.body.current_tier !== undefined) {
             if ((application.current_tier ?? 1) !== 2) {
-                return res.status(409).json({ error: 'Chef Application Requirements are not awaiting final approval.' });
+                return res.status(409).json({ error: 'Booking requirements are not awaiting final approval.' });
             }
             if (status !== 'approved' || Number(req.body.current_tier) !== 3 || !application.tier2_completed_at) {
-                return res.status(400).json({ error: 'Kitchen documents must be submitted before final approval.' });
+                return res.status(400).json({ error: 'Booking requirements must be submitted before final approval.' });
             }
             const { tierValidationService } = await import('../../domains/applications/tier-validation');
             const requirements = await locationService.getLocationRequirementsWithDefaults(application.locationId);
@@ -2053,7 +2053,7 @@ router.patch('/manager/kitchen-applications/:id/status', requireFirebaseAuthWith
             catch (error: any) { return res.status(400).json({ error: error.message }); }
             const validation = tierValidationService.validateTierRequirements({ ...application, ...documentUpdates } as any, requirements, 2);
             if (!validation.valid) {
-                return res.status(400).json({ error: 'Required kitchen documents are incomplete or awaiting approval.', missingRequirements: validation.missingRequirements });
+                return res.status(400).json({ error: 'Some booking requirements are missing or awaiting approval.', missingRequirements: validation.missingRequirements });
             }
             if (Object.keys(documentUpdates).length) {
                 await chefApplicationService.updateApplicationDocuments({ id: applicationId, ...documentUpdates, verifiedBy: 'manager' });
@@ -2366,7 +2366,7 @@ router.patch('/manager/kitchen-applications/:id/verify-documents', requireFireba
             return res.status(403).json({ error: 'Access denied to this application' });
         }
         if ((application.current_tier ?? 1) < 2 || !application.tier2_completed_at) {
-            return res.status(403).json({ error: 'Chef Application Requirements must be submitted before manager review.' });
+            return res.status(403).json({ error: 'Booking requirements must be submitted before manager review.' });
         }
         const renewed = await reviewPendingRenewals(application, req.body, 'manager');
         if (renewed.includes('foodSafetyLicense')) foodSafetyLicenseStatus = undefined;
@@ -2469,7 +2469,7 @@ router.patch('/manager/kitchen-applications/:id/tier', requireFirebaseAuthWithUs
         }
 
         if ((application.current_tier ?? 1) < 2) {
-            return res.status(403).json({ error: 'Chef Application Requirements are not ready for manager review.' });
+            return res.status(403).json({ error: 'Booking requirements are not ready for manager review.' });
         }
 
         if (parsed.data.current_tier >= 3) {

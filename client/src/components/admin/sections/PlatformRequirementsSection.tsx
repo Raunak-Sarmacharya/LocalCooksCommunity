@@ -140,7 +140,7 @@ export function PlatformRequirementsSection() {
             </div>
             <div className="flex-1">
               <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-                Global Platform Application Requirements
+                Request to apply questions
               </h3>
               <p className="text-sm text-slate-600 dark:text-slate-400 mt-1 leading-relaxed">
                 Configure what information chefs must provide when they first apply to the platform. 

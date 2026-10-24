@@ -53,7 +53,7 @@ describe("getKitchenDisplayStatus", () => {
     const display = getKitchenDisplayStatus({ status: "inReview", current_tier: 2, tier_data: { tier2_submitted_at: "2026-10-10" } });
     expect(display.actionKind).toBe("wait");
     expect(display.step).toBe(2);
-    expect(display.stepCaption).toBe("Kitchen documents submitted");
+    expect(display.stepCaption).toBe("Booking requirements submitted");
   });
 });
 

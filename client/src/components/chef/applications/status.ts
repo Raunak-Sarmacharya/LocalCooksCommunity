@@ -201,7 +201,7 @@ function resolveApplicationDisplay(
         label: tr("kdAwaitingDocuments", "Action required"),
         tone: "warning",
         step: 2,
-        stepCaption: tr("kdCompleteStep2", "Submit kitchen documents"),
+        stepCaption: tr("kdCompleteStep2", "Complete booking requirements"),
         actionLabel: tr("kdUploadDocuments", "Continue application"),
         actionKind: "complete-step",
       };
@@ -211,7 +211,7 @@ function resolveApplicationDisplay(
       label: tr("kdInReview", "In review"),
       tone: "progress",
       step: step2Submitted ? 2 : 1,
-      stepCaption: step2Submitted ? tr("kdStep2Of3Submitted", "Kitchen documents submitted") : tr("kdStep1Of3", "Request to apply"),
+      stepCaption: step2Submitted ? tr("kdStep2Of3Submitted", "Booking requirements submitted") : tr("kdStep1Of3", "Request to apply"),
       actionLabel: tr("kdApplicationInProgress", "Application in progress"),
       actionKind: "wait",
     };
@@ -233,7 +233,7 @@ function resolveApplicationDisplay(
       label: tr("kdInReview", "In review"),
       tone: "progress",
       step: 2,
-      stepCaption: tr("kdStep2Of3Submitted", "Kitchen documents submitted"),
+      stepCaption: tr("kdStep2Of3Submitted", "Booking requirements submitted"),
       actionLabel: tr("kdApplicationInProgress", "Application in progress"),
       actionKind: "wait",
     };
@@ -244,7 +244,7 @@ function resolveApplicationDisplay(
       label: tr("kdAwaitingDocuments", "Action required"),
       tone: "warning",
       step: 2,
-      stepCaption: tr("kdCompleteStep2", "Submit kitchen documents"),
+      stepCaption: tr("kdCompleteStep2", "Complete booking requirements"),
       actionLabel: tr("kdUploadDocuments", "Continue application"),
       actionKind: "complete-step",
     };

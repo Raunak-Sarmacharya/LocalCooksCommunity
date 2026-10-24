@@ -256,7 +256,7 @@ export function AdminKitchenApplicationsStep1Section({
           verifyDocuments: verifyFields,
         });
         toast({
-          title: "Chef Application Requirements approved",
+          title: "Booking requirements approved",
           description: "The chef can now book this kitchen.",
         });
       } else {
@@ -269,7 +269,7 @@ export function AdminKitchenApplicationsStep1Section({
         });
         toast({
           title: "Request to apply approved",
-          description: "Chef can now upload kitchen documents.",
+          description: "The customer can now complete the kitchen’s booking requirements.",
         });
       }
 
@@ -334,8 +334,8 @@ export function AdminKitchenApplicationsStep1Section({
     if (!stage) return;
 
     const label = stage === "step2"
-      ? `Approve Chef Application Requirements for ${application.fullName}? They will be able to book this kitchen.`
-      : `Approve ${application.fullName}'s request to apply? They will be able to upload kitchen documents.`;
+      ? `Approve booking requirements for ${application.fullName}? They will be able to book this kitchen.`
+      : `Approve ${application.fullName}'s request to apply? They can then complete the kitchen’s booking requirements.`;
     if (stage === "step1" && !window.confirm(label)) return;
 
     void handleApprove(application, stage);
@@ -675,14 +675,14 @@ export function AdminKitchenApplicationsStep1Section({
                 <p className="mb-2 text-sm font-semibold">
                   Documents
                   {resolveApprovalStage(selectedApplication) === "step2" && (
-                    <span className="ml-2 font-normal text-muted-foreground">Chef Application Requirements</span>
+                    <span className="ml-2 font-normal text-muted-foreground">Booking requirements</span>
                   )}
                 </p>
                 {renderDocumentReview(selectedApplication)}
 
                 {resolveApprovalStage(selectedApplication) === "step2" && (
                   <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                    Approving now moves this chef to the Chef Application Requirements step and lets them book the kitchen.
+                    Approving now completes this customer’s booking requirements and lets them book the kitchen.
                   </p>
                 )}
               </div>
@@ -713,7 +713,7 @@ export function AdminKitchenApplicationsStep1Section({
                 {updateApplicationStatus.isPending
                   ? "Processing..."
                   : resolveApprovalStage(selectedApplication) === "step2"
-                    ? "Approve Chef Application Requirements"
+                    ? "Approve booking requirements"
                     : "Approve"}
               </Button>
             )}
@@ -738,12 +738,12 @@ export function AdminKitchenApplicationsStep1Section({
               {renderDocumentReview(documentsApplication)}
               {resolveApprovalStage(documentsApplication) === "step2" && (
                 <div className="border-t pt-4">
-                  <p className="mb-3 text-sm text-muted-foreground">Once the kitchen documents meet the requirements, approve this step to allow booking.</p>
+                  <p className="mb-3 text-sm text-muted-foreground">Once the booking requirements are met, approve this step to allow booking.</p>
                   <Button
                     disabled={verifyDocuments.isPending || updateApplicationStatus.isPending}
                     onClick={() => handleApprove(documentsApplication, "step2")}
                   >
-                    {updateApplicationStatus.isPending ? "Processing..." : "Approve Chef Application Requirements"}
+                    {updateApplicationStatus.isPending ? "Processing..." : "Approve booking requirements"}
                   </Button>
                 </div>
               )}

@@ -10,7 +10,7 @@ interface KitchenManagerContactCardProps {
   managerName?: string | null;
   kitchenName: string;
   address?: string | null;
-  /** True once the chef has submitted the Chef Application Requirements. */
+  /** True once the chef has submitted the booking requirements. */
   submitted: boolean;
   /** Whether this kitchen makes the Food Establishment Licence compulsory. */
   requiresEstablishmentLicence: boolean;

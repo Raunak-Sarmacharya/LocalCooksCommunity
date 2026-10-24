@@ -3863,15 +3863,15 @@ const kitchenApplicationMessageLink = (data: KitchenApplicationEmailDetails, rol
 
 export const generateKitchenApplicationAdminEmail = (data: KitchenApplicationEmailDetails & { recipientEmail: string; documentsSubmitted?: boolean; submittedAt?: Date }): EmailContent =>
   renderTransactionalEmail({ to: data.recipientEmail, recipientName: 'Local Cooks',
-    subject: (data.documentsSubmitted ? 'Kitchen documents submitted — ' : 'Request to apply received — ') + data.locationName + kitchenApplicationReference(data),
-    heading: data.documentsSubmitted ? 'Kitchen documents are ready' : 'A kitchen access request is ready',
-    message: data.documentsSubmitted ? data.chefName + ' submitted kitchen documents. Open the application to check the documents and current access status.' : data.chefName + ' requested access to ' + data.locationName + '. Review the request and approve it to continue kitchen coordination, or decline it with helpful feedback.',
-    facts: kitchenApplicationFacts(data, 'admin'), actionLabel: data.documentsSubmitted ? 'View kitchen documents' : 'Review request', actionUrl: kitchenApplicationEmailUrl(data, 'admin') });
+    subject: (data.documentsSubmitted ? 'Booking requirements submitted — ' : 'Request to apply received — ') + data.locationName + kitchenApplicationReference(data),
+    heading: data.documentsSubmitted ? 'Booking requirements are ready to review' : 'New access request',
+    message: data.documentsSubmitted ? data.chefName + ' submitted their booking requirements. Open the access request to check them and the current access status.' : data.chefName + ' requested access to ' + data.locationName + '. Review the request and approve it to continue kitchen coordination, or decline it with helpful feedback.',
+    facts: kitchenApplicationFacts(data, 'admin'), actionLabel: data.documentsSubmitted ? 'Review booking requirements' : 'Review request', actionUrl: kitchenApplicationEmailUrl(data, 'admin') });
 
 // Retained for callers outside this flow; new admin requests use the admin renderer above.
 export const generateNewKitchenApplicationManagerEmail = (data: KitchenManagerApplicationEmailDetails): EmailContent =>
   renderTransactionalEmail({ to: data.managerEmail, recipientName: data.managerName || 'Kitchen manager',
-    subject: 'Kitchen access request — ' + data.chefName + kitchenApplicationReference(data),
+    subject: 'Access request — ' + data.chefName + kitchenApplicationReference(data),
     message: data.chefName + ' requested access to ' + data.locationName + '. Open the application to see its current status and available actions.',
     facts: kitchenApplicationFacts(data, 'kitchen'), actionLabel: 'View application', actionUrl: kitchenApplicationEmailUrl(data, 'kitchen') });
 
@@ -3890,10 +3890,10 @@ export const generateKitchenApplicationClearedManagerEmail = (data: Omit<Kitchen
 
 export const generateKitchenCoordinationSubmittedManagerEmail = (data: KitchenManagerApplicationEmailDetails): EmailContent =>
   renderTransactionalEmail({ to: data.managerEmail, recipientName: data.managerName || 'Kitchen manager',
-    subject: 'Kitchen documents submitted — ' + data.chefName + kitchenApplicationReference(data),
-    heading: 'Kitchen documents are ready',
-    message: data.chefName + ' submitted the required documents for ' + data.locationName + '. Open the application to check the documents and available actions. Message the customer if you need clarification.',
-    facts: kitchenApplicationFacts(data, 'kitchen'), actionLabel: 'View kitchen documents', actionUrl: kitchenApplicationEmailUrl(data, 'kitchen'), secondaryButton: kitchenApplicationMessageLink(data, 'kitchen') });
+    subject: 'Booking requirements submitted — ' + data.chefName + kitchenApplicationReference(data),
+    heading: 'Booking requirements are ready to review',
+    message: data.chefName + ' submitted their booking requirements for ' + data.locationName + '. Open the access request to check them and the available actions. Message the customer if you need clarification.',
+    facts: kitchenApplicationFacts(data, 'kitchen'), actionLabel: 'Review booking requirements', actionUrl: kitchenApplicationEmailUrl(data, 'kitchen'), secondaryButton: kitchenApplicationMessageLink(data, 'kitchen') });
 
 export const generateKitchenAccessConfirmedManagerEmail = (data: KitchenManagerApplicationEmailDetails): EmailContent =>
   renderTransactionalEmail({ to: data.managerEmail, recipientName: data.managerName || 'Kitchen manager',
@@ -3903,20 +3903,20 @@ export const generateKitchenAccessConfirmedManagerEmail = (data: KitchenManagerA
 
 export const generateKitchenApplicationReceivedChefEmail = (data: KitchenApplicationEmailDetails): EmailContent =>
   renderTransactionalEmail({ to: data.chefEmail, recipientName: data.chefName,
-    subject: 'Request to apply received — ' + data.locationName + kitchenApplicationReference(data), heading: 'Your kitchen access request is sent',
+    subject: 'Request to apply received — ' + data.locationName + kitchenApplicationReference(data), heading: 'Your request to apply is sent',
     message: 'We’ve received your request to apply to ' + data.locationName + '. We’ll email you when there’s an update. Nothing else is needed from you right now. Kitchen access and booking times are not yet confirmed.',
     facts: kitchenApplicationFacts(data), actionLabel: 'View your application', actionUrl: kitchenApplicationEmailUrl(data) });
 
 export const generateKitchenApplicationStep2ReceivedChefEmail = (data: KitchenApplicationEmailDetails): EmailContent =>
   renderTransactionalEmail({ to: data.chefEmail, recipientName: data.chefName,
-    subject: 'Kitchen documents received — ' + data.locationName + kitchenApplicationReference(data), heading: 'Your kitchen documents are received',
-    message: 'We’ve received your kitchen documents for ' + data.locationName + '. We’ll email you when there’s an update. Nothing else is needed from you right now. Please wait for kitchen access approval before booking.',
+    subject: 'Booking requirements received — ' + data.locationName + kitchenApplicationReference(data), heading: 'We received your booking requirements',
+    message: 'We’ve received your booking requirements for ' + data.locationName + '. We’ll email you when there’s an update. Nothing else is needed from you right now. Please wait for kitchen access approval before booking.',
     facts: kitchenApplicationFacts(data), actionLabel: 'View your application', actionUrl: kitchenApplicationEmailUrl(data), secondaryButton: kitchenApplicationMessageLink(data, 'chef') });
 
 export const generateKitchenApplicationSubmittedChefEmail = (data: KitchenApplicationEmailDetails & { locationId?: number }): EmailContent =>
   renderTransactionalEmail({ to: data.chefEmail, recipientName: data.chefName,
     subject: 'Request to apply approved — ' + data.locationName + kitchenApplicationReference(data), heading: 'Your request to apply is approved',
-    message: 'Your request to apply to ' + data.locationName + ' is approved. Coordinate with your kitchen manager about access and your Food Establishment Licence, then submit the required kitchen documents. Booking becomes available after your kitchen access is approved.',
+    message: 'Your request to apply to ' + data.locationName + ' is approved. Coordinate with your kitchen manager about access and your Food Establishment Licence, then complete the kitchen’s booking requirements. You can book once they’re approved.',
     facts: kitchenApplicationFacts(data), actionLabel: 'Continue your application', actionUrl: data.locationId ? getSubdomainUrl('chef') + '/apply-kitchen/' + data.locationId : kitchenApplicationEmailUrl(data), secondaryButton: kitchenApplicationMessageLink(data, 'chef') });
 
 export const generateKitchenApplicationApprovedEmail = (data: KitchenApplicationEmailDetails & { kitchenName?: string }): EmailContent =>

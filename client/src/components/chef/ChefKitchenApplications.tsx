@@ -65,7 +65,7 @@ export default function ChefKitchenApplications({ onOpenChat }: { onOpenChat?: (
     const renew = () => { const section = document.getElementById("renew-access-documents"); section?.scrollIntoView?.({ behavior: "smooth", block: "start" }); section?.focus?.(); };
     const nextCopy = selected.bookingEligibility?.canBook === false && (selected.current_tier ?? 1) >= 3 ? t(selected.bookingEligibility.status === "access_ended" ? "locationAccessEndedHelp" : selected.bookingEligibility.status === "renewal_under_review" ? "renewalUnderReviewHelp" : "renewDocumentsReviewHelp") : display.listingPaused ? t("applicationPausedHelp", "Your kitchen access is approved. Booking will be available when this kitchen opens for reservations again.")
       : display.actionKind === "book" ? t("applicationBookHelp", "Your kitchen access is approved. Choose available dates and hours to book your kitchen time.")
-      : display.actionKind === "complete-step" ? t("applicationDocumentsHelp", "Upload the required kitchen documents to continue your application.")
+      : display.actionKind === "complete-step" ? t("applicationDocumentsHelp", "Complete this kitchen’s booking requirements to continue.")
       : display.actionKind === "discover" ? t("applicationClosedHelp", "Review the feedback below. You can start a new request when you’re ready.")
       : t("applicationReviewHelp", "Your application is in review. We’ll email you when there’s an update. Nothing else is needed from you right now.");
     return <section className="min-w-0 space-y-6 [overflow-wrap:anywhere]" aria-label={t("applicationPageTitle", "Kitchen application")}>

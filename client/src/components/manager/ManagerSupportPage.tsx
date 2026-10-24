@@ -70,12 +70,12 @@ export default function ManagerSupportPage({
       icon: Users,
       questions: [
         {
-          q: t("supportManagerApplicationsQ1", "What are access requirements?"),
+          q: t("supportManagerApplicationsQ1", "What are booking requirements?"),
           a: t("supportManagerApplicationsA1", "The documents and questions a customer must satisfy before they can book your kitchen. You control these per location."),
         },
         {
           q: t("supportManagerApplicationsQ2", "What's the difference between the two tiers?"),
-          a: t("supportManagerApplicationsA2", "Customers send a request with their details. You set the access requirements they complete before booking, and you approve them."),
+          a: t("supportManagerApplicationsA2", "Customers send a request to apply with their details. You choose the documents and questions they complete before booking, and you approve them."),
         },
       ],
     },

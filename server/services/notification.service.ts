@@ -430,8 +430,8 @@ async function notifyStep2ApplicationSubmitted(data: ApplicationNotificationData
     locationId: data.locationId,
     type: 'application_new',
     priority: 'high',
-    title: 'Kitchen Access Documents Submitted',
-    message: `${data.chefName} (${data.chefEmail}) submitted their kitchen access documents${data.locationName ? ` for ${data.locationName}` : ''}. Review the documents to approve booking access.`,
+    title: 'Booking requirements submitted',
+    message: `${data.chefName} (${data.chefEmail}) submitted their booking requirements${data.locationName ? ` for ${data.locationName}` : ''}. Review them to approve booking.`,
     metadata: {
       applicationId: data.applicationId,
       chefName: data.chefName,
@@ -742,8 +742,8 @@ async function notifyChefApplicationApproved(data: {
     message: isFullyApproved
       ? `Congratulations! Your application to ${data.kitchenName} at ${data.locationName} has been fully approved. You can now book this kitchen.`
       : data.conversationId
-        ? `Your request to apply to ${data.kitchenName} was approved. Message the kitchen manager to coordinate your Food Establishment Licence, then upload your kitchen documents.`
-        : `Good news! Your request to apply to ${data.kitchenName} at ${data.locationName} was approved. Complete your kitchen documents before booking this kitchen.`,
+        ? `Your request to apply to ${data.kitchenName} was approved. Message the kitchen manager to coordinate your Food Establishment Licence, then complete the booking requirements.`
+        : `Good news! Your request to apply to ${data.kitchenName} at ${data.locationName} was approved. Complete the booking requirements before you book this kitchen.`,
     metadata: {
       kitchenName: data.kitchenName,
       locationName: data.locationName,
@@ -759,7 +759,7 @@ async function notifyChefApplicationApproved(data: {
         : data.locationId
         ? `/kitchen-requirements/${data.locationId}`
         : chefDashboardView('kitchen-requests'),
-    actionLabel: isFullyApproved ? 'View approved kitchen' : data.conversationId ? 'Message kitchen' : 'Complete Chef Application Requirements'
+    actionLabel: isFullyApproved ? 'View approved kitchen' : data.conversationId ? 'Message kitchen' : 'Complete booking requirements'
   });
 }
 

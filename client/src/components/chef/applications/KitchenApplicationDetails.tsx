@@ -65,14 +65,14 @@ export function KitchenApplicationDetails({ app, display, onBookKitchen, compact
       ...(app.documents?.length ? [] : [[t("apptabFoodSafetyLicense", "Food safety certification"), app.foodSafetyLicense === "yes" ? t("apptabYes", "Yes") : app.foodSafetyLicense === "no" ? t("apptabNo", "No") : t("apptabNotSure", "Not sure")] as [string, unknown]]),
     ]))}
     {custom(app.customFieldsData as Record<string, unknown>, requirements?.tier1_custom_fields) && section(t("applicationRequestAnswers", "Additional request information"), custom(app.customFieldsData as Record<string, unknown>, requirements?.tier1_custom_fields))}
-    {app.documents?.length ? section(t("kitchenDocuments", "Kitchen documents"), <div className="space-y-4">
+    {app.documents?.length ? section(t("kitchenDocuments", "Booking requirements"), <div className="space-y-4">
       {app.documentsWaivedAt && <p className="rounded-lg bg-muted/40 px-3 py-2 text-sm text-muted-foreground">{t("mdWaivedLocation", "This location doesn’t need documents from you")}</p>}
       <ApplicationDocumentRows app={app} viewLink={key => { const url = key === "foodSafetyLicense" ? app.foodSafetyLicenseUrl : key === "foodEstablishmentCert" ? app.foodEstablishmentCertUrl : (app as any).insuranceUrl; return url ? <SecureDocumentLink url={url} label={t("apptabViewDocument", "View document")} showExternalIcon={false} /> : null; }} />
       {/* The kitchen's own uploads and answers stay listed below. */}
       {[...tierFiles.filter(([key]) => key !== "tier2_insurance_document"), ...otherDocuments].map(([key, url]) => <Fragment key={key}>{renderDocument(fileLabel(key), url)}</Fragment>)}
       {(tier.kitchen_experience_description || documents.kitchenExperienceDescription) && fields([[t("applicationKitchenExperience", "Kitchen experience"), tier.kitchen_experience_description || documents.kitchenExperienceDescription]])}
       {custom(tier.tier2_custom_fields_data, requirements?.tier2_custom_fields)}
-    </div>) : section(t("kitchenDocuments", "Kitchen documents"), <div className="space-y-4">
+    </div>) : section(t("kitchenDocuments", "Booking requirements"), <div className="space-y-4">
       {app.foodSafetyLicenseUrl && renderDocument(t("apptabFoodSafetyLicense", "Food safety certificate"), app.foodSafetyLicenseUrl, app.foodSafetyLicenseStatus, app.foodSafetyLicenseExpiry || business?.foodHandlerCertExpiry)}
       {app.foodEstablishmentCertUrl && renderDocument(t("apptabFoodEstablishmentCert", "Food establishment licence"), app.foodEstablishmentCertUrl, app.foodEstablishmentCertStatus, app.foodEstablishmentCertExpiry || business?.foodEstablishmentCertExpiry)}
       {[...tierFiles, ...otherDocuments].map(([key, url]) => <Fragment key={key}>{renderDocument(fileLabel(key), url)}</Fragment>)}

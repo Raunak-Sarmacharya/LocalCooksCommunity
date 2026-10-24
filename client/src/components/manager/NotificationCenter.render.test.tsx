@@ -127,8 +127,8 @@ describe("NotificationCenter endpoint parameterisation", () => {
     const trigger = getByRole("button", { name: /notifications/i });
     fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
     fireEvent.click(trigger);
-    expect(await screen.findByText("Kitchen Access Documents Submitted")).toBeInTheDocument();
-    expect(screen.getByText(/Mina \(mina@example.com\) submitted kitchen access documents/)).toBeInTheDocument();
+    expect(await screen.findByText("Booking requirements submitted")).toBeInTheDocument();
+    expect(screen.getByText(/Mina \(mina@example.com\) submitted their booking requirements/)).toBeInTheDocument();
     expect(screen.queryByText("Chef Application Requirements Submitted")).not.toBeInTheDocument();
   });
   it("renders the bell and defaults to the manager endpoints", async () => {

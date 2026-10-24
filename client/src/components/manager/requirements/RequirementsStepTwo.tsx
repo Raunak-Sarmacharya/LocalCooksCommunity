@@ -110,7 +110,7 @@ export function RequirementsStepTwo({
       {/* Built-in requirements */}
       <Card>
         <CardHeader className="p-4 pb-2">
-          <CardTitle className="text-lg">{mt("step2Documents")}</CardTitle>
+          <CardTitle className="text-lg">{mt("qbDocumentsTitle")}</CardTitle>
           <CardDescription>{mt("documentModesHelp")}</CardDescription>
         </CardHeader>
 

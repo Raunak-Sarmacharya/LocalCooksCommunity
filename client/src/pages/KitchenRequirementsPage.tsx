@@ -127,13 +127,13 @@ export default function KitchenRequirementsPage() {
     : t("requirementsStartTitle", "Make this your next kitchen");
   const description = closed ? t("requirementsClosedHelp", "This kitchen isn’t accepting new requests right now. Explore another space or check back later.")
     : approved ? canBook ? t("requirementsApprovedHelp", "Choose available dates and hours to book your kitchen time.") : t("requirementsApprovedPausedHelp", "Your approval stays on file. Booking will be available when this kitchen opens for reservations again.")
-    : needsDocuments ? t("requirementsDocumentsHelp", "Upload the required kitchen documents to continue your application.")
+    : needsDocuments ? t("requirementsDocumentsHelp", "Complete this kitchen’s booking requirements to continue.")
     : waiting ? t("requirementsReviewHelp", "Your application is in review. We’ll email you when there’s an update. Nothing else is needed from you right now.")
     : t("requirementsStartHelp", "Tell us about yourself and your food business. After your request is approved, you’ll share the documents this kitchen requires.");
   const actionLabel = closed ? t("backToDiscoverKitchens", "Explore kitchens")
     : canBook ? t("requirementsBookAction", "Choose booking times")
     : approved || waiting ? t("viewApplicationBtn", "View application")
-    : needsDocuments ? t("submitKitchenDocuments", "Submit kitchen documents")
+    : needsDocuments ? t("submitKitchenDocuments", "Complete booking requirements")
     : display?.actionKind === "discover" ? t("requirementsApplyAgainAction", "Apply again")
     : t("requestToApply", "Request to apply");
   const actionHref = needsRenewal ? application!.bookingEligibility!.actionUrl ?? "" : closed ? chefDashboardHref("discover-kitchens") : canBook ? `/book/${locationId}?kitchenId=${kitchen!.id}`
@@ -197,7 +197,7 @@ export default function KitchenRequirementsPage() {
           {[
             { number: 1, title: t("requestToApply", "Request to apply"), help: t("requirementsStep1Help", "Introduce yourself and your food business to Local Cooks."), items: step1Items,
               complete: needsDocuments || documentsSubmitted || approved, status: needsDocuments || documentsSubmitted || approved ? t("requirementsStageApproved", "Approved") : requestSubmitted ? t("requirementsStageReview", "In review") : t("requirementsStageStart", "Start here") },
-            { number: 2, title: t("requirementsStep2Title", "Kitchen documents"), help: t("requirementsStep2Help", "Upload the documents this kitchen requires for access."), items: step2Items,
+            { number: 2, title: t("requirementsStep2Title", "Booking requirements"), help: t("requirementsStep2Help", "The documents and answers this kitchen asks for before you book."), items: step2Items,
               complete: approved, status: approved ? t("requirementsStageApproved", "Approved") : documentsSubmitted ? t("requirementsStageReview", "In review") : needsDocuments ? t("requirementsStageReady", "Ready to submit") : t("requirementsStageLater", "After request approval") },
             { number: 3, title: t("requirementsStep3Title", "Book your kitchen time"), help: t("requirementsStep3Help", "Once approved, choose available dates and hours and confirm your booking."), items: [], complete: approved,
               status: approved ? canBook ? t("requirementsStageBookingReady", "Ready to book") : t("requirementsStageBookingPaused", "Bookings paused") : t("requirementsStageAfterDocuments", "After document approval") },
@@ -209,7 +209,7 @@ export default function KitchenRequirementsPage() {
               <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-semibold tracking-tight">{stage.title}</h3><span className={`rounded-md px-2 py-1 text-[11px] font-medium ${stage.complete ? "bg-emerald-50 text-emerald-700" : stage.number === step ? "bg-primary/5 text-primary" : "bg-muted/50 text-muted-foreground"}`}>{stage.status}</span></div>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">{stage.help}</p>
               {stage.items.length > 0 && <ul className="mt-4 space-y-2.5">{stage.items.map((item, index) => <li key={`${item}-${index}`} className="flex items-start gap-2.5 text-sm leading-5 text-foreground/80"><Circle className="mt-1.5 h-1.5 w-1.5 shrink-0 fill-muted-foreground text-muted-foreground" aria-hidden />{item}</li>)}</ul>}
-              {stage.number === 2 && !stage.items.length && <p className="mt-3 text-sm text-muted-foreground">{t("noDocsRequiredStep2", "No specific kitchen documents are required.")}</p>}
+              {stage.number === 2 && !stage.items.length && <p className="mt-3 text-sm text-muted-foreground">{t("noDocsRequiredStep2", "This kitchen has no booking requirements.")}</p>}
             </div>
           </div>)}
         </section>

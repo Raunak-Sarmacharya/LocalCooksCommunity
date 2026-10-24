@@ -156,7 +156,7 @@ export default function ApplicationRequirementsStep() {
         key: "documents",
         // The wizard's own card title, verbatim, so the review's heading is the string the
         // manager configured under rather than a second name for the same list.
-        title: mt("step2Documents"),
+        title: mt("qbDocumentsTitle"),
         // The ONE Edit for this single-pane step. It lives here, on the heading of the list it
         // opens, rather than on the page title above: the button acts on the requirements list,
         // so it belongs on that list's own row. `heading` below therefore carries NO part —
@@ -264,7 +264,7 @@ export default function ApplicationRequirementsStep() {
        * The review. The wizard is one pane, so its rows carry no Edit of their own — four
        * buttons that all open the same form would be four ways to say one thing.
        *
-       * The single Edit sits on the "Chef Application Requirements" section row, right-aligned
+       * The single Edit sits on the "Documents" section row, right-aligned
        * above the list it opens. It used to sit on the page title, which put the action on the
        * heading of the whole screen rather than on the thing it acts on — and the title's
        * explanatory line beside it pushed the button onto a second, left-aligned line.

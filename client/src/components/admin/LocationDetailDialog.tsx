@@ -320,7 +320,7 @@ function RequirementsSection({ requirements }: { requirements: any }) {
   return (
     <div className="space-y-3">
       <h4 className="text-sm font-semibold flex items-center gap-1.5">
-        <Shield className="h-4 w-4 text-primary" /> Application Requirements
+        <Shield className="h-4 w-4 text-primary" /> Booking requirements
       </h4>
       <div className="flex flex-wrap gap-1.5">
         {checks.map((c) => (

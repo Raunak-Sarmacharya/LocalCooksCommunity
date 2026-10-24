@@ -48,8 +48,8 @@ it('introduces the actual selected kitchen and routes a new request to that kitc
 
 it.each([
   [{ status: 'inReview', current_tier: 1 }, 'Your request is in review', 'View application', '/dashboard?view=kitchen-requests'],
-  [{ status: 'approved', current_tier: 1 }, 'Your request is approved', 'Submit kitchen documents', '/apply-kitchen/46?kitchenId=53'],
-  [{ status: 'inReview', current_tier: 2 }, 'Your request is approved', 'Submit kitchen documents', '/apply-kitchen/46?kitchenId=53'],
+  [{ status: 'approved', current_tier: 1 }, 'Your request is approved', 'Complete booking requirements', '/apply-kitchen/46?kitchenId=53'],
+  [{ status: 'inReview', current_tier: 2 }, 'Your request is approved', 'Complete booking requirements', '/apply-kitchen/46?kitchenId=53'],
   [{ status: 'approved', current_tier: 2, tier2_completed_at: '2026-10-09' }, 'Your documents are in review', 'View application', '/dashboard?view=kitchen-requests'],
   [{ status: 'approved', current_tier: 3 }, 'You’re ready to book', 'Choose booking times', '/book/46?kitchenId=53'],
   [{ status: 'approved', current_tier: 3, locationListed: false }, 'Your kitchen access is approved', 'View application', '/dashboard?view=kitchen-requests'],

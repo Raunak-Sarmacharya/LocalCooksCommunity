@@ -130,10 +130,10 @@ export function KitchenApplicationJourneySteps({
     {
       key: "step2_manager" as const,
       icon: <Check className="h-4 w-4" />,
-      title: t("journeyStep2Title", "Kitchen documents and review"),
+      title: t("journeyStep2Title", "Booking requirements"),
       desc: t(
         "journeyStep2Desc",
-        "Submit the required kitchen documents to continue your application."
+        "Complete the kitchen’s booking requirements to continue."
       ),
     },
     {

@@ -39,7 +39,7 @@ it('opens the exact kitchen conversation without claiming a booking confirmation
   expect(email.text).toContain('/dashboard?view=messages&conversation=chef%2Fkitchen%2657');
   expect(email.html).toContain('class="lc-border"');
   expect(email.text).toContain('always communicate through Local Cooks');
-  expect(email.text).toContain('Booking becomes available after your kitchen access is approved');
+  expect(email.text).toContain('You can book once they’re approved');
 });
 
 it('escapes chef answers and feedback in HTML while preserving their literal plain text', () => {

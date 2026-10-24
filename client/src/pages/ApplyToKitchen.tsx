@@ -163,7 +163,7 @@ export default function ApplyToKitchen() {
         <ApplicationSubmissionSummary
           kitchenName={selectedKitchen?.name || location?.name || "Kitchen application"}
           title={documentsSubmitted ? "Documents in review" : "Request in review"}
-          description={documentsSubmitted ? "Your kitchen documents were submitted." : "Your request to apply was submitted."}
+          description={documentsSubmitted ? "Your booking requirements were submitted." : "Your request to apply was submitted."}
           nextStep="We’ll email you when there’s an update. You can track your application at any time."
           actionLabel="View my applications"
           onAction={() => navigate(`/dashboard?view=kitchen-requests${locationApplication?.id ? `&application=${locationApplication.id}` : ""}`)}

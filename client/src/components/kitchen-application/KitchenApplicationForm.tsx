@@ -1106,7 +1106,7 @@ export default function KitchenApplicationForm({
   const requiredRemaining = requiredItems.filter((item) => item.state === "todo");
 
   const phaseTitle = currentTier >= 2
-    ? t("step2Coordinate", { defaultValue: "Kitchen documents" })
+    ? t("step2Coordinate", { defaultValue: "Booking requirements" })
     : onePage ? t("yourRequest", { defaultValue: "Your request" }) : t("requestToApply", { defaultValue: "Request to apply" });
 
   /**
@@ -1667,7 +1667,7 @@ export default function KitchenApplicationForm({
       <ApplicationSubmissionSummary
         kitchenName={location.name}
         title={currentTier >= 2 ? "Documents submitted" : "Request submitted"}
-        description={currentTier >= 2 ? "Your kitchen documents are in review." : "Your request to apply is in review."}
+        description={currentTier >= 2 ? t("step2DocsInReview", { defaultValue: "Your booking requirements are in review." }) : t("requestInReview", { defaultValue: "Your request to apply is in review." })}
         nextStep={currentTier >= 2 ? "We’ll notify you when the kitchen makes a decision. You can track your application at any time." : "We’ll notify you when it’s time to upload the kitchen documents."}
         actionLabel="View my applications"
         onAction={() => navigate("/dashboard?view=kitchen-requests")}
@@ -1864,7 +1864,7 @@ export default function KitchenApplicationForm({
       {/* Header (the one-page request has its own title) */}
       {!onePage && <ChefPageHeader
         title={currentTier >= 2
-          ? t("kitchenDocuments", { defaultValue: "Kitchen documents" })
+          ? t("kitchenDocuments", { defaultValue: "Booking requirements" })
           : t("requestToApply", { defaultValue: "Request to apply" })}
         description={currentTier >= 2
           ? t("kitchenDocumentsFor", { defaultValue: "Documents required by {name}", name: location.name })
