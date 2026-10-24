@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { InfoChip } from "@/components/chef/info-chip";
 import { customDocumentFields, kitchenDocumentFields } from "@shared/location-booking-eligibility";
 
-export type KitchenDocumentField = "foodSafetyLicenseStatus" | "foodEstablishmentCertStatus";
+export type KitchenDocumentField = "foodSafetyLicenseStatus" | "foodEstablishmentCertStatus" | "insuranceStatus";
 
 type DocumentState = {
   foodSafetyLicenseUrl?: string | null;
@@ -12,6 +12,9 @@ type DocumentState = {
   foodEstablishmentCertUrl?: string | null;
   foodEstablishmentCertExpiry?: string | null;
   foodEstablishmentCertStatus?: string | null;
+  insuranceUrl?: string | null;
+  insuranceExpiry?: string | null;
+  insuranceStatus?: string | null;
   /** The kitchen's own documents live on the tier data. */
   tier_data?: unknown;
 };
@@ -20,6 +23,7 @@ type KitchenRequirements = {
   /** The kitchen's own tier-2 flag: is the certificate upload compulsory? */
   requireFoodSafetyUpload?: boolean;
   tier2_food_establishment_cert_required?: boolean;
+  tier2_insurance_document_required?: boolean;
   tier2_custom_fields?: unknown;
 } | null | undefined;
 
@@ -32,6 +36,7 @@ export function getKitchenDocumentApprovalPlan(application: DocumentState, requi
     // document on file without one is incomplete rather than merely optional.
     { label: "Food Safety Certificate", field: "foodSafetyLicenseStatus" as const, url: application.foodSafetyLicenseUrl, expiry: application.foodSafetyLicenseExpiry, status: application.foodSafetyLicenseStatus, required: requirements?.requireFoodSafetyUpload, needsExpiry: true },
     { label: "Food Establishment Licence", field: "foodEstablishmentCertStatus" as const, url: application.foodEstablishmentCertUrl, expiry: application.foodEstablishmentCertExpiry, status: application.foodEstablishmentCertStatus, required: requirements?.tier2_food_establishment_cert_required, needsExpiry: true },
+    { label: "Insurance", field: "insuranceStatus" as const, url: application.insuranceUrl, expiry: application.insuranceExpiry, status: application.insuranceStatus, required: requirements?.tier2_insurance_document_required, needsExpiry: true },
   ];
   const own = kitchenDocumentFields({ tier2_custom_fields: requirements?.tier2_custom_fields }).map(field => {
     const { url, expiry, status } = customDocumentFields({ status: "approved", tier_data: application.tier_data }, field.id);

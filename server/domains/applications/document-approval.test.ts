@@ -22,7 +22,7 @@ describe('combined document verification and approval', () => {
 
     it('refuses duplicate or unknown fields', () => {
         expect(() => approvalDocumentUpdates(submitted, ['foodSafetyLicenseStatus', 'foodSafetyLicenseStatus'])).toThrow('valid documents');
-        expect(() => approvalDocumentUpdates(submitted, ['insuranceStatus'])).toThrow('valid documents');
+        expect(() => approvalDocumentUpdates(submitted, ['businessLicenseStatus'])).toThrow('valid documents');
     });
 });
 
@@ -40,5 +40,13 @@ describe('final approval and the kitchen\'s own documents', () => {
     it('blocks approval while one needs a new copy or has expired', () => {
         expect(() => approvalCustomDocumentStatus(app({ rules: '/r.pdf' }, { rules: 'rejected' }), { tier2_custom_fields: fields })).toThrow('needs a new copy');
         expect(() => approvalCustomDocumentStatus(app({ lic: '/l.pdf', lic__expiry: '2020-01-01' }), { tier2_custom_fields: fields })).toThrow('expired');
+    });
+});
+
+describe('insurance in the final approval', () => {
+    it('can be verified with the approval, and needs a current expiry', () => {
+        const app = { insuranceUrl: '/ins.pdf', insuranceExpiry: '2099-01-01', insuranceStatus: 'pending' };
+        expect(approvalDocumentUpdates(app, ['insuranceStatus'])).toEqual({ insuranceStatus: 'approved' });
+        expect(() => approvalDocumentUpdates({ ...app, insuranceExpiry: null }, ['insuranceStatus'])).toThrow('expiry');
     });
 });

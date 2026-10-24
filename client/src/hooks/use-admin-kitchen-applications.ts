@@ -132,7 +132,7 @@ export function useAdminKitchenApplications() {
       feedback?: string;
       currentTier?: number;
       tierData?: any;
-      verifyDocuments?: Array<"foodSafetyLicenseStatus" | "foodEstablishmentCertStatus">;
+      verifyDocuments?: Array<"foodSafetyLicenseStatus" | "foodEstablishmentCertStatus" | "insuranceStatus">;
     }) => {
       const headers = await getAuthHeaders();
       const response = await fetch(
