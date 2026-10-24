@@ -22,7 +22,6 @@ vi.mock('../db', () => {
   return { db };
 });
 vi.mock('./tour-delivery-service', async importOriginal => ({ ...await importOriginal<typeof import('./tour-delivery-service')>(), queueTourEvent: state.queue, deliverTourEvents: state.delivery }));
-vi.mock('./lifecycle-settings', () => ({ getLifecycleSettings: async () => ({ tourOutcomeReminderMinutes: 30 }) }));
 vi.mock('../logger', () => ({ logger: { error: vi.fn() } }));
 import { remindUnrecordedTourOutcomes, closeUnrecordedTour } from './tour-outcome-service';
 import { tourFeedbackEventKey } from '@shared/tour-feedback';
