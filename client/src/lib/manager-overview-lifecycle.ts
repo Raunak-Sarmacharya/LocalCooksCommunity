@@ -1,8 +1,8 @@
+import { tourListState, type TourListTour } from './tour-list-status';
 import { calendarDateForBookingTime } from "@shared/operating-hours";
 import { createBookingDateTime, DEFAULT_TIMEZONE } from "@shared/timezone-utils";
 import { kitchenLicenseState, isReplacementUnderReview, toCalendarDate, type KitchenLicenseFields } from "@shared/kitchen-license";
 import { overstayCollectionError } from "@shared/overstay-collection";
-import type { TourAttendance } from '@shared/tour-attendance';
 
 export function storageHasEnded(endDate?: string, now = new Date()) {
   if (!endDate || !Number.isFinite(Date.parse(endDate))) return false;
@@ -28,16 +28,15 @@ export function licenseNextAction(license: KitchenLicenseFields, now = new Date(
   return null;
 }
 
-export function tourNextAction(tour: { status: string; scheduledAt: string; durationMinutes?: number; requestedRescheduleAt?: string | null;
-  managerFeedbackSubmitted?: boolean;
-  rescheduleProposedSlots?: string[] | null; updatedAt?: string; checkedInAt?: string | null; checkedOutAt?: string | null; attendanceHistory?: unknown; outcomeHistory?: unknown; targetedKitchenId?: number | null; attendance?: TourAttendance }, now = Date.now()) {
-  const start = Date.parse(tour.scheduledAt);
-  if (!Number.isFinite(start)) return null;
-  if (tour.status === "pending") return start > now && !tour.rescheduleProposedSlots?.length ? "overviewPendingTours" : null;
-
-  if (tour.status !== "confirmed") return null;
-  if (tour.requestedRescheduleAt && start > now) return "overviewTourReschedules";
-  return !tour.managerFeedbackSubmitted && now >= start + (tour.durationMinutes ?? 30) * 60_000 ? "overviewTourFeedback" : null;
+/** The Dashboard's tour task, from the same rule as the Tours list and the sidebar count (owner, Oct 24):
+ * a request to answer, a time change to review, or a visit to record in the 24 hours after it ends. Feedback is optional
+ * and asked by email, like bookings, so it isn't a task. */
+export function tourNextAction(tour: Partial<TourListTour> & { status: string; scheduledAt: string }, now = Date.now()) {
+  if (!Number.isFinite(Date.parse(tour.scheduledAt))) return null;
+  const { action } = tourListState({ id: 0, durationMinutes: 30, createdAt: tour.scheduledAt, updatedAt: tour.scheduledAt, disruptionReason: null,
+    cancelledBy: null, adminReviewDecision: null, requestedRescheduleAt: null, ...tour } as TourListTour, now);
+  return action === 'review_request' ? 'overviewPendingTours' : action === 'review_change' ? 'overviewTourReschedules'
+    : action === 'record_visit' ? 'overviewTourRecord' : null;
 }
 
 export function bookingNextAction(booking: { status: string; paymentDecision?: { state?: string } | null; checkinStatus?: string | null; attendanceReviewComplete?: boolean; bookingDate: string; startTime: string; endTime: string; operatingWindowStartTime?: string | null }, timezone = DEFAULT_TIMEZONE, now = Date.now()) {

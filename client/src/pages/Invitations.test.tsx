@@ -236,6 +236,10 @@ describe('chef: an invitation', () => {
       cancellationPolicyAccepted: true, cancellationPolicyVersion: 1, cancellationDisclosureVersion: DATED_DISCLOSURE_VERSION });
   });
   it('refetches and displays a changed policy after 409, and sends that version on the next payment attempt', async () => {
+    // The fixture's cancel-by deadline is Sat, Oct 24, 10:00 a.m.; on the real clock it passed and the page rightly
+    // switched to "not refundable". Pin today to while the offer was open (dates only; timers stay real for waitFor).
+    vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-17T12:00:00Z'));
+    try {
     let current = policyResponse, attempts = 0;
     const changed = { ...policyResponse, policy: { id: 2, version: 2, noticeHours: 72, lateChargePercent: 100 } };
     routes = [[/cancellation-policy/, () => ({ ok: true, json: async () => current })],
@@ -256,6 +260,7 @@ describe('chef: an invitation', () => {
     fireEvent.click(pay);
     await waitFor(() => expect(attempts).toBe(2));
     expect(calls.filter(call => call.url.endsWith('/checkout')).map(call => call.body.cancellationPolicyVersion)).toEqual([1, 2]);
+    } finally { vi.useRealTimers(); }
   });
   it('keeps payment disabled when the cancellation policy cannot be loaded', async () => {
     routes = [[/\/api\/chef\/invitations\/inv-1$/, invitation()]];

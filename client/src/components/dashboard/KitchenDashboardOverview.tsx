@@ -7,6 +7,7 @@ import { formatTourWhen } from '@/lib/chef-viewing-display';
 import { isPendingOrUpcomingTour } from "@/lib/chef-viewing-display";
 import { useTourClock } from "@/hooks/use-tour-clock";
 import { tourActivity } from "@shared/tour-activity";
+import { tourListState, tourWhenLine, type TourListTour } from "@/lib/tour-list-status";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -270,7 +271,6 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
     return { row, label: day ? dayLabel(day) : "" };
   };
   const pendingBookings = bookings.filter((booking) => booking.status === "pending");
-  const pendingTours = locationViewings.filter((item) => item.viewing.status === "pending");
   const pendingApplications = locationApplications.filter((application) => application.status === "inReview" ||
     (application.status === "approved" && (application.current_tier ?? application.currentTier) === 2 && !!application.tier2_completed_at));
   const approvedApplications = locationApplications.filter((application) => application.status === "approved" && (application.current_tier ?? application.currentTier ?? 1) >= 2);
@@ -318,7 +318,7 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
   const status = liveKitchens.length > 0 ? "live" : publishedButUnavailable ? "unavailable" : locationKitchens.length > 0 ? "draft" : "empty";
   const applicationJourney = status === "live" && bookings.length === 0;
   const journeyView = applicationJourney ? "applications" : primaryKitchen ? "listing-review" : "kitchens";
-  interface Task { id: string; title: string; detail?: string; view: string; href?: string; param?: string; locationId?: number; booking?: Booking; rental?: StorageRental; action?: string }
+  interface Task { id: string; title: string; detail?: string; view: string; href?: string; param?: string; locationId?: number; booking?: Booking; rental?: StorageRental; tour?: Viewing; action?: string }
   const groups = new Map<string, Task[]>();
   const addTask = (label: string, task: Task) => groups.set(label, [...(groups.get(label) ?? []), task]);
   const recordTitle = (record: { id?: number; chefName?: string; kitchenName?: string; storageName?: string; claimTitle?: string; referenceCode?: string }) =>
@@ -374,8 +374,10 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
   for (const tour of locationViewings) {
     const label = tourNextAction(tour.viewing);
     const decision = tourRequestDecision(tour.viewing);
-    const due = decision?.stage === 'manager' && decision.dueAt ? ` · ${mt(decision.overdue ? 'tourDecisionOverdue' : 'tourDecisionDue')}: ${formatTourWhen(decision.dueAt, null, 'America/St_Johns')}` : '';
-    if (label) addTask(label, { id: String(tour.viewing.id), title: recordTitle({ ...tour, id: tour.viewing.id }), detail: `${displayDate(tour.viewing.scheduledAt)} · ${tourTime(tour)}${due}`, view: "viewings", param: "viewing", ...(label === 'overviewTourFeedback' ? { href: `/manager/tours/${tour.viewing.id}?feedback=1` } : {}) });
+    // Same deadlines as the Tours list: respond by for a request, record by for a visit that just ended.
+    const due = decision?.stage === 'manager' && decision.dueAt ? ` · ${mt(decision.overdue ? 'tourDecisionOverdue' : 'tourDecisionDue')}: ${formatTourWhen(decision.dueAt, null, 'America/St_Johns')}`
+      : label === 'overviewTourRecord' ? ` · ${mt('tourRecordBy')}: ${formatTourWhen(new Date(Date.parse(tour.viewing.scheduledAt) + ((tour.viewing.durationMinutes ?? 30) * 60_000) + 24 * 3_600_000).toISOString(), null, 'America/St_Johns')}` : '';
+    if (label) addTask(label, { id: String(tour.viewing.id), title: recordTitle({ ...tour, id: tour.viewing.id }), detail: `${displayDate(tour.viewing.scheduledAt)} · ${tourTime(tour)}${due}`, view: "viewings", param: "viewing", href: `/manager/tours/${tour.viewing.id}`, tour });
   }
   for (const application of pendingApplications) addTask("overviewPendingApplications", { id: String(application.id), title: application.fullName || `#${application.id}`, view: "applications", param: "application" });
   for (const storage of activity.storageBookings) if (!bookings.some(booking => booking.id === storage.kitchenBookingId && booking.paymentDecision?.state === 'pending') && ["pending", "cancellation_requested"].includes(storage.status ?? "")) addTask(storage.cancellationAcceptedAt ? 'overviewStorageOutcomes' : "overviewStorageRequests", { id: String(storage.id), title: recordTitle(storage), detail: storage.cancellationAcceptedAt ? mt("storageRemovalConfirmationRequired") : undefined, view: "storage-bookings", param: "storageBooking" });
@@ -537,7 +539,12 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
   const changeGroup = attentionGroups.find(group => group.label === "ovrChangeRequests");
   const storageGroup = attentionGroups.find(group => group.label === "ovrStorageToAction");
   const reportGroup = attentionGroups.find(group => group.label === "ovrCustomerReports");
-  const otherGroups = attentionGroups.filter(group => group !== reportGroup && group !== requestGroup && group !== storageRequestGroup && group !== changeGroup && group !== storageGroup);
+  // Tours read like bookings (owner, Oct 24): request cards, change cards, and visits to record beside "Did they come?".
+  const tourRequestGroup = attentionGroups.find(group => group.label === "overviewPendingTours");
+  const tourChangeGroup = attentionGroups.find(group => group.label === "overviewTourReschedules");
+  const tourRecords = attentionGroups.find(group => group.label === "overviewTourRecord")?.items ?? [];
+  const tourGroups = new Set([tourRequestGroup, tourChangeGroup, attentionGroups.find(group => group.label === "overviewTourRecord")]);
+  const otherGroups = attentionGroups.filter(group => group !== reportGroup && group !== requestGroup && group !== storageRequestGroup && group !== changeGroup && group !== storageGroup && !tourGroups.has(group));
   const groupSection = (key: string, label: string, count: number, children: ReactNode, note?: ReactNode) => (
     <section key={key} aria-labelledby={`attention-${key}`} className="border-t border-stone-100 pt-4 first:border-t-0 first:pt-0 [&+&]:mt-4">
       <h3 id={`attention-${key}`} className={cn(groupLabel, "sm:px-4")}>{label}<span className={groupCount}>{count}</span></h3>
@@ -586,6 +593,21 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
       who: [chef, kitchenName(rental.kitchen?.id, rental.kitchen?.name)].filter(Boolean).join(" · "),
       facts: typeof total === "number" ? [cad(total, i18n.language)] : [] });
   };
+  // A tour request or time change reads like a booking request: the tour time, who and where, the answer-by time, Review.
+  // The Dashboard's tour rows carry optional fields; the shared list rule wants them filled.
+  const asListTour = (viewing: Viewing["viewing"]): TourListTour => ({ ...viewing, createdAt: viewing.createdAt ?? viewing.scheduledAt,
+    updatedAt: viewing.updatedAt ?? viewing.scheduledAt, disruptionReason: viewing.disruptionReason ?? null, cancelledBy: viewing.cancelledBy ?? null,
+    adminReviewDecision: viewing.adminReviewDecision ?? null, requestedRescheduleAt: viewing.requestedRescheduleAt ?? null, durationMinutes: viewing.durationMinutes ?? 30 });
+  const tourRequestRow = (task: Task) => {
+    const tour = task.tour!;
+    const chef = chefDisplayName(tour);
+    const listed = tourListState(asListTour(tour.viewing));
+    return tintedRequest({ key: task.id, testId: listed.action === "review_change" ? "tour-change-request" : "tour-request", chef, href: task.href!,
+      facts: [mt(listed.action === "review_change" ? "ovrWantsChange" : "ovrLegendTour")],
+      due: listed.dueAt ? formatResponseDeadline(new Date(listed.dueAt), i18n.language, timezone, false) : null,
+      when: tourWhenLine(asListTour(tour.viewing), timezone, i18n.language, words),
+      who: [chef, kitchenName(tour.viewing.targetedKitchenId, tour.kitchenName)].filter(Boolean).join(" · ") });
+  };
   function tintedRequest({ key, testId, chef, when, who, facts, due, href }: { key: string; testId: string; chef: string; when: string; who: string; facts: string[]; due: string | null | undefined; href: string }) {
     const initials = chef.split(/\s+/).map(part => part[0]).slice(0, 2).join("").toUpperCase();
     return <div key={key} className="grid gap-3 rounded-[10px] bg-[#fef3f5] px-4 py-3.5 lg:grid-cols-[36px_minmax(0,1fr)_auto] lg:items-center lg:gap-x-4 [&+&]:mt-2" data-testid={testId}>
@@ -621,6 +643,27 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
       </div>
     </div>;
   };
+  // A tour that just ended sits with the booking visits: same answers, opening the tour on that choice (nothing saved yet).
+  const tourAnswerRow = (task: Task) => {
+    const tour = task.tour!;
+    const chef = chefDisplayName(tour);
+    const when = tourWhenLine(asListTour(tour.viewing), timezone, i18n.language, words);
+    const deadline = Date.parse(tourListState(asListTour(tour.viewing)).dueAt ?? "");
+    const by = Number.isFinite(deadline) ? kitchenTodayKey(timezone, deadline) === today
+      ? mt("ovrAnswerByToday", { time: new Intl.DateTimeFormat(i18n.language, { timeZone: timezone, hour: "numeric", minute: "2-digit" }).format(deadline) })
+      : mt("ovrAnswerBy", { when: new Intl.DateTimeFormat(i18n.language, { timeZone: timezone, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(deadline) }) : "";
+    const label = (choice: string) => [`${choice}: ${when}`, chef, mt("ovrLegendTour")].join(", ");
+    return <div key={`tour-${tour.viewing.id}`} data-testid="tour-answer-row" className="grid gap-x-5 gap-y-2.5 border-t border-stone-100 py-3 first:border-t-0 sm:px-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+      <div className="min-w-0">
+        <p className="font-medium text-stone-900">{when}</p>
+        <p className={cn("mt-0.5", sub)}>{[chef, mt("ovrLegendTour"), inKitchen(tour.viewing.targetedKitchenId, tour.kitchenName)].filter(Boolean).join(" · ")}{by && <span className={cn("block", deadline - Date.now() <= 3 * 3_600_000 && "font-medium text-amber-800")}>{by}</span>}</p>
+      </div>
+      <div className="flex gap-2">
+        <Link href={`/manager/tours/${tour.viewing.id}?action=came`} className={answerButton} aria-label={label(mt("ovrTheyCame"))}>{mt("ovrTheyCame")}</Link>
+        <Link href={`/manager/tours/${tour.viewing.id}?action=no_show`} className={answerButton} aria-label={label(mt("ovrReportNoShow"))}>{mt("ovrReportNoShow")}</Link>
+      </div>
+    </div>;
+  };
   const attentionCard = (fixedHeight: boolean) => {
     const body = <>
       {attentionError && <p role="status" className="mb-3 text-sm text-destructive">{mt("overviewActivityPartialError")}</p>}
@@ -629,7 +672,9 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
       {requestGroup && groupSection("requests", mt(requestGroup.label), requestGroup.items.length, requestGroup.items.map(task => task.booking ? requestRow(task) : rowLink(task)))}
       {changeGroup && groupSection("change-requests", mt(changeGroup.label), changeGroup.items.length, changeGroup.items.map(changeRow))}
       {storageRequestGroup && groupSection("storage-requests", mt(storageRequestGroup.label), storageRequestGroup.items.length, storageRequestGroup.items.map(task => task.rental ? storageRequestRow(task) : rowLink(task)))}
-      {attendanceAnswers.length > 0 && groupSection("attendance", mt("ovrDidTheyCome"), attendanceAnswers.length, attendanceAnswers.map(answerRow),
+      {tourRequestGroup && groupSection("tour-requests", mt(tourRequestGroup.label), tourRequestGroup.items.length, tourRequestGroup.items.map(tourRequestRow))}
+      {tourChangeGroup && groupSection("tour-change-requests", mt(tourChangeGroup.label), tourChangeGroup.items.length, tourChangeGroup.items.map(tourRequestRow))}
+      {attendanceAnswers.length + tourRecords.length > 0 && groupSection("attendance", mt("ovrDidTheyCome"), attendanceAnswers.length + tourRecords.length, [...attendanceAnswers.map(answerRow), ...tourRecords.map(tourAnswerRow)],
         <p className={cn("mt-1.5 flex gap-1.5 sm:px-4", sub)}><Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />{mt("ovrDidTheyComeNote")}</p>)}
       {storageGroup && groupSection("storage", mt(storageGroup.label), storageGroup.items.length, storageGroup.items.map(rowLink))}
       {otherGroups.map((group, index) => groupSection(`group-${index}`, mt(group.label), group.items.length, group.items.map(rowLink)))}

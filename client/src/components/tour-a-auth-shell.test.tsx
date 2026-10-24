@@ -17,7 +17,7 @@ vi.mock('@/lib/queryClient', () => ({ queryClient: { clear: vi.fn() } }));
 vi.mock('@/components/auth/AuthTransition', () => ({ useAuthTransition: () => ({ begin: vi.fn() }) }));
 vi.mock('@/components/auth/AuthLoadingScreen', () => ({ default: () => <p>Controlled loading</p> }));
 vi.mock('@/i18n/manager', () => ({ mt: (key: string) => key }));
-vi.mock('@/components/ui/data-table', () => ({ DataTable: () => <p>Controlled tour table</p> }));
+vi.mock('@/components/manager/tours/ManagerToursAgenda', () => ({ ManagerToursAgenda: () => <p>Controlled tour table</p> }));
 vi.mock('@/services/chat-service', () => ({ resolveTourConversation: vi.fn() }));
 vi.mock('@/hooks/use-manager-dashboard', () => ({ useManagerDashboard: () => ({ locations: [
   { id: 11, name: 'First', address: 'First address' }, { id: 22, name: 'Exact', address: 'Exact address' }],
@@ -71,7 +71,7 @@ describe('Tour A coordinator exact-task review reproductions', () => {
       url.endsWith('/history') ? { complete: true, events: [] } : url.includes('/viewings/manager') ? [row] : { problems: [], reportingAvailable: false } })));
     render(<QueryClientProvider client={client()}><ManagerBookingDashboard /></QueryClientProvider>);
     await screen.findByRole('heading', { name: 'TOUR-42 · Chef Sam' });
-    fireEvent.click(screen.getByRole('button', { name: 'kitchenTours' }));
+    fireEvent.click(screen.getByRole('button', { name: 'navViewings' }));
     await screen.findByText('Controlled tour table');
     expect(window.location.pathname + window.location.search).toBe('/manager/dashboard?view=viewings');
     expect(screen.queryByRole('region', { name: 'sheetViewingDetails' })).not.toBeInTheDocument();
@@ -86,7 +86,7 @@ describe('Tour A coordinator exact-task review reproductions', () => {
         : { problems: [], reportingAvailable: false } })));
     render(<QueryClientProvider client={client()}><ManagerBookingDashboard /></QueryClientProvider>);
     expect(await screen.findByRole('heading', { name: 'TOUR-42 · Chef Sam' })).toBeInTheDocument();
-    expect(screen.getByRole('navigation', { name: 'Breadcrumbs' })).toHaveTextContent('kitchenToursTOUR-42');
+    expect(screen.getByRole('navigation', { name: 'Breadcrumbs' })).toHaveTextContent('navViewingsTOUR-42');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(screen.queryByText('Controlled tour table')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'tourVisitNotesButton' }));

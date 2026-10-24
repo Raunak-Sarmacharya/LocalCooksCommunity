@@ -1,7 +1,6 @@
 import { StorageIcon as Package } from "@/components/ui/inventory-icons";
 import { logger } from "@/lib/logger";
 import { mt } from "@/i18n/manager";
-import { managerNavIcons } from "@/lib/manager-nav-icons";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -43,7 +42,6 @@ import type { BookingPoliciesHandle, CheckinCheckoutHandle, KitchensHandle } fro
 import { NeedsKitchen, NeedsLocation } from "@/components/manager/locations/NeedsPrerequisite";
 import { Dialog } from "@/components/ui/dialog";
 import { AppDialogContent } from "@/components/ui/app-dialog";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import DashboardLayout from "@/layouts/DashboardLayout";
 import { Input } from "@/components/ui/input";
 import { NumericInput } from "@/components/ui/numeric-input";
@@ -282,6 +280,8 @@ export default function ManagerBookingDashboard() {
   const { user: firebaseUser } = useFirebaseAuth();
   const { data: workspaceNavigation, isLoading: workspaceNavigationLoading, isError: workspaceNavigationError } = useQuery<{
     showBookings: boolean;
+    showTours?: boolean;
+    toursNeedingAction?: number;
     showStorageBookings: boolean;
     showApplications: boolean;
     showRevenue: boolean;
@@ -791,7 +791,7 @@ export default function ManagerBookingDashboard() {
   const shellActiveView = isKitchenChild ? 'kitchens' : isBookingChild ? 'bookings' : isStorageChild ? 'storage-bookings' : isApplicationChild ? 'applications' : isMessageChild ? 'messages' : activeView;
   const viewLabels: Record<ViewType, string> = {
     'my-locations': 'navMyLocations', overview: 'navDashboard', bookings: 'navBookings',
-    'storage-bookings': 'navStorage', viewings: 'kitchenTours', availability: 'navAvailability',
+    'storage-bookings': 'navStorage', viewings: 'navViewings', availability: 'navAvailability',
     'tour-availability': 'kitchenTours', settings: 'navSettings', applications: 'navRequests', customers: 'navCustomers', pricing: 'navPricing',
     'storage-listings': 'navStorage', 'equipment-listings': 'navEquipment', payments: 'navPayments',
     security: 'navAccount', revenue: 'navRevenue', messages: 'navMessages', profile: 'shellProfile',
@@ -803,7 +803,7 @@ export default function ManagerBookingDashboard() {
     'damage-claims': 'navDamageClaims', support: 'navSupport', location: 'navLocation',
   };
   const breadcrumbs: ManagerBreadcrumb[] = activeView === 'viewings' && detailTourId
-    ? [{ label: mt('kitchenTours'), navId: 'viewings', onClick: () => handleViewChange('viewings') }, { label: `TOUR-${detailTourId}` }]
+    ? [{ label: mt('navViewings'), navId: 'viewings', onClick: () => handleViewChange('viewings') }, { label: `TOUR-${detailTourId}` }]
     : activeView === 'applications' && reviewedApplicationName
     ? [
         { label: mt("navRequests"), navId: "applications", onClick: () => showApplicationsListRef.current() },
@@ -1276,7 +1276,10 @@ export default function ManagerBookingDashboard() {
 
   return (
     <DashboardLayout
-      showBookings={workspaceNavigationError || workspaceNavigation?.showBookings === true || activeView === "bookings" || activeView === "viewings"}
+      showBookings={workspaceNavigationError || workspaceNavigation?.showBookings === true || activeView === "bookings"}
+      // An older server without the flag keeps tours visible rather than hiding them.
+      showTours={workspaceNavigationError || workspaceNavigation?.showTours !== false || activeView === "viewings"}
+      toursNeedingAction={workspaceNavigation?.toursNeedingAction ?? 0}
       showStorageBookings={workspaceNavigationError || workspaceNavigation?.showStorageBookings === true || activeView === "storage-bookings"}
       showApplications={workspaceNavigationError || workspaceNavigation?.showApplications === true || managerKitchens.some((kitchen) => kitchen.listingStatus === 'active') || (workspaceNavigation?.showApplications === undefined && (legacyApplications.data?.length ?? 0) > 0) || legacyApplications.isError || activeView === "applications"}
       showRevenue={workspaceNavigationError || workspaceNavigation?.showRevenue === true || managerKitchens.some((kitchen) => kitchen.listingStatus === 'active') || managerBookings.length > 0 || activeView === "revenue"}
@@ -1360,24 +1363,16 @@ export default function ManagerBookingDashboard() {
       {(activeView === 'bookings' || activeView === 'viewings') && (
         <div className="space-y-6 animate-fade-in">
           {!(activeView === 'viewings' && detailTourId) && <ChefPageHeader
-            title={activeView === 'bookings' ? mt("bookingRequests") : mt("kitchenTours")}
-            description={activeView === 'bookings' ? mt("reviewAndManageChefBookingRequests") : mt("manageUpcomingAndPastKitchenTours")}
+            title={activeView === 'bookings' ? mt("bookingRequests") : mt("tlTitle")}
+            description={activeView === 'bookings' ? mt("reviewAndManageChefBookingRequests") : mt("tlDescription")}
             actions={activeView === 'bookings' ? (
               <Button variant="outline" size="sm" onClick={() => handleViewChange('storage-bookings')}>
                 <Package className="mr-2 h-4 w-4" />{mt("navStorage")}
               </Button>
             ) : undefined}
           />}
-          <Tabs value={activeView} onValueChange={(view) => handleViewChange(view as ViewType)}>
-            {!(activeView === 'viewings' && detailTourId) && <TabsList className="mb-6 h-auto w-full min-w-0 max-w-full justify-start gap-6 overflow-x-auto rounded-none border-b border-border bg-transparent p-0 text-muted-foreground">
-              <TabsTrigger value="bookings" className="group shrink-0 gap-2 rounded-none border-b-2 border-transparent px-0.5 py-2.5 font-normal text-muted-foreground transition-colors hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:font-medium data-[state=active]:text-foreground data-[state=active]:shadow-none"><managerNavIcons.bookings className="h-4 w-4 shrink-0 transition-colors group-data-[state=active]:text-primary" />{mt("navBookings")}</TabsTrigger>
-              <TabsTrigger value="viewings" className="group shrink-0 gap-2 rounded-none border-b-2 border-transparent px-0.5 py-2.5 font-normal text-muted-foreground transition-colors hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:font-medium data-[state=active]:text-foreground data-[state=active]:shadow-none"><KitchenTour className="h-4 w-4 shrink-0 transition-colors group-data-[state=active]:text-primary" />{mt("kitchenTours")}</TabsTrigger>
-            </TabsList>}
-            <TabsContent value="bookings" className="mt-0">
-              <ManagerBookingsPanel embedded={true} onGoToKitchens={() => handleViewChange('kitchens')} />
-            </TabsContent>
-            <TabsContent value="viewings" className="mt-0">
-              <ViewingsDashboard
+          {activeView === 'bookings' ? <ManagerBookingsPanel embedded={true} onGoToKitchens={() => handleViewChange('kitchens')} /> : (
+            <ViewingsDashboard
                 tourId={routeTourId}
                 navigationGuardRef={tourNavigationGuard}
                 onOpenTour={id => setLocation(`/manager/tours/${id}`)}
@@ -1395,8 +1390,7 @@ export default function ManagerBookingDashboard() {
                 hasKitchen={managerKitchens.length > 0}
                 onConfigureTours={() => handleViewChange('kitchens', managerKitchens[0]?.id, managerKitchens.length ? 'tours' : undefined)}
               />
-            </TabsContent>
-          </Tabs>
+          )}
         </div>
       )}
 

@@ -69,6 +69,8 @@ interface ManagerShellProps {
     showScopePicker?: boolean
     showKitchenSelector?: boolean
     showBookings?: boolean
+    showTours?: boolean
+    toursNeedingAction?: number
     showStorageBookings?: boolean
     showApplications?: boolean
     showRevenue?: boolean
@@ -102,6 +104,8 @@ export function ManagerShell({
     showScopePicker = false,
     showKitchenSelector = true,
     showBookings = true,
+    showTours = true,
+    toursNeedingAction = 0,
     showStorageBookings = true,
     showApplications = true,
     showRevenue = true,
@@ -267,6 +271,8 @@ export function ManagerShell({
                 breadcrumbs={displayBreadcrumbs}
                 managerGettingStarted={managerGettingStarted}
                 showBookings={showBookings}
+                showTours={showTours}
+                toursNeedingAction={toursNeedingAction}
                 showStorageBookings={showStorageBookings}
                 showApplications={showApplications}
                 showRevenue={showRevenue}
@@ -474,6 +480,7 @@ export function ManagerShell({
                 portalType="manager"
                 hiddenItems={[
                     ...(!showBookings ? ["bookings"] : []),
+                    ...(!showTours ? ["viewings"] : []),
                     ...(!showApplications ? ["applications"] : []),
                     ...(!showRevenue ? ["revenue"] : []),
                 ]}

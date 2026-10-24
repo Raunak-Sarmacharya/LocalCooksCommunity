@@ -105,17 +105,20 @@ describe("manager overview states", () => {
     expect(html).not.toContain("listingReviewReadyCount");
     expect(html).toContain("overviewRecentActivityEmpty");
   });
-  it("shows ended confirmed tours in attention and removes recorded outcomes", () => {
-    state.viewings = [{ viewing: { id: 77, locationId: 1, status: "confirmed", scheduledAt: "2025-01-01T12:00:00Z", durationMinutes: 30 }, chefName: "Jamie" }];
-    expect(render()).toContain("overviewTourFeedback");
+  it("asks the kitchen to record a tour that just ended, and drops it once recorded (owner, Oct 24)", () => {
+    const justEnded = new Date(Date.now() - 2 * 3_600_000).toISOString();
+    state.viewings = [{ viewing: { id: 77, locationId: 1, status: "confirmed", scheduledAt: justEnded, durationMinutes: 30 }, chefName: "Jamie" }];
+    expect(render()).toContain("tour-answer-row");
     vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
     const onNavigate = vi.fn();
     const screen = renderDom(<KitchenDashboardOverview selectedLocation={location()} locations={[location()]} kitchens={state.kitchens} onNavigate={onNavigate} />);
-    expect(screen.getByRole("link", { name: /Jamie/ })).toHaveAttribute('href', '/manager/tours/77?feedback=1');
+    // Same answers as a booking visit, opening the tour on that choice.
+    expect(screen.getByRole("link", { name: /^ovrTheyCame:.*Jamie/ })).toHaveAttribute('href', '/manager/tours/77?action=came');
+    expect(screen.getByRole("link", { name: /^ovrReportNoShow:.*Jamie/ })).toHaveAttribute('href', '/manager/tours/77?action=no_show');
     screen.unmount();
     vi.unstubAllGlobals();
-    state.viewings = [{ viewing: { id: 77, locationId: 1, status: "no_show", scheduledAt: "2025-01-01T12:00:00Z", durationMinutes: 30 } }];
-    expect(render()).not.toContain("overviewTourFeedback");
+    state.viewings = [{ viewing: { id: 77, locationId: 1, status: "no_show", scheduledAt: justEnded, durationMinutes: 30 } }];
+    expect(render()).not.toContain("tour-answer-row");
   });
   it("puts confirmed future tours on the calendar without creating a manager action", () => {
     state.viewings = [{ viewing: { id: 77, locationId: 1, status: "confirmed", scheduledAt: "2099-01-01T12:00:00Z", durationMinutes: 30 }, chefName: "Future Chef" }];

@@ -3,7 +3,7 @@
 import * as React from "react"
 import { ChevronRight, ChevronsUpDown, LogOut, User as UserIcon } from "@/components/ui/manager-icons"
 
-import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarMenuSub, SidebarMenuSubButton, SidebarMenuSubItem, SidebarRail, useSidebar } from "@/components/ui/sidebar"
+import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuBadge, SidebarMenuButton, SidebarMenuItem, SidebarMenuSub, SidebarMenuSubButton, SidebarMenuSubItem, SidebarRail, useSidebar } from "@/components/ui/sidebar"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { cn } from "@/lib/utils"
@@ -36,6 +36,17 @@ const navData: { navMain: NavGroup[] } = {
             items: [
                 { labelKey: "navDashboard", url: "overview", icon: managerNavIcons.overview },
                 { labelKey: "navSpaces", url: "kitchens", icon: managerNavIcons.kitchens },
+                // Customer journey order (owner, Oct 24): tour, access request, customer, then their bookings.
+                { labelKey: "navViewings", url: "viewings", icon: managerNavIcons.viewings },
+                {
+                    labelKey: "navRequests",
+                    url: "applications",
+                    icon: managerNavIcons.applications,
+                    children: [
+                        { labelKey: "navApplicationRequirements", url: "application-requirements", icon: managerNavIcons["application-requirements"] },
+                    ],
+                },
+                { labelKey: "navCustomers", url: "customers", icon: managerNavIcons.customers },
                 {
                     labelKey: "navBookings",
                     url: "bookings",
@@ -49,15 +60,6 @@ const navData: { navMain: NavGroup[] } = {
                     url: "storage-bookings",
                     icon: managerNavIcons["storage-bookings"],
                 },
-                { labelKey: "navCustomers", url: "customers", icon: managerNavIcons.customers },
-                {
-                    labelKey: "navRequests",
-                    url: "applications",
-                    icon: managerNavIcons.applications,
-                    children: [
-                        { labelKey: "navApplicationRequirements", url: "application-requirements", icon: managerNavIcons["application-requirements"] },
-                    ],
-                },
                 { labelKey: "navRevenue", url: "revenue", icon: managerNavIcons.revenue },
                 { labelKey: "navMessages", url: "messages", icon: managerNavIcons.messages },
                 // Location: details, license, booking defaults, documents and payments in one page.
@@ -69,6 +71,9 @@ const navData: { navMain: NavGroup[] } = {
 
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
     showBookings?: boolean;
+    showTours?: boolean;
+    /** Tours waiting on the kitchen (requests to answer, visits to record): the Tours item's count. */
+    toursNeedingAction?: number;
     showStorageBookings?: boolean;
     showApplications?: boolean;
     showRevenue?: boolean;
@@ -99,6 +104,8 @@ export function AppSidebar({
     onCreateLocation: _onCreateLocation,
     managerGettingStarted,
     showBookings = true,
+    showTours = true,
+    toursNeedingAction = 0,
     showStorageBookings = true,
     showApplications = true,
     showRevenue = true,
@@ -164,7 +171,7 @@ export function AppSidebar({
                 {navData.navMain.map((group) => (
                     <SidebarGroup key={group.labelKey} className="px-2 py-0.5">
                         <SidebarMenu className="gap-1.5">
-                            {group.items.filter((item) => (item.url !== "bookings" || showBookings) && (item.url !== "storage-bookings" || showStorageBookings) && ((item.url !== "applications" && item.url !== "customers") || showApplications) && (item.url !== "revenue" || showRevenue)).map((item) => {
+                            {group.items.filter((item) => (item.url !== "bookings" || showBookings) && (item.url !== "viewings" || showTours) && (item.url !== "storage-bookings" || showStorageBookings) && ((item.url !== "applications" && item.url !== "customers") || showApplications) && (item.url !== "revenue" || showRevenue)).map((item) => {
                                 // Highlight only the destination, including breadcrumb child destinations.
                                 const isActive = activeView === item.url && !item.children?.some((child) => child.url === activeChildView);
                                 const hasActiveChild = !!item.children?.some((child) => child.url === activeView);
@@ -194,6 +201,9 @@ export function AppSidebar({
                                                 <item.icon className="size-4" />
                                                 <span>{label}</span>
                                             </SidebarMenuButton>
+                                        )}
+                                        {item.url === "viewings" && toursNeedingAction > 0 && (
+                                            <SidebarMenuBadge aria-label={mt("tlNeedsActionCount", { count: toursNeedingAction })}>{toursNeedingAction}</SidebarMenuBadge>
                                         )}
                                         {item.children && (
                                             <CollapsibleContent>

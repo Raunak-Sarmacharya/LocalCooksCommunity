@@ -15,6 +15,8 @@ import type { ManagerGettingStartedProps } from "@/components/manager/ManagerGet
  */
 interface DashboardLayoutProps {
     showBookings?: boolean;
+    showTours?: boolean;
+    toursNeedingAction?: number;
     showStorageBookings?: boolean;
     showApplications?: boolean;
     showRevenue?: boolean;
@@ -40,6 +42,8 @@ export default function DashboardLayout({
     breadcrumbs,
     managerGettingStarted,
     showBookings = true,
+    showTours = true,
+    toursNeedingAction = 0,
     showStorageBookings = true,
     showApplications = true,
     showRevenue = true,
@@ -55,6 +59,8 @@ export default function DashboardLayout({
             breadcrumbs={breadcrumbs}
             managerGettingStarted={managerGettingStarted}
             showBookings={showBookings}
+            showTours={showTours}
+            toursNeedingAction={toursNeedingAction}
             showStorageBookings={showStorageBookings}
             showApplications={showApplications}
             showRevenue={showRevenue}

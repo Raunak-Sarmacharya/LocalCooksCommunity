@@ -7,7 +7,8 @@ import { DateField } from '@/components/ui/date-field';
 import { Label } from '@/components/ui/label';
 import { tourFunnelRange, type TourFunnel as Funnel, type FunnelMetric } from '@shared/tour-funnel';
 
-export function TourFunnel({ role, locationId }: { role: 'manager' | 'admin'; locationId?: number }) {
+/** `embedded`: inside a folded section that already shows the title, so no card chrome or second heading. */
+export function TourFunnel({ role, locationId, embedded }: { role: 'manager' | 'admin'; locationId?: number; embedded?: boolean }) {
   const { t } = useTranslation('common');
   const [range, setRange] = useState(() => tourFunnelRange());
   const [draft, setDraft] = useState(range);
@@ -39,9 +40,9 @@ export function TourFunnel({ role, locationId }: { role: 'manager' | 'admin'; lo
     ['tourFunnelReview', report.data.diagnostics.evidenceReview], ['tourFunnelRepeats', report.data.diagnostics.repeatJourneys],
     ['tourFunnelLaterComplete', report.data.diagnostics.laterCompleted],
   ] as const;
-  return <section aria-label={t('tourFunnelTitle')} className="min-w-0 space-y-4 rounded-xl border bg-card p-4 [overflow-wrap:anywhere] sm:p-5">
+  return <section aria-label={t('tourFunnelTitle')} className={embedded ? "min-w-0 space-y-4 p-3 [overflow-wrap:anywhere] sm:p-4" : "min-w-0 space-y-4 rounded-xl border bg-card p-4 [overflow-wrap:anywhere] sm:p-5"}>
     <div className="flex min-w-0 flex-col justify-between gap-3 xl:flex-row xl:items-start">
-      <div className="min-w-0"><h2 className="font-semibold">{t('tourFunnelTitle')}</h2><p className="max-w-xl text-xs text-muted-foreground">{t('tourFunnelCohort')}</p></div>
+      <div className="min-w-0">{!embedded && <h2 className="font-semibold">{t('tourFunnelTitle')}</h2>}<p className="max-w-xl text-xs text-muted-foreground">{t('tourFunnelCohort')}</p></div>
       <form className="grid w-full min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end xl:w-[30rem] xl:shrink-0" onSubmit={event => { event.preventDefault(); try { setRange(tourFunnelRange(draft.from, draft.to)); setRangeError(false); } catch { setRangeError(true); } }}>
         {(['from', 'to'] as const).map(field => <div key={field} className="min-w-0 space-y-1">
           <Label htmlFor={`tour-funnel-${role}-${field}`} className="text-xs">{t(field === 'from' ? 'tourFunnelFrom' : 'tourFunnelTo')}</Label>

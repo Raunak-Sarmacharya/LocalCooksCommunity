@@ -9,7 +9,7 @@ vi.mock('@/i18n/manager', async () => {
   return { mt: (key: string, options?: { name?: string }) => key === 'tourNextReview' ? locale.tourNextReview : key === 'tourMessageVisitor' ? `Message ${options?.name}` : key };
 });
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), warning: mocks.warning, error: mocks.error } }));
-vi.mock('@/components/ui/data-table', () => ({ DataTable: ({ data, onRowClick }: any) => <button onClick={() => onRowClick(data[0])}>Open tour</button> }));
+vi.mock('@/components/manager/tours/ManagerToursAgenda', () => ({ ManagerToursAgenda: ({ records, onOpen }: any) => <button onClick={() => onOpen(records[0])}>Open tour</button> }));
 vi.mock('@/components/ui/date-field', () => ({ DateField: ({ id, value, onChange, disabled }: any) => <input id={id} type="date" value={value} disabled={disabled} onChange={event => onChange(event.target.value)} /> }));
 const originalScroll = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollIntoView');
 beforeEach(() => Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: vi.fn() }));

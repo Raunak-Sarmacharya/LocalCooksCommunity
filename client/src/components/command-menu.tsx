@@ -413,6 +413,10 @@ export function CommandMenu({ open, onOpenChange, onViewChange, onLogout, portal
                                     <managerNavIcons.bookings className="mr-2 h-4 w-4" />
                                     <span>{mt("navBookings")}</span>
                                 </CommandItem>}
+                                {!hiddenItems.includes("viewings") && <CommandItem onSelect={() => runCommand(() => onViewChange?.("viewings"))}>
+                                    <managerNavIcons.viewings className="mr-2 h-4 w-4" />
+                                    <span>{mt("navViewings")}</span>
+                                </CommandItem>}
                                 <CommandItem onSelect={() => runCommand(() => onViewChange?.("messages"))}>
                                     <managerNavIcons.messages className="mr-2 h-4 w-4" />
                                     <span>{mt("navMessages")}</span>

@@ -14,7 +14,7 @@ vi.mock('@/components/ui/select', () => ({
   SelectTrigger: () => null, SelectValue: () => null, SelectContent: ({ children }: any) => children,
   SelectItem: ({ value, children, disabled }: any) => <option value={value} disabled={disabled}>{children}</option>,
 }));
-vi.mock('@/components/ui/data-table', () => ({ DataTable: ({ data, onRowClick }: any) => <button onClick={() => onRowClick(data[0])}>Open tour</button> }));
+vi.mock('@/components/manager/tours/ManagerToursAgenda', () => ({ ManagerToursAgenda: ({ records, onOpen }: any) => <button onClick={() => onOpen(records[0])}>Open tour</button> }));
 vi.mock('@/components/support/CommitmentProblems', () => ({ CommitmentProblems: () => null, useCommitmentProblems: () => ({ data: undefined }) }));
 vi.mock('@/components/chat/TourChatButton', () => ({ TourChatButton: () => null }));
 vi.mock('@/i18n/manager', () => ({ mt: (key: string, options?: any) => key === 'tourProposalOption' ? `Option ${options.number}` : key }));

@@ -8,7 +8,7 @@ vi.mock('@/lib/firebase',()=>({auth:{currentUser:{uid:'fixture',getIdToken:async
 vi.mock('@/hooks/use-auth',()=>({useFirebaseAuth:()=>({user:{uid:'fixture-chef'}})}));
 vi.mock('react-i18next',async original=>({...await original<typeof import('react-i18next')>(),useTranslation:()=>({t:(key:string,fallback?:any)=>typeof fallback==='string'?fallback:key,i18n:{language:'en-CA'}})}));
 vi.mock('@/i18n/manager',()=>({mt:(key:string)=>key}));
-vi.mock('@/components/ui/data-table',()=>({DataTable:({data,onRowClick}:any)=><button onClick={()=>onRowClick(data[0])}>Open tour</button>}));
+vi.mock('@/components/manager/tours/ManagerToursAgenda', () => ({ ManagerToursAgenda: ({ records, onOpen }: any) => <button onClick={() => onOpen(records[0])}>Open tour</button> }));
 vi.mock('@/components/chat/TourChatButton',()=>({TourChatButton:()=>null}));
 const clients:QueryClient[]=[];
 afterEach(()=>{cleanup();clients.forEach(client=>client.clear());clients.length=0;vi.unstubAllGlobals();window.history.replaceState({},'','/');});
@@ -35,8 +35,8 @@ it.each(['chef','manager'] as const)('shows private feedback after the appointme
 it.each(['chef','manager'] as const)('offers no feedback or attendance actions before tour end for %s',async role=>{
  mount(role,true);await screen.findByText('Fixture kitchen');expect(screen.queryByRole('region',{name:'tourFeedbackTitle'})).not.toBeInTheDocument();
 });
-it('stops the manager feedback task after own immutable submission',()=>{
+it('gives the kitchen a record task after the tour, not a feedback task (feedback is optional, asked by email)',()=>{
  const fixed={...tour,scheduledAt:'2026-10-05T12:00:00.000Z'};
- expect(tourNextAction(fixed,Date.parse('2026-10-05T13:00:00Z'))).toBe('overviewTourFeedback');
- expect(tourNextAction({...fixed,managerFeedbackSubmitted:true},Date.parse('2026-10-05T13:00:00Z'))).toBeNull();
+ expect(tourNextAction(fixed,Date.parse('2026-10-05T13:00:00Z'))).toBe('overviewTourRecord');
+ expect(tourNextAction({...fixed,status:'completed'},Date.parse('2026-10-05T13:00:00Z'))).toBeNull();
 });

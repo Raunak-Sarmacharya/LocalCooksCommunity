@@ -1,6 +1,8 @@
 import type { TourAttendance } from '@shared/tour-attendance';
 import { TourIntakeDetails } from "@/components/tour/TourIntakeDetails"
 import { TourFunnel } from '@/components/tour/TourFunnel';
+import { ManagerToursAgenda } from "@/components/manager/tours/ManagerToursAgenda";
+import { tourListState } from "@/lib/tour-list-status";
 /**
  * ViewingsDashboard
  *
@@ -12,17 +14,14 @@ import { TourFunnel } from '@/components/tour/TourFunnel';
 import { useState, useEffect, useRef, type MutableRefObject } from "react"
 import { TourSupportCard } from '@/components/tour/TourSupportCard';
 import { useLocation, useSearch } from "wouter"
-import type { ColumnDef } from "@tanstack/react-table"
 import { mt } from "@/i18n/manager"
 import { useQuery, useQueries, useMutation, useQueryClient } from "@tanstack/react-query"
-import { KitchenTour, Clock, User, Loader2, CheckCircle, XCircle, AlertTriangle, FileText, Search, X, CalendarClock, ArrowRight, ChevronDown } from "@/components/ui/manager-icons"
+import { KitchenTour, Clock, Loader2, CheckCircle, XCircle, AlertTriangle, FileText, X, CalendarClock, ArrowRight, ChevronDown } from "@/components/ui/manager-icons"
 import { toast } from "sonner"
 import { auth } from "@/lib/firebase"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
-import { DataTable } from "@/components/ui/data-table"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent } from "@/components/ui/card"
@@ -33,7 +32,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { cn } from "@/lib/utils"
 import { formatTourDate, formatTourClock, formatTourSlotRange } from "@shared/tour-time"
 import type { TourBookingOverlap } from "@shared/tour-booking-overlap"
-import { isPendingOrUpcomingTour } from "@/lib/chef-viewing-display"
 import { useTourClock } from "@/hooks/use-tour-clock"
 import { hasTourConfirmation, tourDisruptionReasons } from '@shared/tour-outcome'
 import { TourChatButton } from '@/components/chat/TourChatButton'
@@ -200,8 +198,6 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
   const changeProposalOption = (index: number, value: { date: string; scheduledAt: string }) =>
     setProposalOptions(current => current.map((option, i) => i === index ? value : option))
   const [confirmExit, setConfirmExit] = useState(false)
-  const [statusFilter, setStatusFilter] = useState("all")
-  const [searchQuery, setSearchQuery] = useState("")
   const openedDeepLink = useRef<string | null>(null)
   const selectedDeepLinkLocation = useRef<string | null>(null)
   const tourSearch = useSearch()
@@ -324,6 +320,11 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
       && !current.disruptionReason && !current.checkedInAt) setStatusAction('cancel')
     if (deepLinkAction === 'result' && current.status === 'confirmed' && hasTourConfirmation(current)
       && Date.parse(current.scheduledAt) + current.durationMinutes * 60_000 <= Date.now()) heading.current?.focus()
+    // The Dashboard's "They came" / "Report no-show" open the record dialog on that choice; nothing is saved until confirmed.
+    if ((deepLinkAction === 'came' || deepLinkAction === 'no_show') && tourListState(current).action === 'record_visit') {
+      if (deepLinkAction === 'no_show') { setAbsentConfirmed(false); setNoShowReason('visitor_absent') }
+      setStatusAction(deepLinkAction === 'came' ? 'complete' : 'no_show')
+    }
   }, [exactId, deepLinkAction, exactRecord, exactQuery.isFetching, selectedViewing?.viewing.id])
   const { data: proposalCalendar, isFetching: proposalCalendarLoading, error: proposalCalendarError } = useQuery<TourCalendarAvailability>({
     queryKey: ['manager-tour-reschedule-calendar', selectedViewing?.viewing.id, selectedViewing?.viewing.updatedAt],
@@ -529,42 +530,6 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
     setManagerNotes(viewing.viewing.sharedManagerNotes || "")
   }
 
-  // Split viewings into upcoming/past
-  const upcoming =
-    viewings?.filter(
-      (v) =>
-        isPendingOrUpcomingTour(v.viewing)
-    ).sort((a, b) => new Date(a.viewing.scheduledAt).getTime() - new Date(b.viewing.scheduledAt).getTime()) || []
-
-  const past =
-    viewings?.filter(
-      (v) =>
-        !isPendingOrUpcomingTour(v.viewing)
-    ).sort((a, b) => new Date(b.viewing.updatedAt).getTime() - new Date(a.viewing.updatedAt).getTime()) || []
-
-  const allTours = [...upcoming, ...past]
-  const filterOptions = [
-    { key: "all", label: mt("filterAll"), count: allTours.length },
-    { key: "upcoming", label: mt("upcoming"), count: upcoming.length },
-    { key: "past", label: mt("past"), count: past.length },
-    { key: "pending", label: mt("pending"), count: allTours.filter((row) => row.viewing.status === "pending").length },
-    { key: "confirmed", label: mt("confirmed"), count: allTours.filter((row) => row.viewing.status === "confirmed").length },
-  ]
-  const filteredTours = allTours.filter((record) => {
-    if (statusFilter === "upcoming" && !upcoming.includes(record)) return false
-    if (statusFilter === "past" && !past.includes(record)) return false
-    if (statusFilter !== "all" && statusFilter !== "upcoming" && statusFilter !== "past" && record.viewing.status !== statusFilter) return false
-    const query = searchQuery.trim().toLowerCase()
-    return !query || [record.viewing.id, `TOUR-${record.viewing.id}`, record.chefName, record.chefUsername, record.chefEmail, record.kitchenName, record.locationName]
-      .join(" ").toLowerCase().includes(query)
-  })
-  const columns: ColumnDef<ViewingRecord>[] = [
-    { id: "scheduledAt", accessorFn: (row) => row.viewing.scheduledAt, header: mt("dateTime"), cell: ({ row }) => <div><div className="font-medium">{formatTourDate(new Date(row.original.viewing.scheduledAt))}</div><div className="text-xs text-muted-foreground">{formatTourClock(new Date(row.original.viewing.scheduledAt))} · {mt("minutesShort", { count: row.original.viewing.durationMinutes })}</div></div> },
-    { id: "chef", header: mt("chef"), cell: ({ row }) => <div><div className="flex items-center gap-1.5"><User className="h-3.5 w-3.5 text-muted-foreground" />{row.original.chefName || row.original.chefUsername?.split("@")[0] || `Chef #${row.original.viewing.chefId}`}</div>{Object.keys(row.original.viewing.intakeData || {}).length > 0 && <div className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground"><FileText className="h-3 w-3" />{mt("hasIntakeData")}</div>}</div> },
-    { id: "kitchen", header: mt("navLocation"), cell: ({ row }) => <div><div>{row.original.locationName || "—"}</div><div className="text-xs text-muted-foreground">{row.original.kitchenName}</div></div> },
-    { id: "status", header: mt("status"), cell: ({ row }) => <div className="flex flex-col items-start gap-1">{row.original.viewing.requestExpiredAt || row.original.viewing.status === "pending" && new Date(row.original.viewing.scheduledAt).getTime() < Date.now() ? <Badge variant="secondary">{mt('tourRequestExpired')}</Badge> : getStatusBadge(row.original.viewing.status, row.original.viewing.cancelledBy, row.original.viewing.adminReviewDecision, row.original.viewing.disruptionReason)}{row.original.viewing.requestedRescheduleAt && <Badge variant="outline">{mt("tourRescheduleRequested")}</Badge>}{!!row.original.viewing.rescheduleProposedSlots?.length && ["pending", "confirmed"].includes(row.original.viewing.status) && Date.parse(row.original.viewing.scheduledAt) > Date.now() && <Badge variant="outline">{mt("tourProposalPendingTitle")}</Badge>}</div> },
-    { id: "actions", header: "", meta: { mobileHidden: true }, cell: ({ row }) => <div className="flex gap-2"><TourChatButton tour={row.original.viewing} role="manager" /><Button variant="outline" size="sm" onClick={() => handleStatusAction(row.original, "view")}>{mt("viewDetails")}</Button></div> },
-  ]
 
   const decisionReviewPanel = selectedViewing && (
     <div className="space-y-3 rounded-md border p-4" aria-live="polite">
@@ -700,17 +665,6 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
         {exactId && !exactQuery.isLoading && (exactQuery.isError || !exactRecord) &&
           <div role="alert"><p>This tour is unavailable. Check your location access or try again.</p><Button variant="outline" onClick={() => void exactQuery.refetch()}>Try again</Button></div>}
         {!exactId && <>
-        <TourFunnel role="manager" locationId={locationId} />
-        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="relative w-full sm:max-w-md">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder={mt("searchKitchenTours")} className="pl-9 pr-8" />
-            {searchQuery && <Button variant="ghost" size="icon" className="absolute right-0 top-1/2 h-7 w-7 -translate-y-1/2" onClick={() => setSearchQuery("")} aria-label={mt("clearSearch")}><X className="h-3 w-3" /></Button>}
-          </div>
-        </div>
-        <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-          {filterOptions.map((filter) => <button key={filter.key} type="button" onClick={() => setStatusFilter(filter.key)} aria-pressed={statusFilter === filter.key} className={statusFilter === filter.key ? "rounded-xl border border-primary bg-primary/[0.04] p-4 text-left transition-colors" : "rounded-xl border bg-card p-4 text-left transition-colors hover:border-primary/40 hover:bg-muted/30"}><p className="text-xs text-muted-foreground">{filter.label}</p><p className="mt-2 text-2xl font-semibold tabular-nums">{filter.count}</p></button>)}
-        </div>
           {isLoading ? (
             <div className="space-y-3" role="status" aria-label="Loading kitchen tours">
               <Skeleton className="h-11 w-full rounded-xl" />
@@ -730,8 +684,16 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
               </Button>}
             </CardContent></Card>
           ) : (
-            <DataTable columns={columns} data={filteredTours} defaultSorting={[{ id: "scheduledAt", desc: true }]} pageSize={15} onRowClick={(record) => handleStatusAction(record, "view")} />
+            <ManagerToursAgenda records={viewings ?? []} onOpen={record => handleStatusAction(record as ViewingRecord, "view")} />
           )}
+          {/* The numbers come after the list, folded: the daily job first (owner, Oct 24). */}
+          <details className="group rounded-2xl border border-border/70 bg-card [&_summary::-webkit-details-marker]:hidden">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-semibold">
+              {mt("tourFunnelTitle", { ns: "common" })}
+              <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" aria-hidden />
+            </summary>
+            <div className="border-t"><TourFunnel role="manager" locationId={locationId} embedded /></div>
+          </details>
         </>}
       </div>}
 

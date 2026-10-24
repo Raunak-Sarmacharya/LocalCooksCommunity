@@ -64,6 +64,7 @@ import {
   kitchenAvailability,
   checkinCheckoutChecklists,
   kitchenViewings,
+  kitchenViewingSettings,
 } from "@shared/schema";
 
 // Import Domain Services
@@ -3104,7 +3105,9 @@ router.get("/workspace-navigation", requireFirebaseAuthWithUser, requireManager,
         .where(and(owner, eq(kitchens.isActive, true), eq(kitchens.listingStatus, "active"))),
       db.select({ count: count() }).from(kitchenBookings).innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
         .innerJoin(locations, eq(kitchens.locationId, locations.id)).where(owner),
-      db.select({ count: count() }).from(kitchenViewings).innerJoin(locations, eq(kitchenViewings.locationId, locations.id)).where(owner),
+      // Tours the kitchen can see (not the Local Cooks review stage or a request Local Cooks declined).
+      db.select({ count: count() }).from(kitchenViewings).innerJoin(locations, eq(kitchenViewings.locationId, locations.id))
+        .where(and(owner, ne(kitchenViewings.status, "pending_local_cooks"), sql`${kitchenViewings.adminReviewDecision} IS DISTINCT FROM 'denied'`)),
       db.select({ count: count() }).from(storageBookingsTable).innerJoin(storageListings, eq(storageBookingsTable.storageListingId, storageListings.id))
         .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq(kitchens.locationId, locations.id)).where(owner),
       db.select({ listing: storageListings, instructions: checkinCheckoutChecklists }).from(storageListings)
@@ -3114,7 +3117,24 @@ router.get("/workspace-navigation", requireFirebaseAuthWithUser, requireManager,
       db.select({ count: count() }).from(chefKitchenApplications).innerJoin(locations, eq(chefKitchenApplications.locationId, locations.id)).where(owner),
       db.select({ count: count() }).from(paymentTransactions).where(eq(paymentTransactions.managerId, req.neonUser!.id)),
     ]);
+    const [tourKitchens, toursNeedingAction] = await Promise.all([
+      db.select({ count: count() }).from(kitchenViewingSettings).innerJoin(kitchens, eq(kitchenViewingSettings.kitchenId, kitchens.id))
+        .innerJoin(locations, eq(kitchens.locationId, locations.id))
+        .where(and(owner, eq(kitchenViewingSettings.isActive, true), eq(kitchens.isActive, true), eq(kitchens.listingStatus, "active"))),
+      // Same as the Tours list's "Needs action": a request to answer, a time change to review, or a visit to record (24 h after the end).
+      db.select({ count: count() }).from(kitchenViewings).innerJoin(locations, eq(kitchenViewings.locationId, locations.id))
+        .where(and(owner, sql`(
+          (${kitchenViewings.status} = 'pending' AND ${kitchenViewings.scheduledAt} > now() AND ${kitchenViewings.requestExpiredAt} IS NULL
+            AND jsonb_array_length(${kitchenViewings.rescheduleProposedSlots}) = 0)
+          OR (${kitchenViewings.status} = 'confirmed' AND ${kitchenViewings.disruptionReason} IS NULL AND ${kitchenViewings.requestedRescheduleAt} IS NOT NULL
+            AND ${kitchenViewings.scheduledAt} > now())
+          OR (${kitchenViewings.status} = 'confirmed' AND ${kitchenViewings.disruptionReason} IS NULL AND ${kitchenViewings.visitEvidenceState} <> 'review'
+            AND ${kitchenViewings.scheduledAt} + ${kitchenViewings.durationMinutes} * interval '1 minute' <= now()
+            AND ${kitchenViewings.scheduledAt} + ${kitchenViewings.durationMinutes} * interval '1 minute' + interval '24 hours' > now()))`)),
+    ]);
     res.json(managerWorkspaceVisibility({
+      tourKitchens: tourKitchens[0].count,
+      toursNeedingAction: toursNeedingAction[0].count,
       publishedKitchens: live[0].count,
       bookings: bookings[0].count,
       tours: tours[0].count,
