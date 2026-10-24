@@ -3,8 +3,9 @@ import { readFileSync } from 'node:fs';
 
 // Owner, Oct 22: one phone per account, the one verified at registration. No business or application phone anywhere.
 describe('booking contact phones come only from the verified account', () => {
-  const bookings = readFileSync(new URL('./bookings.ts', import.meta.url), 'utf8');
-  const manager = readFileSync(new URL('./manager.ts', import.meta.url), 'utf8');
+  // Windows checkouts use CRLF; compare as LF.
+  const bookings = readFileSync(new URL('./bookings.ts', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  const manager = readFileSync(new URL('./manager.ts', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 
   it('chef booking details: the manager phone only when verified and booked', () => {
     expect(bookings).not.toContain('businessPhone');
