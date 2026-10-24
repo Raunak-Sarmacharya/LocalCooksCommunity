@@ -32,11 +32,10 @@ const workspace = {
   effective, defaults: effective,
 };
 const policy = { policy: { id: 1, version: 3, noticeHours: 24, lateChargePercent: 100, adminOverrideReason: null }, settings: { noticeOptions: [24, 48, 72], chargeOptions: [50, 100] } };
-const extension = { kitchenId: 40, kitchenName: "Prep Kitchen", enabled: true, autoApprove: false, override: null, overrideReason: null, effectiveAutoApprove: false };
 
 beforeEach(() => {
   vi.clearAllMocks();
-  api.get.mockImplementation(async (path: string) => path.endsWith("cancellation-policy") ? policy : path.endsWith("session-extension-settings") ? extension : workspace);
+  api.get.mockImplementation(async (path: string) => path.endsWith("cancellation-policy") ? policy : workspace);
   api.put.mockImplementation(async () => workspace);
 });
 afterEach(cleanup);
@@ -55,18 +54,17 @@ const rulesSection = () => screen.getByTestId("booking-rules-section");
 const saveRules = () => within(rulesSection()).getByRole("button", { name: "Save booking rules" });
 
 describe("Booking Policies tab", () => {
-  it("shows kitchen-scoped heading, location-default labels, read-only terms, and five sections", async () => {
+  it("shows kitchen-scoped heading, location-default labels, read-only terms, and four sections", async () => {
     mount();
     await waitFor(() => expect(screen.getByLabelText("Free cancellation until")).toBeEnabled());
     expect(screen.getByRole("heading", { name: /Rules for Prep Kitchen/i })).toBeInTheDocument();
     expect(screen.getAllByText("Location default").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Change for this kitchen").length).toBeGreaterThan(0);
     expect(screen.getAllByRole("heading", { level: 3 }).map((heading) => heading.textContent)).toEqual(
-      ["Booking rules", "Cancellation policy", "Extra time", "Damage and cleaning", "Terms and conditions"]);
+      ["Booking rules", "Cancellation policy", "Damage and cleaning", "Terms and conditions"]);
     expect(screen.queryByText("Copy these rules to your other kitchens")).not.toBeInTheDocument();
     expect(saveRules()).toBeDisabled();
     expect(screen.getByRole("button", { name: "Save cancellation policy" })).toBeDisabled();
-    await waitFor(() => expect(within(screen.getByTestId("session-extension-settings")).getByRole("button", { name: "Save changes" })).toBeDisabled());
     expect(screen.queryByTestId("setting-change-preview")).not.toBeInTheDocument();
     expect(screen.getByText("Customers can book up to 30 days ahead.")).toBeInTheDocument();
     expect(screen.getByText("Customers can book back to back.")).toBeInTheDocument();
@@ -142,7 +140,6 @@ describe("Booking Policies tab", () => {
   it("offers copy-to-other-kitchens when the location has multiple kitchens", async () => {
     api.get.mockImplementation(async (path: string) => {
       if (path.endsWith("cancellation-policy")) return policy;
-      if (path.endsWith("session-extension-settings")) return extension;
       if (path.includes("copy-booking-policies")) {
         return { sourceKitchenId: 40, sourceKitchenName: "Prep Kitchen", kitchens: [
           { kitchenId: 41, kitchenName: "Bake", changes: [{ field: "minimumBookingWindowHours", from: 1, to: 4, action: "set" }] },

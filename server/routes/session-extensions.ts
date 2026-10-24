@@ -8,8 +8,7 @@ import { z } from 'zod';
 import { requireFirebaseAuthWithUser, requireAdmin, requireManager } from '../firebase-auth-middleware';
 import { createSessionExtension, resolveExtraTimeDispute, decideSessionExtension, pendingSessionExtensionRequests, readSessionExtensions,
   SessionExtensionError, syncSessionExtension, checkoutSessionExtension } from '../services/session-extensions';
-import { readSessionExtensionSettings, saveSessionExtensionSettings, sessionExtensionsEnabled, SessionExtensionSettingsError,
-  setSessionExtensionsEnabled } from '../services/session-extension-settings';
+import { sessionExtensionsEnabled, SessionExtensionSettingsError, setSessionExtensionsEnabled } from '../services/session-extension-settings';
 import { BookingMoneyFrozen } from '../services/booking-money-guard';
 import { logger } from '../logger';
 import { getAppBaseUrl } from '../config';
@@ -92,12 +91,6 @@ router.get('/manager/session-extensions/pending', auth, requireManager as Reques
   try { res.json(await pendingSessionExtensionRequests(req.neonUser!.id)); }
   catch (error) { logger.error('[Session extension] Pending list failed', { error }); res.status(500).json({ error: 'Requests for more time could not be loaded.' }); }
 });
-router.get('/manager/kitchens/:id/session-extension-settings', auth, requireManager as RequestHandler, handler((req, id) => readSessionExtensionSettings(id, actor(req))));
-router.put('/manager/kitchens/:id/session-extension-settings', auth, requireManager as RequestHandler, handler((req, id) =>
-  saveSessionExtensionSettings(id, actor(req), z.object({ autoApprove: z.boolean() }).strict().parse(req.body))));
-router.get('/admin/kitchens/:id/session-extension-settings', auth, requireAdmin as RequestHandler, handler((req, id) => readSessionExtensionSettings(id, actor(req))));
-router.put('/admin/kitchens/:id/session-extension-settings', auth, requireAdmin as RequestHandler, handler((req, id) =>
-  saveSessionExtensionSettings(id, actor(req), z.object({ override: z.boolean().nullable(), reason: z.string().min(1).max(2000) }).strict().parse(req.body))));
 router.get('/admin/session-extensions', auth, requireAdmin as RequestHandler, async (_req, res) => {
   try { res.json({ enabled: await sessionExtensionsEnabled() }); }
   catch { res.status(500).json({ error: 'Setting unavailable' }); }

@@ -6,7 +6,7 @@ vi.mock('../config', () => ({ getAppBaseUrl: () => 'https://chef.localcooks.test
 vi.mock('../services/session-extensions', () => ({ checkoutSessionExtension: state.checkout, createSessionExtension: vi.fn(), decideSessionExtension: vi.fn(),
   pendingSessionExtensionRequests: vi.fn(), readSessionExtensions: vi.fn(), syncSessionExtension: vi.fn(),
   SessionExtensionError: class extends Error { constructor(message: string, public status = 409, public translationKey?: string) { super(message); } } }));
-vi.mock('../services/session-extension-settings', () => ({ readSessionExtensionSettings: vi.fn(), saveSessionExtensionSettings: vi.fn(),
+vi.mock('../services/session-extension-settings', () => ({ 
   sessionExtensionsEnabled: vi.fn(), setSessionExtensionsEnabled: vi.fn(), SessionExtensionSettingsError: class extends Error {} }));
 vi.mock('../services/booking-money-guard', () => ({ BookingMoneyFrozen: class extends Error {} }));
 vi.mock('../logger', () => ({ logger: { error: vi.fn() } }));

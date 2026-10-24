@@ -518,8 +518,6 @@ export const kitchens = pgTable("kitchens", {
   // true = kitchen uses the location's cancellation default (migration 0101).
   cancellationFollowsLocation: boolean("cancellation_follows_location").default(true).notNull(),
   checkinCheckoutEnabled: boolean("checkin_checkout_enabled").default(false).notNull(),
-  autoApproveSessionExtensions: boolean('auto_approve_session_extensions').default(false).notNull(),
-  sessionExtensionsAdminOverride: boolean('session_extensions_admin_override'),
   // Pricing fields (all prices stored as integers in cents to avoid floating-point precision issues)
   hourlyRate: numeric("hourly_rate"), // Base hourly rate in cents (e.g., 5000 = $50.00/hour)
   dailyRate: numeric("daily_rate"), // Base daily rate in cents; can coexist with hourlyRate

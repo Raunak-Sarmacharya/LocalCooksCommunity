@@ -199,9 +199,7 @@ export function SessionExtensionRequest({ bookingId, kitchenName, timezone, clas
   const busy = view.kind === "busy"
   const quick = state.options.filter(option => isQuickPick(option.minutes))
   const chosen = custom.minutes == null ? undefined : state.options.find(option => option.minutes === custom.minutes)
-  const optionLabel = (option: ExtensionOption) => state.autoApprove
-    ? t("sxAddUntil", { defaultValue: "Add until {time} · {amount}", time: clock(option.endAt, state.timezone), amount: money(option.amountCents, state.currency, locale) })
-    : t("sxRequestUntil", { defaultValue: "Request until {time} · up to {amount}", time: clock(option.endAt, state.timezone), amount: money(option.amountCents, state.currency, locale) })
+  const optionLabel = (option: ExtensionOption) => t("sxRequestUntil", { defaultValue: "Request until {time} · up to {amount}", time: clock(option.endAt, state.timezone), amount: money(option.amountCents, state.currency, locale) })
   return (
     <div className="space-y-2 rounded-lg border p-3" data-testid="extension-options">
       <p className="text-sm font-medium">{t("sxChooseTime", { defaultValue: "How much more time do you need?" })}</p>
@@ -210,10 +208,7 @@ export function SessionExtensionRequest({ bookingId, kitchenName, timezone, clas
           <li key={option.minutes}>
             <Button type="button" variant="outline" className={`${className || ""} justify-between`} disabled={busy} onClick={() => void choose(state, option)}
               aria-label={t("sxOptionAria", { defaultValue: "{duration}, until {time}, {amount}", duration: duration(option.minutes), time: clock(option.endAt, state.timezone), amount: money(option.amountCents, state.currency, locale) })}>
-              {state.autoApprove ? <>
-                <span>{t("sxOptionUntil", { defaultValue: "Until {time}", time: clock(option.endAt, state.timezone) })}</span>
-                <span className="tabular-nums">{money(option.amountCents, state.currency, locale)}</span>
-              </> : <span>{t("sxRequestUntil", { defaultValue: "Request until {time} · up to {amount}", time: clock(option.endAt, state.timezone), amount: money(option.amountCents, state.currency, locale) })}</span>}
+              <span>{optionLabel(option)}</span>
             </Button>
           </li>
         ))}
@@ -236,9 +231,7 @@ export function SessionExtensionRequest({ bookingId, kitchenName, timezone, clas
             <Button type="button" className={className} disabled={busy} onClick={() => void choose(state, chosen)}>{optionLabel(chosen)}</Button>
           </>}
         </div>}
-      <p className="text-xs text-muted-foreground">{state.autoApprove
-        ? t("sxInstantHint", { defaultValue: "The time is free, so it’s confirmed right away and charged to your saved card." })
-        : t("sxOnlyIfCharged", { defaultValue: "You’re only charged if {kitchen} approves with a charge.", kitchen: kitchenName })}</p>
+      <p className="text-xs text-muted-foreground">{t("sxOnlyIfCharged", { defaultValue: "You’re only charged if {kitchen} approves with a charge.", kitchen: kitchenName })}</p>
       <p className="text-xs text-muted-foreground">{t("sxNoRefund", { defaultValue: "Extra time can’t be refunded once it’s added." })}</p>
       {busy && <p className="text-xs flex items-center gap-2" role="status"><Loader2 className="h-3 w-3 animate-spin" aria-hidden />{t("sxWorking", { defaultValue: "Checking with your bank…" })}</p>}
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}

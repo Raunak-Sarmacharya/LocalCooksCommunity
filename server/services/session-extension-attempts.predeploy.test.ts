@@ -100,8 +100,7 @@ function setup(booking: Record<string, unknown> = {}, kitchen: Record<string, un
       selectedSlots: [], operatingWindowStartTime: '08:00', hourlyRate: '2500', durationHours: '2', paymentIntentId: 'pi_parent', currency: 'CAD',
       stripeCustomerId: 'cus_1', stripePaymentMethodId: 'pm_1', visitDuties: null, checkinStatus: 'checked_in', checkedInAt: new Date('2026-10-14T16:35:00Z'),
       checkoutRequestedAt: null, checkedOutAt: null, cancellationPolicySnapshot: { sessions: [{ startAt: START }] }, ...booking },
-    kitchen: { id: 5, locationId: 9, name: 'Harbour Kitchen', isActive: true, autoApproveSessionExtensions: false, sessionExtensionsAdminOverride: null,
-      defaultDailyBookingLimit: null, ...kitchen },
+    kitchen: { id: 5, locationId: 9, name: 'Harbour Kitchen', isActive: true,       defaultDailyBookingLimit: null, ...kitchen },
     managerId: 7, timezone: 'America/St_Johns' };
 }
 beforeEach(() => {

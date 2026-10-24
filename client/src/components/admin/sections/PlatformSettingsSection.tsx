@@ -16,7 +16,7 @@ import { AlertCircle, Clock, DollarSign, Package, RefreshCw, Save, TrendingUp } 
 import { Switch } from "@/components/ui/switch";
 import { LifecycleSettings } from '../LifecycleSettings';
 import { CancellationSettings } from '../CancellationSettings';
-import { SessionExtensionsPlatformSwitch } from '@/components/manager/settings/SessionExtensionSettingsCard';
+import { SessionExtensionsPlatformSwitch } from '@/components/manager/settings/SessionExtensionsPlatformSwitch';
 
 export function PlatformSettingsSection() {
   const { toast } = useToast();

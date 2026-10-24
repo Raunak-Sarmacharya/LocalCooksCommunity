@@ -101,8 +101,7 @@ function setup(booking: Record<string, unknown> = {}, kitchen: Record<string, un
       selectedSlots: [], operatingWindowStartTime: '08:00', hourlyRate: '2500', durationHours: '2', paymentIntentId: 'pi_parent', currency: 'CAD',
       stripeCustomerId: 'cus_1', stripePaymentMethodId: 'pm_1', visitDuties: null, checkinStatus: 'checked_in', checkedInAt: new Date('2026-10-14T16:35:00Z'),
       checkoutRequestedAt: null, checkedOutAt: null, cancellationPolicySnapshot: { sessions: [{ startAt: START }] }, ...booking },
-    kitchen: { id: 5, locationId: 9, name: 'Harbour Kitchen', isActive: true, autoApproveSessionExtensions: false, sessionExtensionsAdminOverride: null,
-      defaultDailyBookingLimit: null, ...kitchen },
+    kitchen: { id: 5, locationId: 9, name: 'Harbour Kitchen', isActive: true,       defaultDailyBookingLimit: null, ...kitchen },
     managerId: 7, timezone: 'America/St_Johns' };
 }
 beforeEach(() => {
@@ -399,18 +398,12 @@ describe('chef asks for more time (approval mode, the default)', () => {
   });
 });
 
-describe('instant mode (the kitchen turned on automatic approval)', () => {
-  it('charges at once and confirms the new end', async () => {
-    setup({}, { autoApproveSessionExtensions: true });
+describe('no automatic approval (owner, Oct 24)', () => {
+  it('a request only holds the card and waits for the kitchen; nothing is captured and the end does not move', async () => {
     const { extension } = await ask(30, 1501);
-    expect(extension).toMatchObject({ status: 'approved', confirmed: true });
-    expect(state.log.filter(entry => entry.startsWith('stripe'))).toEqual(['stripe:create:manual', 'stripe:capture']);
-    expect(state.context.booking.endTime).toBe('16:30');
-    expect(notices()).toEqual(['instant']);
-  });
-  it('a Local Cooks override wins over the kitchen choice', async () => {
-    setup({}, { autoApproveSessionExtensions: true, sessionExtensionsAdminOverride: false });
-    expect((await ask()).extension.status).toBe('requested');
+    expect(extension).toMatchObject({ status: 'requested', autoApprove: false });
+    expect(state.log.filter(entry => entry.startsWith('stripe'))).toEqual(['stripe:create:manual']);
+    expect(state.context.booking.endTime).not.toBe('16:30');
   });
 });
 

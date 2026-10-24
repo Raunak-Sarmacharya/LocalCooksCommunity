@@ -10,7 +10,7 @@ const END = "2026-10-14T18:30:00.000Z"; // 4:00 p.m. Newfoundland Daylight Time
 const item = (extra: Record<string, unknown> = {}) => ({ id: 5, kind: "request", minutes: 60, amountCents: 3000, free: false, kitchenGrossCents: 2875, actualMinutes: null,
   maximumAmountCents: null, status: "requested", authorized: true, paid: false, confirmed: false, originalEndAt: END, endAt: "2026-10-14T19:30:00.000Z",
   expiresAt: "2026-10-14T18:20:00.000Z", note: null, autoApprove: false, createdAt: END, processing: false, escalated: false, ...extra });
-const state = (extra: Record<string, unknown> = {}) => ({ enabled: true, autoApprove: false, timezone: "America/St_Johns", kitchenName: "Harbour Kitchen", currency: "CAD",
+const state = (extra: Record<string, unknown> = {}) => ({ enabled: true, timezone: "America/St_Johns", kitchenName: "Harbour Kitchen", currency: "CAD",
   options: [{ minutes: 30, endTime: "16:30", endAt: "2026-10-14T19:00:00.000Z", amountCents: 1501, kitchenGrossCents: 1438 },
     { minutes: 60, endTime: "17:00", endAt: "2026-10-14T19:30:00.000Z", amountCents: 3000, kitchenGrossCents: 2875 }],
   earlyOptions: [], extraTime: null, visitId: null, endAt: END, startAt: "2026-10-14T16:30:00.000Z", beforeStart: false, checkoutAt: null, inSession: true, canRequest: true,
@@ -94,16 +94,12 @@ describe("chef: Need more time?", () => {
     expect(screen.queryByText(/is on hold on your card/)).not.toBeInTheDocument();
     expect(posts().map(post => post.url)).toEqual(['/api/bookings/10/extensions', '/api/bookings/10/extensions/5/checkout']);
   });
-  it("confirmed (instant mode) says until when and refreshes the visit", async () => {
-    const onExtended = vi.fn();
-    responses.push({ match: /\/extensions$/, method: "GET", body: state({ autoApprove: true }) },
-      { match: /\/extensions$/, method: "POST", body: { extension: item({ status: "approved", confirmed: true, paid: true }) } });
-    mount(vi.fn(), onExtended);
+  it("always asks the kitchen: the customer is told they're charged only if the kitchen approves", async () => {
+    responses.push({ match: /\/extensions$/, method: "GET", body: state() });
+    mount(vi.fn());
     fireEvent.click(screen.getByRole("button", { name: "Need more time?" }));
-    expect(await screen.findByText(/confirmed right away/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /1 more hour/ }));
-    expect(await screen.findByText(/You have until 5:00\s?p\.m\./)).toBeInTheDocument();
-    expect(onExtended).toHaveBeenCalled();
+    expect(await screen.findByText(/only charged if Harbour Kitchen approves/)).toBeInTheDocument();
+    expect(screen.queryByText(/confirmed right away/)).not.toBeInTheDocument();
   });
   it("when the kitchen is booked right after, it says so and offers a message", async () => {
     responses.push({ match: /\/extensions$/, method: "GET", body: state({ options: [], noTimeFree: true }) });

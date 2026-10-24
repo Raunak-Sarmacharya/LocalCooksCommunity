@@ -248,8 +248,6 @@
   "sxChefNoteLine": "Що сказав(ла) {chef}: {note}",
   "sxRequestedTitle": "{chef} просить {duration}",
   "sxRequestedBody": "{chef} просить {duration} у {kitchen} (до {end}) · ви отримаєте {payout}. Відкрийте бронювання, щоб схвалити або відхилити. Запит закривається о {expires}; картку списують лише після вашого схвалення.",
-  "sxInstantManagerTitle": "{chef} додав(ла) {duration}",
-  "sxInstantManagerBody": "{chef} додав(ла) {duration} у {kitchen}. Бронювання тепер закінчується о {end} · ви отримаєте {payout}.",
   "sxConfirmedChefTitle": "У вас є час до {end}",
   "sxConfirmedChefBody": "Додатковий час у {kitchen} підтверджено. У вас є час до {end}. З вашої картки списано {amount}.",
   "sxOfferAcceptedManagerTitle": "{chef} прийняв(ла) додатковий час",

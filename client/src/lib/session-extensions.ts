@@ -14,7 +14,7 @@ export type ExtensionItem = { id: number; kind: "request" | "offer" | "extra_tim
   upheldAt?: string | null; payBy?: string | null
   resolution?: { disputeNote: string | null; outcome: "upheld" | "reduced" | "waived" | null; note: string | null; originalAmountCents: number | null } | null }
 export type EarlyOption = { minutes: number; startTime: string; startAt: string; defaultFree: boolean; billedMinutes: number; amountCents: number; kitchenGrossCents: number; startNow?: boolean }
-export type ExtensionState = { enabled: boolean; autoApprove: boolean; timezone: string; kitchenName: string; currency: string
+export type ExtensionState = { enabled: boolean; timezone: string; kitchenName: string; currency: string
   options: ExtensionOption[]; earlyOptions?: EarlyOption[]; startAt?: string | null; beforeStart?: boolean; extraTime: { actualMinutes: number; minutes: number; maximumAmountCents: number; amountCents: number; kitchenGrossCents: number } | null
   visitId: number | null; endAt: string | null; checkoutAt: string | null; inSession: boolean; canRequest: boolean; hasSavedCard: boolean
   unavailableReason: string | null; noTimeFree: boolean; history: ExtensionItem[]; serverNow: string

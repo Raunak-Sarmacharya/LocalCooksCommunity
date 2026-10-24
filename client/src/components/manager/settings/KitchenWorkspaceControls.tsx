@@ -6,7 +6,6 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import BookingRulesSettings, { type BookingPoliciesHandle } from "./BookingRulesSettings";
 import { CancellationPolicyEditor } from './CancellationPolicyEditor';
-import { SessionExtensionSettingsCard } from './SessionExtensionSettingsCard';
 import { ManagerDamagePolicySection } from "./PolicySection";
 import { KitchenTermsSection } from "./KitchenTermsSection";
 import { CopyBookingPoliciesCard } from "./CopyBookingPoliciesCard";
@@ -143,7 +142,6 @@ export default function KitchenWorkspaceControls({ kitchenId, location, mode, on
           } else await change.mutateAsync(patch);
         }} />
       <CancellationPolicyEditor kitchenId={kitchenId} />
-      <SessionExtensionSettingsCard kitchenId={kitchenId} />
       <ManagerDamagePolicySection />
       {showTerms && <KitchenTermsSection location={location} locationName={location.name} readOnly onEditLocation={onEditLocation} note={termsNote} />}
       <CopyBookingPoliciesCard kitchenId={kitchenId} kitchenCount={kitchenCount} />

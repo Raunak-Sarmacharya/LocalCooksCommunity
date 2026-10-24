@@ -248,8 +248,6 @@
   "sxChefNoteLine": "Ce que {chef} a dit : {note}",
   "sxRequestedTitle": "{chef} demande {duration}",
   "sxRequestedBody": "{chef} demande {duration} à {kitchen} (jusqu’à {end}) · vous recevriez {payout}. Ouvrez la réservation pour accepter ou refuser. La demande se ferme à {expires}, et sa carte n’est débitée que si vous acceptez.",
-  "sxInstantManagerTitle": "{chef} a ajouté {duration}",
-  "sxInstantManagerBody": "{chef} a ajouté {duration} à {kitchen}. Sa réservation se termine maintenant à {end} · vous recevriez {payout}.",
   "sxConfirmedChefTitle": "Vous avez jusqu’à {end}",
   "sxConfirmedChefBody": "Votre temps supplémentaire à {kitchen} est confirmé. Vous avez jusqu’à {end}. {amount} a été débité de votre carte.",
   "sxOfferAcceptedManagerTitle": "{chef} a accepté plus de temps",

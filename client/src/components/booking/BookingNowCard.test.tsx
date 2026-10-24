@@ -97,7 +97,7 @@ const END = "2026-10-14T18:30:00.000Z";
 const item = (extra: Record<string, unknown> = {}) => ({ id: 5, kind: "request", minutes: 60, amountCents: 3000, free: false, kitchenGrossCents: 2875, actualMinutes: null,
   maximumAmountCents: null, status: "requested", authorized: true, paid: false, confirmed: false, originalEndAt: END, endAt: "2026-10-14T19:30:00.000Z",
   expiresAt: "2026-10-14T18:20:00.000Z", note: null, autoApprove: false, createdAt: END, processing: false, escalated: false, ...extra });
-const state = (extra: Record<string, unknown> = {}) => ({ enabled: true, autoApprove: false, timezone: "America/St_Johns", kitchenName: "Harbour Kitchen", currency: "CAD",
+const state = (extra: Record<string, unknown> = {}) => ({ enabled: true, timezone: "America/St_Johns", kitchenName: "Harbour Kitchen", currency: "CAD",
   options: [{ minutes: 30, endTime: "16:30", endAt: "2026-10-14T19:00:00.000Z", amountCents: 1501, kitchenGrossCents: 1438 }],
   earlyOptions: [], extraTime: null, visitId: null, endAt: END, startAt: "2026-10-14T16:30:00.000Z", beforeStart: false, checkoutAt: null, inSession: true, canRequest: true,
   hasSavedCard: true, unavailableReason: null, noTimeFree: false, history: [], serverNow: "2026-10-14T18:05:00.000Z", ...extra });

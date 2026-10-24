@@ -15,7 +15,7 @@ import { EXTRA_TIME_PAY_DAYS } from '@shared/session-extension';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type Extension = typeof kitchenBookingExtensions.$inferSelect;
-export type SessionExtensionNoticeEvent = 'requested' | 'instant' | 'confirmed' | 'declined' | 'expired' | 'offered'
+export type SessionExtensionNoticeEvent = 'requested' | 'confirmed' | 'declined' | 'expired' | 'offered'
   | 'extra_time' | 'paid' | 'disputed' | 'escalated' | 'card_failed' | 'granted' | 'early_offered' | 'refunded' | 'withdrawn'
   | 'dispute_upheld' | 'dispute_waived';
 type Audience = 'chef' | 'manager' | 'admins';
@@ -38,7 +38,6 @@ export function sessionExtensionAudiences(event: SessionExtensionNoticeEvent, ki
     case 'granted': return [['chef', kind === 'request' ? 'sxGrantedRequestChef' : 'sxGrantedEndChef']];
     case 'early_offered': return [];
     case 'requested': return [['manager', 'sxRequested']];
-    case 'instant': return [['chef', 'sxConfirmedChef'], ['manager', 'sxInstantManager']];
     case 'confirmed': return kind === 'offer' ? [['chef', 'sxConfirmedChef'], ['manager', 'sxOfferAcceptedManager']] : [['chef', 'sxConfirmedChef']];
     case 'declined': return kind === 'offer' ? [['manager', 'sxOfferDeclinedManager']] : [['chef', 'sxDeclinedChef']];
     case 'expired': return kind === 'offer' ? [['manager', 'sxOfferExpiredManager']] : [['chef', 'sxRequestExpiredChef'], ['manager', 'sxRequestExpiredManager']];

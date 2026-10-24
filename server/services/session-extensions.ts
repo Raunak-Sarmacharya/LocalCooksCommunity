@@ -330,7 +330,7 @@ export async function readSessionExtensions(bookingId: number, actor: ExtensionA
   } catch (error) { unavailableReason = error instanceof SessionExtensionError ? error.message : 'Extra time needs Local Cooks to review this booking. Message the kitchen.'; }
   // The kitchen's share is manager-facing; chefs see what they pay.
   const shown = history.map(sessionExtensionDto).map(item => manager ? item : { ...item, kitchenGrossCents: null });
-  return { enabled, autoApprove: row.kitchen.sessionExtensionsAdminOverride ?? row.kitchen.autoApproveSessionExtensions,
+  return { enabled,
     timezone: row.timezone, kitchenName: row.kitchen.name, currency: row.booking.currency, options, earlyOptions, extraTime,
     visitId: clock?.visit.visitId ?? null, endAt: clock?.visit.scheduledEndAt ?? null, startAt: clock?.visit.scheduledStartAt ?? null, beforeStart, checkoutAt: clock?.checkout ? new Date(clock.checkout).toISOString() : null,
     inSession, canRequest: finalHour && !unavailableReason, hasSavedCard: !!row.booking.stripeCustomerId && !!row.booking.stripePaymentMethodId,
@@ -418,7 +418,8 @@ export async function createSessionExtension(stripe: ExtensionStripe, bookingId:
     }
     if (free) quote = { ...quote, subtotalCents: 0, taxCents: 0, commissionCents: 0, amountCents: 0, kitchenGrossCents: 0 };
     if (quote.amountCents !== input.expectedAmountCents) throw new SessionExtensionError('The price changed. Review the amount before continuing.');
-    const autoApprove = input.kind === 'offer' || input.kind === 'early_start' || input.kind === 'request' && (row.kitchen.sessionExtensionsAdminOverride ?? row.kitchen.autoApproveSessionExtensions);
+    // A customer's request always waits for the kitchen; a kitchen offer is charged once the customer accepts it (owner, Oct 24).
+    const autoApprove = input.kind === 'offer' || input.kind === 'early_start';
     const [created] = await tx.insert(kitchenBookingExtensions).values({ bookingId, visitId: clock.visit.visitId, blockIndex: clock.visit.blockIndex,
       requestKey: input.requestKey, kind: input.kind, minutes: quote.minutes, amountCents: quote.amountCents, free, quote,
       status: free ? input.kind === 'extra_time' ? 'waived' : 'approved' : input.kind === 'request' ? 'requested' : 'offered', requestedBy: actor.id, decidedBy: free ? actor.id : null, note: input.note?.trim() || null,
@@ -660,7 +661,7 @@ async function recordPaid(tx: Tx, row: Context, extension: Extension, intent: St
   await tx.update(kitchenBookingExtensions).set({ status: extension.kind === 'extra_time' ? 'paid' : 'approved', paymentIntentId: intent.id,
     paidAt: now, cardFailedAt: null, operation: { ...extension.operation, state: 'done' }, updatedAt: now }).where(eq(kitchenBookingExtensions.id, extension.id));
   await dropHold(tx, extension);
-  await notify(tx, extension, extension.kind === 'extra_time' ? 'paid' : extension.kind === 'request' && extension.autoApprove ? 'instant' : 'confirmed');
+  await notify(tx, extension, extension.kind === 'extra_time' ? 'paid' : 'confirmed');
 }
 /** A card that was declined or failed authentication: nothing was charged; offers and charges can be tried again. */
 async function recordCardFailure(tx: Tx, extension: Extension, now: Date) {
@@ -926,7 +927,7 @@ export async function reconcileSessionExtension(stripe: ExtensionStripe, id: num
         await tx.update(kitchenBookingExtensions).set({ authorizedAt: now, cardFailedAt: null, operation: { ...op, state: 'done' }, updatedAt: now }).where(eq(kitchenBookingExtensions.id, id));
         if (op.checkout) await saveCheckoutCard(tx, currentRow, settled, now);
         current.authorizedAt = now; current.operation = { ...op, state: 'done' };
-        if (current.kind === 'request' && !current.autoApprove && current.expiresAt > now && current.status === 'requested') await notify(tx, current, 'requested');
+        if (current.kind === 'request' && current.expiresAt > now && current.status === 'requested') await notify(tx, current, 'requested');
       }
       if (current.status === 'declined' || current.status === 'expired' || current.expiresAt <= now) {
         await saveRelease(tx, current, current.status === 'declined' ? 'declined' : 'expired', now); next = 'release';
