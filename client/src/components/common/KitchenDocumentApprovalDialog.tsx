@@ -1,6 +1,7 @@
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { InfoChip } from "@/components/chef/info-chip";
+import { customDocumentFields, kitchenDocumentFields } from "@shared/location-booking-eligibility";
 
 export type KitchenDocumentField = "foodSafetyLicenseStatus" | "foodEstablishmentCertStatus";
 
@@ -11,16 +12,20 @@ type DocumentState = {
   foodEstablishmentCertUrl?: string | null;
   foodEstablishmentCertExpiry?: string | null;
   foodEstablishmentCertStatus?: string | null;
+  /** The kitchen's own documents live on the tier data. */
+  tier_data?: unknown;
 };
 
 type KitchenRequirements = {
   /** The kitchen's own tier-2 flag: is the certificate upload compulsory? */
   requireFoodSafetyUpload?: boolean;
   tier2_food_establishment_cert_required?: boolean;
+  tier2_custom_fields?: unknown;
 } | null | undefined;
 
 export function getKitchenDocumentApprovalPlan(application: DocumentState, requirements: KitchenRequirements) {
-  const toVerify: { field: KitchenDocumentField; label: string }[] = [];
+  // `field` is set for the built-in documents; the kitchen's own ones are accepted with the approval itself.
+  const toVerify: { field?: KitchenDocumentField; label: string }[] = [];
   const issues: string[] = [];
   const documents = [
     // `needsExpiry` is true for both: the expiry describes the document, so a
@@ -28,13 +33,17 @@ export function getKitchenDocumentApprovalPlan(application: DocumentState, requi
     { label: "Food Safety Certificate", field: "foodSafetyLicenseStatus" as const, url: application.foodSafetyLicenseUrl, expiry: application.foodSafetyLicenseExpiry, status: application.foodSafetyLicenseStatus, required: requirements?.requireFoodSafetyUpload, needsExpiry: true },
     { label: "Food Establishment Licence", field: "foodEstablishmentCertStatus" as const, url: application.foodEstablishmentCertUrl, expiry: application.foodEstablishmentCertExpiry, status: application.foodEstablishmentCertStatus, required: requirements?.tier2_food_establishment_cert_required, needsExpiry: true },
   ];
-  for (const document of documents) {
+  const own = kitchenDocumentFields({ tier2_custom_fields: requirements?.tier2_custom_fields }).map(field => {
+    const { url, expiry, status } = customDocumentFields({ status: "approved", tier_data: application.tier_data }, field.id);
+    return { label: field.label, field: undefined, url, expiry, status, required: field.required, needsExpiry: !!field.expires };
+  });
+  for (const document of [...documents, ...own]) {
     if (!document.url) {
-      if (document.required) issues.push(`${document.label}: ask the chef to upload the document.`);
+      if (document.required) issues.push(`${document.label}: ask the customer to upload the document.`);
     } else if (document.needsExpiry && (!document.expiry || !Number.isFinite(Date.parse(document.expiry)))) {
-      issues.push(`${document.label}: ask the chef to provide a valid expiry date.`);
+      issues.push(`${document.label}: ask the customer to provide a valid expiry date.`);
     } else if (document.expiry && Date.parse(document.expiry) < Date.now() - 86400000) {
-      issues.push(`${document.label}: the document has expired; ask the chef for a replacement.`);
+      issues.push(`${document.label}: the document has expired; ask the customer for a replacement.`);
     } else if (document.status === "rejected") {
       issues.push(`${document.label}: a replacement is needed before approval.`);
     } else if (document.status !== "approved") {
@@ -55,7 +64,7 @@ export function KitchenDocumentApprovalDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   issues: string[];
-  toVerify: { field: KitchenDocumentField; label: string }[];
+  toVerify: { field?: KitchenDocumentField; label: string }[];
   onVerifyAndApprove: () => void;
   processing: boolean;
 }) {
@@ -66,7 +75,7 @@ export function KitchenDocumentApprovalDialog({
           <InfoChip variant="brand" className="mb-1 w-fit">Document review</InfoChip>
           <AlertDialogTitle>Review documents before approval</AlertDialogTitle>
           <AlertDialogDescription>
-            Approval lets this chef book the kitchen. Check each uploaded document before confirming.
+            Approval lets this customer book the kitchen. Check each uploaded document before confirming.
           </AlertDialogDescription>
         </AlertDialogHeader>
         {issues.length > 0 && (
@@ -78,7 +87,7 @@ export function KitchenDocumentApprovalDialog({
         {toVerify.length > 0 && (
           <div className="rounded-xl border border-border bg-card p-4">
             <p className="mb-2 text-sm font-medium text-foreground">Uploaded documents awaiting review</p>
-            <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">{toVerify.map((document) => <li key={document.field}>{document.label}</li>)}</ul>
+            <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">{toVerify.map((document) => <li key={document.field ?? document.label}>{document.label}</li>)}</ul>
             <p className="mt-3 text-xs text-muted-foreground">Choose “Verify and approve” only after opening and checking each file. This records the documents as verified for this kitchen and grants kitchen access.</p>
           </div>
         )}

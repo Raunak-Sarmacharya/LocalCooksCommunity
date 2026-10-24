@@ -6,7 +6,7 @@
  * requirements checklist (every document the kitchen asks for, including its own, and every answer). The request
  * to apply the customer sent comes after, with readable values. Local Cooks' first-step review is never mentioned.
  */
-import { accessDocumentStage } from "@shared/location-booking-eligibility";
+import { accessDocumentStage, customDocumentFields, isKitchenDocument } from "@shared/location-booking-eligibility";
 import { fromCalendarDate } from "@/lib/calendar-date";
 import { formatPreferredSchedule } from "@/lib/preferred-schedule";
 import { mt } from "@/i18n/manager";
@@ -35,6 +35,7 @@ interface RequirementField {
     required?: boolean;
     options?: string[];
     description?: string;
+    document?: boolean;
     expires?: boolean;
 }
 
@@ -144,7 +145,7 @@ export function ApplicationDetailPanel({
         if (status === 'rejected') return mt("documentRejectedNote");
         return mt("documentPendingNote");
     };
-    const renewalReview = (key: 'foodSafetyLicense' | 'foodEstablishmentCert' | 'insurance', title: string, field: DocumentVerificationField) => {
+    const renewalReview = (key: string, title: string, field: DocumentVerificationField) => {
         const renewal = (application.documentRenewals || []).find(item => item.key === key && item.status === 'pending');
         if (!renewal || !onReviewRenewal) return null;
         return <DocumentRenewalReview renewal={renewal} document={title} busy={isUpdating}
@@ -161,11 +162,13 @@ export function ApplicationDetailPanel({
     if (establishmentMode !== 'none' || application.foodEstablishmentCertUrl) docs.push({ key: 'establishment', title: mt("arDocEstablishment"), mode: establishmentMode, url: application.foodEstablishmentCertUrl, status: application.foodEstablishmentCertStatus, expiry: application.foodEstablishmentCertExpiry, field: 'foodEstablishmentCertStatus', verifiedBy: tierData.documentVerification?.foodEstablishmentCert, renewal: renewalReview('foodEstablishmentCert', mt("arDocEstablishment"), 'foodEstablishmentCertStatus') });
     const insuranceMode = modeOf(r?.tier2_insurance_document_required, r?.insurance_tracked);
     if (insuranceMode !== 'none' || insuranceUrl) docs.push({ key: 'insurance', title: mt("arDocInsurance"), mode: insuranceMode, url: insuranceUrl, status: application.insuranceStatus, expiry: application.insuranceExpiry, field: application.insuranceUrl ? 'insuranceStatus' : undefined, verifiedBy: tierData.documentVerification?.insurance, renewal: renewalReview('insurance', mt("arDocInsurance"), 'insuranceStatus') });
-    for (const field of (r?.tier2_custom_fields || []).filter(f => f.expires)) {
-        const url = typeof answers[field.id] === 'string' ? answers[field.id] : tierFiles[field.id];
-        docs.push({ key: field.id, title: field.label, mode: field.required ? 'required' : 'track', url, expiry: answers[`${field.id}__expiry`] ?? null });
+    for (const field of (r?.tier2_custom_fields || []).filter(isKitchenDocument)) {
+        const own = customDocumentFields(application, field.id);
+        docs.push({ key: field.id, title: field.label, mode: field.required ? 'required' : 'track', url: own.url, expiry: own.expiry,
+            status: own.status as DocumentVerificationStatus, field: `custom:${field.id}`, verifiedBy: tierData.documentVerification?.[`custom:${field.id}`],
+            renewal: renewalReview(`custom:${field.id}`, field.label, `custom:${field.id}`) });
     }
-    const questions = (r?.tier2_custom_fields || []).filter(f => !f.expires);
+    const questions = (r?.tier2_custom_fields || []).filter(f => !isKitchenDocument(f));
     const experience = tierData.kitchen_experience_description as string | undefined;
 
     const docStatus = (doc: DocRow): { label: string; tone: 'muted' | 'amber' | 'green' | 'red' } => {

@@ -126,7 +126,7 @@ export function useDocumentWaiver() {
 export function useAddCustomerDocument() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ applicationId, key, file, expiry }: { applicationId: number; key: 'foodSafetyLicense' | 'foodEstablishmentCert' | 'insurance'; file: File; expiry: string }) => {
+    mutationFn: async ({ applicationId, key, file, expiry }: { applicationId: number; key: string; file: File; expiry: string }) => {
       const body = new FormData();
       body.append('key', key); body.append('expiry', expiry); body.append('file', file);
       const token = await auth.currentUser?.getIdToken();

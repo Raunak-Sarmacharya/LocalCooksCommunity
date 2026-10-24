@@ -1,3 +1,4 @@
+import { accessDocumentDaysLeft, customDocumentFields, kitchenDocumentFields, type AccessRequirements } from '@shared/location-booking-eligibility';
 export type ApprovalDocumentField = 'foodSafetyLicenseStatus' | 'foodEstablishmentCertStatus';
 
 export function approvalDocumentUpdates(application: {
@@ -25,6 +26,26 @@ export function approvalDocumentUpdates(application: {
         if (safety && (!expiry || !Number.isFinite(Date.parse(expiry)))) throw new Error(`${label} needs a valid expiry date.`);
         if (expiry && Date.parse(expiry) < Date.now() - 86400000) throw new Error(`${label} has expired.`);
         updates[field] = 'approved';
+    }
+    return updates;
+}
+
+/**
+ * Final approval accepts the kitchen's own documents the customer sent (owner, Oct 24): each one waiting for review
+ * becomes approved. One the kitchen asked to replace, or a dated one that has expired, has to be fixed first.
+ */
+export function approvalCustomDocumentStatus(
+    application: Parameters<typeof customDocumentFields>[0],
+    requirements: AccessRequirements,
+    timezone?: string,
+): Record<string, 'approved'> {
+    const updates: Record<string, 'approved'> = {};
+    for (const field of kitchenDocumentFields(requirements)) {
+        const { url, status, expiry } = customDocumentFields(application, field.id);
+        if (!url) continue;
+        if (status === 'rejected') throw new Error(`${field.label} needs a new copy before approval.`);
+        if (field.expires && (accessDocumentDaysLeft(expiry, timezone) ?? 0) <= 0) throw new Error(`${field.label} has expired or has no expiry date.`);
+        if (status !== 'approved') updates[field.id] = 'approved';
     }
     return updates;
 }

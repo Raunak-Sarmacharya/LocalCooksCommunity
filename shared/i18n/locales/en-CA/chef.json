@@ -980,7 +980,7 @@
   "feesShort": "Fees",
   "flexible": "Flexible",
   "foodBusinessWord": "Food Business",
-  "foodSafetyLicense": "Food Safety License",
+  "foodSafetyLicense": "Food safety certificate",
   "forgetChasingInvoices": "Forget chasing invoices. We process payments automatically and deposit them directly to your bank account every week. Predictable cash flow, zero administrative headaches.",
   "forKitchenOwners": "For Kitchen Owners",
   "fragmentedTools": "Fragmented tools. Disconnected workflows.",
@@ -3831,5 +3831,9 @@
   "mdRenew": "Renew",
   "mdUpload": "Upload",
   "kitchenDocuments": "Booking requirements",
-  "applicationDocumentsHelp": "Complete this kitchen’s booking requirements to continue."
+  "applicationDocumentsHelp": "Complete this kitchen’s booking requirements to continue.",
+  "applicationAddDocumentsHelp": "The kitchen now needs your {documents}. Upload it below; your application stays in review.",
+  "addDocumentsTitle": "Add documents",
+  "addDocumentsHelp": "Upload what the kitchen asked for. It goes to the kitchen with the rest of your booking requirements.",
+  "addDocumentsSubmit": "Send to the kitchen"
 }

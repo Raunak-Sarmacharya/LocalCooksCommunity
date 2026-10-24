@@ -59,6 +59,8 @@ export type CustomerNextAction = {
   /** Days until the nearest required document expires (negative when already expired). */
   documentDays: number | null;
   documentKey: string | null;
+  /** The document's name, for one the kitchen added. */
+  documentLabel?: string | null;
   target: CustomerTarget | null;
   needsAction: boolean;
 };
@@ -79,8 +81,8 @@ export function deriveCustomerStatus(facts: CustomerRelationshipFacts): Customer
 }
 
 const action = (code: CustomerActionCode, rank: number, owner: CustomerOwner,
-  extra: Partial<Pick<CustomerNextAction, 'deadlineAt' | 'documentDays' | 'documentKey' | 'target'>> = {}): Omit<CustomerNextAction, 'needsAction'> =>
-  ({ code, rank, owner, deadlineAt: extra.deadlineAt ?? null, documentDays: extra.documentDays ?? null, documentKey: extra.documentKey ?? null, target: extra.target ?? null });
+  extra: Partial<Pick<CustomerNextAction, 'deadlineAt' | 'documentDays' | 'documentKey' | 'documentLabel' | 'target'>> = {}): Omit<CustomerNextAction, 'needsAction'> =>
+  ({ code, rank, owner, deadlineAt: extra.deadlineAt ?? null, documentDays: extra.documentDays ?? null, documentKey: extra.documentKey ?? null, documentLabel: extra.documentLabel ?? null, target: extra.target ?? null });
 
 /** The B1 priority list, first match wins. */
 export function customerNextAction(facts: CustomerRelationshipFacts, status: CustomerStatus, timezone: string = DEFAULT_TIMEZONE, now: Date = new Date()): CustomerNextAction {
@@ -96,13 +98,13 @@ export function customerNextAction(facts: CustomerRelationshipFacts, status: Cus
     if (facts.tour) return action(facts.tour.kind === 'request' ? 'tour_request' : facts.tour.kind === 'reschedule' ? 'tour_reschedule' : 'tour_feedback', 7, 'you',
       { deadlineAt: facts.tour.deadlineAt, target: { kind: 'tour', id: facts.tour.viewingId } });
     if (status === 'approved') {
-      let nearest: { days: number; key: string } | null = null;
+      let nearest: { days: number; key: string; label: string } | null = null;
       for (const document of facts.documents) {
         const days = accessDocumentDaysLeft(document.expiry, timezone, now);
-        if (days !== null && days <= 30 && (!nearest || days < nearest.days)) nearest = { days, key: document.key };
+        if (days !== null && days <= 30 && (!nearest || days < nearest.days)) nearest = { days, key: document.key, label: document.label };
       }
       if (nearest) return action(nearest.days <= 0 ? 'document_expired' : 'document_expiring', 8, 'customer',
-        { documentDays: nearest.days, documentKey: nearest.key, target: app ? { kind: 'application', id: app.id } : null });
+        { documentDays: nearest.days, documentKey: nearest.key, documentLabel: nearest.label, target: app ? { kind: 'application', id: app.id } : null });
     }
     if (status === 'applied' && app && app.status === 'approved') return action('waiting_documents', 9, 'customer', { target: { kind: 'application', id: app.id } });
     if (status === 'applied') return action('local_cooks_review', 10, 'local_cooks', { target: app ? { kind: 'application', id: app.id } : null });

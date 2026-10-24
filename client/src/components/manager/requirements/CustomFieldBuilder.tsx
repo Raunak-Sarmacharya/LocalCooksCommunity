@@ -3,7 +3,7 @@
  *
  * Renders the list only — the card that hosts it owns the section title. Rebuilt Oct 24 (owner) on the pattern
  * Food Corridor, Typeform and Google Forms share: plain answer-type names, help text under a question, a live
- * preview of what the customer sees, reorder, and a confirmed delete. Dated documents (`expires`) are listed with
+ * preview of what the customer sees, reorder, and a confirmed delete. Documents (`document`/`expires`) are listed with
  * the documents instead, so this list leaves them alone.
  */
 
@@ -20,7 +20,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Plus, X, Pencil, Trash2, ChevronUp, ChevronDown, Calendar, Upload, PlaylistPlus } from "@/components/ui/manager-icons";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CustomField, QUESTION_KINDS, QuestionKind, questionKind, COMMON_REQUIREMENT_FIELDS } from "./types";
+import { CustomField, QUESTION_KINDS, QuestionKind, questionKind, COMMON_REQUIREMENT_FIELDS, isKitchenDocument } from "./types";
 
 interface CustomFieldBuilderProps {
   fields: CustomField[];
@@ -85,8 +85,8 @@ export function QuestionPreview({ field, kind }: { field: Partial<CustomField>; 
 
 export function CustomFieldBuilder({ fields: allFields, tier, onFieldsChange, className = "" }: CustomFieldBuilderProps) {
   // Dated documents belong to the documents list; this list edits the rest and keeps them as they are.
-  const documents = allFields.filter((f) => f.expires);
-  const fields = allFields.filter((f) => !f.expires);
+  const documents = allFields.filter(isKitchenDocument);
+  const fields = allFields.filter((f) => !isKitchenDocument(f));
   const setFields = (next: CustomField[]) => onFieldsChange([...documents, ...next]);
 
   const [editing, setEditing] = useState<{ id: string | null; kind: QuestionKind; data: Partial<CustomField> } | null>(null);

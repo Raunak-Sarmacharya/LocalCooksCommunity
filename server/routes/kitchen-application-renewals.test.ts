@@ -76,7 +76,7 @@ describe('chef uploading a replacement document', () => {
     const res = respond();
     await find('/firebase/chef/kitchen-applications/:id/documents').stack.at(-1).handle({
       params: { id: '57' }, body: { foodSafetyLicenseExpiry: '2099-06-01' }, neonUser: { id: 22 },
-      files: { foodSafetyLicenseFile: [{ originalname: 'cert.pdf' }] },
+      files: [{ fieldname: 'foodSafetyLicenseFile', originalname: 'cert.pdf' }],
     }, res);
     return res;
   };

@@ -26,8 +26,8 @@ describe("kitchen document approval plan", () => {
     }, requirements);
     expect(plan.toVerify).toEqual([]);
     expect(plan.issues).toEqual([
-      "Food Safety Certificate: the document has expired; ask the chef for a replacement.",
-      "Food Establishment Licence: ask the chef to upload the document.",
+      "Food Safety Certificate: the document has expired; ask the customer for a replacement.",
+      "Food Establishment Licence: ask the customer to upload the document.",
     ]);
   });
 

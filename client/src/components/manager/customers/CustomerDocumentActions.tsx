@@ -6,6 +6,7 @@
 import { useState } from 'react';
 import { mt } from '@/i18n/manager';
 import { useToast } from '@/hooks/use-toast';
+import type { CustomerDocument } from './customer-types';
 import { SegmentedControl } from '@/components/manager/revenue/components/SegmentedControl';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -16,9 +17,13 @@ import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescript
 import { useAddCustomerDocument, useDocumentWaiver } from './use-customers';
 import { documentLabel } from './customer-format';
 
-type DocKey = 'foodSafetyLicense' | 'foodEstablishmentCert' | 'insurance';
+type DocKey = string;
+const BUILT_IN = ['foodSafetyLicense', 'foodEstablishmentCert', 'insurance'];
 
-export function CustomerDocumentActions({ applicationId, name, waivedAt, canChange }: { applicationId: number; name: string; waivedAt: string | null; canChange: boolean }) {
+export function CustomerDocumentActions({ applicationId, name, waivedAt, canChange, documents = [] }: { applicationId: number; name: string; waivedAt: string | null; canChange: boolean; documents?: CustomerDocument[] }) {
+  // The built-in three, then each document this kitchen added; one without an expiry date needs no date here.
+  const choices = [...BUILT_IN.map(value => ({ value, label: documentLabel(mt, value), hasExpiry: true })),
+    ...documents.filter(doc => doc.key.startsWith('custom:')).map(doc => ({ value: doc.key, label: doc.label || documentLabel(mt, doc.key), hasExpiry: doc.hasExpiry !== false }))];
   const { toast } = useToast();
   const waiver = useDocumentWaiver();
   const add = useAddCustomerDocument();
@@ -28,6 +33,7 @@ export function CustomerDocumentActions({ applicationId, name, waivedAt, canChan
   const [key, setKey] = useState<DocKey>('foodSafetyLicense');
   const [file, setFile] = useState<File | null>(null);
   const [expiry, setExpiry] = useState('');
+  const needsExpiry = choices.find(choice => choice.value === key)?.hasExpiry !== false;
 
   const change = async (waived: boolean) => {
     try {
@@ -38,7 +44,7 @@ export function CustomerDocumentActions({ applicationId, name, waivedAt, canChan
     }
   };
   const save = async () => {
-    if (!file || !expiry) return;
+    if (!file || (needsExpiry && !expiry)) return;
     try {
       await add.mutateAsync({ applicationId, key, file, expiry });
       toast({ title: mt('cpAddDocumentDone') });
@@ -88,22 +94,25 @@ export function CustomerDocumentActions({ applicationId, name, waivedAt, canChan
         <div className="space-y-4">
           <div className="space-y-1.5">
             <Label className="text-sm font-medium">{mt('cpAddDocumentType')}</Label>
-            <SegmentedControl<DocKey> label={mt('cpAddDocumentType')} value={key} onChange={setKey}
-              options={(['foodSafetyLicense', 'foodEstablishmentCert', 'insurance'] as const).map(option => ({ value: option, label: documentLabel(mt, option) }))} />
+            {choices.length > 3
+              ? <select aria-label={mt('cpAddDocumentType')} value={key} onChange={event => setKey(event.target.value)} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+                  {choices.map(choice => <option key={choice.value} value={choice.value}>{choice.label}</option>)}
+                </select>
+              : <SegmentedControl<DocKey> label={mt('cpAddDocumentType')} value={key} onChange={setKey} options={choices.map(({ value, label }) => ({ value, label }))} />}
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="cp-add-file" className="text-sm font-medium">{mt('cpAddDocumentFile')}</Label>
             <input id="cp-add-file" type="file" accept=".pdf,.jpg,.jpeg,.png" className="block w-full text-sm file:mr-3 file:rounded-md file:border file:border-input file:bg-background file:px-3 file:py-1.5 file:text-sm"
               onChange={event => setFile(event.target.files?.[0] ?? null)} />
           </div>
-          <div className="space-y-1.5">
+          {needsExpiry && <div className="space-y-1.5">
             <Label htmlFor="cp-add-expiry" className="text-sm font-medium">{mt('cpAddDocumentExpiry')}</Label>
             <DateField id="cp-add-expiry" value={expiry} onChange={setExpiry} placeholder={mt('cpAddDocumentExpiry')} />
-          </div>
+          </div>}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setAdding(false)}>{mt('cancel')}</Button>
-          <Button disabled={!file || !expiry || add.isPending} onClick={() => void save()}>{mt('cpAddDocumentSave')}</Button>
+          <Button disabled={!file || (needsExpiry && !expiry) || add.isPending} onClick={() => void save()}>{mt('cpAddDocumentSave')}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

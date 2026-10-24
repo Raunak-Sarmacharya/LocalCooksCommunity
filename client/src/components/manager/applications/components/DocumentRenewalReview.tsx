@@ -4,7 +4,7 @@ import i18n from '@/i18n';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 
-export type DocumentRenewal = { id: number; key: 'foodSafetyLicense' | 'foodEstablishmentCert' | 'insurance'; url: string; expiry: string; status: string; submittedAt?: string | null };
+export type DocumentRenewal = { id: number; key: string; url: string; expiry: string; status: string; submittedAt?: string | null };
 
 /** A renewed upload waiting beside the current document, which stays valid until it expires. */
 export function DocumentRenewalReview({ renewal, document, busy, onView, onReview }: {

@@ -3831,5 +3831,9 @@
   "mdRenew": "Renouveler",
   "mdUpload": "Téléverser",
   "kitchenDocuments": "Exigences de réservation",
-  "applicationDocumentsHelp": "Remplissez les exigences de réservation de cette cuisine pour continuer."
+  "applicationDocumentsHelp": "Remplissez les exigences de réservation de cette cuisine pour continuer.",
+  "applicationAddDocumentsHelp": "La cuisine demande maintenant : {documents}. Téléversez-le ci-dessous ; votre demande reste en cours d’examen.",
+  "addDocumentsTitle": "Ajouter des documents",
+  "addDocumentsHelp": "Téléversez ce que la cuisine a demandé. Il lui sera envoyé avec le reste de vos exigences de réservation.",
+  "addDocumentsSubmit": "Envoyer à la cuisine"
 }

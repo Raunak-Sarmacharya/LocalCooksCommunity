@@ -121,7 +121,7 @@ export function AdminKitchenApplicationsStep1Section({
   const [documentsApplication, setDocumentsApplication] = useState<Application | null>(null);
   const [approvalApplication, setApprovalApplication] = useState<Application | null>(null);
   const [approvalIssues, setApprovalIssues] = useState<string[]>([]);
-  const [approvalDocuments, setApprovalDocuments] = useState<{ field: KitchenDocumentField; label: string }[]>([]);
+  const [approvalDocuments, setApprovalDocuments] = useState<{ field?: KitchenDocumentField; label: string }[]>([]);
   const [showApprovalDialog, setShowApprovalDialog] = useState(false);
   const [isCombinedApproving, setIsCombinedApproving] = useState(false);
 
@@ -297,7 +297,8 @@ export function AdminKitchenApplicationsStep1Section({
     if (!approvalApplication || !approvalDocuments.length) return;
     setIsCombinedApproving(true);
     try {
-      await handleApprove(approvalApplication, "step2", approvalDocuments.map(({ field }) => field));
+      const fields = approvalDocuments.flatMap(({ field }) => field ? [field] : []);
+      await handleApprove(approvalApplication, "step2", fields.length ? fields : undefined);
     } finally {
       setIsCombinedApproving(false);
     }

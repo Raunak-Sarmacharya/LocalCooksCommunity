@@ -19,12 +19,17 @@ export interface CustomField {
   /** Date questions: today or later only. */
   futureOnly?: boolean;
   /**
-   * A file the kitchen treats as a document with an expiry date (owner, Oct 24): listed with the built-in documents and
-   * tracked the same way. `mode` replaces `required` for these: 'required' pauses new bookings when missing or expired.
+   * A document the kitchen asks for (owner, Oct 24): listed with the built-in documents and tracked the same way;
+   * `required` pauses new bookings until it's on file and approved. Older ones were saved with only `expires: true`.
    */
+  document?: boolean;
+  /** A document with an expiry date: asked with the upload, reminded and renewed. */
   expires?: boolean;
   mode?: 'track' | 'required';
 }
+
+export { isKitchenDocument } from "@shared/location-booking-eligibility";
+import { isKitchenDocument } from "@shared/location-booking-eligibility";
 
 export interface LocationRequirements {
   id: number;
@@ -286,7 +291,7 @@ export function resolveDocumentRequirements(
   });
   // The kitchen's own dated documents sit in the same list (owner, Oct 24).
   const own = ((requirements as { tier2_custom_fields?: CustomField[] } | null | undefined)?.tier2_custom_fields ?? [])
-    .filter((field) => field?.expires)
+    .filter(isKitchenDocument)
     .map((field): ResolvedRequirement => ({ key: field.id, label: field.label, description: field.description, required: field.required === true, mode: field.required ? 'required' : 'track' }));
   return [...builtIn, ...own];
 }
@@ -347,7 +352,7 @@ export function resolveCustomRequirements(
     ? [{ key: KITCHEN_EXPERIENCE_FIELD.key, label: KITCHEN_EXPERIENCE_FIELD.label, description: 'Paragraph', required: true }]
     : [];
   if (!Array.isArray(fields)) return experience;
-  return [...experience, ...fields.filter((field) => !field?.expires).map((field, index) => ({
+  return [...experience, ...fields.filter((field) => !isKitchenDocument(field)).map((field, index) => ({
     key: field.id || `custom-${index}`,
     label: field.label,
     // The answer type is worth naming: "Dropdown" and "File upload" are different asks,

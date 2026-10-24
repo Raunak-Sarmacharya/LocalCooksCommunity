@@ -21,6 +21,7 @@ import { AccessRequestsList } from "@/components/manager/applications/AccessRequ
 import { ApplicationDetailPanel } from "@/components/manager/applications/components/ApplicationDetailPanel";
 import { KitchenDocumentApprovalDialog, getKitchenDocumentApprovalPlan, type KitchenDocumentField } from "@/components/common/KitchenDocumentApprovalDialog";
 import { Application } from "@/components/manager/applications/types";
+import type { DocumentVerificationField } from "@/components/manager/applications/components/DocumentViewerDialog";
 import { tt } from "@/i18n/common-ns";
 
 export default function ManagerKitchenApplicationsV2() {
@@ -69,7 +70,7 @@ export function ManagerKitchenApplicationsContent({
     const [selectedApplication, setSelectedApplication] = useState<Application | null>(null);
     const [reviewFeedback, setReviewFeedback] = useState("");
     const [approvalIssues, setApprovalIssues] = useState<string[]>([]);
-    const [approvalDocuments, setApprovalDocuments] = useState<{ field: KitchenDocumentField; label: string }[]>([]);
+    const [approvalDocuments, setApprovalDocuments] = useState<{ field?: KitchenDocumentField; label: string }[]>([]);
     const [showApprovalDialog, setShowApprovalDialog] = useState(false);
     const [revokeTarget, setRevokeTarget] = useState<typeof selectedApplication>(null);
     const [isCombinedApproving, setIsCombinedApproving] = useState(false);
@@ -356,15 +357,23 @@ export function ManagerKitchenApplicationsContent({
         if (!selectedApplication || !approvalDocuments.length) return;
         setIsCombinedApproving(true);
         try {
-            await approveTier2(approvalDocuments.map(({ field }) => field));
+            const fields = approvalDocuments.flatMap(({ field }) => field ? [field] : []);
+            await approveTier2(fields.length ? fields : undefined);
         } finally {
             setIsCombinedApproving(false);
         }
     };
 
-    const handleVerifyDocument = async (field: 'foodSafetyLicenseStatus' | 'foodEstablishmentCertStatus' | 'insuranceStatus', status: 'approved' | 'rejected') => {
+    const handleVerifyDocument = async (field: DocumentVerificationField, status: 'approved' | 'rejected') => {
         if (!selectedApplication) return;
         try {
+            if (field.startsWith('custom:')) {
+                // One of the kitchen's own documents: the server returns the updated application.
+                const result = await verifyDocuments.mutateAsync({ applicationId: selectedApplication.id, customDocument: field, customDocumentStatus: status });
+                if (result?.application) setSelectedApplication({ ...selectedApplication, tier_data: result.application.tier_data });
+                toast({ title: status === 'approved' ? 'Document verified' : 'Document needs a replacement' });
+                return;
+            }
             await verifyDocuments.mutateAsync({ applicationId: selectedApplication.id, [field]: status });
             setSelectedApplication({ ...selectedApplication, [field]: status });
             toast({ title: status === 'approved' ? 'Document verified' : 'Document needs a replacement' });
@@ -373,8 +382,20 @@ export function ManagerKitchenApplicationsContent({
         }
     };
 
-    const handleReviewRenewal = async (field: 'foodSafetyLicenseStatus' | 'foodEstablishmentCertStatus' | 'insuranceStatus', decision: 'approved' | 'rejected', reason?: string) => {
+    const handleReviewRenewal = async (field: DocumentVerificationField, decision: 'approved' | 'rejected', reason?: string) => {
         if (!selectedApplication) return;
+        if (field.startsWith('custom:')) {
+            // The server finds the waiting renewal for one of the kitchen's own documents and decides it.
+            try {
+                const result = await verifyDocuments.mutateAsync({ applicationId: selectedApplication.id, customDocument: field, customDocumentStatus: decision, rejectionReason: reason });
+                setSelectedApplication({ ...selectedApplication, ...(result?.application ? { tier_data: result.application.tier_data } : {}),
+                    documentRenewals: (selectedApplication.documentRenewals || []).filter(item => !(item.key === field && item.status === 'pending')) });
+                toast({ title: decision === 'approved' ? mt('renewalApproved') : mt('renewalDeclined') });
+            } catch (error: any) {
+                toast({ title: mt('error'), description: error.message || mt('renewalReviewFailed'), variant: 'destructive' });
+            }
+            return;
+        }
         const key = field === 'foodSafetyLicenseStatus' ? 'foodSafetyLicense' : 'foodEstablishmentCert';
         const renewal = (selectedApplication.documentRenewals || []).find(item => item.key === key && item.status === 'pending');
         try {

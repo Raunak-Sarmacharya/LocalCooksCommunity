@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { type FieldErrors, useForm, useWatch } from "react-hook-form";
 import { useLocation } from "wouter";
 import { z } from "zod";
+import { isKitchenDocument } from "@shared/location-booking-eligibility";
 import { phoneNumberSchema, normalizePhoneNumber, isValidNorthAmericanPhone } from "@shared/phone-validation";
 import { useQuery } from "@tanstack/react-query";
 import { tourApplicationDefaults, type TourApplicationReference } from '@shared/tour-application';
@@ -263,7 +264,8 @@ interface CustomField {
   min?: number;
   max?: number;
   futureOnly?: boolean;
-  /** A kitchen document with an expiry date; its date is stored as `<id>__expiry`. */
+  /** A document the kitchen asks for; with `expires` its date is stored as `<id>__expiry`. */
+  document?: boolean;
   expires?: boolean;
 }
 
@@ -2816,7 +2818,7 @@ export default function KitchenApplicationForm({
                           <p className="mb-4 text-sm font-semibold text-foreground">{t("additionalRequirements", { defaultValue: "Additional requirements" })}</p>
                           {/* One column: every answer gets the full width, as on the rest of this step. Dated documents come first. */}
                           <div className="flex flex-col gap-5">
-                            {[...requirements.tier2_custom_fields].sort((a: CustomField, b: CustomField) => Number(!!b?.expires) - Number(!!a?.expires)).map((field: CustomField) => {
+                            {[...requirements.tier2_custom_fields].sort((a: CustomField, b: CustomField) => Number(isKitchenDocument(b)) - Number(isKitchenDocument(a))).map((field: CustomField) => {
                               if (!field || !field.id || !field.type) return null;
                               const fieldName = `custom_${field.id}` as keyof KitchenApplicationFormData;
                               // A control that wants real width gets it; everything short shares a row.

@@ -307,7 +307,7 @@ export async function loadCustomerReadInput(managerId: number, locationId: numbe
       foodSafetyLicenseExpiry: chefKitchenApplications.foodSafetyLicenseExpiry, foodEstablishmentCertUrl: chefKitchenApplications.foodEstablishmentCertUrl,
       foodEstablishmentCertStatus: chefKitchenApplications.foodEstablishmentCertStatus, foodEstablishmentCertExpiry: chefKitchenApplications.foodEstablishmentCertExpiry,
       insuranceUrl: chefKitchenApplications.insuranceUrl, insuranceStatus: chefKitchenApplications.insuranceStatus, insuranceExpiry: chefKitchenApplications.insuranceExpiry,
-      documentsWaivedAt: chefKitchenApplications.documentsWaivedAt })
+      documentsWaivedAt: chefKitchenApplications.documentsWaivedAt, tier_data: chefKitchenApplications.tier_data })
       .from(chefKitchenApplications).where(and(inArray(chefKitchenApplications.locationId, ids), only(chefKitchenApplications.chefId))),
     db.select({ chefId: chefLocationAccess.chefId, locationId: chefLocationAccess.locationId, grantedAt: chefLocationAccess.grantedAt })
       .from(chefLocationAccess).where(and(inArray(chefLocationAccess.locationId, ids), only(chefLocationAccess.chefId))),
@@ -360,7 +360,7 @@ export async function loadCustomerReadInput(managerId: number, locationId: numbe
     documents: row.status === 'approved' && row.currentTier >= 3 ? requiredAccessDocuments({ status: row.status, currentTier: row.currentTier,
       foodSafetyLicenseUrl: row.foodSafetyLicenseUrl, foodSafetyLicenseStatus: row.foodSafetyLicenseStatus, foodSafetyLicenseExpiry: row.foodSafetyLicenseExpiry,
       foodEstablishmentCertUrl: row.foodEstablishmentCertUrl, foodEstablishmentCertStatus: row.foodEstablishmentCertStatus, foodEstablishmentCertExpiry: row.foodEstablishmentCertExpiry,
-      insuranceUrl: row.insuranceUrl, insuranceStatus: row.insuranceStatus, insuranceExpiry: row.insuranceExpiry, documentsWaivedAt: row.documentsWaivedAt },
+      insuranceUrl: row.insuranceUrl, insuranceStatus: row.insuranceStatus, insuranceExpiry: row.insuranceExpiry, documentsWaivedAt: row.documentsWaivedAt, tier_data: row.tier_data },
       requirements.get(row.locationId) ?? {}).map(({ key, label, expiry }) => ({ key, label, expiry: expiry ?? null })) : [],
   }));
   const bookings: RawBooking[] = bookingRows.filter(row => row.chefId != null).map(row => ({ ...row, chefId: row.chefId! }));

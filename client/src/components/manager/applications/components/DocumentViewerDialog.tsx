@@ -24,7 +24,8 @@ import {
 } from "@/components/ui/manager-icons";
 import { cn } from "@/lib/utils";
 
-export type DocumentVerificationField = "foodSafetyLicenseStatus" | "foodEstablishmentCertStatus" | "insuranceStatus";
+/** A built-in document's status column, or one of the kitchen's own documents ("custom:<field id>"). */
+export type DocumentVerificationField = "foodSafetyLicenseStatus" | "foodEstablishmentCertStatus" | "insuranceStatus" | `custom:${string}`;
 export type DocumentVerificationStatus = "pending" | "approved" | "rejected" | null | undefined;
 
 type PendingAction = "approve" | null;

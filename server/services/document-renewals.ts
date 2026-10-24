@@ -1,13 +1,12 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db';
 import { chefDocumentRenewals, chefKitchenApplications, locations } from '@shared/schema';
-import { accessDocumentDaysLeft, DOCUMENT_LABELS, documentRenewalHref, type AccessRenewal, type DocumentKey } from '@shared/location-booking-eligibility';
+import { accessDocumentDaysLeft, customDocumentId, documentLabel, documentRenewalHref, isCustomDocumentKey, type AccessRenewal, type DocumentKey } from '@shared/location-booking-eligibility';
 import { DomainError } from '../shared/errors/domain-error';
 import { logger } from '../logger';
 
 export type RenewalKey = DocumentKey;
 export type RenewalDecision = 'approved' | 'rejected';
-const labels = DOCUMENT_LABELS;
 
 /** Until migration 0074 is applied the table is missing: every read treats that as "no renewal" and every write reports it. */
 const tableMissing = (error: unknown) => {
@@ -64,14 +63,20 @@ export async function decideDocumentRenewal(input: { applicationId: number; key:
     const [renewal] = await tx.select().from(chefDocumentRenewals).where(and(eq(chefDocumentRenewals.applicationId, input.applicationId), eq(chefDocumentRenewals.documentKey, input.key))).limit(1).for('update');
     if (!renewal || renewal.status !== 'pending') throw new DomainError('RENEWAL_NOT_PENDING', 'There is no renewal waiting for review for this document.', 409);
     const [location] = await tx.select().from(locations).where(eq(locations.id, app.locationId)).limit(1);
-    const label = labels[input.key];
+    const { locationService } = await import('../domains/locations/location.service');
+    const label = documentLabel(input.key, await locationService.getLocationRequirementsWithDefaults(app.locationId));
     const locationName = location?.name || 'this kitchen';
     const reviewedAt = new Date();
     if (input.decision === 'approved') {
       if ((accessDocumentDaysLeft(renewal.expiry, location?.timezone || undefined) ?? 0) <= 0) throw new DomainError('RENEWAL_EXPIRED', 'The renewed document has already expired. Ask the chef for a current one.', 400);
       const tierData = (app.tier_data || {}) as Record<string, any>;
       const documentVerification = { ...(tierData.documentVerification || {}), [input.key]: input.reviewer };
-      await tx.update(chefKitchenApplications).set(input.key === 'foodSafetyLicense'
+      const ownId = isCustomDocumentKey(input.key) ? customDocumentId(input.key) : null;
+      if (ownId) await tx.update(chefKitchenApplications).set({ tier_data: { ...tierData, documentVerification,
+          tier2_custom_fields_data: { ...(tierData.tier2_custom_fields_data || {}), [ownId]: renewal.url, [`${ownId}__expiry`]: renewal.expiry },
+          customDocumentStatus: { ...(tierData.customDocumentStatus || {}), [ownId]: 'approved' } }, updatedAt: reviewedAt })
+        .where(eq(chefKitchenApplications.id, app.id));
+      else await tx.update(chefKitchenApplications).set(input.key === 'foodSafetyLicense'
         ? { foodSafetyLicenseUrl: renewal.url, foodSafetyLicenseExpiry: renewal.expiry, foodSafetyLicenseStatus: 'approved', tier_data: { ...tierData, documentVerification }, updatedAt: reviewedAt }
         : input.key === 'foodEstablishmentCert'
           ? { foodEstablishmentCertUrl: renewal.url, foodEstablishmentCertExpiry: renewal.expiry, foodEstablishmentCertStatus: 'approved', tier_data: { ...tierData, documentVerification }, updatedAt: reviewedAt }

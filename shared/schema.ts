@@ -1147,7 +1147,8 @@ export const customFieldSchema = z.object({
   min: z.number().optional(),
   max: z.number().optional(),
   futureOnly: z.boolean().optional(),
-  // A kitchen document with an expiry date, tracked like the built-in three (owner, Oct 24).
+  // A document the kitchen asks for, tracked like the built-in three; expiry optional (owner, Oct 24).
+  document: z.boolean().optional(),
   expires: z.boolean().optional(),
   mode: z.enum(["track", "required"]).optional(),
 });

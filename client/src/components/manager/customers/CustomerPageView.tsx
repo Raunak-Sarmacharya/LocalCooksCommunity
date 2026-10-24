@@ -216,7 +216,7 @@ function Profile({ data }: { data: CustomerPageData }) {
               <DocumentRow key={document.key} document={document} locale={locale} onView={() => setViewing(document)} />
             )) : <p className="pt-3 text-[13px] text-stone-600">{data.application ? mt('cpNoDocuments') : mt('cuNoApplication')}</p>}
             {data.application && (data.application.documentsWaivedAt || (data.application.status === 'approved' && data.application.tier >= 3)) && (
-              <CustomerDocumentActions applicationId={data.application.id} name={name} waivedAt={data.application.documentsWaivedAt}
+              <CustomerDocumentActions applicationId={data.application.id} name={name} waivedAt={data.application.documentsWaivedAt} documents={data.application.documents}
                 canChange={data.application.status === 'approved' && data.application.tier >= 3} />
             )}
           </Card>
@@ -252,7 +252,7 @@ function Profile({ data }: { data: CustomerPageData }) {
       )}
       {data.application && (
         <DocumentViewerDialog applicationId={data.application.id} open={viewing !== null} onOpenChange={open => { if (!open) setViewing(null); }}
-          title={viewing ? documentLabel(mt, viewing.key) : ''}
+          title={viewing ? documentLabel(mt, viewing.key, viewing.label) : ''}
           url={viewing?.url} status={viewing?.status as 'pending' | 'approved' | 'rejected' | undefined} expiry={viewing?.expiry}
           labels={{ verified: mt('verified'), pending: mt('pending'), rejected: mt('rejected'), needsReplacement: mt('needsAReplacement'), expired: mt('licenseExpired'),
             verify: mt('verifyDocument'), openInNewTab: mt('openInNewTab'), close: mt('close'), loading: mt('loadingDocument'), loadFailed: mt('documentUnavailable'),
@@ -292,7 +292,7 @@ function Strip({ data, locale }: { data: CustomerPageData; locale: string }) {
 }
 
 function DocumentRow({ document, locale, onView }: { document: CustomerDocument; locale: string; onView: () => void }) {
-  const label = documentLabel(mt, document.key);
+  const label = documentLabel(mt, document.key, document.label);
   const expired = document.daysLeft !== null && document.daysLeft <= 0;
   const status = !document.uploaded ? mt('cuDocNotUploaded') : expired ? mt('cuDocExpiredStatus')
     : document.status === 'approved' ? mt('cuDocVerified') : document.status === 'rejected' ? mt('cuDocRejected') : mt('cuDocPending');

@@ -34,7 +34,8 @@ const DOCUMENT_NAME_KEYS = { foodSafetyLicense: "arDocFoodSafety", foodEstablish
 export function accessRequestLine(app: Application): string {
   const tab = accessRequestTab(app);
   const renewal = (app.documentRenewals || []).find((item) => item.status === "pending");
-  if (tab === "review" && (app.current_tier ?? 1) >= 3 && renewal) return mt("arLineRenewal", { document: mt(DOCUMENT_NAME_KEYS[renewal.key]) });
+  if (tab === "review" && (app.current_tier ?? 1) >= 3 && renewal) return renewal.key in DOCUMENT_NAME_KEYS
+    ? mt("arLineRenewal", { document: mt(DOCUMENT_NAME_KEYS[renewal.key as keyof typeof DOCUMENT_NAME_KEYS]) }) : mt("arLineRenewalOther");
   if (tab === "review") return mt("arLineSent", { date: day(app.tier2_completed_at || app.updatedAt) });
   if (tab === "waiting") return mt("arLineWaiting", { date: day(app.tier1_completed_at || app.reviewedAt || app.createdAt) });
   if (tab === "declined") return mt("arLineDeclined", { date: day(app.reviewedAt || app.updatedAt) });

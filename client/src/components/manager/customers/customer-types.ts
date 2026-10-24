@@ -34,7 +34,8 @@ export type PastBooking = PageBooking & { outcome: BookingOutcomeCode; refundedC
 export type ClaimActor = 'you' | 'customer' | 'local_cooks' | 'nobody';
 
 export type CustomerDocument = {
-  key: 'foodSafetyLicense' | 'foodEstablishmentCert' | 'insurance'; mode: 'none' | 'track' | 'required'; required: boolean; uploaded: boolean; status: string; expiry: string | null;
+  /** A built-in document, or one the kitchen added ("custom:<field id>", named by `label`). */
+  key: string; label?: string; hasExpiry?: boolean; mode: 'none' | 'track' | 'required'; required: boolean; uploaded: boolean; status: string; expiry: string | null;
   daysLeft: number | null; stage: 'expired' | '3_day' | '14_day' | '45_day' | null; url: string | null; renewalPending: boolean;
 };
 type VisitRef = { bookingId?: number; reference?: string | null; startsAt?: string | null; endsAt?: string | null };

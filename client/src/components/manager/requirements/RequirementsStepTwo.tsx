@@ -23,7 +23,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Plus, Pencil, Trash2, Upload, Calendar } from "@/components/ui/manager-icons";
 import { CustomFieldBuilder } from "./CustomFieldBuilder";
 import { SegmentedControl } from "@/components/manager/revenue/components/SegmentedControl";
-import { LocationRequirements, CustomField, STEP2_BUILT_IN_FIELDS, KITCHEN_EXPERIENCE_FIELD } from "./types";
+import { LocationRequirements, CustomField, STEP2_BUILT_IN_FIELDS, KITCHEN_EXPERIENCE_FIELD, isKitchenDocument } from "./types";
 
 interface RequirementsStepTwoProps {
   requirements: Partial<LocationRequirements>;
@@ -79,9 +79,9 @@ export function RequirementsStepTwo({
   };
 
   const tier2CustomFields = (requirements.tier2_custom_fields as CustomField[]) || [];
-  // The kitchen's own dated documents (owner, Oct 24): a file upload with an expiry date, Track it or Required.
-  const ownDocuments = tier2CustomFields.filter((field) => field.expires);
-  const [documentEditor, setDocumentEditor] = useState<{ id: string | null; label: string; description: string; mode: 'track' | 'required' } | null>(null);
+  // Documents the kitchen asks for (owner, Oct 24): a file, with or without an expiry date, Track it or Required.
+  const ownDocuments = tier2CustomFields.filter(isKitchenDocument);
+  const [documentEditor, setDocumentEditor] = useState<{ id: string | null; label: string; description: string; mode: 'track' | 'required'; expires: boolean } | null>(null);
   const [documentError, setDocumentError] = useState(false);
   const [pendingDocumentDelete, setPendingDocumentDelete] = useState<CustomField | null>(null);
   // The item stays set while the dialog animates closed, so its name doesn't blank out.
@@ -91,7 +91,7 @@ export function RequirementsStepTwo({
     if (!documentEditor.label.trim()) { setDocumentError(true); return; }
     const document: CustomField = {
       id: documentEditor.id ?? `custom_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
-      label: documentEditor.label.trim(), type: 'file', tier: 2, expires: true,
+      label: documentEditor.label.trim(), type: 'file', tier: 2, document: true, expires: documentEditor.expires,
       mode: documentEditor.mode, required: documentEditor.mode === 'required',
       ...(documentEditor.description.trim() ? { description: documentEditor.description.trim() } : {}),
     };
@@ -134,12 +134,12 @@ export function RequirementsStepTwo({
               );
           })}
           {ownDocuments.map((document) => (
-            <SettingsRow key={document.id} label={document.label} hint={document.description || mt("qbOwnDocumentHint")}>
+            <SettingsRow key={document.id} label={document.label} hint={document.description || (document.expires ? mt("qbOwnDocumentHint") : mt("qbOwnDocumentNoExpiryHint"))}>
               <div className="flex items-center gap-1">
                 <SegmentedControl<'track' | 'required'> label={document.label} value={document.required ? 'required' : 'track'}
                   onChange={(next) => setDocumentMode(document, next)} options={ownModeOptions} />
                 <Button type="button" variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground" aria-label={mt("qbEdit", { label: document.label })}
-                  onClick={() => { setDocumentError(false); setDocumentEditor({ id: document.id, label: document.label, description: document.description ?? '', mode: document.required ? 'required' : 'track' }); }}>
+                  onClick={() => { setDocumentError(false); setDocumentEditor({ id: document.id, label: document.label, description: document.description ?? '', mode: document.required ? 'required' : 'track', expires: !!document.expires }); }}>
                   <Pencil className="h-4 w-4" />
                 </Button>
                 <Button type="button" variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive" aria-label={mt("qbDelete", { label: document.label })}
@@ -151,7 +151,7 @@ export function RequirementsStepTwo({
           ))}
           <div className="px-4 py-3">
             <Button type="button" variant="outline" size="sm" className="gap-1.5"
-              onClick={() => { setDocumentError(false); setDocumentEditor({ id: null, label: '', description: '', mode: 'track' }); }}>
+              onClick={() => { setDocumentError(false); setDocumentEditor({ id: null, label: '', description: '', mode: 'track', expires: true }); }}>
               <Plus className="h-4 w-4" />{mt("qbAddDocument")}
             </Button>
           </div>
@@ -178,6 +178,13 @@ export function RequirementsStepTwo({
                   <Textarea id="doc-help" value={documentEditor.description} maxLength={500} placeholder={mt("qbDocumentHelpPlaceholder")} className="min-h-[64px]"
                     onChange={(e) => setDocumentEditor({ ...documentEditor, description: e.target.value })} />
                 </div>
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <Label htmlFor="doc-expires">{mt("qbDocumentExpires")}</Label>
+                    <p className="text-xs text-muted-foreground">{documentEditor.expires ? mt("qbDocumentExpiresOn") : mt("qbDocumentExpiresOff")}</p>
+                  </div>
+                  <Switch id="doc-expires" checked={documentEditor.expires} onCheckedChange={(expires) => setDocumentEditor({ ...documentEditor, expires })} />
+                </div>
                 <div className="space-y-1.5">
                   <Label>{mt("qbDocumentMode")}</Label>
                   <SegmentedControl<'track' | 'required'> label={mt("qbDocumentMode")} value={documentEditor.mode}
@@ -192,8 +199,10 @@ export function RequirementsStepTwo({
                     {documentEditor.mode === 'required' ? <span className="ml-0.5 text-destructive">*</span> : <span className="ml-1 font-normal text-muted-foreground">{mt("qbOptionalTag")}</span>}</p>
                   {documentEditor.description.trim() && <p className="-mt-1 text-xs leading-5 text-muted-foreground">{documentEditor.description}</p>}
                   <div className="flex items-center gap-3 rounded-xl border border-dashed bg-background px-4 py-3 text-sm text-muted-foreground"><Upload className="h-4 w-4" />{mt("qbPreviewUpload")}</div>
-                  <p className="pt-1 text-xs font-medium">{mt("qbPreviewExpiry")}</p>
-                  <div className="flex h-10 w-48 items-center gap-2 rounded-md border bg-background px-3 text-sm text-muted-foreground"><Calendar className="h-4 w-4" />{mt("qbPreviewPickDate")}</div>
+                  {documentEditor.expires && <>
+                    <p className="pt-1 text-xs font-medium">{mt("qbPreviewExpiry")}</p>
+                    <div className="flex h-10 w-48 items-center gap-2 rounded-md border bg-background px-3 text-sm text-muted-foreground"><Calendar className="h-4 w-4" />{mt("qbPreviewPickDate")}</div>
+                  </>}
                 </div>
               </div>
             </div>

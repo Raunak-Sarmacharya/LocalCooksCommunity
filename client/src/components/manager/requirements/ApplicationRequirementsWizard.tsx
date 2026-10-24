@@ -1,3 +1,4 @@
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { mt } from "@/i18n/manager";
 import { tt } from "@/i18n/common-ns";
 /**
@@ -176,7 +177,7 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
       }
       return response.json();
     },
-    onSuccess: (_result, updates) => {
+    onSuccess: (result, updates) => {
       queryClient.invalidateQueries({ queryKey: [`/api/manager/locations/${locationId}/requirements`] });
       queryClient.invalidateQueries({ queryKey: [`location-${locationId}`], exact: false });
       void apiGet(`/manager/kitchens/${locationId}`).then((kitchens: Array<{ id: number }>) => {
@@ -187,7 +188,7 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
       setBaseline(prev => ({ ...prev, ...updates }));
 
       toast({ title: mt("requirementsSaved"),
-        description: mt("yourApplicationRequirementsHaveBeenUpdatedSuccessfully"),
+        description: result?.notifiedCustomers ? mt("reqNotified", { count: result.notifiedCustomers }) : mt("yourApplicationRequirementsHaveBeenUpdatedSuccessfully"),
       });
 
       onSaveSuccess?.();
@@ -204,11 +205,24 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
     setRequirements(prev => ({ ...prev, ...updates }));
   }, []);
 
+  // A document that becomes Required pauses approved customers without it, so the kitchen sees how many first (owner, Oct 24).
+  const [requiredImpact, setRequiredImpact] = useState<{ customers: number; documents: string; resolve: (ok: boolean) => void } | null>(null);
+  const confirmRequiredImpact = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/manager/locations/${locationId}/requirements/impact`, { method: 'POST', headers: await getAuthHeaders(), credentials: 'include', body: JSON.stringify(requirements) });
+      if (!response.ok) return true;
+      const impact = await response.json() as { customers: number; documents: { label: string }[] };
+      if (!impact.customers) return true;
+      return await new Promise<boolean>(resolve => setRequiredImpact({ customers: impact.customers, documents: impact.documents.map(doc => doc.label).join(', '), resolve }));
+    } catch { return true; }
+  }, [locationId, requirements]);
+
   const saveRequirements = useCallback(async () => {
     const removesLastAsk = !hasAnyApplicationRequirement(requirements);
     if (!await listingImpact.confirmLocation(locationId, removesLastAsk)) throw new Error("Save cancelled");
+    if (!await confirmRequiredImpact()) throw new Error("Save cancelled");
     await saveMutation.mutateAsync(requirements);
-  }, [requirements, listingImpact.confirmLocation, locationId, saveMutation]);
+  }, [requirements, listingImpact.confirmLocation, locationId, saveMutation, confirmRequiredImpact]);
   const handleSave = useCallback(() => { void saveRequirements().catch(() => {}); }, [saveRequirements]);
 
   // Expose save trigger to parent via ref
@@ -256,6 +270,18 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
         </div>
       )}
       {listingImpact.dialog}
+      <AlertDialog open={requiredImpact !== null} onOpenChange={(open) => { if (!open && requiredImpact) { requiredImpact.resolve(false); setRequiredImpact(null); } }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{mt("reqImpactTitle", { count: requiredImpact?.customers ?? 0 })}</AlertDialogTitle>
+            <AlertDialogDescription>{mt("reqImpactBody", { count: requiredImpact?.customers ?? 0, documents: requiredImpact?.documents ?? '' })}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{mt("cancel")}</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { requiredImpact?.resolve(true); setRequiredImpact(null); }}>{mt("reqImpactConfirm")}</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 });

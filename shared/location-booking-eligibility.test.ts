@@ -91,3 +91,34 @@ describe('location booking eligibility', () => {
       eligibility: { status: 'document_expired', actionUrl: '/dashboard?view=kitchen-requests&renewLocation=47', document: { key: 'foodSafetyLicense' } } });
   });
 });
+
+// Owner, Oct 24: the documents a kitchen adds are tracked like the built-in three; expiry is optional.
+describe('custom documents', () => {
+  const fields = [
+    { id: 'lic', label: 'Business licence', type: 'file', required: true, document: true, expires: true },
+    { id: 'menu', label: 'Signed house rules', type: 'file', required: true, document: true, expires: false },
+    { id: 'q', label: 'What will you cook?', type: 'text', required: true },
+  ];
+  const withDocs = (data: Record<string, unknown>, status: Record<string, string> = {}) =>
+    ({ ...app, tier_data: { tier2_custom_fields_data: data, customDocumentStatus: status } });
+  const check = (data: Record<string, unknown>, status: Record<string, string> = {}) =>
+    locationBookingEligibility(withDocs(data, status), true, { tier2_custom_fields: fields }, 47, 'America/St_Johns', now);
+  it('lists only documents, with their expiry choice, and never questions', () => {
+    expect(accessDocuments(withDocs({}), { tier2_custom_fields: fields }).map(doc => [doc.key, doc.mode, doc.hasExpiry]))
+      .toEqual([['foodSafetyLicense', 'required', true], ['custom:lic', 'required', true], ['custom:menu', 'required', false]]);
+  });
+  it('a missing required document pauses new bookings and says which one', () => {
+    expect(check({ menu: '/rules.pdf' }, { menu: 'approved' })).toMatchObject({ canBook: false, document: { key: 'custom:lic', label: 'Business licence' } });
+  });
+  it('a dated one needs approval and a future date; an undated one needs approval only', () => {
+    const files = { lic: '/lic.pdf', lic__expiry: '2027-03-01', menu: '/rules.pdf' };
+    expect(check(files).canBook).toBe(false);
+    expect(check(files, { lic: 'approved', menu: 'approved' }).canBook).toBe(true);
+    expect(check({ ...files, lic__expiry: '2026-10-14' }, { lic: 'approved', menu: 'approved' })).toMatchObject({ canBook: false, status: 'document_expired' });
+    expect(check(files, { lic: 'approved', menu: 'rejected' }).message).toMatch(/new copy of your Signed house rules/);
+  });
+  it('an undated document never uses a renewal slot', () => {
+    expect(usesRenewalSlot(withDocs({ menu: '/rules.pdf' }, { menu: 'approved' }), 'custom:menu', false)).toBe(false);
+    expect(usesRenewalSlot(withDocs({ lic: '/lic.pdf', lic__expiry: '2027-03-01' }, { lic: 'approved' }), 'custom:lic')).toBe(true);
+  });
+});

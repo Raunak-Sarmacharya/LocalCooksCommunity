@@ -10,7 +10,8 @@ import { formatCalendarDate } from "@/lib/calendar-date";
 import type { KitchenApplicationWithLocation } from "@/hooks/use-chef-kitchen-applications";
 
 export type ApplicationDocument = {
-  key: "foodSafetyLicense" | "foodEstablishmentCert" | "insurance"; label: string; mode: "none" | "track" | "required"; waived: boolean;
+  /** A built-in document, or one the kitchen added ("custom:<field id>"). */
+  key: string; label: string; hasExpiry?: boolean; mode: "none" | "track" | "required"; waived: boolean;
   uploaded: boolean; status: string | null; expiry: string | null; daysLeft: number | null; stage: "expired" | "3_day" | "14_day" | "45_day" | null; renewalPending: boolean;
 };
 
@@ -38,13 +39,14 @@ export function ApplicationDocumentRows({ app, viewLink }: { app: KitchenApplica
       const expiry = document.expiry ? formatCalendarDate(document.expiry, i18n.language, { year: "numeric", month: "short", day: "numeric" }) : null;
       return <li key={document.key} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-3 first:pt-0 last:pb-0 text-sm">
         <div className="min-w-0">
-          <p className="font-medium">{t(LABEL_KEYS[document.key][0], LABEL_KEYS[document.key][1])}</p>
+          <p className="font-medium">{document.key in LABEL_KEYS ? t(LABEL_KEYS[document.key as keyof typeof LABEL_KEYS][0], LABEL_KEYS[document.key as keyof typeof LABEL_KEYS][1]) : document.label}</p>
           <p className="text-xs text-muted-foreground">{modeOf(document)} · <span className={cn(needs && "font-medium text-amber-800", document.stage === "expired" && "text-red-700")}>{statusOf(document)}</span>
             {expiry && <> · {document.stage === "expired" ? t("mdExpiredOn", { defaultValue: "expired {date}", date: expiry }) : t("mdExpires", { defaultValue: "expires {date}", date: expiry })}</>}</p>
         </div>
         <div className="flex shrink-0 items-center gap-3">
           {document.uploaded && viewLink?.(document.key)}
-          {needs && <Link href={(app.current_tier ?? 1) < 3 && !app.documentsWaivedAt ? `/apply-kitchen/${app.locationId}` : `/dashboard?view=kitchen-requests&application=${app.id}&renew=1`}
+          {/* Before the booking requirements are sent, the step-2 form; after, the upload form on the application page. */}
+          {needs && <Link href={(app.current_tier ?? 1) < 3 && !app.documentsWaivedAt && !app.tier2_completed_at ? `/apply-kitchen/${app.locationId}` : `/dashboard?view=kitchen-requests&application=${app.id}&renew=1`}
             className="!min-h-0 rounded-full border border-primary bg-primary px-3 py-1 text-xs font-medium text-primary-foreground">{document.uploaded ? t("mdRenew", "Renew") : t("mdUpload", "Upload")}</Link>}
         </div>
       </li>;

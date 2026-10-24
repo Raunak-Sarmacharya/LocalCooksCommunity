@@ -534,6 +534,24 @@ router.get('/manager/locations/:locationId/requirements',
 );
 
 // 🔥 Update Location Requirements (Manager)
+// How many approved customers a change would pause, before the kitchen saves it (owner, Oct 24).
+router.post('/manager/locations/:locationId/requirements/impact', requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+        const locationId = parseInt(req.params.locationId);
+        const location = Number.isInteger(locationId) ? await locationService.getLocationById(locationId) : null;
+        if (!location || location.managerId !== req.neonUser!.id) return res.status(403).json({ error: 'Access denied' });
+        const parsed = updateLocationRequirementsSchema.safeParse(req.body);
+        if (!parsed.success) return res.status(400).json({ error: 'Validation error' });
+        const before = await locationService.getLocationRequirementsWithDefaults(locationId);
+        const { customersMissingNewlyRequired } = await import('../services/required-document-changes');
+        const impact = await customersMissingNewlyRequired(locationId, before as any, { ...before, ...parsed.data } as any);
+        res.json({ documents: impact.documents, customers: impact.customers.length });
+    } catch (error) {
+        logger.error('❌ Error previewing requirement changes:', error);
+        res.status(500).json({ error: 'Could not check who this affects' });
+    }
+});
+
 router.put('/manager/locations/:locationId/requirements',
     requireFirebaseAuthWithUser,
     requireManager,
@@ -565,14 +583,19 @@ router.put('/manager/locations/:locationId/requirements',
             }
 
             const updates = parseResult.data;
+            const before = await locationService.getLocationRequirementsWithDefaults(locationId);
             const requirements = await locationService.upsertLocationRequirements(locationId, updates);
+            // A document that just became Required: approved customers without it are told now (owner, Oct 24).
+            const { notifyNewlyRequiredDocuments } = await import('../services/required-document-changes');
+            const notifiedCustomers = await notifyNewlyRequiredDocuments(locationId, before as any, await locationService.getLocationRequirementsWithDefaults(locationId) as any)
+                .catch(error => { logger.error('❌ Could not tell customers about newly required documents:', error); return 0; });
             if (!hasAnyApplicationRequirement(requirements)) {
                 await db.update(kitchens).set({ listingStatus: 'draft', updatedAt: new Date() })
                     .where(and(eq(kitchens.locationId, locationId), eq(kitchens.listingStatus, 'active')));
             }
 
             logger.info(`✅ Location requirements updated for location ${locationId} by manager ${user.id} `);
-            res.json({ success: true, requirements });
+            res.json({ success: true, requirements, notifiedCustomers });
         } catch (error) {
             // Safe error logging
             logger.error('❌ Error updating location requirements:', error);

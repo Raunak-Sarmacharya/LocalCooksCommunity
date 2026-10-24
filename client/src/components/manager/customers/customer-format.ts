@@ -47,7 +47,8 @@ export function formatMoney(cents: number, locale: string, currency = 'CAD') {
 }
 
 const documentLabelKey = (key: string | null) => key === 'foodEstablishmentCert' ? 'cuDocEstablishment' : key === 'insurance' ? 'cuDocInsurance' : 'cuDocFoodSafety';
-export const documentLabel = (t: Translate, key: string | null) => t(documentLabelKey(key));
+/** A built-in document by its translated name; one the kitchen added by the name the kitchen gave it. */
+export const documentLabel = (t: Translate, key: string | null, own?: string | null) => key?.startsWith('custom:') ? own || t('cuDocOther') : t(documentLabelKey(key));
 
 export const statusLabelKey: Record<CustomerStatus, string> = {
   applied: 'cuStatusApplied', in_review: 'cuStatusInReview', approved: 'cuStatusApproved', suspended: 'cuStatusSuspended',
@@ -70,8 +71,8 @@ export function nextActionText(t: Translate, next: CustomerNextAction, nextBooki
     case 'tour_request': return when ? t('cuNextTourRequestBy', { when }) : t('cuNextTourRequest');
     case 'tour_reschedule': return when ? t('cuNextTourRescheduleBy', { when }) : t('cuNextTourReschedule');
     case 'tour_feedback': return t('cuNextTourFeedback');
-    case 'document_expiring': return t('cuNextDocExpiring', { document: documentLabel(t, next.documentKey), days: Math.max(next.documentDays ?? 0, 0) });
-    case 'document_expired': return t('cuNextDocExpired', { document: documentLabel(t, next.documentKey) });
+    case 'document_expiring': return t('cuNextDocExpiring', { document: documentLabel(t, next.documentKey, next.documentLabel), days: Math.max(next.documentDays ?? 0, 0) });
+    case 'document_expired': return t('cuNextDocExpired', { document: documentLabel(t, next.documentKey, next.documentLabel) });
     case 'waiting_documents': return t('cuNextWaitingDocuments');
     case 'local_cooks_review': return t('cuNextLocalCooksReview');
     case 'next_booking': {

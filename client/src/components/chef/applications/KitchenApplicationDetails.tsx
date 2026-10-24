@@ -11,6 +11,7 @@ import { parseBusinessInfo, formatExperience } from "@/utils/parseBusinessInfo";
 import { getKitchenDisplayStatus } from "./status";
 import { REQUEST_TO_APPLY_BUSINESS_TYPES, REQUEST_TO_APPLY_FREQUENCIES } from "@/components/kitchen-application/request-to-apply-fields";
 import { ApplicationDocumentRows } from "./MyDocuments";
+import { customDocumentFields, isKitchenDocument } from "@shared/location-booking-eligibility";
 
 export interface ApplicationCustomField { id: string; label: string; type?: string }
 export interface ApplicationFieldDefinitions { tier1_custom_fields?: ApplicationCustomField[]; tier2_custom_fields?: ApplicationCustomField[] }
@@ -67,11 +68,12 @@ export function KitchenApplicationDetails({ app, display, onBookKitchen, compact
     {custom(app.customFieldsData as Record<string, unknown>, requirements?.tier1_custom_fields) && section(t("applicationRequestAnswers", "Additional request information"), custom(app.customFieldsData as Record<string, unknown>, requirements?.tier1_custom_fields))}
     {app.documents?.length ? section(t("kitchenDocuments", "Booking requirements"), <div className="space-y-4">
       {app.documentsWaivedAt && <p className="rounded-lg bg-muted/40 px-3 py-2 text-sm text-muted-foreground">{t("mdWaivedLocation", "This location doesn’t need documents from you")}</p>}
-      <ApplicationDocumentRows app={app} viewLink={key => { const url = key === "foodSafetyLicense" ? app.foodSafetyLicenseUrl : key === "foodEstablishmentCert" ? app.foodEstablishmentCertUrl : (app as any).insuranceUrl; return url ? <SecureDocumentLink url={url} label={t("apptabViewDocument", "View document")} showExternalIcon={false} /> : null; }} />
+      <ApplicationDocumentRows app={app} viewLink={key => { const url = key.startsWith("custom:") ? customDocumentFields(app as any, key.slice(7)).url : key === "foodSafetyLicense" ? app.foodSafetyLicenseUrl : key === "foodEstablishmentCert" ? app.foodEstablishmentCertUrl : (app as any).insuranceUrl; return url ? <SecureDocumentLink url={url} label={t("apptabViewDocument", "View document")} showExternalIcon={false} /> : null; }} />
       {/* The kitchen's own uploads and answers stay listed below. */}
       {[...tierFiles.filter(([key]) => key !== "tier2_insurance_document"), ...otherDocuments].map(([key, url]) => <Fragment key={key}>{renderDocument(fileLabel(key), url)}</Fragment>)}
       {(tier.kitchen_experience_description || documents.kitchenExperienceDescription) && fields([[t("applicationKitchenExperience", "Kitchen experience"), tier.kitchen_experience_description || documents.kitchenExperienceDescription]])}
-      {custom(tier.tier2_custom_fields_data, requirements?.tier2_custom_fields)}
+      {/* Documents are listed above; only the answers here. */}
+      {custom(tier.tier2_custom_fields_data, requirements?.tier2_custom_fields?.filter((field: any) => !isKitchenDocument(field)))}
     </div>) : section(t("kitchenDocuments", "Booking requirements"), <div className="space-y-4">
       {app.foodSafetyLicenseUrl && renderDocument(t("apptabFoodSafetyLicense", "Food safety certificate"), app.foodSafetyLicenseUrl, app.foodSafetyLicenseStatus, app.foodSafetyLicenseExpiry || business?.foodHandlerCertExpiry)}
       {app.foodEstablishmentCertUrl && renderDocument(t("apptabFoodEstablishmentCert", "Food establishment licence"), app.foodEstablishmentCertUrl, app.foodEstablishmentCertStatus, app.foodEstablishmentCertExpiry || business?.foodEstablishmentCertExpiry)}

@@ -40,7 +40,7 @@ export interface KitchenApplicationForManager {
   foodSafetyLicenseExpiry?: string | null;
 
   /** Renewed documents waiting for review; the current document stays valid until it expires. */
-  documentRenewals?: Array<{ id: number; key: "foodSafetyLicense" | "foodEstablishmentCert" | "insurance"; url: string; expiry: string; status: string; submittedAt?: string | null }>;
+  documentRenewals?: Array<{ id: number; key: "foodSafetyLicense" | "foodEstablishmentCert" | "insurance" | `custom:${string}`; url: string; expiry: string; status: string; submittedAt?: string | null }>;
 
   // Status
   status: "inReview" | "approved" | "rejected" | "cancelled";
@@ -192,11 +192,16 @@ export function useManagerKitchenApplications() {
       foodEstablishmentCertStatus,
       insuranceStatus,
       rejectionReason,
+      customDocument,
+      customDocumentStatus,
     }: {
       applicationId: number;
       foodSafetyLicenseStatus?: "approved" | "rejected";
       foodEstablishmentCertStatus?: "approved" | "rejected";
       insuranceStatus?: "approved" | "rejected";
+      /** One of the kitchen's own documents ("custom:<field id>") and the decision on it. */
+      customDocument?: string;
+      customDocumentStatus?: "approved" | "rejected";
       /** Required by the server when rejecting a renewal: the chef is told why. */
       rejectionReason?: string;
     }) => {
@@ -212,6 +217,8 @@ export function useManagerKitchenApplications() {
             foodEstablishmentCertStatus,
             insuranceStatus,
             rejectionReason,
+            customDocument,
+            customDocumentStatus,
           }),
         }
       );

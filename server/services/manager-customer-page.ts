@@ -5,7 +5,7 @@ import {
   kitchenBookingVisits, kitchens, kitchenViewings, paymentTransactions, storageBookings, storageListings, tourFeedbackResponses, users,
 } from '@shared/schema';
 import { customerRelationshipView, moreUrgentRelationship, type CustomerNextAction, type CustomerStatus } from '@shared/customer-next-action';
-import { accessDocumentDaysLeft, accessDocumentStage, DOCUMENT_KEYS, documentFields, documentModes } from '@shared/location-booking-eligibility';
+import { accessDocumentDaysLeft, accessDocumentStage, locationDocuments } from '@shared/location-booking-eligibility';
 import { responseDeadlineForBooking } from '@shared/booking-response-deadline';
 import { kitchenPayout } from '@shared/kitchen-payout';
 import { ATTENDANCE_CATEGORY } from '@shared/commitment-problems';
@@ -127,7 +127,7 @@ export async function getCustomerPage(managerId: number, chefId: number, request
       email: chefKitchenApplications.email, phone: chefKitchenApplications.phone, status: chefKitchenApplications.status, currentTier: chefKitchenApplications.current_tier,
       businessDescription: chefKitchenApplications.businessDescription,
       createdAt: chefKitchenApplications.createdAt, tier1CompletedAt: chefKitchenApplications.tier1_completed_at, tier2CompletedAt: chefKitchenApplications.tier2_completed_at,
-      reviewedAt: chefKitchenApplications.reviewedAt,
+      reviewedAt: chefKitchenApplications.reviewedAt, tier_data: chefKitchenApplications.tier_data,
       foodSafetyLicenseUrl: chefKitchenApplications.foodSafetyLicenseUrl, foodSafetyLicenseStatus: chefKitchenApplications.foodSafetyLicenseStatus, foodSafetyLicenseExpiry: chefKitchenApplications.foodSafetyLicenseExpiry,
       foodEstablishmentCertUrl: chefKitchenApplications.foodEstablishmentCertUrl, foodEstablishmentCertStatus: chefKitchenApplications.foodEstablishmentCertStatus, foodEstablishmentCertExpiry: chefKitchenApplications.foodEstablishmentCertExpiry,
       insuranceUrl: chefKitchenApplications.insuranceUrl, insuranceStatus: chefKitchenApplications.insuranceStatus, insuranceExpiry: chefKitchenApplications.insuranceExpiry,
@@ -260,14 +260,10 @@ export async function getCustomerPage(managerId: number, chefId: number, request
   const status: CustomerStatus = view.status;
   const canViewFiles = ['applied', 'in_review', 'approved', 'suspended'].includes(status);
   // Every document this location tracks or requires, plus any other one the customer has on file (owner, Oct 23).
-  const modes = documentModes(requirements);
-  const documents = app ? DOCUMENT_KEYS.flatMap(key => {
-    const { url, status: docStatus, expiry } = documentFields(app, key);
-    if (!url && modes[key] === 'none') return [];
-    return [{ key, mode: modes[key], required: modes[key] === 'required' && !app.documentsWaivedAt, uploaded: !!url, status: docStatus ?? 'pending', expiry: expiry ?? null,
-      daysLeft: accessDocumentDaysLeft(expiry, timezone, now), stage: accessDocumentStage(expiry, timezone, now), url: canViewFiles ? url ?? null : null,
-      renewalPending: renewals.some(renewal => renewal.key === key) }];
-  }) : [];
+  const documents = app ? locationDocuments(app, requirements).map(({ key, label, mode, hasExpiry, url, status: docStatus, expiry }) => ({
+    key, label, mode, hasExpiry, required: mode === 'required' && !app.documentsWaivedAt, uploaded: !!url, status: docStatus ?? 'pending', expiry: expiry ?? null,
+    daysLeft: accessDocumentDaysLeft(expiry, timezone, now), stage: accessDocumentStage(expiry, timezone, now), url: canViewFiles ? url ?? null : null,
+    renewalPending: renewals.some(renewal => renewal.key === key) })) : [];
 
   const visibleTours = tourRows.filter(tour => managerVisibleTour({ ...tour, adminReviewedAt: tour.adminReviewedAt, confirmationVerified: tour.confirmationVerified,
     confirmedAt: tour.confirmedAt, requestExpiredAt: tour.requestExpiredAt }));
