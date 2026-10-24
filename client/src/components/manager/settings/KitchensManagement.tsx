@@ -11,14 +11,13 @@ import { tt } from "@/i18n/common-ns";
 
 import { useState, useEffect, useCallback, useImperativeHandle, useRef } from "react";
 import type { Ref } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPut, apiPutWithMessage } from "@/lib/api";
-import { kitchenWorkspaceSettingsKey } from "@/lib/manager-kitchens-navigation";
-import { TRACKING_PROMPT_DISMISS_MS, isTrackingPromptDismissed, saveTrackingPromptDismissal, trackingPromptKey, trackingSetupSignature } from "@/lib/kitchen-tracking-prompt";
+import { kitchenListingReadinessKey, kitchenSummariesKey } from "@/lib/manager-kitchens-navigation";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AvailabilitySkeleton } from "@/components/manager/AvailabilitySkeleton";
-import { Plus, Loader2, Image as Images, Clock, ClipboardCheck, KitchenTour, CalendarClock, Building, CheckCircle, Copy, ChevronRight } from "@/components/ui/manager-icons";
+import { Plus, Loader2, Clock, ClipboardCheck, KitchenTour, CalendarClock, Building, CheckCircle, ChevronLeft, ChevronRight } from "@/components/ui/manager-icons";
 import { KitchenIcon } from "@/components/ui/kitchen-icon";
 import { Button } from "@/components/ui/button";
 import { StatusButton } from "@/components/ui/status-button";
@@ -26,16 +25,20 @@ import { useStatusButton } from "@/hooks/use-status-button";
 import { Card, CardContent } from "@/components/ui/card";
 import { auth } from "@/lib/firebase";
 import { ChefPageHeader } from "@/components/chef/ui";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { EquipmentListingContent } from "@/pages/EquipmentListingManagement";
 import { StorageListingContent } from "@/pages/StorageListingManagement";
 import KitchenDetailsPricing, { type KitchenDetailsPricingHandle } from "./KitchenDetailsPricing";
-import { KitchenListingStatus } from "./KitchenListingStatus";
-import { KitchenSwitcher } from "./KitchenSwitcher";
+import { KitchenEditorHeader } from "./KitchenEditorHeader";
+import { KitchenCards, EMPTY_FACTS, type KitchenFacts } from "./KitchenCards";
+import { KitchenSectionNav, sectionLabel } from "./KitchenSectionNav";
 import KitchenPhotos from "./KitchenPhotos";
 import { KitchenSetupForm } from "./KitchenSetupForm";
 import { DEFAULT_KITCHEN_SECTION, kitchenSectionFromParams, type KitchenSection, type KitchensNavigationTarget } from "@/lib/manager-kitchens-navigation";
+import { KITCHEN_SECTION_GROUPS, sectionSummary } from "@/lib/kitchen-sections";
+import type { KitchenReadinessReview } from "@shared/kitchen-listing-readiness";
+import { cn } from "@/lib/utils";
 import { UnsavedChangesDialog } from "@/components/manager/UnsavedChangesDialog";
 import KitchenAvailabilityManagement, { type KitchenAvailabilityManagementHandle } from "@/pages/KitchenAvailabilityManagement";
 import KitchenWorkspaceControls from "./KitchenWorkspaceControls";
@@ -99,19 +102,6 @@ export interface KitchensHandle {
   saveAllChanges: () => Promise<boolean>;
 }
 
-/**
- * Underline tab bar for the kitchen sections. Three cues mark the active tab —
- * a 2px brand underline, a heavier label and a brand-tinted icon — because NN/g
- * ("Tabs, Used Right") requires at least two. The shared Tabs primitive renders a
- * segmented control, so every default that makes it read as one is overridden here.
- */
-// Padding must stay symmetric: tailwind-merge only lets a later `py-*` cancel the
-// primitive's `py-1.5`, so `pb-3 pt-1` would leave both rules live and let CSS source
-// order pick the winner. One `py-*` keeps exactly one padding rule in the output.
-const TAB_TRIGGER =
-  "group shrink-0 gap-2 rounded-none border-b-2 border-transparent px-0.5 py-2.5 font-normal text-muted-foreground transition-colors hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:font-medium data-[state=active]:text-foreground data-[state=active]:shadow-none";
-const TAB_ICON = "h-4 w-4 shrink-0 transition-colors group-data-[state=active]:text-primary";
-
 /** Quiet header link. `ghost` skips the chef CTA surface, but its own hover is
  *  `bg-accent`, which is pure white in both themes — hence the `bg-muted` override. */
 const HEADER_LINK = "rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground";
@@ -125,6 +115,13 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
   const appliedInitialKitchenId = useRef<number>();
   const [activeSection, setActiveSection] = useState<KitchenSection>(getInitialKitchenSection);
   const returnTourId = Number(new URLSearchParams(window.location.search).get('returnTour'));
+  // Several kitchens and no kitchen or section asked for: open on the kitchen cards, like Airbnb's Listings.
+  const [browsing, setBrowsing] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return initialKitchenId == null && !params.has('kit') && !params.has('section');
+  });
+  // Phones show the section list first; a link that names a section opens straight on it.
+  const [mobileList, setMobileList] = useState(() => !new URLSearchParams(window.location.search).has('section'));
 
   const detailsRef = useRef<KitchenDetailsPricingHandle>(null);
   const availabilityRef = useRef<KitchenAvailabilityManagementHandle>(null);
@@ -139,16 +136,6 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
   const [tourSetupSection, setTourSetupSection] = useState<{ kitchenId: number; section: 'weekly' | 'instructions' }>();
   const [tourInfoOpen, setTourInfoOpen] = useState(false);
   const [tourSource, setTourSource] = useState<"booking" | "separate">("booking");
-  const [sessionTrackingDismissal, setSessionTrackingDismissal] = useState<{ key: string; signature: string; dismissedAt: number } | null>(null);
-  const [dismissalCheckedAt, setDismissalCheckedAt] = useState(Date.now);
-  useEffect(() => {
-    // The previous unbounded, account-agnostic dismissal must never suppress this prompt.
-    try { window.localStorage.removeItem("dismissed-kitchen-tracking-setup"); } catch { /* Storage may be unavailable. */ }
-    const refresh = () => setDismissalCheckedAt(Date.now());
-    window.addEventListener("focus", refresh);
-    document.addEventListener("visibilitychange", refresh);
-    return () => { window.removeEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh); };
-  }, []);
   const [policiesDirty, setPoliciesDirty] = useState(false);
   const [detailsDirty, setDetailsDirty] = useState(false);
   const arrivalRef = useRef<CheckinCheckoutHandle>(null);
@@ -189,7 +176,8 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
     selectedKitchenId != null
       ? kitchens.find((kitchen) => kitchen.id === selectedKitchenId) ?? null
       : null;
-  const activeKitchen = selectedKitchen ?? kitchens[0] ?? null;
+  const showIndex = browsing && kitchens.length > 1;
+  const activeKitchen = showIndex ? null : selectedKitchen ?? kitchens[0] ?? null;
   const activeKitchenId = activeKitchen?.id ?? null;
   const { data: shareableKitchen } = useQuery({
     queryKey: ['publicKitchenShare', location.id, activeKitchenId, activeKitchen?.listingStatus, activeKitchen?.isActive],
@@ -203,18 +191,26 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
     enabled: activeKitchenId != null && activeKitchen?.listingStatus === 'active' && activeKitchen.isActive,
     staleTime: 30_000,
   });
-  const { data: checklistSettings } = useQuery<{
-    checkinEnabled: boolean; checkoutEnabled: boolean;
-    checkinItems: unknown[]; checkoutItems: unknown[];
-    checkinPhotoRequirements: unknown[]; checkoutPhotoRequirements: unknown[];
-    checkinInstructions: string | null; checkoutInstructions: string | null;
-  }>({
-    queryKey: ["checkin-checkout-settings", location.id],
-    queryFn: () => apiGet(`/manager/locations/${location.id}/checkin-checkout-settings`),
+  // One checklist drives the section marks, the header's List button and the cards, so they can't disagree.
+  const { data: review } = useQuery<KitchenReadinessReview>({
+    queryKey: kitchenListingReadinessKey(activeKitchenId ?? 0),
+    queryFn: () => apiGet(`/manager/kitchens/${activeKitchenId}/listing-readiness`),
     enabled: activeKitchenId != null,
+    refetchOnMount: "always",
   });
-  const trackingConfigured = Boolean(checklistSettings?.checkinInstructions?.trim())
-    && Boolean(checklistSettings?.checkoutInstructions?.trim());
+  const cardReviews = useQueries({
+    queries: (showIndex ? kitchens : []).map(kitchen => ({
+      queryKey: kitchenListingReadinessKey(kitchen.id),
+      queryFn: (): Promise<KitchenReadinessReview> => apiGet(`/manager/kitchens/${kitchen.id}/listing-readiness`),
+    })),
+  });
+  const { data: summaries } = useQuery<{ timezone: string; kitchens: KitchenFacts[] }>({
+    queryKey: kitchenSummariesKey(location.id),
+    queryFn: () => apiGet(`/manager/locations/${location.id}/kitchen-summaries`),
+    enabled: kitchens.length > 0,
+    staleTime: 30_000,
+  });
+  const factsFor = (kitchenId: number) => Array.isArray(summaries?.kitchens) ? summaries.kitchens.find(row => row.kitchenId === kitchenId) ?? EMPTY_FACTS(kitchenId) : undefined;
   // Old links now open the instructions tab instead of a removed switch.
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -226,33 +222,6 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
     setActiveSection('arrival-departure');
     window.history.replaceState({}, '', url);
   }, [activeKitchenId]);
-  const trackingUid = auth.currentUser?.uid;
-  const trackingDismissalKey = trackingUid && activeKitchenId != null ? trackingPromptKey(trackingUid, activeKitchenId) : null;
-  const trackingSignature = checklistSettings ? trackingSetupSignature([
-    checklistSettings.checkinItems, checklistSettings.checkoutItems,
-    checklistSettings.checkinPhotoRequirements, checklistSettings.checkoutPhotoRequirements,
-    checklistSettings.checkinInstructions, checklistSettings.checkoutInstructions,
-  ]) : null;
-  let persistedTrackingDismissed = false;
-  if (trackingDismissalKey && trackingSignature) {
-    try {
-      const storage = window.localStorage;
-      persistedTrackingDismissed = isTrackingPromptDismissed(storage, trackingDismissalKey, trackingSignature, Math.max(Date.now(), dismissalCheckedAt));
-    } catch { /* Private browsing can disable storage. */ }
-  }
-  const trackingDismissed = Boolean(persistedTrackingDismissed || (trackingDismissalKey && trackingSignature
-    && sessionTrackingDismissal?.key === trackingDismissalKey && sessionTrackingDismissal.signature === trackingSignature
-    && Date.now() - sessionTrackingDismissal.dismissedAt < TRACKING_PROMPT_DISMISS_MS));
-  useEffect(() => {
-    if (!trackingDismissalKey || !trackingSignature) return;
-    if (trackingConfigured || !trackingDismissed) {
-      try { window.localStorage.removeItem(trackingDismissalKey); } catch { /* Storage may be unavailable. */ }
-      try { window.sessionStorage.removeItem(trackingDismissalKey); } catch { /* Storage may be unavailable. */ }
-    }
-    if (trackingConfigured || !trackingDismissed) {
-      setSessionTrackingDismissal((current) => current?.key === trackingDismissalKey ? null : current);
-    }
-  }, [trackingConfigured, trackingDismissalKey, trackingSignature, trackingDismissed, dismissalCheckedAt]);
   const { data: tourSettings, isLoading: isLoadingTours, isError: toursError, refetch: refetchTours } = useQuery<ViewingSettingsResponse>({
     queryKey: [`/api/viewings/settings/${activeKitchenId}`],
     queryFn: () => apiGet(`/viewings/settings/${activeKitchenId}`),
@@ -350,37 +319,6 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
    * the tabs while it is up, which is why `kitchensDirty` below is masked by it.
    */
   const showingCreateForm = showCreateKitchen;
-  const sectionTabsRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    let frame: number;
-    const alignSelectedTab = () => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-      const tabs = sectionTabsRef.current;
-      const selected = tabs?.querySelector<HTMLElement>('[role="tab"][data-state="active"]');
-      if (!tabs || !selected) return;
-      const viewport = tabs.getBoundingClientRect();
-      const tab = selected.getBoundingClientRect();
-      // The shared scroller's edge fade/chevron covers 32px. Keep the label clear of it.
-      const inset = Math.min(32, Math.max(0, ((viewport.right - viewport.left) - (tab.right - tab.left)) / 2));
-      if (tab.right > viewport.right - inset) tabs.scrollLeft += tab.right - viewport.right + inset;
-      else if (tab.left < viewport.left + inset) tabs.scrollLeft += tab.left - viewport.left - inset;
-      });
-    };
-    alignSelectedTab();
-    window.addEventListener("resize", alignSelectedTab);
-    const observer = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(alignSelectedTab);
-    if (sectionTabsRef.current) {
-      observer?.observe(sectionTabsRef.current);
-      // Translated labels and icons can settle after the list's width stops changing.
-      Array.from(sectionTabsRef.current.children).forEach(child => observer?.observe(child));
-    }
-    return () => {
-      cancelAnimationFrame(frame);
-      window.removeEventListener("resize", alignSelectedTab);
-      observer?.disconnect();
-    };
-  }, [activeSection, activeKitchenId, isLoadingKitchens, showingCreateForm]);
 
   /*
    * The details form only exists while its tab is mounted, so unsaved edits can
@@ -401,13 +339,13 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
       || (activeSection === "storage" && storageDirty));
 
   useEffect(() => {
-    setSelectedKitchenId((current) => {
-      if (initialKitchenId !== appliedInitialKitchenId.current && kitchens.some((kitchen) => kitchen.id === initialKitchenId)) {
-        appliedInitialKitchenId.current = initialKitchenId;
-        return initialKitchenId!;
-      }
-      return kitchens.some((kitchen) => kitchen.id === current) ? current : kitchens[0]?.id ?? null;
-    });
+    const applyInitial = initialKitchenId !== appliedInitialKitchenId.current && kitchens.some((kitchen) => kitchen.id === initialKitchenId);
+    if (applyInitial) {
+      appliedInitialKitchenId.current = initialKitchenId;
+      setBrowsing(false);
+    }
+    setSelectedKitchenId((current) => applyInitial ? initialKitchenId!
+      : kitchens.some((kitchen) => kitchen.id === current) ? current : kitchens[0]?.id ?? null);
   }, [kitchens, initialKitchenId]);
 
   /**
@@ -430,6 +368,24 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
     url.searchParams.set("kit", String(activeKitchenId));
     window.history.replaceState({}, "", url);
   }, [activeKitchenId]);
+
+  // A new screen (cards, a kitchen, a phone section) starts at its top, not where the last one was scrolled.
+  const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const root = rootRef.current;
+    if (root && root.getBoundingClientRect().top < 0) root.scrollIntoView({ block: "start" });
+  }, [showIndex, activeKitchenId, mobileList, activeSection]);
+
+  // Browser Back from a kitchen opened off the cards returns to the cards. The shell has already
+  // asked about unsaved edits before this runs.
+  useEffect(() => {
+    const backToCards = () => {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("view") === "kitchens" && !params.has("kit") && !params.has("section")) { setBrowsing(true); setMobileList(true); }
+    };
+    window.addEventListener("popstate", backToCards);
+    return () => window.removeEventListener("popstate", backToCards);
+  }, []);
 
   useEffect(() => {
     onDirtyChange?.(kitchensDirty);
@@ -510,21 +466,6 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
     action();
   };
 
-  const handleSectionChange = (section: string, focus?: "tracking") => {
-    const nextSection = section as KitchenSection;
-    guardNavigation(() => {
-      setActiveSection(nextSection);
-      const url = new URL(window.location.href);
-      if (focus) url.searchParams.set('focus', focus);
-      url.searchParams.set('view', 'kitchens');
-      if (activeKitchenId) url.searchParams.set('kit', String(activeKitchenId));
-      url.searchParams.set('locationId', String(location.id));
-      if (nextSection === DEFAULT_KITCHEN_SECTION) url.searchParams.delete('section');
-      else url.searchParams.set('section', nextSection);
-      window.history.replaceState({}, '', url);
-    });
-  };
-
   useEffect(() => {
     const syncSectionFromUrl = (event: PopStateEvent) => {
       const url = new URL(window.location.href);
@@ -565,158 +506,188 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
    */
   const closeCreateKitchen = () => setShowCreateKitchen(false);
 
-  /**
-   * The kitchen switcher, rendered as the IDENTITY at the head of the listing-status bar rather than
-   * as a header control. That bar answers "which kitchen, and where does it stand", so the two belong
-   * on one line, and it keeps the status visible on every tab instead of only the Details tab.
-   *
-   * The control itself lives in `KitchenSwitcher` so the harness can render the REAL thing — a
-   * stand-in there could only ever confirm the copy, never the affordance. Switching is wrapped in
-   * `guardNavigation` at this call site because the unsaved-changes question belongs to this page.
-   */
-  const kitchenSwitcher = activeKitchen ? (
-    <KitchenSwitcher
-      kitchens={kitchens}
-      activeKitchenId={activeKitchen.id}
-      onSelect={(kitchenId) => guardNavigation(() => setSelectedKitchenId(kitchenId))}
-      onAddKitchen={openCreateKitchen}
+  const applySection = (nextSection: KitchenSection, focus?: "tracking") => {
+    setActiveSection(nextSection);
+    const url = new URL(window.location.href);
+    if (focus) url.searchParams.set('focus', focus);
+    url.searchParams.set('view', 'kitchens');
+    if (activeKitchenId) url.searchParams.set('kit', String(activeKitchenId));
+    url.searchParams.set('locationId', String(location.id));
+    if (nextSection === DEFAULT_KITCHEN_SECTION) url.searchParams.delete('section');
+    else url.searchParams.set('section', nextSection);
+    window.history.replaceState({}, '', url);
+    // Extras change outside the readiness checklist; refresh the counts the section list shows.
+    void queryClient.invalidateQueries({ queryKey: kitchenSummariesKey(location.id) });
+  };
+  const handleSectionChange = (section: string, focus?: "tracking") => guardNavigation(() => applySection(section as KitchenSection, focus));
+  // From the section list: on a phone this also opens the section full-screen.
+  const openSection = (section: KitchenSection) => guardNavigation(() => { if (section !== activeSection) applySection(section); setMobileList(false); });
+  const backToSections = () => guardNavigation(() => {
+    setMobileList(true);
+    applySection(DEFAULT_KITCHEN_SECTION);
+  });
+
+  /** Open one kitchen from the cards. Pushed, so the browser's Back returns to the cards. */
+  const openKitchen = (kitchenId: number) => {
+    const url = new URL(window.location.href);
+    url.searchParams.set('kit', String(kitchenId));
+    url.searchParams.delete('section');
+    window.history.pushState({}, '', url);
+    setSelectedKitchenId(kitchenId);
+    setActiveSection(DEFAULT_KITCHEN_SECTION);
+    setMobileList(true);
+    setBrowsing(false);
+  };
+  const backToKitchens = () => guardNavigation(() => {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('kit');
+    url.searchParams.delete('section');
+    window.history.pushState({}, '', url);
+    setActiveSection(DEFAULT_KITCHEN_SECTION);
+    setMobileList(true);
+    setBrowsing(true);
+  });
+
+  const shareKitchen = shareableKitchen && activeKitchen?.listingStatus === "active" && activeKitchen.isActive ? async () => {
+    try {
+      const url = chefKitchenShareUrl(kitchenPreviewHref(shareableKitchen.locationSlug, shareableKitchen.kitchen), window.location, i18n.language);
+      const result = await shareKitchenLink(url, shareableKitchen.kitchen.name);
+      if (result === "copied") toast({ title: mt("kitchenLinkCopied") });
+    } catch {
+      toast({ title: mt("kitchenShareFailed"), variant: "destructive" });
+    }
+  } : undefined;
+  const viewListing = shareKitchen && shareableKitchen ? () => {
+    window.open(chefKitchenShareUrl(kitchenPreviewHref(shareableKitchen.locationSlug, shareableKitchen.kitchen), window.location, i18n.language), "_blank", "noopener");
+  } : undefined;
+
+  const sectionInputs = {
+    review,
+    bookingHours: Array.isArray(bookingHours) ? bookingHours : undefined,
+    extras: activeKitchenId != null ? factsFor(activeKitchenId) : undefined,
+    tours: tourSettings ? { enabled: toursEnabled, ready: toursReady, scheduled: toursScheduled } : undefined,
+    locale: i18n.language || "en-CA",
+  };
+  const summariesBySection = Object.fromEntries(KITCHEN_SECTION_GROUPS.flatMap(group => group.sections)
+    .map(section => [section, sectionSummary(section, sectionInputs)])) as Record<KitchenSection, ReturnType<typeof sectionSummary>>;
+
+  /* Page-level save. Rendered only while something is unsaved, so the header stays quiet at rest.
+     Booking policies is the exception: each of its sections owns its one save. */
+  const saveButton = activeSection === "policies" || !showSaveAction ? null : (
+    <StatusButton status={saveAction.status} onClick={saveAction.execute}
+      labels={{ idle: mt("saveChanges"), loading: mt("savingShort"), success: mt("saved") }} />
+  );
+
+  const pageHeader = (
+    <ChefPageHeader
+      title={mt("navSpaces")}
+      description={mt("myKitchensDescription")}
+      actions={
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="ghost" size="sm" className={HEADER_LINK} onClick={onConfigureRequirements}>
+            <ClipboardCheck className="mr-1.5 h-4 w-4" />{mt("navApplicationRequirements")}
+          </Button>
+          {showIndex && !showingCreateForm && <Button size="sm" onClick={openCreateKitchen}><Plus className="mr-1.5 h-4 w-4" />{mt("addKitchen")}</Button>}
+        </div>
+      }
     />
-  ) : null;
+  );
 
   return (
-    <div className="w-full min-w-0 max-w-full space-y-6">
-      <ChefPageHeader
-        title={mt("navSpaces")}
-        description={mt("myKitchensDescription")}
-        actions={
-          <div className="flex flex-wrap items-center gap-2">
-            <Button variant="ghost" size="sm" className={HEADER_LINK} onClick={onConfigureRequirements}>
-              <ClipboardCheck className="mr-1.5 h-4 w-4" />{mt("navApplicationRequirements")}
-            </Button>
-            {!showingCreateForm && activeKitchen?.listingStatus === "active" && activeKitchen.isActive && shareableKitchen && <Button variant="ghost" size="sm" className={HEADER_LINK} onClick={async () => {
-              try {
-                const url = chefKitchenShareUrl(kitchenPreviewHref(shareableKitchen.locationSlug, shareableKitchen.kitchen), window.location, i18n.language);
-                const result = await shareKitchenLink(url, shareableKitchen.kitchen.name);
-                if (result === "copied") toast({ title: mt("kitchenLinkCopied") });
-              } catch {
-                toast({ title: mt("kitchenShareFailed"), variant: "destructive" });
-              }
-            }}><Copy className="mr-1.5 h-4 w-4" />{mt("shareKitchen")}</Button>}
-
-            {/* Page-level save. Rendered only while something is unsaved, so the
-                header stays quiet at rest. Booking Policies is the exception: each of its
-                sections owns its one save, so nothing saves from up here on that tab. */}
-            {activeSection === "policies" ? null : showSaveAction && (
-              <StatusButton
-                status={saveAction.status}
-                onClick={saveAction.execute}
-                labels={{ idle: mt("saveChanges"), loading: mt("savingShort"), success: mt("saved") }}
-              />
-            )}
-          </div>
-        }
-      />
-
+    <div ref={rootRef} className="w-full min-w-0 max-w-full scroll-mt-4 space-y-6">
       {/*
-        * Kitchen List — or the create form, in the SAME slot.
-        *
-        * The form is not an overlay on this page, it is this page's content while it is open. That
-        * is the whole reason it is not a dialog any more: the old one dimmed a page it was asking
-        * the manager to leave, and the wizard's kitchen part had already made the opposite call for
-        * the same fields. See `KitchenSetupForm`.
-        *
-        * Three branches, in this order: still loading; the create form; the empty state; the page.
-        * The empty state survives in front of the form rather than being replaced by it, because
-        * that is the shape the location prerequisite already uses on the dashboard — a notice that
-        * says what the thing unlocks, and then the form in the same slot. See `NeedsPrerequisite`.
+        * Loading; the create form (it takes the page's slot rather than sitting over it); no kitchens yet;
+        * the kitchen cards (several kitchens); or one kitchen's editor.
         */}
       {isLoadingKitchens ? (
         <div className="space-y-6" role="status" aria-label="Loading kitchens" aria-busy="true">
-          <Skeleton className="h-11 w-full rounded-xl" />
-          <div className="flex gap-6 border-b pb-3">{Array.from({ length: 6 }, (_, index) => <Skeleton key={index} className="h-5 w-20" />)}</div>
-          <div className="grid gap-4 md:grid-cols-2">{Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-36 rounded-xl" />)}</div>
+          <div className="flex items-center gap-4"><Skeleton className="h-[4.5rem] w-24 rounded-2xl" /><div className="space-y-2"><Skeleton className="h-6 w-56" /><Skeleton className="h-4 w-40" /></div></div>
+          <div className="grid gap-8 lg:grid-cols-[17rem_minmax(0,1fr)]">
+            <div className="space-y-2">{Array.from({ length: 8 }, (_, index) => <Skeleton key={index} className="h-12 rounded-xl" />)}</div>
+            <Skeleton className="h-96 rounded-2xl" />
+          </div>
         </div>
       ) : showingCreateForm ? (
-        <KitchenSetupForm
-          locationId={location.id}
-          onCancel={closeCreateKitchen}
-          onCreated={closeCreateKitchen}
-        />
-      ) : kitchens.length === 0 ? (
-        <Card className="border-dashed">
-          <CardContent className="flex flex-col items-center justify-center py-16">
-            <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-4">
-              <KitchenIcon className="h-6 w-6 text-muted-foreground" />
-            </div>
-            <h3 className="text-base font-semibold mb-1">{mt("noKitchensYet")}</h3>
-            <p className="text-sm text-muted-foreground text-center mb-6 max-w-sm">{mt("addYourFirstKitchenToStartManagingPhotosDescriptionsAndAccep")}</p>
-            <Button onClick={openCreateKitchen} size="sm">
-              <Plus className="mr-1.5 h-4 w-4" />{mt("addYourFirstKitchen")}</Button>
-          </CardContent>
-        </Card>
-      ) : (
         <>
-          {/*
-            The kitchen bar and the section tabs are ONE panel, not two stacked blocks: the tab
-            bar's own bottom border is the header's divider, which is the entity-header shape GitHub
-            and Vercel use. Any gap between them makes the header float as a notice about the page
-            again, which is what it is not.
+          {pageHeader}
+          <KitchenSetupForm
+            locationId={location.id}
+            onCancel={closeCreateKitchen}
+            onCreated={async (kitchenId) => {
+              // Open the new kitchen once the list has it, so the editor lands on what was just made.
+              await queryClient.refetchQueries({ queryKey: ['managerKitchens', location.id] });
+              closeCreateKitchen();
+              if (kitchenId) openKitchen(kitchenId);
+            }}
+          />
+        </>
+      ) : kitchens.length === 0 ? (
+        <>
+          {pageHeader}
+          <Card className="border-dashed">
+            <CardContent className="flex flex-col items-center justify-center py-16">
+              <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-4">
+                <KitchenIcon className="h-6 w-6 text-muted-foreground" />
+              </div>
+              <h3 className="text-base font-semibold mb-1">{mt("noKitchensYet")}</h3>
+              <p className="text-sm text-muted-foreground text-center mb-6 max-w-sm">{mt("addYourFirstKitchenToStartManagingPhotosDescriptionsAndAccep")}</p>
+              <Button onClick={openCreateKitchen} size="sm">
+                <Plus className="mr-1.5 h-4 w-4" />{mt("addYourFirstKitchen")}</Button>
+            </CardContent>
+          </Card>
+        </>
+      ) : showIndex ? (
+        <>
+          {pageHeader}
+          <KitchenCards
+            kitchens={kitchens}
+            locationName={location.name}
+            reviews={Object.fromEntries(kitchens.map((kitchen, index) => [kitchen.id, cardReviews[index]?.data]))}
+            facts={Object.fromEntries(kitchens.map(kitchen => [kitchen.id, factsFor(kitchen.id)]))}
+            timezone={summaries?.timezone}
+            onOpen={openKitchen}
+            onAdd={openCreateKitchen}
+          />
+        </>
+      ) : activeKitchen && (
+        <>
+          <KitchenEditorHeader
+            kitchen={activeKitchen}
+            locationId={location.id}
+            locationName={location.name}
+            review={review}
+            facts={factsFor(activeKitchen.id)}
+            timezone={summaries?.timezone}
+            onAllKitchens={kitchens.length > 1 ? backToKitchens : undefined}
+            onList={() => onNavigate("listing-review", activeKitchen.id)}
+            onAddKitchen={openCreateKitchen}
+            onOpenRequests={() => onNavigate("bookings")}
+            onShare={shareKitchen}
+            onViewListing={viewListing}
+            saveAction={saveButton}
+          />
 
-            The bar stays OUTSIDE the tabs on purpose: the listing status belongs to the KITCHEN,
-            so inside a tab it disappeared the moment a manager looked at Photos or Storage. It is
-            also the only always-mounted observer of the readiness checklist while the tabs are the
-            things that save, so unmounting it here would silently bring back the stale-status bug.
-          */}
-          {activeKitchen && (
-            <KitchenListingStatus
-              kitchenId={activeKitchen.id}
-              locationId={location.id}
-              selector={kitchenSwitcher}
-              onNavigate={onNavigate}
+          {/* Vertical tabs: the section list on the left, the open section on the right. On a phone the
+              list is the first screen and a section opens full-screen with a way back. */}
+          <Tabs value={activeSection} onValueChange={value => openSection(value as KitchenSection)} orientation="vertical"
+            className="grid w-full min-w-0 items-start gap-6 lg:grid-cols-[17rem_minmax(0,1fr)] lg:gap-8">
+            <KitchenSectionNav
+              className={cn("lg:sticky lg:top-4 lg:block", mobileList ? "block" : "hidden")}
+              summaries={summariesBySection}
+              review={review}
+              locationName={location.name}
+              onNavigate={view => onNavigate(view)}
+              onSelect={openSection}
             />
-          )}
-
-          <Tabs value={activeSection} onValueChange={handleSectionChange} className="w-full min-w-0">
-            <TabsList ref={sectionTabsRef} className="mb-6 h-auto w-full min-w-0 max-w-full justify-start gap-6 overflow-x-auto rounded-none border-b border-border bg-transparent p-0 text-muted-foreground">
-              <TabsTrigger value="details" className={TAB_TRIGGER}>
-                <KitchenIcon className={TAB_ICON} />{mt("details")} &amp; {mt("navPricing")}
-              </TabsTrigger>
-              <TabsTrigger value="photos" className={TAB_TRIGGER}>
-                <Images className={TAB_ICON} />{mt("photos")}
-              </TabsTrigger>
-              <TabsTrigger value="availability" className={TAB_TRIGGER}>
-                <Clock className={TAB_ICON} />{mt("navAvailability")}
-              </TabsTrigger>
-              <TabsTrigger value="policies" className={TAB_TRIGGER}>
-                <ClipboardCheck className={TAB_ICON} />{mt("navBookingRules")}
-              </TabsTrigger>
-              <TabsTrigger value="arrival-departure" className={TAB_TRIGGER}>
-                <ClipboardCheck className={TAB_ICON} />{mt("navKitchenArrivalDeparture")}
-              </TabsTrigger>
-              <TabsTrigger value="storage" className={TAB_TRIGGER}>
-                <Package className={TAB_ICON} />{mt("navStorage")}
-              </TabsTrigger>
-              <TabsTrigger value="equipment" className={TAB_TRIGGER}>
-                <Wrench className={TAB_ICON} />{mt("navEquipment")}
-              </TabsTrigger>
-              <TabsTrigger value="tours" className={TAB_TRIGGER}>
-                <KitchenTour className={TAB_ICON} />{mt("kitchenTours")}
-              </TabsTrigger>
-            </TabsList>
+            <div className={cn("min-w-0 lg:block", mobileList ? "hidden" : "block")}>
+              <div className="mb-4 flex items-center gap-2 lg:hidden">
+                <Button variant="ghost" size="sm" className="-ml-2 !min-h-0 h-9 rounded-full px-2" onClick={backToSections}>
+                  <ChevronLeft className="mr-0.5 size-5" />{mt("ksAllSections")}
+                </Button>
+                <h2 className="ml-auto truncate text-base font-semibold">{sectionLabel(activeSection)}</h2>
+              </div>
 
             <TabsContent value="details" className="mt-0 space-y-4">
-              {activeKitchenId && checklistSettings && !trackingConfigured && !trackingDismissed &&
-                <Card className="overflow-hidden border-l-[3px] border-l-primary/80 shadow-[0_8px_24px_-18px_hsl(var(--primary)/0.5)]"><CardContent className="relative flex flex-wrap items-center justify-between gap-4 p-4">
-                  <div className="flex min-w-0 items-center gap-3"><span className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 text-primary shadow-[0_8px_18px_-12px_hsl(var(--primary)/0.8)]"><ClipboardCheck className="size-5" /></span>
-                    <div><p className="font-semibold tracking-tight">{mt("trackingSetupTitle")}</p><p className="text-sm text-muted-foreground">{mt("trackingSetupDescription")}</p></div></div>
-                  <div className="flex gap-2"><Button size="sm" onClick={() => handleSectionChange("arrival-departure")}>{mt("setUpChecklist")}</Button>
-                    <Button size="sm" variant="ghost" onClick={() => {
-                      if (!trackingDismissalKey || !trackingSignature) return;
-                      setSessionTrackingDismissal({ key: trackingDismissalKey, signature: trackingSignature, dismissedAt: Date.now() });
-                      try { saveTrackingPromptDismissal(window.localStorage, trackingDismissalKey, trackingSignature); }
-                      catch { /* Still dismissed for this visit if storage is blocked. */ }
-                    }}>{mt("dismiss")}</Button></div>
-                </CardContent></Card>}
               {activeKitchen && (
                 <KitchenDetailsPricing
                   ref={detailsRef}
@@ -751,23 +722,24 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
               )}
             </TabsContent>
 
-            <TabsContent value="storage" className="mt-0">
-              <StorageListingContent key={`${location.id}-${activeKitchenId}`} selectedLocationId={location.id} selectedKitchenId={activeKitchenId} onConfigureInspections={() => onNavigate("settings-storage-checkin-checkout", activeKitchenId ?? undefined)} onListingsChanged={() => void queryClient.invalidateQueries({ queryKey: ["managerWorkspaceNavigation"] })}
+            <TabsContent value="storage" className="mt-0 space-y-4">
+              <StorageListingContent key={`${location.id}-${activeKitchenId}`} selectedLocationId={location.id} selectedKitchenId={activeKitchenId} onConfigureInspections={() => onNavigate("settings-storage-checkin-checkout", activeKitchenId ?? undefined)} onListingsChanged={() => {
+                void queryClient.invalidateQueries({ queryKey: ["managerWorkspaceNavigation"] });
+                void queryClient.invalidateQueries({ queryKey: kitchenSummariesKey(location.id) });
+              }}
                 onInstructionsDirtyChange={setStorageDirty} instructionsSaveRef={storageRef} />
+              {/* Set up here, run on the Storage page (Airbnb's editor vs Reservations; Food Corridor's settings vs clients). */}
+              {(factsFor(activeKitchen.id)?.storage.total ?? 0) > 0 && (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-muted/50 px-4 py-3 text-sm">
+                  <span className="text-muted-foreground">{mt("ksStorageRentalsNote")}</span>
+                  <button type="button" onClick={() => onNavigate("storage-bookings")} className="!min-h-0 inline-flex items-center gap-1 font-medium text-primary underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    {mt("ksOpenStorageRentals")}<ChevronRight className="size-4" aria-hidden="true" />
+                  </button>
+                </div>
+              )}
             </TabsContent>
 
             <TabsContent value="availability" className="mt-0 space-y-4">
-              {isLoadingTours ? <Skeleton className="h-20" /> : toursError ?
-                <Button variant="outline" onClick={() => refetchTours()}>{mt("retry")}</Button> :
-                hasSavedBookingHours && !(toursEnabled && toursReady) && <Card className="overflow-hidden"><CardContent className="flex flex-wrap items-center justify-between gap-4 p-4">
-                  <div className="flex min-w-0 items-center gap-3"><span className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 text-primary shadow-[0_8px_18px_-12px_hsl(var(--primary)/0.8)]"><KitchenTour className="size-5" /></span>
-                    <div><p className="font-semibold tracking-tight">{mt("tourSetupTitle")}</p><p className="text-sm text-muted-foreground">{mt(toursScheduled ? 'tourResumeSetupDescription' : 'tourSetupDescription')}</p></div></div>
-                  <Button size="sm" variant="outline" onClick={() => {
-                    if (activeKitchenId == null) return;
-                    if (toursScheduled) { setTourSetupSection({ kitchenId: activeKitchenId, section: tourSetupReadiness.schedule ? 'instructions' : 'weekly' }); handleSectionChange('tours'); }
-                    else { setTourSource("booking"); setTourInfoOpen(true); }
-                  }}>{mt(toursScheduled ? 'tourResumeSetupAction' : 'learnHowToursWork')}</Button>
-                </CardContent></Card>}
               {activeKitchenId && <KitchenAvailabilityManagement
                 key={activeKitchenId}
                 ref={availabilityRef}
@@ -781,6 +753,14 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
             <TabsContent value="tours" className="mt-0 space-y-4">
               {isLoadingTours && <AvailabilitySkeleton />}
               {toursError && <Button variant="outline" onClick={() => refetchTours()}>{mt("retry")}</Button>}
+              {/* Tours were never set up: say what they are, and start with the schedule choice. */}
+              {!isLoadingTours && !toursError && !toursScheduled && !toursEnabled && (
+                <Card className="overflow-hidden"><CardContent className="flex flex-wrap items-center justify-between gap-4 p-5">
+                  <div className="flex min-w-0 items-center gap-3.5"><span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><KitchenTour className="size-5" /></span>
+                    <div className="min-w-0"><p className="font-semibold tracking-tight">{mt("ksToursSetUpTitle")}</p><p className="max-w-prose text-sm text-muted-foreground">{mt("ksToursSetUpBody")}</p></div></div>
+                  <Button size="sm" onClick={() => { setTourSource("booking"); setTourInfoOpen(true); }}>{mt("ksToursSetUpAction")}</Button>
+                </CardContent></Card>
+              )}
               {activeKitchenId && !isLoadingTours && !toursError && <ViewingSettingsPanel key={activeKitchenId} ref={toursRef} kitchenId={activeKitchenId} facilityKitchenCount={kitchens.length}
                 onReturnToTour={Number.isSafeInteger(returnTourId) && returnTourId > 0 && onReturnToTour ? () => guardNavigation(() => onReturnToTour(returnTourId)) : undefined}
                 onPrepareSchedule={!toursScheduled && hasSavedBookingHours ? () => { setTourSource('booking'); setTourInfoOpen(true); } : undefined}
@@ -801,7 +781,7 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
             <TabsContent value="equipment" className="mt-0">
               <EquipmentListingContent selectedLocationId={location.id} selectedKitchenId={activeKitchenId} />
             </TabsContent>
-
+            </div>
           </Tabs>
           <Dialog open={tourInfoOpen} onOpenChange={setTourInfoOpen}>
             <DialogContent showCloseButton className="gap-0 overflow-hidden rounded-[1.25rem] border-border/70 p-0 shadow-[0_28px_90px_-35px_rgba(15,23,42,0.45)] sm:max-w-[32rem]">

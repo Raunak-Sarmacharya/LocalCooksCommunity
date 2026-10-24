@@ -38,7 +38,11 @@ export type KitchensNavigationTarget =
   | "listing-review"
   // Rows on the review page that are edited on this tab point back here.
   | "kitchens"
-  | "my-locations";
+  | "my-locations"
+  // The editor's header and section list link out to these.
+  | "location"
+  | "bookings"
+  | "storage-bookings";
 
 /** Default section when the URL names none — must match the first tab in KitchensManagement. */
 export const DEFAULT_KITCHEN_SECTION: KitchenSection = "details";
@@ -101,6 +105,9 @@ export function resolveDestination(
 export const kitchenListingReadinessKey = (kitchenId: number) =>
   ["kitchen-listing-readiness", kitchenId] as const;
 
+export const kitchenSummariesKey = (locationId: number) =>
+  ["/api/manager/locations", locationId, "kitchen-summaries"] as const;
+
 export const kitchenWorkspaceSettingsKey = (kitchenId: number) =>
   ["managerKitchenWorkspace", kitchenId] as const;
 
@@ -131,6 +138,7 @@ export function invalidateKitchenListingState(
     queryClient.setQueriesData({ queryKey: ["publicKitchenShare", locationId, kitchenId] }, null);
     void queryClient.invalidateQueries({ queryKey: ["publicKitchenShare", locationId, kitchenId] });
     void queryClient.invalidateQueries({ queryKey: ["managerKitchens", locationId] });
+    void queryClient.invalidateQueries({ queryKey: kitchenSummariesKey(locationId) });
   }
   // The kitchen pickers and lists that are built from these two.
   void queryClient.invalidateQueries({ queryKey: ["/api/manager/all-kitchens"] });

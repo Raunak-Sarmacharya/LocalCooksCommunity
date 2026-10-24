@@ -533,7 +533,8 @@ export default function ManagerBookingDashboard() {
     invalidateGettingStarted(queryClient);
 
     if (kitchenId) setReviewKitchenId(kitchenId);
-    else if (activeView === 'settings-checkin-checkout' && nextView === 'kitchens') setReviewKitchenId(null);
+    // My Kitchens with no kitchen named opens on the kitchen cards (several kitchens) or the only kitchen.
+    else if (nextView === 'kitchens' && !targetSection) setReviewKitchenId(null);
     setActiveView(nextView);
     const url = new URL(window.location.href);
     if (/^\/manager\/tours\//.test(url.pathname)) url.pathname = '/manager/dashboard';
@@ -544,7 +545,7 @@ export default function ManagerBookingDashboard() {
     else url.searchParams.delete('returnTour');
     if (kitchenId && (nextView === "kitchens" || nextView === "listing-review" || nextView === "settings-storage-checkin-checkout" || nextView === "settings-checkin-checkout")) {
       url.searchParams.set("kit", String(kitchenId));
-    } else if (activeView === 'settings-checkin-checkout' && nextView === 'kitchens') {
+    } else if (nextView === 'kitchens' && !targetSection) {
       url.searchParams.delete('kit');
     } else if (nextView !== "kitchens" && nextView !== "listing-review" && nextView !== "settings-storage-checkin-checkout" && nextView !== "settings-checkin-checkout") {
       url.searchParams.delete("kit");

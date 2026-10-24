@@ -36,7 +36,8 @@ interface KitchenSetupFormProps {
      * test on the host side would be a different fact, and it would leave the form on screen after
      * the manager had just created the thing it asks for.
      */
-    onCreated?: () => void;
+    /** Receives the new kitchen's id, so the page can open it. */
+    onCreated?: (kitchenId?: number) => void;
 }
 
 /**
@@ -179,11 +180,12 @@ export function KitchenSetupForm({ locationId, onCancel, onCreated }: KitchenSet
              * all-kitchens cache the shell's Availability sidebar reads. Invalidating one leaves the
              * other offering a kitchen that is not there.
              */
+            const created = await response.json().catch(() => null);
             queryClient.invalidateQueries({ queryKey: ["managerKitchens", locationId] });
             queryClient.invalidateQueries({ queryKey: ["/api/manager/all-kitchens"] });
 
             toast({ title: mt("success"), description: mt("kitchenCreatedSuccessfully") });
-            onCreated?.();
+            onCreated?.(typeof created?.id === "number" ? created.id : undefined);
         } catch (error: any) {
             toast({ title: mt("error"), description: error.message, variant: "destructive" });
         } finally {

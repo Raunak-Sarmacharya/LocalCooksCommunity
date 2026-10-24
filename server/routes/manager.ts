@@ -3149,6 +3149,43 @@ router.get("/workspace-navigation", requireFirebaseAuthWithUser, requireManager,
   } catch (error) { return errorResponse(res, error); }
 });
 
+/** Facts for the My Kitchens cards and header: what's coming up and what extras each kitchen offers. */
+router.get("/locations/:locationId/kitchen-summaries", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+  try {
+    const locationId = Number(req.params.locationId);
+    if (!Number.isSafeInteger(locationId) || locationId <= 0) return res.status(400).json({ error: "Invalid location ID" });
+    const [location] = await db.select({ managerId: locations.managerId, timezone: locations.timezone }).from(locations).where(eq(locations.id, locationId));
+    if (!location || location.managerId !== req.neonUser!.id) return res.status(403).json({ error: "Access denied" });
+    const tz = location.timezone || "America/St_Johns";
+    // Not yet ended, in the location's own clock.
+    const upcoming = sql`(${kitchenBookings.bookingDate}::date > (now() AT TIME ZONE ${tz})::date
+      OR (${kitchenBookings.bookingDate}::date = (now() AT TIME ZONE ${tz})::date AND ${kitchenBookings.endTime} > to_char(now() AT TIME ZONE ${tz}, 'HH24:MI')))`;
+    const [bookingRows, storageRows, equipmentRows] = await Promise.all([
+      db.select({
+        kitchenId: kitchenBookings.kitchenId,
+        weekCount: sql<number>`count(*) FILTER (WHERE ${kitchenBookings.status} = 'confirmed' AND ${kitchenBookings.bookingDate}::date < (now() AT TIME ZONE ${tz})::date + 7)::int`,
+        requests: sql<number>`count(*) FILTER (WHERE ${kitchenBookings.status} = 'pending')::int`,
+        next: sql<string | null>`min(to_char(${kitchenBookings.bookingDate}, 'YYYY-MM-DD') || 'T' || ${kitchenBookings.startTime}) FILTER (WHERE ${kitchenBookings.status} = 'confirmed'
+          AND (${kitchenBookings.bookingDate}::date > (now() AT TIME ZONE ${tz})::date OR ${kitchenBookings.startTime} > to_char(now() AT TIME ZONE ${tz}, 'HH24:MI')))`,
+      }).from(kitchenBookings).innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
+        .where(and(eq(kitchens.locationId, locationId), inArray(kitchenBookings.status, ["pending", "confirmed"]), upcoming))
+        .groupBy(kitchenBookings.kitchenId),
+      db.select({ kitchenId: storageListings.kitchenId, total: sql<number>`count(*)::int`, listed: sql<number>`count(*) FILTER (WHERE ${storageListings.isActive})::int` })
+        .from(storageListings).innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
+        .where(eq(kitchens.locationId, locationId)).groupBy(storageListings.kitchenId),
+      db.select({ kitchenId: equipmentListings.kitchenId, total: sql<number>`count(*)::int`, listed: sql<number>`count(*) FILTER (WHERE ${equipmentListings.isActive})::int` })
+        .from(equipmentListings).innerJoin(kitchens, eq(equipmentListings.kitchenId, kitchens.id))
+        .where(and(eq(kitchens.locationId, locationId), sql`${equipmentListings.archivedAt} IS NULL`)).groupBy(equipmentListings.kitchenId),
+    ]);
+    const byKitchen = new Map<number, Record<string, unknown>>();
+    const row = (id: number) => byKitchen.get(id) ?? byKitchen.set(id, { kitchenId: id, bookingsThisWeek: 0, pendingRequests: 0, nextBooking: null, storage: { total: 0, listed: 0 }, equipment: { total: 0, listed: 0 } }).get(id)!;
+    for (const b of bookingRows) Object.assign(row(b.kitchenId), { bookingsThisWeek: b.weekCount, pendingRequests: b.requests, nextBooking: b.next });
+    for (const s of storageRows) row(s.kitchenId).storage = { total: s.total, listed: s.listed };
+    for (const e of equipmentRows) row(e.kitchenId).equipment = { total: e.total, listed: e.listed };
+    res.json({ timezone: tz, kitchens: Array.from(byKitchen.values()) });
+  } catch (error) { return errorResponse(res, error); }
+});
+
 async function handleKitchenWorkspaceSettings(req: Request, res: Response) {
   try {
     const kitchenId = Number(req.params.kitchenId);

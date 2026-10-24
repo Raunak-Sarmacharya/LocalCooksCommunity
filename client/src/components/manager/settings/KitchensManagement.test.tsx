@@ -10,11 +10,10 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
  *  - there is no dialog in the tree at any point, which is the reported complaint;
  *  - the empty state's action swaps the form into the SAME slot, so the manager is never looking at
  *    a card of fields floating over the page they were on;
- *  - the switcher's "Add Kitchen" does the same, and it goes through the unsaved-changes guard —
+ *  - the header's "Add another kitchen" does the same, and it goes through the unsaved-changes guard —
  *    opening the form UNMOUNTS the details tab, so it is a navigation, not a reveal.
  *
- * The switcher is the REAL control: a stand-in there could only confirm the copy, never the
- * affordance, which is exactly the mistake its own note warns about.
+ * The header and its menu are the REAL controls.
  */
 const h = vi.hoisted(() => ({
   kitchens: [] as Array<{ id: number; name: string; listingStatus?: "active" | "draft"; isActive?: boolean }>,
@@ -32,6 +31,7 @@ const h = vi.hoisted(() => ({
   trackingEnabled: false, checklistRevision: "",
   checklistConfigured: false,
   toggleTours: vi.fn(),
+  review: undefined as unknown,
 }));
 
 vi.mock("@/i18n/manager", () => ({ mt: (key: string) => key }));
@@ -45,11 +45,14 @@ vi.mock("@tanstack/react-query", () => ({
       checkoutInstructions: h.checklistConfigured ? 'Close the door.' : null } };
     if (queryKey[0] === "managerKitchenWorkspace") return { data: { kitchen: { checkinCheckoutEnabled: h.trackingEnabled } } };
     if (queryKey[0] === "/api/manager/availability") return { data: h.bookingHours, isLoading: false };
+    if (queryKey[0] === "kitchen-listing-readiness") return { data: h.review };
+    if (queryKey[0] === "/api/manager/locations") return { data: undefined };
     const kitchenId = Number(String(queryKey[0]).split("/").at(-1));
     return { data: { settings: { isActive: h.tourEnabled[kitchenId] ?? true, arrivalNotes: "Meet at reception.", departureNotes: "Return your badge." }, availability: h.tourHours[kitchenId] ? [{ dayOfWeek: 1, startTime: "09:00", endTime: "17:00", isAvailable: true }] : [], blackouts: [] }, isLoading: false };
   },
+  useQueries: () => [],
   useMutation: () => ({ mutate: h.toggleTours, isPending: false }),
-  useQueryClient: () => ({ invalidateQueries: vi.fn(), setQueryData: vi.fn() }),
+  useQueryClient: () => ({ invalidateQueries: vi.fn(), setQueryData: vi.fn(), refetchQueries: vi.fn(async () => undefined) }),
 }));
 vi.mock("@/hooks/use-status-button", () => ({
   useStatusButton: () => ({ status: "idle", execute: vi.fn() }),
@@ -73,16 +76,6 @@ vi.mock("@/components/chef/ui", () => ({
 }));
 /* The page's other children. None of them is what is under test, and each drags in a network call
    or a canvas that jsdom cannot provide. */
-/*
- * The banner is stood in for — it fetches the readiness checklist — but it must still render the
- * `selector` it is handed, because that is where the REAL kitchen switcher lives. Dropping it is how
- * a harness ends up asserting against a control that is not on the page at all.
- */
-vi.mock("./KitchenListingStatus", () => ({
-  KitchenListingStatus: ({ selector }: { selector?: React.ReactNode }) => (
-    <div data-testid="listing-status">{selector}</div>
-  ),
-}));
 vi.mock("./KitchenDetailsPricing", () => ({
   default: ({ onDirtyChange, highlightTracking }: { onDirtyChange?: (dirty: boolean) => void; highlightTracking?: boolean }) => {
     onDirtyChange?.(h.detailsDirty);
@@ -157,9 +150,10 @@ const props = {
 /** The create form's first field — the cheapest proof that the form, not the page, is on screen. */
 const formIsOpen = () => screen.queryByLabelText(/^kitchenName/) !== null;
 
-/** Use the visible Add Kitchen action beside the real selector. */
+/** Add a kitchen from the header's ••• menu. */
 const addKitchenFromSwitcher = () => {
-  fireEvent.click(screen.getByRole("button", { name: "addKitchen" }));
+  fireEvent.keyDown(screen.getByRole("button", { name: "ksMoreActions" }), { key: "ArrowDown" });
+  fireEvent.click(screen.getByRole("menuitem", { name: "ksAddAnotherKitchen" }));
 };
 
 beforeEach(() => {
@@ -183,6 +177,7 @@ beforeEach(() => {
   h.checklistRevision = '';
   h.checklistConfigured = false;
   h.toggleTours.mockClear();
+  h.review = undefined;
 });
 afterEach(() => cleanup());
 
@@ -202,118 +197,24 @@ describe("My Kitchens — creating a kitchen", () => {
     h.tourEnabled[47] = false;
     window.history.replaceState({}, '', '/?view=kitchens&section=tours&kit=47&focus=tour-notes');
     render(<KitchensManagement {...props} initialKitchenId={47} />);
-    expect(screen.getByRole('tab', { name: 'kitchenTours' })).toHaveAttribute('data-state', 'active');
+    expect(screen.getByRole('tab', { name: /^kitchenTours/ })).toHaveAttribute('data-state', 'active');
     expect(screen.getByTestId('tour-settings')).toHaveTextContent('47');
     expect(screen.queryByRole('switch')).not.toBeInTheDocument();
-  });
-  it("takes managers to the check-in card and highlights the target", () => {
-    h.kitchens = [{ id: 1, name: "Harbour Kitchen" }];
-    render(<KitchensManagement {...props} />);
-    fireEvent.click(screen.getByRole("button", { name: "setUpChecklist" }));
-    expect(screen.getByRole("tab", { name: "navKitchenArrivalDeparture" })).toHaveAttribute("aria-selected", "true");
   });
   it('uses the same scroll, focus and highlight for listing-review navigation', () => {
     h.kitchens = [{ id: 1, name: 'Harbour Kitchen' }, { id: 2, name: 'Market Kitchen' }];
     window.history.replaceState({}, '', '/manager/dashboard?view=kitchens&section=details&kit=2&focus=tracking');
     render(<KitchensManagement {...props} initialKitchenId={2} />);
-    expect(screen.getByRole("tab", { name: "navKitchenArrivalDeparture" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: /^navKitchenArrivalDeparture/ })).toHaveAttribute("aria-selected", "true");
     expect(new URL(window.location.href).searchParams.get('kit')).toBe('2');
     expect(new URL(window.location.href).searchParams.has('focus')).toBe(false);
   });
-  it("shows Add Kitchen before the selector opens, even with a long kitchen list", () => {
-    h.kitchens = Array.from({ length: 24 }, (_, index) => ({ id: index + 1, name: `Kitchen ${index + 1}` }));
-    render(<KitchensManagement {...props} />);
-    const add = screen.getByRole("button", { name: "addKitchen" });
-    expect(add).toBeVisible();
-    expect(screen.queryByRole("menuitem", { name: /Kitchen 24/ })).not.toBeInTheDocument();
-    fireEvent.keyDown(screen.getByRole("button", { name: /Kitchen 1/ }), { key: "ArrowDown" });
-    expect(add).toBeVisible();
-    expect(screen.getByRole("menuitem", { name: /Kitchen 24/ }).closest(".overflow-y-auto")).not.toBeNull();
-  });
 
-  it("shows a kitchen name without a dropdown when there is nothing to switch to", () => {
-    h.kitchens = [{ id: 1, name: "Harbour Kitchen" }];
-    const { rerender } = render(<KitchensManagement {...props} />);
-    expect(screen.getByText("Harbour Kitchen")).toBeVisible();
-    expect(screen.getByRole("button", { name: "addKitchen" })).toBeVisible();
-    expect(screen.queryByRole("button", { name: "Harbour Kitchen" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
-    h.kitchens = [...h.kitchens, { id: 2, name: "Market Kitchen" }];
-    rerender(<KitchensManagement {...props} />);
-    expect(screen.getByRole("button", { name: "Harbour Kitchen" })).toBeInTheDocument();
-  });
 
-  it("shows each kitchen's actual listing state in the selector", () => {
-    h.kitchens = [
-      { id: 1, name: "Harbour", listingStatus: "active", isActive: true },
-      { id: 2, name: "Market", listingStatus: "draft", isActive: true },
-      { id: 3, name: "Garden", listingStatus: "active", isActive: false },
-    ];
-    render(<KitchensManagement {...props} />);
-    fireEvent.keyDown(screen.getByRole("button", { name: /Harbour/ }), { key: "ArrowDown" });
-    expect(screen.getByRole("menuitem", { name: "Harbour, listingStatusLiveLabel" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Market, listingStatusDraftLabel" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Garden, listingStatusHiddenLabel" })).toBeInTheDocument();
-  });
 
-  it("shows check-in setup until both switches and both checklists are configured", () => {
-    h.kitchens = [{ id: 1, name: "Harbour Kitchen" }];
-    h.trackingEnabled = true;
-    const { rerender } = render(<KitchensManagement {...props} />);
-    expect(screen.getByRole("button", { name: "setUpChecklist" })).toBeInTheDocument();
-    h.checklistConfigured = true;
-    rerender(<KitchensManagement {...props} />);
-    expect(screen.queryByRole("button", { name: "setUpChecklist" })).not.toBeInTheDocument();
-  });
 
-  it("keeps a dismissed prompt hidden on reload, then restores it when setup changes or regresses", () => {
-    h.kitchens = [{ id: 1, name: "Harbour Kitchen" }];
-    const first = render(<KitchensManagement {...props} />);
-    fireEvent.click(screen.getByRole("button", { name: "dismiss" }));
-    expect(screen.queryByRole("button", { name: "setUpChecklist" })).not.toBeInTheDocument();
-    first.unmount();
 
-    const { rerender } = render(<KitchensManagement {...props} />);
-    expect(screen.queryByRole("button", { name: "setUpChecklist" })).not.toBeInTheDocument();
-    expect(window.localStorage.length).toBe(1);
-    expect(window.sessionStorage.length).toBe(0);
-    h.checklistRevision = 'changed';
-    rerender(<KitchensManagement {...props} />);
-    expect(screen.getByRole("button", { name: "setUpChecklist" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "dismiss" }));
-    h.checklistConfigured = true;
-    rerender(<KitchensManagement {...props} />);
-    expect(screen.queryByRole("button", { name: "setUpChecklist" })).not.toBeInTheDocument();
-    expect(window.localStorage.length).toBe(0);
-
-    h.checklistConfigured = false;
-    rerender(<KitchensManagement {...props} />);
-    expect(screen.getByRole("button", { name: "setUpChecklist" })).toBeInTheDocument();
-  });
-
-  it("shows a disabled check-in prompt again in the next browser session", () => {
-    h.kitchens = [{ id: 1, name: "Harbour Kitchen" }];
-    const first = render(<KitchensManagement {...props} />);
-    fireEvent.click(screen.getByRole("button", { name: "dismiss" }));
-    first.unmount();
-    window.localStorage.clear(); // Cleared dismissal.
-    render(<KitchensManagement {...props} />);
-    expect(screen.getByRole("button", { name: "setUpChecklist" })).toBeInTheDocument();
-  });
-
-  it("keeps an enabled but incomplete check-in prompt dismissed across sessions", () => {
-    h.kitchens = [{ id: 1, name: "Harbour Kitchen" }];
-    h.trackingEnabled = true;
-    const first = render(<KitchensManagement {...props} />);
-    fireEvent.click(screen.getByRole("button", { name: "dismiss" }));
-    expect(window.localStorage.length).toBe(1);
-    expect(window.sessionStorage.length).toBe(0);
-    first.unmount();
-    window.sessionStorage.clear();
-    render(<KitchensManagement {...props} />);
-    expect(screen.queryByRole("button", { name: "setUpChecklist" })).not.toBeInTheDocument();
-  });
 
   it("keeps setup accessible through a disabled legacy tour link", () => {
     window.history.replaceState({}, "", "/?view=tour-availability");
@@ -321,49 +222,47 @@ describe("My Kitchens — creating a kitchen", () => {
     h.tourEnabled[1] = false;
     h.bookingHours = [{ dayOfWeek: 1, startTime: "09:00", endTime: "09:30", isAvailable: true }];
     render(<KitchensManagement {...props} />);
-    expect(screen.getByRole("tab", { name: "kitchenTours" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: /^kitchenTours/ })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByTestId("tour-settings")).toBeInTheDocument();
     expect(screen.queryByRole("switch")).not.toBeInTheDocument();
     expect(new URLSearchParams(window.location.search).get("view")).toBe("tour-availability");
   });
 
-  it("starts tour setup from Availability and keeps the tour tab visible while paused", () => {
-    window.history.replaceState({}, "", "/?view=kitchens&section=availability");
+  it("starts tour setup from the Tours section and keeps the tour tab visible while paused", () => {
+    window.history.replaceState({}, "", "/?view=kitchens&section=tours");
     h.kitchens = [{ id: 40, name: "First Kitchen" }, { id: 47, name: "Second Kitchen" }];
     h.tourEnabled = { 40: false, 47: false };
     h.bookingHours = [{ dayOfWeek: 1, startTime: "09:00", endTime: "09:30", isAvailable: true }];
     const { rerender } = render(<KitchensManagement {...props} initialKitchenId={47} />);
-    fireEvent.click(screen.getByRole("button", { name: "learnHowToursWork" }));
+    fireEvent.click(screen.getByRole("button", { name: "ksToursSetUpAction" }));
     fireEvent.click(screen.getByRole("button", { name: "enableAndSetUpTours" }));
     expect(h.toggleTours).toHaveBeenCalledWith({ kitchenId: 47, scheduleSource: "separate" });
-    expect(screen.getAllByRole("tab", { hidden: true }).some(tab => tab.textContent === "kitchenTours")).toBe(true);
+    expect(screen.getAllByRole("tab", { hidden: true }).some(tab => tab.textContent?.startsWith("kitchenTours"))).toBe(true);
     h.tourEnabled[47] = true;
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     rerender(<KitchensManagement {...props} initialKitchenId={47} />);
-    expect(screen.getByRole("tab", { name: "kitchenTours" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /^kitchenTours/ })).toBeInTheDocument();
     const tabs = screen.getAllByRole("tab");
-    expect(tabs.at(-1)).toHaveTextContent("kitchenTours");
+    expect(tabs.at(-1)).toHaveTextContent(/^kitchenTours/);
     rerender(<KitchensManagement {...props} initialKitchenId={40} />);
-    expect(screen.getByRole("tab", { name: "kitchenTours" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /^kitchenTours/ })).toBeInTheDocument();
   });
   it("offers a one-time booking schedule copy only while all tour days are closed", () => {
-    window.history.replaceState({}, "", "/?view=kitchens&section=availability");
+    window.history.replaceState({}, "", "/?view=kitchens&section=tours");
     h.kitchens = [{ id: 40, name: "First Kitchen" }];
     h.tourEnabled[40] = false;
     h.bookingHours = [{ dayOfWeek: 1, startTime: "09:00", endTime: "17:00", isAvailable: true }];
     const { rerender } = render(<KitchensManagement {...props} />);
-    fireEvent.click(screen.getByRole("button", { name: "learnHowToursWork" }));
+    fireEvent.click(screen.getByRole("button", { name: "ksToursSetUpAction" }));
     expect(screen.getByText("tourUseBookingHours")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "enableAndSetUpTours" }));
     expect(h.toggleTours).toHaveBeenCalledWith({ kitchenId: 40, scheduleSource: "booking" });
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     h.tourHours[40] = true;
     rerender(<KitchensManagement {...props} />);
-    h.toggleTours.mockClear();
-    fireEvent.click(screen.getByRole("button", { name: "tourResumeSetupAction" }));
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'kitchenTours' })).toHaveAttribute('data-state', 'active');
-    expect(h.toggleTours).not.toHaveBeenCalled();
+    // Once a schedule exists the intro card and the copy offer are gone; setup continues in the panel.
+    expect(screen.queryByRole("button", { name: "ksToursSetUpAction" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "tourChooseScheduleSource" })).not.toBeInTheDocument();
   });
   it('offers the same starting schedule choices from the Kitchen Tours page', () => {
     window.history.replaceState({}, '', '/?view=kitchens&section=tours');
@@ -383,16 +282,6 @@ describe("My Kitchens — creating a kitchen", () => {
     render(<KitchensManagement {...props} />);
     fireEvent.click(screen.getByRole('button', { name: 'tourPauseAction' }));
     expect(h.toggleTours).toHaveBeenCalledWith({ kitchenId: 40, isActive: false });
-  });
-  it("shows the tour setup banner only after booking hours are saved open", () => {
-    window.history.replaceState({}, "", "/?view=kitchens&section=availability");
-    h.kitchens = [{ id: 40, name: "First Kitchen" }];
-    h.tourEnabled[40] = false;
-    const { rerender } = render(<KitchensManagement {...props} />);
-    expect(screen.queryByRole("button", { name: "learnHowToursWork" })).not.toBeInTheDocument();
-    h.bookingHours = [{ dayOfWeek: 1, startTime: "09:00", endTime: "17:00", isAvailable: true }];
-    rerender(<KitchensManagement {...props} />);
-    expect(screen.getByRole("button", { name: "learnHowToursWork" })).toBeInTheDocument();
   });
   it("asks which kitchens to update when saving policies for a multi-kitchen location", () => {
     window.history.replaceState({}, "", "/?view=kitchens&section=policies");
@@ -433,13 +322,13 @@ describe("My Kitchens — creating a kitchen", () => {
     window.history.replaceState({}, "", "/?view=tour-availability");
     h.kitchens = [{ id: 1, name: "Harbour Kitchen" }];
     render(<KitchensManagement {...props} />);
-    expect(screen.getByRole("tab", { name: "kitchenTours" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: /^kitchenTours/ })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByTestId("tour-settings")).toHaveTextContent("1");
     expect(screen.getByTestId("tour-settings")).toHaveAttribute("data-shared-save", "true");
     expect(screen.getByText("Harbour Kitchen")).toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "kitchenBookingAvailability" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "kitchenTours" })).not.toBeInTheDocument();
-    expect(screen.getAllByRole("tab", { name: "navAvailability" })).toHaveLength(1);
+    expect(screen.getAllByRole("tab", { name: /^navAvailability/ })).toHaveLength(1);
     expect(screen.queryByRole("button", { name: "navAvailability" })).not.toBeInTheDocument();
   });
   it("renders no dialog, ever — the form is the page's content", () => {
@@ -457,14 +346,14 @@ describe("My Kitchens — creating a kitchen", () => {
     render(<KitchensManagement {...props} />);
 
     // The page, before.
-    expect(screen.getByTestId("listing-status")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Harbour Kitchen" })).toBeInTheDocument();
     expect(screen.getByTestId("details")).toBeInTheDocument();
 
     addKitchenFromSwitcher();
 
     // The form, in their place. Both of the things it replaced are gone, not covered.
     expect(formIsOpen()).toBe(true);
-    expect(screen.queryByTestId("listing-status")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Harbour Kitchen" })).not.toBeInTheDocument();
     expect(screen.queryByTestId("details")).not.toBeInTheDocument();
   });
 
@@ -490,7 +379,7 @@ describe("My Kitchens — creating a kitchen", () => {
     fireEvent.click(screen.getByRole("button", { name: "cancel" }));
 
     expect(formIsOpen()).toBe(false);
-    expect(screen.getByTestId("listing-status")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Harbour Kitchen" })).toBeInTheDocument();
   });
 
   it("asks about unsaved edits before opening, because opening unmounts the details tab", () => {
@@ -532,7 +421,7 @@ describe("selected kitchen arrival and departure entry", () => {
   it("opens existing setup with the selected kitchen ID from the real section tab", () => {
     h.kitchens = [{ id: 1, name: "First kitchen" }, { id: 2, name: "Second kitchen" }];
     render(<KitchensManagement {...props} initialKitchenId={2} />);
-    fireEvent.mouseDown(screen.getByRole("tab", { name: "navKitchenArrivalDeparture" }), { button: 0, ctrlKey: false });
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /^navKitchenArrivalDeparture/ }), { button: 0, ctrlKey: false });
     expect(new URLSearchParams(window.location.search).get("section")).toBe("arrival-departure");
     fireEvent.click(screen.getByRole("button", { name: "Add customer tasks" }));
     expect(props.onNavigate).toHaveBeenCalledExactlyOnceWith("settings-checkin-checkout", 2);
@@ -541,7 +430,7 @@ describe("selected kitchen arrival and departure entry", () => {
   it("guards unsaved kitchen edits before revealing the arrival and departure section", () => {
     h.kitchens = [{ id: 1, name: "First kitchen" }]; h.detailsDirty = true;
     render(<KitchensManagement {...props} />);
-    fireEvent.mouseDown(screen.getByRole("tab", { name: "navKitchenArrivalDeparture" }), { button: 0, ctrlKey: false });
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /^navKitchenArrivalDeparture/ }), { button: 0, ctrlKey: false });
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Add customer tasks" })).not.toBeInTheDocument();
     expect(props.onNavigate).not.toHaveBeenCalled();
@@ -551,56 +440,12 @@ describe("selected kitchen arrival and departure entry", () => {
     window.history.replaceState({}, "", "/?view=kitchens&kit=2&section=arrival-departure");
     h.kitchens = [{ id: 1, name: "First kitchen" }, { id: 2, name: "Second kitchen" }];
     render(<KitchensManagement {...props} initialKitchenId={2} />);
-    expect(screen.getByRole("tab", { name: "navKitchenArrivalDeparture" })).toHaveAttribute("data-state", "active");
+    expect(screen.getByRole("tab", { name: /^navKitchenArrivalDeparture/ })).toHaveAttribute("data-state", "active");
     fireEvent.click(screen.getByRole("button", { name: "Add customer tasks" }));
     expect(props.onNavigate).toHaveBeenCalledWith("settings-checkin-checkout", 2);
   });
 
-  it("scrolls a restored selected tab into the tab bar without scrolling the page", async () => {
-    window.history.replaceState({}, "", "/?view=kitchens&kit=2&section=arrival-departure");
-    h.kitchens = [{ id: 2, name: "Second kitchen" }];
-    const rectangles = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
-      if (this.getAttribute('role') === 'tablist') return { left: 20, right: 370 } as DOMRect;
-      if (this.getAttribute('role') === 'tab' && this.getAttribute('data-state') === 'active') return { left: 540, right: 680 } as DOMRect;
-      return { left: 0, right: 0 } as DOMRect;
-    });
-    try {
-      render(<KitchensManagement {...props} initialKitchenId={2} />);
-      await waitFor(() => expect(screen.getByRole('tablist').scrollLeft).toBe(342));
-      expect(screen.getByRole('tablist').scrollTop).toBe(0);
-    } finally { rectangles.mockRestore(); }
-  });
 
-  it("realigns the selected tab after narrowing the viewport and cleans up its resize listener", async () => {
-    window.history.replaceState({}, "", "/?view=kitchens&kit=2&section=arrival-departure");
-    h.kitchens = [{ id: 2, name: "Second kitchen" }];
-    let width = 900;
-    let tabs: HTMLElement;
-    const rectangles = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
-      if (this.getAttribute('role') === 'tablist') return { left: 20, right: width } as DOMRect;
-      if (this.getAttribute('role') === 'tab' && this.getAttribute('data-state') === 'active')
-        return { left: 540 - (tabs?.scrollLeft ?? 0), right: 680 - (tabs?.scrollLeft ?? 0) } as DOMRect;
-      return { left: 0, right: 0 } as DOMRect;
-    });
-    try {
-      const page = render(<KitchensManagement {...props} initialKitchenId={2} />);
-      tabs = screen.getByRole('tablist');
-      await act(async () => { await new Promise(resolve => requestAnimationFrame(resolve)); });
-      expect(tabs.scrollLeft).toBe(0);
-      width = 370;
-      fireEvent(window, new Event('resize'));
-      await waitFor(() => expect(tabs.scrollLeft).toBe(342));
-      fireEvent(window, new Event('resize'));
-      await act(async () => { await new Promise(resolve => requestAnimationFrame(resolve)); });
-      expect(tabs.scrollLeft).toBe(342);
-      expect(tabs.scrollTop).toBe(0);
-      page.unmount();
-      tabs.scrollLeft = 0;
-      fireEvent(window, new Event('resize'));
-      await act(async () => { await new Promise(resolve => requestAnimationFrame(resolve)); });
-      expect(tabs.scrollLeft).toBe(0);
-    } finally { rectangles.mockRestore(); }
-  });
 
   it("propagates instruction dirty state and guards section switches through validation, failure and pending Save", async () => {
     window.history.replaceState({}, "", "/?view=kitchens&kit=2&section=arrival-departure");
@@ -611,11 +456,11 @@ describe("selected kitchen arrival and departure entry", () => {
     expect(screen.getByText('kitchenArrivalDepartureScope')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'kitchenCheckinManage' })).not.toBeInTheDocument();
     expect(dirty).toHaveBeenLastCalledWith(true);
-    fireEvent.mouseDown(screen.getByRole('tab', { name: 'photos' }), { button: 0, ctrlKey: false });
+    fireEvent.mouseDown(screen.getByRole('tab', { name: /^photos/ }), { button: 0, ctrlKey: false });
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Stay'));
     expect(screen.getByTestId('arrival-instructions')).toBeInTheDocument();
-    fireEvent.mouseDown(screen.getByRole('tab', { name: 'photos' }), { button: 0, ctrlKey: false });
+    fireEvent.mouseDown(screen.getByRole('tab', { name: /^photos/ }), { button: 0, ctrlKey: false });
     h.saveArrival.mockResolvedValueOnce(false);
     await act(async () => fireEvent.click(screen.getByText('Save and leave')));
     expect(screen.getByRole('dialog')).toBeInTheDocument();
@@ -629,16 +474,16 @@ describe("selected kitchen arrival and departure entry", () => {
     expect(dirty).toHaveBeenLastCalledWith(false);
   });
 
-  it("holds the selected kitchen identity until its dirty instructions guard permits switching", () => {
+  it("holds the selected kitchen until its dirty instructions guard permits going back to the cards", () => {
     window.history.replaceState({}, "", "/?view=kitchens&kit=2&section=arrival-departure");
     h.kitchens = [{ id: 1, name: 'First kitchen' }, { id: 2, name: 'Second kitchen' }]; h.arrivalDirty = true;
     render(<KitchensManagement {...props} initialKitchenId={2} />);
-    fireEvent.keyDown(screen.getByRole('button', { name: 'Second kitchen' }), { key: 'ArrowDown' });
-    fireEvent.click(screen.getByRole('menuitem', { name: /First kitchen/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'ksAllKitchens' }));
     expect(new URLSearchParams(window.location.search).get('kit')).toBe('2');
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Discard'));
-    expect(new URLSearchParams(window.location.search).get('kit')).toBe('1');
+    expect(new URLSearchParams(window.location.search).has('kit')).toBe(false);
+    expect(screen.getAllByRole('button', { name: 'ksOpenKitchen' })).toHaveLength(2);
   });
 
   it("holds instruction drafts on section history changes and browser unload", () => {
@@ -662,5 +507,66 @@ describe("selected kitchen arrival and departure entry", () => {
     });
     expect(screen.getByTestId('photos')).toBeInTheDocument();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+});
+
+describe("My Kitchens — cards, sections and the phone list", () => {
+  it("opens on the kitchen cards when a location has several, and a card opens that kitchen with Back to the cards", () => {
+    h.kitchens = [{ id: 1, name: "First kitchen" }, { id: 2, name: "Second kitchen" }];
+    render(<KitchensManagement {...props} />);
+    expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+    const cards = screen.getAllByRole("button", { name: "ksOpenKitchen" });
+    expect(cards).toHaveLength(2);
+    fireEvent.click(cards[1]);
+    expect(screen.getByRole("heading", { name: "Second kitchen" })).toBeInTheDocument();
+    expect(new URLSearchParams(window.location.search).get("kit")).toBe("2");
+    act(() => { window.history.back(); });
+  });
+
+  it("goes straight to the editor when the location has one kitchen", () => {
+    h.kitchens = [{ id: 1, name: "Only kitchen" }];
+    render(<KitchensManagement {...props} />);
+    expect(screen.getByRole("heading", { name: "Only kitchen" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "ksAllKitchens" })).not.toBeInTheDocument();
+    expect(screen.getByRole("tablist")).toBeInTheDocument();
+  });
+
+  it("marks the sections that block listing and links the location's own steps", () => {
+    h.kitchens = [{ id: 1, name: "Draft kitchen", listingStatus: "draft", isActive: true }];
+    h.review = { listingStatus: "draft", adminHidden: false, details: { hourlyRateCents: null, dailyRateCents: null, coverPhotoUrl: null, galleryImageCount: 0, cancellationPolicyHours: 24, minimumBookingHours: 1 },
+      checklist: { requirements: [{ id: "rate", met: false }, { id: "stripe", met: false }, { id: "description", met: true }], recommendations: [], canPublish: false, missingRequirementIds: ["rate", "stripe"], openRecommendationIds: [] } };
+    render(<KitchensManagement {...props} />);
+    expect(screen.getByRole("tab", { name: /^details & navPricing.*ksAddPrice.*ksRequired/ })).toBeInTheDocument();
+    expect(screen.getByText("ksStepsLeft")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "ksStepStripe" }));
+    expect(props.onNavigate).toHaveBeenCalledWith("payments");
+    // Not ready yet: the header offers the review, not "List kitchen".
+    fireEvent.click(screen.getByRole("button", { name: "listingStatusReviewAndGoLive" }));
+    expect(props.onNavigate).toHaveBeenCalledWith("listing-review", 1);
+  });
+
+  it("on a phone shows the section list first, opens a section, and comes back to the list", () => {
+    h.kitchens = [{ id: 1, name: "Harbour Kitchen" }];
+    render(<KitchensManagement {...props} />);
+    const nav = () => screen.getByRole("tablist").closest("[class*='lg:sticky']")!;
+    const list = nav();
+    const panel = screen.getByTestId("details").closest("[class*='lg:block']")!;
+    expect(list.className).toMatch(/(^|\s)block/);
+    expect(panel.className).toMatch(/(^|\s)hidden/);
+    fireEvent.click(screen.getByRole("tab", { name: /^photos/ }));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /^photos/ }), { button: 0, ctrlKey: false });
+    expect(nav().className).toMatch(/(^|\s)hidden/);
+    fireEvent.click(screen.getByRole("button", { name: "ksAllSections" }));
+    expect(nav().className).toMatch(/(^|\s)block/);
+    expect(new URLSearchParams(window.location.search).has("section")).toBe(false);
+  });
+
+  it("moves delete and take-down into the header menu", () => {
+    h.kitchens = [{ id: 1, name: "Listed kitchen", listingStatus: "active", isActive: true }];
+    render(<KitchensManagement {...props} />);
+    fireEvent.keyDown(screen.getByRole("button", { name: "ksMoreActions" }), { key: "ArrowDown" });
+    expect(screen.getByRole("menuitem", { name: "listingStatusTakeDown" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("menuitem", { name: "deleteKitchen" }));
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
   });
 });

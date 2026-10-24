@@ -18,7 +18,6 @@ vi.mock("@/i18n/common-ns", () => ({ tt: (key: string) => key }));
 vi.mock("@/lib/api", () => ({ apiGet: h.get, apiPut: h.put, apiPutWithMessage: h.put }));
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock("@/lib/firebase", () => ({ auth: { currentUser: null } }));
-vi.mock("./KitchenListingStatus", () => ({ KitchenListingStatus: ({ selector }: { selector?: React.ReactNode }) => <div>{selector}</div> }));
 vi.mock("./KitchenDetailsPricing", () => ({ default: () => <div data-testid="details" /> }));
 vi.mock("./KitchenPhotos", () => ({ default: () => <div data-testid="photos" /> }));
 vi.mock("./KitchenWorkspaceControls", () => ({ default: () => <div /> }));

@@ -1,27 +1,13 @@
-import { logger } from "@/lib/logger";
 import { mt } from "@/i18n/manager";
 import { tt } from "@/i18n/common-ns";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { Trash2, Loader2 } from "@/components/ui/manager-icons";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import {  } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { KitchenPricingContent, type KitchenPricingHandle } from "@/pages/KitchenPricingManagement";
 import { invalidateKitchenListingState } from "@/lib/manager-kitchens-navigation";
 import { SettingsRow } from "./SettingsRow";
@@ -51,11 +37,6 @@ interface KitchenDetailsPricingProps {
   onDirtyChange?: (dirty: boolean) => void;
 }
 
-/** Quiet destructive action. `ghost` avoids the chef CTA surface entirely, and
- *  the base pill radius is overridden so it reads as a settings control. */
-const DESTRUCTIVE_ACTION =
-  "rounded-lg text-destructive hover:bg-destructive/10 hover:text-destructive";
-
 const KitchenDetailsPricing = forwardRef<
   KitchenDetailsPricingHandle,
   KitchenDetailsPricingProps
@@ -69,10 +50,6 @@ const KitchenDetailsPricing = forwardRef<
 
   const pricingRef = useRef<KitchenPricingHandle>(null);
   const [pricingDirty, setPricingDirty] = useState(false);
-
-  const [showDelete, setShowDelete] = useState(false);
-  const [deleteImpact, setDeleteImpact] = useState<{ bookings: number; blocked: boolean; message: string | null; willArchive: boolean } | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
 
   // Re-seed the form when the parent switches to a different kitchen.
   useEffect(() => {
@@ -156,86 +133,6 @@ const KitchenDetailsPricing = forwardRef<
     [saveDetails],
   );
 
-  // Ask the server what this delete would actually destroy, so the confirmation
-  // can name the real number instead of warning in the abstract.
-  useEffect(() => {
-    if (!showDelete) {
-      setDeleteImpact(null);
-      return;
-    }
-
-    let cancelled = false;
-    (async () => {
-      try {
-        const currentFirebaseUser = auth.currentUser;
-        if (!currentFirebaseUser) throw new Error(tt("notAuthenticated"));
-        const token = await currentFirebaseUser.getIdToken();
-
-        const response = await fetch(`/api/manager/kitchens/${kitchen.id}/delete-impact`, {
-          headers: { 'Authorization': `Bearer ${token}` },
-          credentials: 'include',
-        });
-        if (!response.ok) throw new Error('delete-impact-unavailable');
-
-        const data = await response.json();
-        if (!cancelled) setDeleteImpact({
-          bookings: Number(data.bookings ?? 0),
-          blocked: Boolean(data.blocked),
-          message: typeof data.message === 'string' ? data.message : null,
-          willArchive: Boolean(data.willArchive),
-        });
-      } catch (error) {
-        logger.error('Kitchen delete impact error:', error);
-        if (!cancelled) setDeleteImpact(null);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [showDelete, kitchen.id]);
-
-  const handleDeleteKitchen = async () => {
-    setIsDeleting(true);
-    try {
-      const currentFirebaseUser = auth.currentUser;
-      if (!currentFirebaseUser) throw new Error(tt("notAuthenticated"));
-      const token = await currentFirebaseUser.getIdToken();
-
-      const response = await fetch(`/api/manager/kitchens/${kitchen.id}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` },
-        credentials: 'include',
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || tt("failedToDeleteKitchen"));
-      }
-
-      const result = await response.json().catch(() => ({}));
-      await invalidateKitchenCaches();
-      setShowDelete(false);
-      toast(result.archived
-        ? { title: mt("kitchenArchivedTitle"), description: mt("kitchenArchivedDescription") }
-        : { title: mt("kitchenDeleted"), description: mt("kitchenHasBeenSuccessfullyRemoved") });
-    } catch (error: any) {
-      logger.error('Kitchen delete error:', error);
-      toast({ title: mt("error"), description: error.message, variant: "destructive" });
-    } finally {
-      setIsDeleting(false);
-    }
-  };
-
-  const deleteBlocked = deleteImpact?.blocked === true;
-  const deleteWarning = deleteBlocked
-    ? deleteImpact?.message ?? ""
-    : deleteImpact === null
-      ? mt("deleteKitchenWarningUnknown")
-      : deleteImpact.willArchive
-        ? mt("deleteKitchenWarningBookings", { count: deleteImpact.bookings })
-        : mt("deleteKitchenWarningNoBookings");
-
   return (
     <div className="space-y-5">
       <Card>
@@ -286,61 +183,6 @@ const KitchenDetailsPricing = forwardRef<
         onDirtyChange={setPricingDirty}
       />
 
-
-      <Card className="border-destructive/25">
-        <CardHeader className="p-4 pb-3">
-          <CardTitle className="text-lg">{mt("dangerZone")}</CardTitle>
-          <CardDescription>{mt("dangerZoneDescription")}</CardDescription>
-        </CardHeader>
-        <CardContent className="p-4 pt-0">
-          <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
-            <div className="min-w-0">
-              <p className="text-sm font-medium">{mt("deleteKitchenRowTitle")}</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                {mt("deleteKitchenRowHint")}
-              </p>
-            </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              className={DESTRUCTIVE_ACTION}
-              onClick={() => setShowDelete(true)}
-            >
-              <Trash2 className="mr-1.5 h-4 w-4" />
-              {mt("deleteKitchen")}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <AlertDialog open={showDelete} onOpenChange={setShowDelete}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {deleteBlocked
-                ? mt("deleteKitchenBlockedTitle", { name: kitchen.name })
-                : mt("deleteKitchenTitle", { name: kitchen.name })}
-            </AlertDialogTitle>
-            <AlertDialogDescription>{deleteWarning}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>{mt("cancel")}</AlertDialogCancel>
-            {!deleteBlocked && (
-              <AlertDialogAction
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                disabled={isDeleting}
-                onClick={(event) => {
-                  event.preventDefault();
-                  void handleDeleteKitchen();
-                }}
-              >
-                {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {deleteImpact?.willArchive ? mt("deleteKitchenArchive") : mt("deleteKitchen")}
-              </AlertDialogAction>
-            )}
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
       {listingImpact.dialog}
     </div>
   );
