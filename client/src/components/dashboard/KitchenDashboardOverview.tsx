@@ -667,7 +667,8 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
   const attentionCard = (fixedHeight: boolean) => {
     const body = <>
       {attentionError && <p role="status" className="mb-3 text-sm text-destructive">{mt("overviewActivityPartialError")}</p>}
-      {attentionLoading && <Skeleton className="h-12 rounded-lg" />}
+      {/* Placeholder only while nothing is ready; tasks already shown never sit under a loading bar (chat can take ~10 s). */}
+      {attentionLoading && !todoCount && <Skeleton className="h-12 rounded-lg" />}
       {reportGroup && groupSection("reports", mt(reportGroup.label), reportGroup.items.length, reportGroup.items.map(rowLink))}
       {requestGroup && groupSection("requests", mt(requestGroup.label), requestGroup.items.length, requestGroup.items.map(task => task.booking ? requestRow(task) : rowLink(task)))}
       {changeGroup && groupSection("change-requests", mt(changeGroup.label), changeGroup.items.length, changeGroup.items.map(changeRow))}
