@@ -63,6 +63,7 @@ export default function ManagerStorageBookingsPage() {
           kitchenName,
           unitCount: Number(row.unitCount ?? 1),
           storageType: String(row.storageType ?? "other"), photos: row.photos as string[] | null,
+          visible: row.visible !== false,
           outOfServiceUnits: row.outOfServiceUnits as StorageListing["outOfServiceUnits"],
         }));
       }));
@@ -73,7 +74,10 @@ export default function ManagerStorageBookingsPage() {
   const rentals = (rentalsQuery.data ?? []).filter(rental => !listingId || rental.listing.id === listingId);
   const pastRentals = rentals.filter(rental => rental.state === "ended")
     .sort((a, b) => (b.releasedOn || b.paidThrough).localeCompare(a.releasedOn || a.paidThrough));
-  const listings = useMemo(() => (listingsQuery.data ?? []).filter(listing => !listingId || listing.id === listingId), [listingsQuery.data, listingId]);
+  // A draft or unlisted listing has no units to rent yet, unless a rental still sits on it.
+  // "View units" on one listing shows it whatever its state.
+  const listings = useMemo(() => (listingsQuery.data ?? []).filter(listing => listingId ? listing.id === listingId
+    : listing.visible || rentals.some(rental => rental.listing.id === listing.id && rental.state !== "ended")), [listingsQuery.data, listingId, rentals]);
   const rows = useMemo(() => unitRows(rentals, listings), [rentals, listings]);
   const summary = useMemo(() => boardSummary(rentals, listings), [rentals, listings]);
   const requests = useMemo(() => pendingRequests(rentals), [rentals]);

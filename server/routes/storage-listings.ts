@@ -89,9 +89,11 @@ router.get("/manager/kitchens/:kitchenId/storage-listings", requireFirebaseAuthW
             return res.status(403).json({ error: "Access denied to this kitchen" });
         }
 
-        const [listings, settings] = await Promise.all([inventoryService.getStorageListingsByKitchen(kitchenId), storageSettings()]);
+        const [listings, settings, instructions] = await Promise.all([inventoryService.getStorageListingsByKitchen(kitchenId), storageSettings(), storageInstructions(kitchen.locationId)]);
         res.json(listings.map((listing: any) => ({
             ...listing,
+            // What customers see: the Storage board only shows units of listings that can actually be rented.
+            visible: storageListingReadiness(listing, instructions).visible,
             // A lower platform maximum caps every listing on read; the kitchen sees what it originally set.
             maxTermDays: listingMaxTermDays(settings.maxTermDays, listing.maxTermDays),
             storedMaxTermDays: listing.maxTermDays ?? null,

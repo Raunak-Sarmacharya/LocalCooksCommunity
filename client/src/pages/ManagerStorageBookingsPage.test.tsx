@@ -196,3 +196,10 @@ it("filters View units links to the selected listing, including its draft units"
 
 });
 
+it("leaves a draft listing's units off the board until it is listed", async () => {
+  vi.stubGlobal("fetch", vi.fn(async (url: any) => ({ ok: true, json: async () => String(url).includes("storage-listings")
+    ? [...listings, { id: 2, name: "Draft freezer", kitchenId: 1, unitCount: 1, isActive: true, status: "active", visible: false }] : [request] })));
+  renderBoard();
+  expect(await screen.findByText("Morgan Lee")).toBeInTheDocument();
+  expect(screen.queryByRole("heading", { name: "Draft freezer" })).toBeNull();
+});
