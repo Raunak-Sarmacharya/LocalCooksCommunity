@@ -3,11 +3,12 @@
  * Firestore still holds old copy from before the "booking requirements" wording (owner, Oct 24).
  */
 const READY = "You're approved to book this kitchen.";
-const OPEN_CHAT = "Request to apply approved. Chat is open, and booking requirements can be sent next.";
+const OPEN_CHAT = "Request to apply approved. Booking requirements can be sent next.";
 const SUBMITTED = "Booking requirements submitted for review.";
 
 const EXACT: Record<string, string> = {
   "Request to apply approved. Chat is open, and kitchen documents can be submitted next.": OPEN_CHAT,
+  "Request to apply approved. Chat is open, and booking requirements can be sent next.": OPEN_CHAT,
   "Kitchen documents submitted for review.": SUBMITTED,
   "Step 2 Complete: All kitchen coordination requirements have been met. Your application is now fully approved.":
     READY,

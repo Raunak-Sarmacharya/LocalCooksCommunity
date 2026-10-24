@@ -306,7 +306,7 @@
   "bookingStatus": "Réservation...",
   "bookInPersonKitchenTour": "Demander une visite en personne de {locationName}",
   "bookKitchenBtn": "Réserver une cuisine",
-  "bookKitchenTour": "Demander une visite de cuisine",
+  "bookKitchenTour": "Demander la visite",
   "bookNow": "Réserver",
   "bookThisKitchen": "Réserver cette cuisine",
   "bookToursDesc": "Vous pourrez ensuite réserver une visite de la cuisine et finaliser votre horaire.",
@@ -389,7 +389,7 @@
   "completeWord": "terminé",
   "confirmCancel": "Oui, annuler",
   "confirmed": "Confirmée",
-  "confirmKitchenTour": "Confirmez votre demande de visite",
+  "confirmKitchenTour": "Votre visite",
   "contactLink": "Contact",
   "continueApplication": "Continuer",
   "continueApplicationBtn": "Continuer la candidature",
@@ -1698,7 +1698,7 @@
   "tourGuideStepIntake": "Vos projets",
   "tourIntendedUse": "À quoi prévoyez-vous utiliser la cuisine?",
   "tourWeeklyHours": "Environ combien d’heures par semaine vous faudrait-il?",
-  "tourHasLicense": "Avez-vous un permis de manipulateur d’aliments?",
+  "tourHasLicense": "Avez-vous un certificat de salubrité alimentaire ?",
   "tourTargetStartDate": "Quand aimeriez-vous commencer à louer?",
   "tourIntakeYes": "Oui",
   "tourIntakeNo": "Non",
@@ -1804,5 +1804,6 @@
   "step2DocsInReview": "Vos exigences de réservation sont en cours d’examen.",
   "requestInReview": "Votre demande est en cours d’examen.",
   "submitDocuments": "Envoyer les exigences de réservation",
-  "documentApprovedOnFile": "Approuvé et au dossier"
+  "documentApprovedOnFile": "Approuvé et au dossier",
+  "tourSending": "Envoi…"
 }

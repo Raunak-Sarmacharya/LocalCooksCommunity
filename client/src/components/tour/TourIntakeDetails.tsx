@@ -5,7 +5,7 @@ export const isNumericWeeklyHours = (value: unknown) => /^\d+(?:\.\d+)?(?:\s*[-â
 const labels: Record<string, string> = {
   intendedUse: "Intended use",
   estimatedWeeklyHours: "Estimated weekly hours",
-  hasLicense: "Food handler licence",
+  hasLicense: "Food safety certificate",
   targetStartDate: "Target start date",
   additionalInfo: "Additional information",
 };

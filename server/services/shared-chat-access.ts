@@ -8,6 +8,15 @@ export function tourGrantsChat(tour: { status: string; adminReviewDecision: stri
   return tour.adminReviewDecision === 'approved' || (!tour.adminReviewDecision && hasTourConfirmation(tour));
 }
 
+/**
+ * The tour that already opened this customer's chat with the location, if any (owner, Oct 24). The chat is one
+ * conversation per customer and location that never closes, so later steps must not announce it as newly open.
+ */
+export async function tourThatOpenedChat(chefId: number, locationId: number) {
+  const tours = await db.select().from(kitchenViewings).where(and(eq(kitchenViewings.chefId, chefId), eq(kitchenViewings.locationId, locationId)));
+  return tours.filter(tourGrantsChat).sort((a, b) => a.scheduledAt.getTime() - b.scheduledAt.getTime())[0] ?? null;
+}
+
 export function isChatParticipant(actor: { id: number; role: string | null }, chefId: number, managerId: number | null) {
   return actor.role === 'chef' && actor.id === chefId || actor.role === 'manager' && actor.id === managerId;
 }

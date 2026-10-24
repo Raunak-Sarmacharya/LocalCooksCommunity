@@ -573,9 +573,8 @@ describe('feedback replaces attendance recording and admin owns final outcomes',
       expect((await request('/'+role+'/:id/'+action,'post',{}, {id:role==='chef'?8:2,role})).status).toHaveBeenCalledWith(410);
     expect(state.tour).toEqual(original);expect(state.updates).toEqual([]);expect(state.queue).not.toHaveBeenCalled();
   });
-  it('does not grant managers outcome or legacy time-correction authority',async()=>{
-    for(const payload of [{status:'completed'},{status:'no_show',noShowReason:'visitor_absent'},
-      {status:'cancelled',disruptionReason:'weather'}])
+  it('does not grant managers disruption or legacy time-correction authority (they record completed / no_show only)',async()=>{
+    for(const payload of [{status:'cancelled',disruptionReason:'weather'}])
       expect((await status({...payload,sharedManagerNotes:'Reported privately in feedback',expectedUpdatedAt:version})).status).toHaveBeenCalledWith(403);
     expect((await request('/manager/:id/attendance-correction','post')).status).toHaveBeenCalledWith(410);
     expect(state.updates).toEqual([]);

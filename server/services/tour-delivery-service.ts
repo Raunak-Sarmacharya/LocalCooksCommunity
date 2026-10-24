@@ -35,6 +35,8 @@ export type TourEventKind = 'requested' | 'request_updated' | 'review_approved' 
 type EventInput = { kind: TourEventKind; before: Tour; after: Tour; actorId?: number; actorRole?: string | null;
   instructionChange?: TourInstructionChanges & { revision: string };
   feedbackStatus?: { chef: boolean; manager: boolean; conflict: boolean };
+  /** The visitor's private "it did not happen" reason, for the admin alert of an auto-closed tour only. */
+  unrecordedReason?: string;
   feedbackRespondent?: { role: 'chef' | 'manager'; id: number } };
 type Recipient = { id: number; email: string | null; name: string; available?: boolean; locale?: string | null };
 type Payload = EventInput & { chef: Recipient; manager: Recipient | null; admins: Recipient[];
@@ -515,9 +517,9 @@ export function tourEventMessages(payload: Payload, calendarSequence = 0): Messa
           organizerEmail: manager?.email || undefined, attendeeEmails: [chef.email, manager?.email].filter((email): email is string => !!email) }));
       }
     } else if (after.status === 'cancelled' && after.disruptionReason === 'outcome_unknown') {
-      notify('chef', chef, 'chef', 'Tour closed — outcome not verified', 'Local Cooks closed this tour without a verified visit result.');
-      receipt('chef-email', chef, 'Tour closed — outcome not verified', 'Local Cooks closed this tour without a verified visit result.', 'chef');
-      if (manager) notify('manager', manager, 'manager', 'Tour closed — outcome not verified', 'Local Cooks closed this tour without a verified visit result.');
+      notify('chef', chef, 'chef', 'Your tour is closed', 'This tour closed without a recorded result. If you visited, you can still request to apply.');
+      receipt('chef-email', chef, 'Your tour is closed', 'This tour closed without a recorded result. If you visited, you can still request to apply.', 'chef');
+      if (manager) notify('manager', manager, 'manager', 'Tour closed without a result', 'Nobody recorded whether the visitor came within 24 hours, so the tour closed on its own. Local Cooks can correct it if needed.');
     } else if (after.status === 'cancelled') {
       const disruption = after.disruptionReason && tourDisruptionReasons[after.disruptionReason as keyof typeof tourDisruptionReasons];
       const byChef = payload.actorRole === 'chef';
@@ -570,10 +572,14 @@ export function tourEventMessages(payload: Payload, calendarSequence = 0): Messa
       : after.status === 'confirmed' ? 'Kitchen tour confirmed' : payload.actorRole === 'chef' && ['pending_local_cooks', 'pending'].includes(before.status) ? 'Tour request withdrawn' : 'Kitchen tour cancelled';
     const outcome = after.disruptionReason === 'outcome_unknown' ? 'closed — outcome not verified' : after.disruptionReason ? `disrupted: ${tourDisruptionReasons[after.disruptionReason as keyof typeof tourDisruptionReasons] || after.disruptionReason}` : after.status;
     const text = `${chef.name} · ${reference} at ${locationName}. ${kind === 'expired' ? 'The requested time passed before confirmation. The tour was never confirmed.' : `Current outcome/status: ${outcome}. Recorded by ${payload.actorRole || 'the platform'}.`}${after.requestedRescheduleAt ? ` Requested new time: ${when(new Date(after.requestedRescheduleAt))}.` : ''}${after.adminReviewReason ? ` Review reason: ${after.adminReviewReason}` : ''}${after.cancellationReason ? ` Cancellation reason: ${after.cancellationReason}` : ''}${after.sharedManagerNotes ? ` Manager notes: ${after.sharedManagerNotes}` : ''} Open the tour to inspect its history or correct an outcome.`;
-    for (const admin of admins) {
-      notify(`admin:${admin.id}`, admin, 'manager', title, text, after.status === 'no_show' || after.disruptionReason ? 'booking_cancelled' : 'booking_new', adminPath);
+    // An auto-close is silent for admins unless the visitor said the tour did not happen.
+    const adminAudience = payload.actorRole === 'automated' && !payload.unrecordedReason ? [] : admins;
+    const adminTitle = payload.unrecordedReason ? 'Visitor says the kitchen tour did not happen' : title;
+    const adminText = payload.unrecordedReason ? `${text} The visitor reported the tour did not happen: ${payload.unrecordedReason}` : text;
+    for (const admin of adminAudience) {
+      notify(`admin:${admin.id}`, admin, 'manager', adminTitle, adminText, after.status === 'no_show' || after.disruptionReason ? 'booking_cancelled' : 'booking_new', adminPath);
       if (ordinaryCancellation) email(`admin-email:${admin.id}`, admin, cancellationEmail(admin, 'admin'));
-      else receipt(`admin-email:${admin.id}`, admin, title, text, 'admin');
+      else receipt(`admin-email:${admin.id}`, admin, adminTitle, adminText, 'admin');
     }
   }
   // Alert every role before slower SMTP attempts consume the bounded worker budget.

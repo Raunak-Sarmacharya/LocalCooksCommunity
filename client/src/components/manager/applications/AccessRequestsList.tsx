@@ -151,7 +151,7 @@ export function AccessRequestsList({ applications, invites = [], unreadCounts, o
                     {/* Two lines on a phone so the status is never cut off; one line from sm up. */}
                     <span className="mt-0.5 block text-sm text-muted-foreground sm:truncate">
                       {app.location?.name && <span className="block truncate sm:inline">{app.location.name}<span className="hidden sm:inline"> · </span></span>}
-                      <span className="block sm:inline">{accessRequestLine(app)}</span>
+                      <span className="block sm:inline">{accessRequestLine(app)}{app.tour ? ` · ${mt("arTouredShort", { date: day(app.tour.scheduledAt) })}` : ""}</span>
                     </span>
                   </span>
                   {unread > 0 && (

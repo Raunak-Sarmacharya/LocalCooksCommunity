@@ -23,7 +23,7 @@ export const tourFeedbackInputSchema = z.object({
   suggestions: input.suggestions || null, reason: input.happened ? null : input.reason! }));
 export type TourFeedbackInput = z.input<typeof tourFeedbackInputSchema>;
 
-/** Prior elapsed-end markers do not establish a final result. Only an explicit closure does. */
+/** A tour is closed once it has a recorded result, a disruption, a cancellation or an expired request. */
 export function tourFeedbackClosed(tour: TourFeedbackAppointment) {
   return ['completed', 'no_show', 'cancelled'].includes(tour.status) || tour.lifecycleState === 'closed'
     || Boolean(tour.visitResult || tour.disruptionReason || tour.requestExpiredAt);

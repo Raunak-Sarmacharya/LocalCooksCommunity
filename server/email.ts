@@ -3875,10 +3875,17 @@ export const generateNewKitchenApplicationManagerEmail = (data: KitchenManagerAp
     message: data.chefName + ' requested access to ' + data.locationName + '. Open the application to see its current status and available actions.',
     facts: kitchenApplicationFacts(data, 'kitchen'), actionLabel: 'View application', actionUrl: kitchenApplicationEmailUrl(data, 'kitchen') });
 
-export const generateKitchenApplicationClearedManagerEmail = (data: Omit<KitchenManagerApplicationEmailDetails, 'chefEmail'> & { chefEmail?: string }): EmailContent => {
+export const generateKitchenApplicationClearedManagerEmail = (data: Omit<KitchenManagerApplicationEmailDetails, 'chefEmail'> & { chefEmail?: string; touredAt?: Date | string | null }): EmailContent => {
   const details = { ...data, chefEmail: data.chefEmail || '' };
   const messageChef = kitchenApplicationMessageLink(details, 'kitchen');
   const viewApplication = { label: 'View application', url: kitchenApplicationEmailUrl(details, 'kitchen') };
+  // They toured first, so you've already been talking: the same chat carries on, nothing "opens" (owner, Oct 24).
+  if (data.touredAt) return renderTransactionalEmail({ to: data.managerEmail, recipientName: data.managerName || 'Kitchen manager',
+    subject: 'Access request — ' + data.chefName + kitchenApplicationReference(details),
+    heading: data.chefName + ' wants to book ' + data.locationName,
+    message: data.chefName + ', who toured ' + data.locationName + ' on ' + new Date(data.touredAt).toLocaleDateString('en-CA', { month: 'long', day: 'numeric' }) + ', sent an access request. They can now send your booking requirements. Keep talking in the same chat you used for the tour.',
+    facts: kitchenApplicationFacts(details, 'kitchen'), actionLabel: viewApplication.label, actionUrl: viewApplication.url,
+    secondaryLink: messageChef ? { label: 'Open your chat', url: messageChef.url } : undefined, note: LOCAL_COOKS_COMMUNICATION_NOTE });
   return renderTransactionalEmail({ to: data.managerEmail, recipientName: data.managerName || 'Kitchen manager',
     subject: 'Connect with ' + data.chefName + ' — ' + data.locationName + kitchenApplicationReference(details),
     heading: 'You can now message ' + data.chefName,

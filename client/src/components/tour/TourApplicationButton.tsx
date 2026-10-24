@@ -6,7 +6,7 @@ import { apiRequest } from '@/lib/queryClient';
 import { useFirebaseAuth } from '@/hooks/use-auth';
 import type { TourApplicationNextStep } from '@shared/tour-application';
 
-export function TourApplicationButton({ id, version }: { id: number; version: string }) {
+export function TourApplicationButton({ id, version, primary }: { id: number; version: string; primary?: boolean }) {
   const { user } = useFirebaseAuth();
   const { t } = useTranslation('chef');
   const { data, isError, refetch } = useQuery<TourApplicationNextStep>({
@@ -16,8 +16,8 @@ export function TourApplicationButton({ id, version }: { id: number; version: st
   });
   if (isError) return <Button variant="outline" size="sm" onClick={() => void refetch()}>{t('tourApplicationRetry', 'Check application next step')}</Button>;
   if (!data || data.action === 'unavailable') return null;
-  const label = data.action === 'apply' ? data.outcomeVerified === false ? t('tourRequestToApply') : t('tourApplyWhenReady', 'Apply when you’re ready')
+  const label = data.action === 'apply' ? t('tourRequestToApply', 'Request to apply')
     : data.action === 'continue' ? t('tourContinueApplication', 'Continue application') : data.applicationId
       ? t('tourViewApplication', 'View application') : t('tourViewKitchenAccess', 'View kitchen access');
-  return <Button asChild variant="outline" size="sm" className="h-auto min-h-11 max-w-full whitespace-normal py-2"><Link href={data.href}>{label}</Link></Button>;
+  return <Button asChild variant={primary ? 'default' : 'outline'} size="sm" className="h-auto min-h-11 max-w-full whitespace-normal py-2"><Link href={data.href}>{label}</Link></Button>;
 }

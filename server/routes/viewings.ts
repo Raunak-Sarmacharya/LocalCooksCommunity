@@ -35,6 +35,7 @@ import { publicTour, hasTourConfirmation, chefTourCancellationReason } from '@sh
 import { tourAttendance, publicTourAttendanceState } from '@shared/tour-attendance';
 import { tourHistory } from '@shared/tour-history';
 import { tourRequestDecision } from '@shared/tour-request-decision';
+import { tourFeedbackMissingDue } from '@shared/tour-feedback';
 import { tourReconfirmation, tourReconfirmationReplies, resetTourReconfirmation } from '@shared/tour-reconfirmation';
 import { withVisitEvidence, visitEvents, changeVisitEvidence } from '../services/tour-visit-events';
 import { getCheckinSettings } from '../services/kitchen-checkout-service';
@@ -42,6 +43,7 @@ import { validateTourVisitInput } from '@shared/tour-visit-input';
 import { affectedTours, queueScheduleProblems } from '../services/commitment-problems';
 import { resolveTourApplicationNextStep } from '../services/tour-application-service';
 import { getTourFunnel } from '../services/tour-funnel-service';
+import { scheduleTourTimerById } from '../services/deadline-timer';
 import { getTourFeedback, submitTourFeedback, readTourFeedbackStatus } from '../services/tour-feedback-service';
 import { readTourRequestAccess, requireTourRequestAccess, useRepeatTourPermission, grantRepeatTourPermission, revokeRepeatTourPermission } from '../services/tour-request-access-service';
 
@@ -181,6 +183,7 @@ for (const role of ['chef', 'manager', 'admin'] as const) {
     try {
       const id = Number(req.params.id);
       if (!Number.isSafeInteger(id) || id <= 0) throw new DomainError('TOUR_INPUT_INVALID', 'Choose a valid tour', 400);
+      if (role !== 'admin') await catchUpTour(id);
       const feedback = await db.transaction(async tx => {
         const { tour, location } = await lockedTour(tx, id);
         if (req.neonUser!.role !== role || role === 'chef' && tour.chefId !== req.neonUser!.id
@@ -272,6 +275,12 @@ async function lockTourKitchen(tx: TourTransaction, kitchenId: number) {
   await tx.execute(sql`SELECT pg_advisory_xact_lock(${kitchenId}, 0)`);
   await tx.execute(sql`SELECT pg_advisory_xact_lock(${kitchenId}, 7)`);
   await tx.execute(sql`SELECT pg_advisory_xact_lock(0, ${kitchenId})`);
+}
+
+/** Lazy catch-up so a single-tour read never shows a step whose time has passed; a failure here never breaks the read. */
+async function catchUpTour(id: number) {
+  try { await (await import('../services/tour-outcome-service')).advanceTour(id); }
+  catch (error) { logger.warn('[Tours] Catch-up before read failed; the timer or worker will retry', { id, error: error instanceof Error ? error.message : String(error) }); }
 }
 
 async function lockedTour(tx: TourTransaction, id: number) {
@@ -1471,6 +1480,7 @@ router.post(
         await queueTourEvent(tx, { kind: 'requested', before: newViewing, after: newViewing, actorId: chefId, actorRole: 'chef' });
       });
 
+      void scheduleTourTimerById(newViewing.id);
       const delivery = await attemptTourDelivery(newViewing.id);
       logger.info(`[Viewings] Chef ${chefId} booked viewing ${newViewing.id} for kitchen ${targetedKitchenId} at ${scheduledDate.toISOString()}`);
       res.status(201).json({ ...chefTourResponse(publicTour(newViewing)), notificationDeliveryFailed: delivery.failed });
@@ -1569,6 +1579,7 @@ router.get(
     try {
       const viewingId = Number(req.params.id);
       if (!Number.isSafeInteger(viewingId) || viewingId < 1) return res.status(400).json({ error: "Invalid tour reference" });
+      await catchUpTour(viewingId);
       const [record] = await db.select({
         viewing: kitchenViewings,
         locationName: locations.name,
@@ -1731,6 +1742,7 @@ router.post("/chef/:id/reschedule", requireFirebaseAuthWithUser, requireChef, as
       await queueTourEvent(tx, { kind: editingRequest ? 'request_updated' : 'reschedule_requested', before: tour, after: updated, actorId: req.neonUser!.id, actorRole: 'chef' });
       return { tour, location, updated };
     });
+    void scheduleTourTimerById(updated.id);
     const delivery = await attemptTourDelivery(updated.id);
     return res.json({ ...(req.neonUser?.role === 'chef' ? chefTourResponse(publicTour(updated)) : publicTour(updated)), notificationDeliveryFailed: delivery.failed });
   } catch (error) { logger.error("Error requesting tour date change:", error); return errorResponse(res, error); }
@@ -1741,6 +1753,7 @@ router.get('/manager/:id/decision-context', requireFirebaseAuthWithUser, async (
   try {
     const id = Number(req.params.id), kind = req.query.kind;
     if (!Number.isSafeInteger(id) || id <= 0 || !['confirm', 'reschedule'].includes(String(kind))) return res.status(400).json({ error: 'Choose a valid tour decision' });
+    await catchUpTour(id);
     const [tour] = await db.select().from(kitchenViewings).where(eq(kitchenViewings.id, id)).limit(1);
     if (!tour) return res.status(404).json({ error: 'Tour not found' });
     const [location] = await db.select({ managerId: locations.managerId }).from(locations).where(eq(locations.id, tour.locationId)).limit(1);
@@ -1787,6 +1800,7 @@ router.post('/manager/:id/reschedule-proposal', requireFirebaseAuthWithUser, req
       await queueTourEvent(tx, { kind: 'reschedule_proposed', before: tour, after: saved, actorId: req.neonUser!.id, actorRole: 'manager' });
       return saved;
     });
+    void scheduleTourTimerById(id);
     const delivery = await attemptTourDelivery(id);
     return res.json({ ...(req.neonUser?.role === 'chef' ? chefTourResponse(publicTour(updated)) : publicTour(updated)), notificationDeliveryFailed: delivery.failed });
   } catch (error) { return errorResponse(res, error); }
@@ -1812,6 +1826,7 @@ router.patch('/manager/:id/reschedule-proposal', requireFirebaseAuthWithUser, re
       await queueTourEvent(tx, { kind: 'reschedule_proposal_withdrawn', before: tour, after: saved, actorId: req.neonUser!.id, actorRole: 'manager' });
       return saved;
     });
+    void scheduleTourTimerById(id);
     const delivery = await attemptTourDelivery(id);
     return res.json({ ...(req.neonUser?.role === 'chef' ? chefTourResponse(publicTour(updated)) : publicTour(updated)), notificationDeliveryFailed: delivery.failed });
   } catch (error) { return errorResponse(res, error); }
@@ -1848,6 +1863,7 @@ router.patch('/chef/:id/reschedule-proposal', requireFirebaseAuthWithUser, requi
       await queueTourEvent(tx, { kind: decision === 'accept' ? 'reschedule_proposal_accepted' : 'reschedule_proposal_declined', before: tour, after: saved, actorId: req.neonUser!.id, actorRole: 'chef' });
       return saved;
     });
+    void scheduleTourTimerById(id);
     const delivery = await attemptTourDelivery(id);
     return res.json({ ...(req.neonUser?.role === 'chef' ? chefTourResponse(publicTour(updated)) : publicTour(updated)), notificationDeliveryFailed: delivery.failed });
   } catch (error) { return errorResponse(res, error); }
@@ -1874,6 +1890,7 @@ router.patch("/manager/:id/reschedule", requireFirebaseAuthWithUser, requireMana
       await queueTourEvent(tx, { kind: accepted ? 'reschedule_accepted' : 'reschedule_declined', before: tour, after: updated, actorId: req.neonUser!.id, actorRole: 'manager' });
       return { tour, location, updated };
     });
+    void scheduleTourTimerById(updated.id);
     const delivery = await attemptTourDelivery(updated.id);
     return res.json({ ...(req.neonUser?.role === 'chef' ? chefTourResponse(publicTour(updated)) : publicTour(updated)), notificationDeliveryFailed: delivery.failed });
   } catch (error) { logger.error("Error reviewing tour date change:", error); return errorResponse(res, error); }
@@ -2074,6 +2091,7 @@ router.patch(
         try { chatProvisioningFailed = !(await initializeSharedConversation(updated.chefId, updated.locationId)); }
         catch (error) { chatProvisioningFailed = true; logger.error('Tour approved; chat provision needs retry', error); }
       }
+      void scheduleTourTimerById(updated.id);
       const delivery = await attemptTourDelivery(updated.id);
       res.json({ ...updated, notificationDeliveryFailed: delivery.failed, chatProvisioningFailed,
         ...(chatProvisioningFailed ? { chatProvisioningMessage: 'Tour approved. Messaging could not be prepared; open Messages to retry.' } : {}) });
@@ -2154,12 +2172,16 @@ router.patch(
       const recordingResult = ['completed', 'no_show'].includes(parsed.data.status) || !!parsed.data.disruptionReason;
       if (parsed.data.outcomeNotes !== undefined && (!isAdmin || !recordingResult))
         throw new DomainError('TOUR_DECISION_INVALID', 'Only Local Cooks can record internal outcome notes.', 403);
-      if (recordingResult && !isAdmin)
-        throw new DomainError('TOUR_DECISION_INVALID', 'Local Cooks reviews tour feedback and records the final outcome.', 403);
+      // The kitchen records "they came" / "no-show" for its own tour; only Local Cooks records disruptions and corrections.
+      const managerRecords = isManager && recordingResult && viewing.status === 'confirmed' && !parsed.data.disruptionReason && ['completed', 'no_show'].includes(parsed.data.status);
+      if (recordingResult && !isAdmin && !managerRecords)
+        throw new DomainError('TOUR_DECISION_INVALID', 'Local Cooks records disruptions and corrects recorded tour results.', 403);
+      if (managerRecords && tourFeedbackMissingDue(viewing))
+        throw new DomainError('TOUR_DECISION_INVALID', 'The recording window for this tour has closed.', 409);
       // Older admin pages submit this as sharedManagerNotes. Treat it as an outcome
       // note too, so a stale page cannot overwrite the manager's message.
-      const outcomeNotes = recordingResult ? parsed.data.outcomeNotes ?? parsed.data.sharedManagerNotes : undefined;
-      if (recordingResult && (!outcomeNotes || outcomeNotes.length < 10 || outcomeNotes.length > 2000))
+      const outcomeNotes = recordingResult && isAdmin ? parsed.data.outcomeNotes ?? parsed.data.sharedManagerNotes : undefined;
+      if (isAdmin && recordingResult && (!outcomeNotes || outcomeNotes.length < 10 || outcomeNotes.length > 2000))
         throw new DomainError('TOUR_DECISION_INVALID', 'Explain the final tour outcome in internal notes (10–2000 characters).', 400);
       if (isManager && viewing.status === 'pending' && parsed.data.status === 'cancelled' && (!parsed.data.cancellationReason?.trim() || parsed.data.cancellationReason.trim().length > 500))
         throw new DomainError('TOUR_DECISION_INVALID', 'A shared reason is required when declining a tour request', 400);
@@ -2278,6 +2300,7 @@ router.patch(
             ? sql`${kitchenViewings.scheduledAt} > clock_timestamp()` : undefined,
           ['completed', 'no_show'].includes(parsed.data.status) || parsed.data.disruptionReason
             ? sql`${kitchenViewings.scheduledAt} + ${viewing.durationMinutes} * interval '1 minute' <= clock_timestamp()` : undefined,
+          managerRecords ? sql`${kitchenViewings.scheduledAt} + (${viewing.durationMinutes} + 1440) * interval '1 minute' > clock_timestamp()` : undefined,
         ))
         .returning();
       if (!updated) throw new DomainError('TOUR_DECISION_INVALID', "This tour was updated by someone else. Refresh and try again", 409);
@@ -2286,6 +2309,7 @@ router.patch(
       return { viewing, updated, isChef, isManager, isAdmin };
       });
       const { viewing, updated, isChef, isManager, isAdmin } = decision;
+      void scheduleTourTimerById(updated.id);
       const delivery = await attemptTourDelivery(updated.id);
       logger.info(`[Viewings] Viewing ${viewingId} status updated to ${parsed.data.status} by user ${userId}`);
       res.json({ ...(isAdmin ? updated : isChef ? chefTourResponse(publicTour(updated)) : publicTour(updated)), notificationDeliveryFailed: delivery.failed });

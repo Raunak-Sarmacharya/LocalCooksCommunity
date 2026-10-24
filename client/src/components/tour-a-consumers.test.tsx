@@ -177,7 +177,7 @@ describe('saved tour intake in every role', () => {
     if (role === 'chef') fireEvent.click(screen.getByText('Notes and updates'));
     expect(screen.getByText('Intended use')).toBeVisible();
     expect(screen.getByText('12-16 hours per week')).toBeVisible();
-    expect(screen.getByText('Food handler licence')).toBeVisible();
+    expect(screen.getByText('Food safety certificate')).toBeVisible();
     expect(screen.getByText('No', { exact: true })).toBeVisible();
     expect(screen.getByText('2099-11-01', { exact: true })).toBeVisible();
   });
@@ -189,7 +189,7 @@ describe('saved tour intake in every role', () => {
       [{ ...row, viewing: { ...tour, intakeData: { targetStartDate: 'not_decided' } } }]);
     expect(await screen.findByText('Not decided yet', { exact: true })).toBeInTheDocument();
     expect(screen.queryByText('No', { exact: true })).not.toBeInTheDocument();
-    expect(screen.queryByText('Food handler licence')).not.toBeInTheDocument();
+    expect(screen.queryByText('Food safety certificate')).not.toBeInTheDocument();
     client.setQueryData(role === 'admin' ? ['/api/viewings/admin'] : role === 'manager' ? ['/api/viewings/manager'] : ['/api/viewings', 'chef', 'fixture-chef'], [row]);
     await waitFor(() => expect(screen.queryByText('Target start date')).not.toBeInTheDocument());
     expect(screen.queryByText('No', { exact: true })).not.toBeInTheDocument();

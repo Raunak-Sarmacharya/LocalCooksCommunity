@@ -306,7 +306,7 @@
   "bookingStatus": "Booking...",
   "bookInPersonKitchenTour": "Request an in-person kitchen tour of {locationName}",
   "bookKitchenBtn": "Book a Kitchen",
-  "bookKitchenTour": "Request Kitchen Tour",
+  "bookKitchenTour": "Request tour",
   "bookNow": "Book Now",
   "bookThisKitchen": "Book this kitchen",
   "bookToursDesc": "You can then book a kitchen tour and finalize your schedule.",
@@ -389,7 +389,7 @@
   "completeWord": "complete",
   "confirmCancel": "Yes, cancel",
   "confirmed": "Confirmed",
-  "confirmKitchenTour": "Confirm your kitchen tour request",
+  "confirmKitchenTour": "Your tour",
   "contactLink": "Contact",
   "continueApplication": "Continue",
   "continueApplicationBtn": "Continue application",
@@ -1698,7 +1698,7 @@
   "tourGuideStepIntake": "Your plans",
   "tourIntendedUse": "What do you plan to use the kitchen for?",
   "tourWeeklyHours": "About how many hours per week would you need?",
-  "tourHasLicense": "Do you have a food handler license?",
+  "tourHasLicense": "Do you have a food safety certificate?",
   "tourTargetStartDate": "When would you like to start renting?",
   "tourIntakeYes": "Yes",
   "tourIntakeNo": "No",
@@ -1805,5 +1805,6 @@
   "requestInReview": "Your request to apply is in review.",
   "submitDocuments": "Send booking requirements",
   "documentApprovedOnFile": "Approved and on file",
-  "foodSafetyLicense": "Food safety certificate"
+  "foodSafetyLicense": "Food safety certificate",
+  "tourSending": "Sending…"
 }

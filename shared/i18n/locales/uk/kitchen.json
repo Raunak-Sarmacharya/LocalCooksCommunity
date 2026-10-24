@@ -306,7 +306,7 @@
   "bookingStatus": "Бронювання...",
   "bookInPersonKitchenTour": "Запросити особистий тур по кухні {locationName}",
   "bookKitchenBtn": "Забронювати кухню",
-  "bookKitchenTour": "Запросити тур по кухні",
+  "bookKitchenTour": "Запросити огляд",
   "bookNow": "Забронювати",
   "bookThisKitchen": "Забронювати цю кухню",
   "bookToursDesc": "Потім ви можете забронювати екскурсію по кухні та завершити свій розклад.",
@@ -389,7 +389,7 @@
   "completeWord": "завершено",
   "confirmCancel": "Так, скасувати",
   "confirmed": "Підтверджено",
-  "confirmKitchenTour": "Підтвердіть запит на тур по кухні",
+  "confirmKitchenTour": "Ваш огляд",
   "contactLink": "контакт",
   "continueApplication": "Продовжити",
   "continueApplicationBtn": "Продовжити заявку",
@@ -1698,7 +1698,7 @@
   "tourGuideStepIntake": "Ваші плани",
   "tourIntendedUse": "Для чого ви плануєте використовувати кухню?",
   "tourWeeklyHours": "Приблизно скільки годин на тиждень вам потрібно?",
-  "tourHasLicense": "Чи маєте ви ліцензію на роботу з харчовими продуктами?",
+  "tourHasLicense": "Чи маєте ви сертифікат безпеки харчових продуктів?",
   "tourTargetStartDate": "Коли ви хотіли б почати оренду?",
   "tourIntakeYes": "Так",
   "tourIntakeNo": "Ні",
@@ -1804,5 +1804,6 @@
   "step2DocsInReview": "Ваші вимоги до бронювання на перевірці.",
   "requestInReview": "Ваш запит на перевірці.",
   "submitDocuments": "Надіслати вимоги до бронювання",
-  "documentApprovedOnFile": "Схвалено й збережено"
+  "documentApprovedOnFile": "Схвалено й збережено",
+  "tourSending": "Надсилання…"
 }

@@ -422,7 +422,7 @@ describe('chef next steps and information rail', () => {
     }
     if (status === 'pending') expect(screen.getByRole('region', { name: 'Departure notes' })).toHaveTextContent('Departure instructions are available after your tour is confirmed.');
     if (status === 'completed' || status === 'no_show') expect(screen.getByRole('region', { name: 'Departure notes' })).toHaveTextContent('Instructions are unavailable for this tour.');
-    if (status === 'completed') expect(await within(banner).findByRole('link', { name: 'Apply when you’re ready' })).toHaveAttribute('href', '/apply-kitchen/4?tourId=77');
+    if (status === 'completed') expect(await within(banner).findByRole('link', { name: 'Request to apply' })).toHaveAttribute('href', '/apply-kitchen/4?tourId=77');
     if (status === 'no_show' || (status === 'pending' && !action)) expect(within(banner).getByRole('link', { name: 'Discover Kitchens' })).toHaveAttribute('href', '/dashboard?view=discover-kitchens');
     client.clear();
   });

@@ -125,7 +125,7 @@ export async function sendSystemNotification(
     switch (eventType) {
       // New flow: request to apply → admin approves (chat opens) → kitchen coordination docs → manager approves booking
       case 'TIER1_APPROVED':
-        content = 'Request to apply approved. Chat is open, and booking requirements can be sent next.';
+        content = 'Request to apply approved. Booking requirements can be sent next.';
         break;
       case 'TIER1_REJECTED':
         content = `Request to apply was not approved. ${data?.reason || 'The request did not meet the requirements.'}`;

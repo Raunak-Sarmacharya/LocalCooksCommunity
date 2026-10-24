@@ -650,8 +650,8 @@ export function ScheduleViewingWidget({
         }))}
         onChange={estimatedWeeklyHours => setIntakeData({ ...intakeData, estimatedWeeklyHours })} />
       <fieldset className="space-y-2">
-        <legend className="text-sm font-medium">{t("tourHasLicense", "Do you have a food handler license?")}</legend>
-        <RadioGroup name="tour-license" required aria-label={t("tourHasLicense", "Do you have a food handler license?")}
+        <legend className="text-sm font-medium">{t("tourHasLicense", "Do you have a food safety certificate?")}</legend>
+        <RadioGroup name="tour-license" required aria-label={t("tourHasLicense", "Do you have a food safety certificate?")}
           value={intakeData.hasLicense === undefined ? "" : String(intakeData.hasLicense)}
           onValueChange={answer => setIntakeData({ ...intakeData, hasLicense: answer === "true" })}
           className="grid grid-cols-2 gap-3">
@@ -778,7 +778,7 @@ export function ScheduleViewingWidget({
   const renderConfirmStep = () => (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h3 className="text-base font-semibold">{t("confirmKitchenTour", "Confirm your kitchen tour request")}</h3>
+        <h3 className="text-base font-semibold">{t("confirmKitchenTour", "Your tour")}</h3>
         <Button variant="ghost" size="sm" className="shrink-0 text-primary" onClick={handleBack}>Edit time</Button>
       </div>
 
@@ -851,12 +851,12 @@ export function ScheduleViewingWidget({
         {bookMutation.isPending ? (
           <>
             <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            {t("bookingStatus", "Booking...")}
+            {t("tourSending", "Sending…")}
           </>
         ) : (
           <>
             <Send className="h-4 w-4 mr-2" />
-            {t("bookKitchenTour", "Request Kitchen Tour")}
+            {t("bookKitchenTour", "Request tour")}
           </>
         )}
       </Button>

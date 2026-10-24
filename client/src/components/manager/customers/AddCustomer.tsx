@@ -3,7 +3,7 @@
  * an account), skip Request to apply, and handle booking requirements the way the kitchen chose here. The email check
  * only reports this kitchen's own matches, never whether an address has a Local Cooks account.
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'wouter';
 import { ChevronLeft } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -43,9 +43,12 @@ function locationDocuments(requirements: any): LocationDocument[] {
 
 export function AddCustomer({ locations, defaultLocationId, onDone }: { locations: { id: number; name: string }[]; defaultLocationId: number | null; onDone: (sentTo: string | null) => void }) {
   const queryClient = useQueryClient();
-  const [locationId, setLocationId] = useState<number | null>(defaultLocationId ?? (locations.length === 1 ? locations[0].id : null));
-  const [fullName, setFullName] = useState('');
-  const [email, setEmail] = useState('');
+  // From a finished tour (owner, Oct 24): ?name=&email=&location= fill the form in.
+  const prefill = useMemo(() => new URLSearchParams(window.location.search), []);
+  const prefillLocation = Number(prefill.get('location')) || null;
+  const [locationId, setLocationId] = useState<number | null>(prefillLocation && locations.some(location => location.id === prefillLocation) ? prefillLocation : defaultLocationId ?? (locations.length === 1 ? locations[0].id : null));
+  const [fullName, setFullName] = useState(prefill.get('name') || '');
+  const [email, setEmail] = useState(prefill.get('email') || '');
   const [phone, setPhone] = useState('');
   const [businessName, setBusinessName] = useState('');
   const [choice, setChoice] = useState<Choice>('customer');
@@ -69,6 +72,9 @@ export function AddCustomer({ locations, defaultLocationId, onDone }: { location
     const response = await fetch(`/api/manager/customer-invites/check?locationId=${locationId}&email=${encodeURIComponent(email.trim())}`, { headers: await authHeaders(), credentials: 'include' }).catch(() => null);
     if (response?.ok) setMatch(await response.json());
   };
+
+  // A prefilled email is checked straight away, so "already your customer" shows before anything is typed.
+  useEffect(() => { if (prefill.get('email')) void checkEmail(); }, [locationId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const uploads = documents.filter(doc => files[doc.key]);
   const missingDate = uploads.some(doc => doc.hasExpiry && !expiries[doc.key]);

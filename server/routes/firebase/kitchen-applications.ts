@@ -10,6 +10,7 @@ import { db, pool } from '../../db';
 import { deleteDraft, draftFieldsFromBody, readDraft, saveDraft } from '../../services/kitchen-request-drafts';
 import { notifyAdminsOfWaiver, recordDocumentWaiver, setDocumentWaiver } from '../../services/document-waivers';
 import { customDocumentFields, customDocumentId, isCustomDocumentKey, kitchenDocumentFields } from '@shared/location-booking-eligibility';
+import { tourThatOpenedChat } from '../../services/shared-chat-access';
 import { approvalCustomDocumentStatus } from '../../domains/applications/document-approval';
 import { accessDocumentDaysLeft as daysLeftOnFile, DOCUMENT_KEYS, DOCUMENT_LABELS, type DocumentKey } from '@shared/location-booking-eligibility';
 import { chefKitchenApplications, chefLocationAccess, insertChefKitchenApplicationSchema, updateApplicationTierSchema, platformSettings, users, kitchenViewings } from '@shared/schema';
@@ -977,7 +978,7 @@ router.get('/firebase/chef/kitchen-applications', requireFirebaseAuthWithUser, a
                     locationId: application.locationId,
                 });
                 if (conversationId) {
-                    if (!application.chat_conversation_id && (application.current_tier ?? 1) < 3) {
+                    if (!application.chat_conversation_id && (application.current_tier ?? 1) < 3 && !(await tourThatOpenedChat(application.chefId, application.locationId))) {
                         try {
                             await notificationService.createForChef({
                                 chefId: application.chefId,
@@ -1071,7 +1072,7 @@ router.get('/firebase/chef/kitchen-applications/location/:locationId', requireFi
                 locationId: application.locationId,
             });
             if (conversationId) {
-                if (!application.chat_conversation_id && (application.current_tier ?? 1) < 3) {
+                if (!application.chat_conversation_id && (application.current_tier ?? 1) < 3 && !(await tourThatOpenedChat(application.chefId, application.locationId))) {
                     try {
                         await notificationService.createForChef({
                             chefId: application.chefId,
@@ -1334,6 +1335,33 @@ router.get('/firebase/admin/kitchen-applications', requireFirebaseAuthWithUser, 
         res.status(500).json({ error: 'Failed to fetch applications' });
     }
 });
+
+/**
+ * "Toured on [date]" (owner, Oct 24): the customer's latest tour at that location that took place (completed, or
+ * confirmed and over), with the kitchen's own private tour notes. Customers' feedback stays private to them.
+ */
+async function attachTours<T extends { chefId: number; locationId: number }>(managerId: number, applications: T[]) {
+    if (!applications.length) return applications.map(app => ({ ...app, tour: null }));
+    const { kitchenViewings, tourFeedbackResponses } = await import('@shared/schema');
+    const { and: andOp, inArray: inArrayOp, desc: descOp, eq: eqOp } = await import('drizzle-orm');
+    const tours = await db.select({ id: kitchenViewings.id, chefId: kitchenViewings.chefId, locationId: kitchenViewings.locationId, status: kitchenViewings.status,
+        scheduledAt: kitchenViewings.scheduledAt, durationMinutes: kitchenViewings.durationMinutes })
+        .from(kitchenViewings)
+        .where(andOp(inArrayOp(kitchenViewings.chefId, Array.from(new Set(applications.map(app => app.chefId)))),
+            inArrayOp(kitchenViewings.locationId, Array.from(new Set(applications.map(app => app.locationId)))),
+            inArrayOp(kitchenViewings.status, ['completed', 'confirmed'])))
+        .orderBy(descOp(kitchenViewings.scheduledAt));
+    const now = Date.now();
+    const took = tours.filter(tour => tour.status === 'completed' || tour.scheduledAt.getTime() + tour.durationMinutes * 60_000 <= now);
+    const notes = took.length ? await db.select({ viewingId: tourFeedbackResponses.viewingId, comments: tourFeedbackResponses.comments, rating: tourFeedbackResponses.rating })
+        .from(tourFeedbackResponses).where(andOp(inArrayOp(tourFeedbackResponses.viewingId, took.map(tour => tour.id)),
+            eqOp(tourFeedbackResponses.respondentRole, 'manager'), eqOp(tourFeedbackResponses.respondentId, managerId))) : [];
+    return applications.map(app => {
+        const tour = took.find(item => item.chefId === app.chefId && item.locationId === app.locationId);
+        const note = tour && notes.find(item => item.viewingId === tour.id);
+        return { ...app, tour: tour ? { id: tour.id, scheduledAt: tour.scheduledAt, status: tour.status, notes: note?.comments ?? null, rating: note?.rating ?? null } : null };
+    });
+}
 
 /** Records the kitchen's (or Local Cooks') decision on one or more of the kitchen's own documents. */
 async function setCustomDocumentStatus(applicationId: number, statuses: Record<string, 'approved' | 'rejected'>, reviewer: 'manager' | 'local_cooks') {
@@ -1602,7 +1630,7 @@ router.patch('/firebase/admin/kitchen-applications/:id/status', requireFirebaseA
                         actionUrl: conversationId && initialApproval
                             ? `/manager/dashboard?view=messages&conversation=${encodeURIComponent(conversationId)}`
                             : '/manager/dashboard?view=applications',
-                        actionLabel: conversationId && initialApproval ? 'Message chef' : 'View application',
+                        actionLabel: conversationId && initialApproval ? 'Message customer' : 'View application',
                     });
                     const [manager] = await db.select({ username: users.username })
                         .from(users)
@@ -1617,8 +1645,10 @@ router.patch('/firebase/admin/kitchen-applications/:id/status', requireFirebaseA
                             chefEmail: applicationBeforeUpdate.email || '',
                             conversationId,
                             locationAddress: location.address || undefined,
-                            chefName: applicationBeforeUpdate.fullName || 'Chef',
+                            chefName: applicationBeforeUpdate.fullName || 'Customer',
                             locationName: location.name || 'Kitchen Location',
+                            // They toured first: the chat with the kitchen is already open (owner, Oct 24).
+                            touredAt: initialApproval ? (await tourThatOpenedChat(applicationBeforeUpdate.chefId, applicationBeforeUpdate.locationId))?.scheduledAt : undefined,
                         }), {
                             trackingId: `kitchen_app_cleared_manager_${applicationId}_${Date.now()}`,
                         });
@@ -1951,7 +1981,7 @@ router.get('/manager/kitchen-applications', requireFirebaseAuthWithUser, require
     try {
         const user = req.neonUser!;
         const applications = await chefApplicationService.getApplicationsForManager(user.id);
-        res.json(await attachDocumentRenewals(applications));
+        res.json(await attachTours(user.id, await attachDocumentRenewals(applications)));
     } catch (error) {
         logger.error('Error getting kitchen applications for manager:', error);
         res.status(500).json({ error: 'Failed to get applications' });

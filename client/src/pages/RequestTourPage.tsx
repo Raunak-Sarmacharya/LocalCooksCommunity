@@ -13,11 +13,9 @@ import { useTourRequestAccess } from '@/hooks/use-tour-request-access';
 export default function RequestTourPage() {
   const { locationId: rawLocationId } = useParams<{ locationId: string }>();
   const locationId = Number(rawLocationId);
-  const kitchenId = Number(new URLSearchParams(window.location.search).get("kitchenId"));
+  const requestedKitchenId = Number(new URLSearchParams(window.location.search).get("kitchenId"));
   const [, navigate] = useLocation();
   const { user, loading: authLoading } = useFirebaseAuth();
-  const tourAccess = useTourRequestAccess(kitchenId, user?.uid);
-  const { hasApplication, isLoading: applicationLoading, error: applicationError, refetch: refetchApplication } = useChefKitchenApplicationForLocation(user && locationId ? locationId : null);
   const { data: kitchens = [], isLoading: kitchensLoading } = useQuery<Array<{ id: number; locationId: number; name: string; imageUrl?: string | null }>>({
     queryKey: ["/api/public/kitchens"],
     queryFn: async () => {
@@ -26,6 +24,11 @@ export default function RequestTourPage() {
       return response.json();
     },
   });
+  // A link without ?kitchenId= (an old link, or typed by hand) uses the location's only kitchen, instead of waiting forever.
+  const locationKitchens = kitchens.filter((item) => item.locationId === locationId);
+  const kitchenId = requestedKitchenId > 0 ? requestedKitchenId : locationKitchens.length === 1 ? locationKitchens[0].id : NaN;
+  const tourAccess = useTourRequestAccess(kitchenId, user?.uid);
+  const { hasApplication, isLoading: applicationLoading, error: applicationError, refetch: refetchApplication } = useChefKitchenApplicationForLocation(user && locationId ? locationId : null);
   const kitchen = kitchens.find((item) => item.id === kitchenId && item.locationId === locationId);
   const back = () => navigate(`/kitchen-preview/${locationId}`);
   const breadcrumbs = useMemo(() => [
@@ -39,7 +42,7 @@ export default function RequestTourPage() {
   useEffect(() => {
     if (existingTour) navigate(`${chefDashboardHref('viewings')}&viewing=${existingTour.id}`, { replace: true });
   }, [existingTour?.id, navigate]);
-  const tourAccessLoading = !!user && !tourAccess.isFetched;
+  const tourAccessLoading = !!user && kitchenId > 0 && !tourAccess.isFetched;
   const accessError = applicationError || tourAccess.error;
 
   if (!authLoading && !kitchensLoading && !applicationLoading && !tourAccessLoading && !accessError

@@ -37,6 +37,7 @@ import { isPendingOrUpcomingTour } from "@/lib/chef-viewing-display"
 import { useTourClock } from "@/hooks/use-tour-clock"
 import { hasTourConfirmation, tourDisruptionReasons } from '@shared/tour-outcome'
 import { TourChatButton } from '@/components/chat/TourChatButton'
+import { Checkbox } from "@/components/ui/checkbox"
 import { TourFeedbackPanel } from '@/components/tour/TourFeedbackPanel'
 import { tourFeedbackOpen } from '@shared/tour-feedback'
 import { formatTourWhen } from "@/lib/chef-viewing-display"
@@ -275,6 +276,14 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
   }, [viewings])
 
   const correctingOutcome = !!selectedViewing && (["completed", "no_show"].includes(selectedViewing.viewing.status) || !!selectedViewing.viewing.disruptionReason)
+  // The kitchen says whether they came, like bookings, until 24 hours after the tour; then it closes on its own (owner, Oct 24).
+  const tourEndAt = selectedViewing ? Date.parse(selectedViewing.viewing.scheduledAt) + selectedViewing.viewing.durationMinutes * 60_000 : 0
+  const recordBy = tourEndAt + 24 * 3_600_000
+  const canRecord = !!selectedViewing && selectedViewing.viewing.status === 'confirmed' && !selectedViewing.viewing.disruptionReason
+    && selectedViewing.viewing.visitEvidenceState !== 'review' && tourEndAt <= Date.now() && Date.now() < recordBy
+  const [absentConfirmed, setAbsentConfirmed] = useState(false)
+  const firstName = selectedViewing?.chefName?.trim().split(/\s+/)[0] || mt('chef')
+  const tourFinished = !!selectedViewing && (selectedViewing.viewing.status === 'completed' || selectedViewing.viewing.disruptionReason === 'outcome_unknown')
   const feedbackAfterEnd = !!selectedViewing && hasTourConfirmation(selectedViewing.viewing) && Date.parse(selectedViewing.viewing.scheduledAt) + selectedViewing.viewing.durationMinutes * 60_000 <= Date.now()
   const canShareFeedback = !!selectedViewing && tourFeedbackOpen(selectedViewing.viewing) && !selectedViewing.viewing.managerFeedbackSubmitted
   const showFeedbackAction = canShareFeedback || feedbackAfterEnd && !!selectedViewing?.viewing.managerFeedbackSubmitted
@@ -283,8 +292,9 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
       ? new Date(selectedViewing.viewing.scheduledAt).getTime() > Date.now() ? selectedViewing.viewing.rescheduleProposedSlots?.length ? 'tourPendingProposalAwaitingHelp' : 'tourNextReview' : 'tourNextExpired'
       : canReviewReschedule(selectedViewing.viewing) ? 'tourNextReschedule'
       : selectedViewing.viewing.status === 'confirmed' && !selectedViewing.viewing.disruptionReason
-        ? feedbackAfterEnd ? selectedViewing.viewing.managerFeedbackSubmitted ? 'tourNextFeedbackSubmitted' : 'tourNextFeedback'
+        ? canRecord ? 'tourNextRecord' : feedbackAfterEnd ? selectedViewing.viewing.managerFeedbackSubmitted ? 'tourNextFeedbackSubmitted' : 'tourNextFeedback'
           : new Date(selectedViewing.viewing.scheduledAt).getTime() > Date.now() ? 'tourNextPrepare' : 'tourNextHost'
+        : tourFinished ? selectedViewing.viewing.status === 'completed' ? 'tourNextToured' : 'tourNextUnrecorded'
         : feedbackAfterEnd && selectedViewing.viewing.managerFeedbackSubmitted ? 'tourNextFeedbackSubmitted' : null
     : null
 
@@ -494,6 +504,8 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
     return false
   }
   const requestNavigation = (navigate: () => void) => { if (guardNavigation(navigate)) navigate() }
+  // Nothing typed in the record dialog, so closing it needs no unsaved-changes prompt.
+  const closeRecord = () => { setStatusAction('view'); setNoShowReason(''); setAbsentConfirmed(false) }
   const requestClose = () => requestNavigation(() => {
     setStatusAction('view'); setManagerNotes(selectedViewing?.viewing.sharedManagerNotes || '');
     setNoShowReason(''); setDisruptionReason(''); setCancellationReason(''); setAcceptBookingOverlap(false);
@@ -585,23 +597,13 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
                   <>
                     <Separator />
 
+                    {statusAction === "complete" && <p className="text-sm">{mt('tourTheyCameHelp', { name: selectedViewing.chefName?.trim().split(/\s+/)[0] || mt('chef') })}</p>}
                     {statusAction === "no_show" && (
-                      <div className="space-y-2">
-                        <Label className="text-sm">{mt("noShowReason")}</Label>
-                        <Select
-                          value={noShowReason}
-                          onValueChange={setNoShowReason}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder={mt("selectReason")} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="visitor_absent">{mt("tourVisitorAbsent")}</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
+                      <label className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+                        <Checkbox checked={absentConfirmed} onCheckedChange={checked => setAbsentConfirmed(checked === true)} className="mt-0.5" />
+                        <span>{mt('tourNoShowConfirm', { name: selectedViewing.chefName?.trim().split(/\s+/)[0] || mt('chef') })}</span>
+                      </label>
                     )}
-
                     {statusAction === "disrupt" && <div className="space-y-2">
                       <Label>{mt('tourDisruptionReason')}</Label>
                       <Select value={disruptionReason} onValueChange={setDisruptionReason}>
@@ -627,7 +629,7 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
                       </div>
                     )}
 
-                    <div className="space-y-2">
+                    {!['complete', 'no_show'].includes(statusAction) && <div className="space-y-2">
                       <Label className="text-sm">{mt(correctingOutcome || (statusAction === "disrupt" && disruptionReason === "other") ? "tourSharedExplanationRequired" : "tourMessageToChefOptional")}</Label>
                       <Textarea
                         value={managerNotes}
@@ -635,7 +637,7 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
                         placeholder={mt("tourSharedMessageDisclosure")}
                         rows={2}
                       />
-                    </div>
+                    </div>}
                   </>
                 )}
                     {statusAction !== "view" && (
@@ -667,7 +669,7 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
                       proposeReschedule.isPending ||
                       reviewReschedule.isPending ||
                       (statusAction === "confirm" && (!acceptanceReady || !!selectedViewing.viewing.rescheduleProposedSlots?.length)) ||
-                      (statusAction === "no_show" && !noShowReason) || (statusAction === "disrupt" && !disruptionReason) || ((correctingOutcome || (statusAction === "disrupt" && disruptionReason === "other")) && !managerNotes.trim())
+                      (statusAction === "no_show" && (!noShowReason || !absentConfirmed)) || (statusAction === "disrupt" && !disruptionReason) || ((correctingOutcome || (statusAction === "disrupt" && disruptionReason === "other")) && !managerNotes.trim())
                       || (statusAction === 'cancel' && selectedViewing.viewing.status === 'pending' && !cancellationReason.trim())
                     }
                     className={cn(
@@ -680,8 +682,8 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                     ) : null}
                     {statusAction === "confirm" && mt("confirmViewing")}
-                    {statusAction === "complete" && mt("markCompleted")}
-                    {statusAction === "no_show" && mt("confirmNoShow")}
+                    {statusAction === "complete" && mt("tourTheyCame")}
+                    {statusAction === "no_show" && mt("tourReportNoShow")}
                     {statusAction === "cancel" && mt("cancelViewing")}
                     {statusAction === "disrupt" && mt("tourRecordDisruption")}
                   </Button>
@@ -750,12 +752,18 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
                 <h2 className="text-sm font-semibold leading-5">{mt('tourNextStep')}</h2>
                 {selectedViewing.reconfirmation?.canReply && <p className="text-xs text-muted-foreground">{mt(selectedViewing.reconfirmation.reply === 'still_coming' ? 'tourVisitorStillComing' : selectedViewing.reconfirmation.reply === 'reschedule' || selectedViewing.reconfirmation.reply === 'cant_make_it' ? 'tourVisitorChangeSignal' : selectedViewing.reconfirmation.needsStaffAttention ? 'tourVisitorReplyOverdue' : 'tourVisitorReplyPending')}</p>}
                 {(() => { const decision = tourRequestDecision(selectedViewing.viewing); return decision?.stage === 'manager' && decision.dueAt && Date.parse(selectedViewing.viewing.scheduledAt) > Date.now() ? <p className={cn('text-xs', decision.overdue ? 'text-destructive font-medium' : 'text-muted-foreground')}>{mt(decision.overdue ? 'tourDecisionOverdue' : 'tourDecisionDue')}: {formatTourWhen(decision.dueAt, null, 'America/St_Johns')}</p> : null; })()}
-                <p className="max-w-3xl text-sm leading-relaxed">{mt(nextStepKey)}</p>
+                {canRecord && <p className="text-xs text-muted-foreground">{mt('tourRecordBy')}: {formatTourWhen(new Date(recordBy).toISOString(), null, selectedViewing.locationTimezone || 'America/St_Johns')}</p>}
+                <p className="max-w-3xl text-sm leading-relaxed">{mt(nextStepKey, { name: selectedViewing.chefName?.trim().split(/\s+/)[0] || mt('chef') })}</p>
               </div>
-              {(statusAction !== 'view' || selectedViewing.viewing.status === 'pending' || selectedViewing.viewing.status === 'confirmed' && Date.parse(selectedViewing.viewing.scheduledAt) > Date.now() || showFeedbackAction) && <section className="space-y-3 border-t p-4 sm:px-5" aria-label={mt('tourActions')}>
+              {(statusAction !== 'view' || selectedViewing.viewing.status === 'pending' || selectedViewing.viewing.status === 'confirmed' && Date.parse(selectedViewing.viewing.scheduledAt) > Date.now() || showFeedbackAction || canRecord || tourFinished) && <section className="space-y-3 border-t p-4 sm:px-5" aria-label={mt('tourActions')}>
                 <h2 className="text-sm font-semibold leading-5">{mt('tourActions')}</h2>
-                {statusAction === 'view' && <div className="grid gap-2 sm:flex sm:flex-wrap [&_button]:h-auto [&_button]:min-h-11 [&_button]:whitespace-normal [&_button]:px-4 [&_button]:py-2">
-                  {showFeedbackAction && <Button ref={feedbackTrigger} variant={canShareFeedback ? 'default' : 'outline'} aria-haspopup="dialog" onClick={() => setFeedbackTargetId(selectedViewing.viewing.id)}>{mt(canShareFeedback ? 'tourFeedbackOpen' : 'tourFeedbackView', { ns: 'common' })}</Button>}
+                {['view', 'complete', 'no_show'].includes(statusAction) && <div className="grid gap-2 sm:flex sm:flex-wrap [&_button]:h-auto [&_button]:min-h-11 [&_button]:whitespace-normal [&_button]:px-4 [&_button]:py-2">
+                  {canRecord && <>
+                    <Button disabled={updateStatusMutation.isPending} onClick={() => setStatusAction('complete')}>{mt('tourTheyCame')}</Button>
+                    <Button variant="outline" disabled={updateStatusMutation.isPending} onClick={() => { setAbsentConfirmed(false); setNoShowReason('visitor_absent'); setStatusAction('no_show') }}>{mt('tourReportNoShow')}</Button>
+                  </>}
+                  {tourFinished && <Button variant={canShareFeedback ? 'outline' : 'default'} onClick={() => requestNavigation(() => { window.location.href = `/manager/booking-dashboard?view=customers&add=1&location=${selectedViewing.viewing.locationId}&name=${encodeURIComponent(selectedViewing.chefName || '')}&email=${encodeURIComponent(selectedViewing.chefEmail || '')}` })}>{mt('tourAddAsCustomer')}</Button>}
+                  {showFeedbackAction && <Button ref={feedbackTrigger} variant={canShareFeedback && !canRecord ? 'default' : 'outline'} aria-haspopup="dialog" onClick={() => setFeedbackTargetId(selectedViewing.viewing.id)}>{mt(canShareFeedback ? 'tourFeedbackOpen' : 'tourFeedbackView', { ns: 'common' })}</Button>}
                   {selectedViewing.viewing.status === 'pending' && Date.parse(selectedViewing.viewing.scheduledAt) <= Date.now() && <Button variant="outline" onClick={() => setStatusAction('cancel')}>{mt('tourCloseExpiredRequest')}</Button>}
                   {selectedViewing.viewing.status === 'pending' && Date.parse(selectedViewing.viewing.scheduledAt) > Date.now() && <Button onClick={() => setStatusAction('confirm')} disabled={updateStatusMutation.isPending || proposeReschedule.isPending || !!selectedViewing.viewing.rescheduleProposedSlots?.length}>{mt('acceptViewing')}</Button>}
                   {canProposeChange && <Button ref={proposalTrigger} variant="outline" disabled={updateStatusMutation.isPending || proposeReschedule.isPending} onClick={() => setProposalOpen(true)}><CalendarClock className="h-4 w-4 shrink-0" />{mt(selectedViewing.viewing.status === 'pending' ? 'tourOfferAlternativeTimes' : 'tourProposeNewTimes')}</Button>}
@@ -763,7 +771,30 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
                   {selectedViewing.viewing.status === 'confirmed' && Date.parse(selectedViewing.viewing.scheduledAt) > Date.now() && <Button variant="outline" className="text-destructive hover:text-destructive" disabled={proposeReschedule.isPending || reviewReschedule.isPending || updateStatusMutation.isPending} onClick={() => setStatusAction('cancel')}>{mt('cancelViewing')}</Button>}
                 </div>}
                 {['confirm', 'cancel'].includes(statusAction) && <div className="space-y-4">{decisionKind === "confirm" && decisionReviewPanel}{decisionActionPanel}</div>}
-                {['complete', 'no_show', 'disrupt'].includes(statusAction) && <div className="space-y-4 border-t pt-4">{decisionActionPanel}</div>}
+                {statusAction === 'disrupt' && <div className="space-y-4 border-t pt-4">{decisionActionPanel}</div>}
+                <Dialog open={statusAction === 'complete' || statusAction === 'no_show'} onOpenChange={open => { if (!open) closeRecord() }}>
+                  <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                      <DialogTitle>{mt(statusAction === 'no_show' ? 'tourNoShowTitle' : 'tourTheyCameTitle', { name: firstName })}</DialogTitle>
+                      <DialogDescription>{mt(statusAction === 'no_show' ? 'tourNoShowHelp' : 'tourTheyCameHelp', { name: firstName })}</DialogDescription>
+                    </DialogHeader>
+                    {statusAction === 'no_show' && <label className="flex items-start gap-3 rounded-lg border p-3 text-sm">
+                      <Checkbox checked={absentConfirmed} onCheckedChange={checked => setAbsentConfirmed(checked === true)} className="mt-0.5" />
+                      <span>{mt('tourNoShowConfirm', { name: firstName })}</span>
+                    </label>}
+                    <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                      <Button variant="outline" onClick={closeRecord}>{mt('cancel')}</Button>
+                      <Button
+                        variant={statusAction === 'no_show' ? 'destructive' : 'default'}
+                        disabled={updateStatusMutation.isPending || (statusAction === 'no_show' && !absentConfirmed)}
+                        onClick={() => updateStatusMutation.mutate({ viewingId: selectedViewing.viewing.id, status: statusAction === 'no_show' ? 'no_show' : 'completed', notes: managerNotes, noShow: noShowReason, cancelReason: cancellationReason })}
+                      >
+                        {updateStatusMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        {mt(statusAction === 'no_show' ? 'tourReportNoShow' : 'tourTheyCame')}
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
                 {!!selectedViewing.viewing.rescheduleProposedSlots?.length && ['pending', 'confirmed'].includes(selectedViewing.viewing.status) && new Date(selectedViewing.viewing.scheduledAt).getTime() > Date.now() && <section className="space-y-4 rounded-xl border border-primary/20 bg-primary/5 p-4 sm:p-5" aria-label={mt('tourProposalPendingTitle')}>
                   <div className="space-y-1"><h2 className="text-sm font-semibold leading-5">{mt('tourProposalPendingTitle')}</h2><p className="text-sm text-muted-foreground">{mt(selectedViewing.viewing.status === 'pending' ? 'tourPendingProposalAwaitingHelp' : 'tourProposalPendingHelp')}</p></div>
                   <ul className="space-y-2">{selectedViewing.viewing.rescheduleProposedSlots.map(time => <li key={time} className="rounded-lg border bg-background px-3 py-2 text-sm">{formatTourWhen(time, selectedViewing.viewing.durationMinutes, selectedViewing.locationTimezone || 'America/St_Johns')}</li>)}</ul>
@@ -809,7 +840,7 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
                     </ul>
                   </details>}
                 </section>
-                {feedbackAfterEnd && <TourFeedbackPanel key={selectedViewing.viewing.id} id={selectedViewing.viewing.id} role="manager" version={selectedViewing.viewing.updatedAt} open={feedbackTargetId === selectedViewing.viewing.id} onOpenChange={open => setFeedbackTargetId(open ? selectedViewing.viewing.id : null)} triggerRef={feedbackTrigger} />}
+                {showFeedbackAction && <TourFeedbackPanel key={selectedViewing.viewing.id} id={selectedViewing.viewing.id} role="manager" version={selectedViewing.viewing.updatedAt} open={feedbackTargetId === selectedViewing.viewing.id} onOpenChange={open => setFeedbackTargetId(open ? selectedViewing.viewing.id : null)} triggerRef={feedbackTrigger} />}
                 {!nextStepKey && !['confirm', 'cancel'].includes(statusAction) && decisionActionPanel}
 
                 <Dialog open={proposalOpen && (canProposeChange || proposeReschedule.isPending)} onOpenChange={open => {

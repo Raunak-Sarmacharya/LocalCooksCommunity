@@ -4,6 +4,7 @@ import { kitchenBookings } from '@shared/schema';
 import type { db as Database } from '../db';
 import { logger } from '../logger';
 import { isE2eOutboundSuppressed } from '../e2e-outbound-guard';
+import { tourNextDueAt } from '@shared/tour-timers';
 
 /**
  * Exact deadlines (WP-T). Waiting for a deadline costs nothing: an Inngest function sleeps until the instant and then runs
@@ -12,8 +13,8 @@ import { isE2eOutboundSuppressed } from '../e2e-outbound-guard';
  * the backstop. Sending twice (or the worker winning the race) is harmless: each expiry re-checks its row under lock.
  */
 export const deadlineScheduledEvent = 'localcooks/deadline.scheduled';
-export type DeadlineKind = 'extension' | 'booking_request' | 'closeout' | 'kitchen_change' | 'storage_request' | 'reminder';
-export const deadlineKinds: readonly DeadlineKind[] = ['extension', 'booking_request', 'closeout', 'kitchen_change', 'storage_request', 'reminder'];
+export type DeadlineKind = 'extension' | 'booking_request' | 'closeout' | 'kitchen_change' | 'storage_request' | 'reminder' | 'tour';
+export const deadlineKinds: readonly DeadlineKind[] = ['extension', 'booking_request', 'closeout', 'kitchen_change', 'storage_request', 'reminder', 'tour'];
 /** Runs just after the deadline so "now >= deadline" holds even with small clock differences. */
 export const deadlineGraceMs = 5_000;
 /** Inngest sleeps are bounded (plan limits); anything further out is picked up by the tick, then re-armed. */
@@ -47,6 +48,33 @@ export async function scheduleBookingRequestTimer(reader: Pick<typeof Database, 
     scheduleDeadlineTimer('booking_request', bookingId, await getBookingResponseDeadline(booking, reader));
   } catch (error) {
     logger.warn('[Deadlines] Request timer not scheduled; the worker tick will expire it', { bookingId, error: error instanceof Error ? error.message : String(error) });
+  }
+}
+
+/** Inngest sleeps are bounded, so a far-off tour re-arms itself every few days until its first step is within reach. */
+const tourRearmMs = 5 * 86_400_000;
+
+/** Arms the exact timer for a tour's next automatic step. Best-effort like every producer: the worker sweep stays the backstop. */
+export function scheduleTourTimer(tour: Parameters<typeof tourNextDueAt>[0] & { id: number } | null | undefined, now = Date.now()) {
+  try {
+    if (!tour) return;
+    const next = tourNextDueAt(tour, now);
+    if (next) scheduleDeadlineTimer('tour', tour.id, new Date(Math.min(next.getTime(), now + tourRearmMs)), now);
+  } catch (error) {
+    logger.warn('[Deadlines] Tour timer not scheduled; the worker tick will advance it', { id: tour?.id, error: error instanceof Error ? error.message : String(error) });
+  }
+}
+
+/** For route handlers that only hold an id; never throws and skips the read when timers are off. */
+export async function scheduleTourTimerById(id: number) {
+  if (!timersEnabled()) return;
+  try {
+    const { db } = await import('../db');
+    const { kitchenViewings } = await import('@shared/schema');
+    const [tour] = await db.select().from(kitchenViewings).where(eq(kitchenViewings.id, id)).limit(1);
+    scheduleTourTimer(tour);
+  } catch (error) {
+    logger.warn('[Deadlines] Tour timer not scheduled; the worker tick will advance it', { id, error: error instanceof Error ? error.message : String(error) });
   }
 }
 
@@ -87,6 +115,7 @@ export async function runDeadlineExpiry(kind: DeadlineKind, id: number, now = ne
     const changes = await import('./kitchen-booking-changes');
     return { kind, ...await changes.expireKitchenChangeForBooking(await changes.changeProviderStripe(), id, now) };
   }
+  if (kind === 'tour') return { kind, ...await (await import('./tour-outcome-service')).advanceTour(id, now) };
   if (kind === 'reminder') {
     // The id is the reminder's email-log row: send exactly that one if it is still scheduled and still current.
     // A failed send is left to the worker's own retry and recovery, not re-thrown here (no duplicate recovery alerts).

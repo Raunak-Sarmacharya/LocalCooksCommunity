@@ -88,12 +88,25 @@ describe('manager acceptance review', () => {
   it('shows pending admin review after the manager submits feedback instead of asking for a second response', () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     client.setQueryData(['/api/viewings/manager'], [{ ...record, viewing: { ...record.viewing, status: 'confirmed',
-      scheduledAt: new Date(Date.now() - 86400000).toISOString(), confirmationVerified: true, managerFeedbackSubmitted: true } }]);
+      scheduledAt: new Date(Date.now() - 3 * 86400000).toISOString(), confirmationVerified: true, managerFeedbackSubmitted: true } }]);
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ events: [], complete: false }) })));
     render(<QueryClientProvider client={client}><ViewingsDashboard /></QueryClientProvider>);
     fireEvent.click(screen.getByRole('button', { name: 'Open tour' }));
     expect(screen.getByText('tourNextFeedbackSubmitted')).toBeInTheDocument();
     expect(screen.queryByText('tourNextFeedback')).not.toBeInTheDocument();
+    client.clear();
+  });
+  it('asks the kitchen whether they came during the 24 hours after the tour (owner, Oct 24)', () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(['/api/viewings/manager'], [{ ...record, viewing: { ...record.viewing, status: 'confirmed',
+      scheduledAt: new Date(Date.now() - 2 * 3600000).toISOString(), confirmationVerified: true } }]);
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ events: [], complete: false }) })));
+    render(<QueryClientProvider client={client}><ViewingsDashboard /></QueryClientProvider>);
+    fireEvent.click(screen.getByRole('button', { name: 'Open tour' }));
+    expect(screen.getByText('tourNextRecord')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'tourReportNoShow' }));
+    // A no-show is only sent once the kitchen confirms they didn't come.
+    expect(screen.getAllByRole('button', { name: 'tourReportNoShow' }).at(-1)).toBeDisabled();
     client.clear();
   });
   it('adds preparation guidance to the existing confirmed request briefing and keeps silence confirmed', () => {
@@ -257,7 +270,8 @@ describe('tour attendance and privacy controls', () => {
     expect(screen.queryByRole('button', { name: 'markCompleted' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'markNoShow' })).not.toBeInTheDocument();
     expect(screen.queryByText('ADMIN ONLY LEGACY')).not.toBeInTheDocument();
-    expect(screen.getByRole('region', { name: 'tourFeedbackTitle' })).toBeInTheDocument();
+    // A closed tour with no kitchen feedback hides the empty feedback card (Oct 24).
+    expect(screen.queryByRole('region', { name: 'tourFeedbackTitle' })).not.toBeInTheDocument();
     client.clear();
   });
   it('does not infer confirmation evidence from a legacy terminal label', () => {

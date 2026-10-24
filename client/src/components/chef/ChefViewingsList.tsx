@@ -110,6 +110,7 @@ function TourDetailPanel({
   const [showStorageModal, setShowStorageModal] = useState(false);
   return (
     <div className="grid gap-4 text-sm sm:grid-cols-2">
+      {(awaitingConfirmation || tour.status === "confirmed" || tour.arrivalNotes?.trim() || tour.departureNotes?.trim()) && <>
       <section aria-label={t("tourArrivalNotes", "Arrival notes")} className="space-y-3 rounded-xl border bg-card p-5 sm:p-6">
         <h2 className="text-sm font-semibold text-foreground">{t("tourArrivalNotes", "Arrival notes")}</h2>
         <p className="whitespace-pre-wrap text-muted-foreground">{tour.arrivalNotes?.trim() || (awaitingConfirmation ? t("tourArrivalNotesAfterConfirmation", "Arrival instructions are available after your tour is confirmed.") : tour.status !== "confirmed" ? t("tourClosedInstructions", "Instructions are unavailable for this tour. Review the shared notes or contact Support if you need help.") : t("tourArrivalNotesEmpty", "The kitchen manager hasn’t shared arrival instructions yet. Message the manager if you need help finding the entrance or meeting point."))}</p>
@@ -117,7 +118,7 @@ function TourDetailPanel({
       <section aria-label={t("tourDepartureNotes", "Departure notes")} className="space-y-3 rounded-xl border bg-card p-5 sm:p-6">
         <h2 className="text-sm font-semibold text-foreground">{t("tourDepartureNotes", "Departure notes")}</h2>
         <p className="whitespace-pre-wrap text-muted-foreground">{tour.departureNotes?.trim() || (awaitingConfirmation ? t("tourDepartureNotesAfterConfirmation", "Departure instructions are available after your tour is confirmed.") : tour.status !== "confirmed" ? t("tourClosedInstructions", "Instructions are unavailable for this tour. Review the shared notes or contact Support if you need help.") : t("tourDepartureNotesEmpty", "The kitchen manager hasn’t shared departure instructions yet. Message the manager if you need help with leaving the kitchen."))}</p>
-      </section>
+      </section></>}
       {(tour.status === 'confirmed' && Date.parse(tour.scheduledAt) > Date.now() || tour.chefNotes?.trim() || tour.intakeEntries.length > 0 || tour.sharedManagerNotes || tour.cancellationReason || tour.noShowReason || tour.disruptionReason) && <section className="rounded-xl border bg-card p-5 sm:col-span-2 sm:p-6"><h2 className="text-sm font-semibold text-foreground">{t("tourMoreRequestInfo", "Notes and updates")}</h2><div className="mt-4 space-y-4 divide-y [&>div:not(:first-child)]:pt-4">
         {tour.status === 'confirmed' && Date.parse(tour.scheduledAt) > Date.now() && <div aria-label={t('tourPrepareTitle', 'Prepare for your kitchen tour')} className="space-y-3">
           <h3 className="text-sm font-semibold">{t('tourPrepareTitle', 'Prepare for your kitchen tour')}</h3>
@@ -516,6 +517,7 @@ export default function ChefViewingsList({ onExploreKitchens }: { onExploreKitch
           const showOtherActions = hasProposal || !showAttendanceReply && (canEdit || canCancel) || expired || ["cancelled", "no_show"].includes(tour.status) || !!tour.disruptionReason || hasApplicationNextStep || showFeedbackAction;
           const managerName = tour.managerName?.trim().split(/\s+/)[0];
           const contactEmail = tour.managerEmail || tour.locationContactEmail;
+          const tourOpen = ['pending_local_cooks', 'pending', 'confirmed'].includes(tour.status);
           return (
             <section key={tour.id} aria-label={t("tourPageDetails", "Tour details")} className="min-w-0 space-y-6 [overflow-wrap:anywhere]">
               <div className="space-y-5">
@@ -576,7 +578,7 @@ export default function ChefViewingsList({ onExploreKitchens }: { onExploreKitch
                   {canCancel && !showAttendanceReply && <Button variant="outline" size="sm" className="h-9 text-destructive hover:text-destructive" disabled={cancellingId !== null || reschedulingId !== null} onClick={event => { actionTrigger.current = event.currentTarget; setCancelTarget(tour); }}>{t("tourCancel", "Cancel tour")}</Button>}
                   {(expired || ["cancelled", "no_show"].includes(tour.status) || !!tour.disruptionReason) && <Button asChild variant="outline" size="sm"><Link href="/dashboard?view=discover-kitchens">{t("tourListExploreCta", "Discover Kitchens")}</Link></Button>}
                   {hasApplicationNextStep &&
-                    <TourApplicationButton id={tour.id} version={tour.updatedAt} />}
+                    <TourApplicationButton id={tour.id} version={tour.updatedAt} primary={!canShareFeedback} />}
 
                 </div>}
               </section>
@@ -597,8 +599,8 @@ export default function ChefViewingsList({ onExploreKitchens }: { onExploreKitch
                     <h2 className="text-sm font-semibold leading-5">{t('tourKitchenContactTitle', 'Coordinate with the kitchen')}</h2>
                     <dl className="space-y-3">
                       <div><dt className="text-xs text-muted-foreground">{t('tourDetailManager', 'Kitchen manager')}</dt><dd className="mt-1 font-medium">{tour.managerName || t('tourContactNotShared', 'Not shared yet')}</dd></div>
-                      <div><dt className="text-xs text-muted-foreground">{t('tourContactEmail', 'Email')}</dt><dd className="mt-1 break-all">{contactEmail ? <a className="text-primary underline underline-offset-2" href={`mailto:${contactEmail}`}>{contactEmail}</a> : t('tourContactNotShared', 'Not shared yet')}</dd></div>
-                      <div><dt className="text-xs text-muted-foreground">{t('tourContactPhone', 'Phone')}</dt><dd className="mt-1">{tour.locationContactPhone ? <a className="text-primary underline underline-offset-2" href={`tel:${tour.locationContactPhone}`}>{tour.locationContactPhone}</a> : t('tourContactNotShared', 'Not shared yet')}</dd></div>
+                      {(contactEmail || tourOpen) && <div><dt className="text-xs text-muted-foreground">{t('tourContactEmail', 'Email')}</dt><dd className="mt-1 break-all">{contactEmail ? <a className="text-primary underline underline-offset-2" href={`mailto:${contactEmail}`}>{contactEmail}</a> : t('tourContactNotShared', 'Not shared yet')}</dd></div>}
+                      {(tour.locationContactPhone || tourOpen) && <div><dt className="text-xs text-muted-foreground">{t('tourContactPhone', 'Phone')}</dt><dd className="mt-1">{tour.locationContactPhone ? <a className="text-primary underline underline-offset-2" href={`tel:${tour.locationContactPhone}`}>{tour.locationContactPhone}</a> : t('tourContactNotShared', 'Not shared yet')}</dd></div>}
                     </dl>
                     <p className="text-xs leading-relaxed text-muted-foreground">{t('tourKitchenCoordinationHelp', 'Message your kitchen manager about arrival, departure, or changes to your visit.')}</p>
                     <div className="grid min-w-0 gap-2 sm:grid-cols-2 [&>div]:min-w-0 [&_button]:h-auto [&_button]:min-h-11 [&_button]:w-full [&_button]:whitespace-normal [&_button]:px-2 [&_button]:py-2 [&_button]:text-xs">

@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('./tour-reconfirmation-service', () => ({ queueTourReconfirmations: vi.fn(async () => ({ queued: 0, errors: 0 })) }));
 const state = vi.hoisted(() => ({ current: null as any, existing: false, keys: new Set<string>(),
-  feedback: { chef: false, manager: false }, queue: vi.fn(), update: vi.fn(), delivery: vi.fn() }));
+  feedback: { chef: false, manager: false }, rows: [] as any[], queue: vi.fn(), update: vi.fn(), delivery: vi.fn() }));
 vi.mock('./tour-feedback-service', () => ({ readTourFeedbackStatus: async () => ({ ...state.feedback,
-  missing: !state.feedback.chef || !state.feedback.manager, bothReady: state.feedback.chef && state.feedback.manager, conflict: false, closed: false }) }));
+  missing: !state.feedback.chef || !state.feedback.manager, bothReady: state.feedback.chef && state.feedback.manager, conflict: false, closed: false, current: state.rows }) }));
 vi.mock('../db', () => {
   const db: any = { transaction: async (run: any) => { const saved = state.current && { ...state.current }, keys = new Set(state.keys); try { return await run(db); } catch (error) { state.current = saved; state.keys = keys; throw error; } }, update: state.update,
     select: (fields?: any) => {
@@ -24,11 +24,11 @@ vi.mock('../db', () => {
 vi.mock('./tour-delivery-service', async importOriginal => ({ ...await importOriginal<typeof import('./tour-delivery-service')>(), queueTourEvent: state.queue, deliverTourEvents: state.delivery }));
 vi.mock('./lifecycle-settings', () => ({ getLifecycleSettings: async () => ({ tourOutcomeReminderMinutes: 30 }) }));
 vi.mock('../logger', () => ({ logger: { error: vi.fn() } }));
-import { remindUnrecordedTourOutcomes } from './tour-outcome-service';
+import { remindUnrecordedTourOutcomes, closeUnrecordedTour } from './tour-outcome-service';
 import { tourFeedbackEventKey } from '@shared/tour-feedback';
 
 beforeEach(() => {
-  vi.clearAllMocks(); state.existing = false; state.keys = new Set(); state.feedback = { chef: false, manager: false };
+  vi.clearAllMocks(); state.existing = false; state.keys = new Set(); state.feedback = { chef: false, manager: false }; state.rows = [];
   state.update.mockImplementation(() => ({ set: (changes: any) => ({ where: () => {
     const save = () => { if (!state.current) return []; state.current = { ...state.current, ...changes }; return [state.current]; };
     return { returning: async () => save(), then: (resolve: any) => resolve(save()) };
@@ -115,39 +115,49 @@ it('requests feedback at the end without closing lifecycle or inventing completi
   expect(state.current.completedAt).toBeUndefined(); expect(state.current.noShowAt).toBeUndefined();
 });
 
-describe('24-hour missing feedback escalation', () => {
+describe('auto-close 24 hours after the end when nobody recorded the result', () => {
+  const chefAnswer = (happened: boolean) => ({ respondentRole: 'chef', respondentId: 5, happened, reason: happened ? null : 'The kitchen was locked and nobody came.' });
   beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); state.current = { ...state.current,
-    status: 'confirmed', lifecycleState: 'confirmed', confirmationVerified: true, durationMinutes: 30,
-    appointmentRevision: 1, feedbackRequestedAt: new Date('2026-01-01T10:30:00Z') };
+    status: 'confirmed', lifecycleState: 'confirmed', confirmationVerified: true, durationMinutes: 30, chefId: 5,
+    appointmentRevision: 1, outcomeHistory: [], feedbackRequestedAt: new Date('2026-01-01T10:30:00Z') };
     state.keys.add(tourFeedbackEventKey(state.current, 'feedback_requested'));
   });
-  it.each([{ chef: false, manager: false }, { chef: true, manager: false }, { chef: false, manager: true }])('alerts admin once when either response is missing: %j', async feedback => {
-    state.feedback = feedback; vi.setSystemTime(new Date('2026-01-02T10:29:59Z'));
-    await remindUnrecordedTourOutcomes(); expect(state.queue).not.toHaveBeenCalled();
-    vi.setSystemTime(new Date('2026-01-02T10:30:00Z')); await remindUnrecordedTourOutcomes(); await remindUnrecordedTourOutcomes();
-    expect(state.queue.mock.calls.map(call => call[1].kind)).toEqual(['feedback_missing']);
-    expect(state.current.lifecycleState).toBe('confirmed');
+  it('does nothing one second before the 24-hour point', async () => {
+    vi.setSystemTime(new Date('2026-01-02T10:29:59Z')); await remindUnrecordedTourOutcomes();
+    expect(state.queue).not.toHaveBeenCalled(); expect(state.current.status).toBe('confirmed');
   });
-  it('suppresses a missing-feedback alert after both responses arrive', async () => {
-    state.feedback = { chef: true, manager: true }; vi.setSystemTime(new Date('2026-01-03T10:30:00Z'));
-    await remindUnrecordedTourOutcomes(); expect(state.queue).not.toHaveBeenCalled();
+  it('completes the tour when the visitor said it happened', async () => {
+    state.rows = [chefAnswer(true)]; vi.setSystemTime(new Date('2026-01-02T10:30:00Z'));
+    expect(await closeUnrecordedTour(10)).toBe('completed');
+    expect(state.current).toMatchObject({ status: 'completed', completedAt: new Date('2026-01-02T10:30:00Z'), disruptionReason: null });
+    expect(state.current.outcomeHistory.at(-1)).toMatchObject({ actorRole: 'automated', to: 'completed' });
+    expect(state.queue.mock.calls[0][1]).toMatchObject({ kind: 'status', actorRole: 'automated' });
+    expect(state.queue.mock.calls[0][1].unrecordedReason).toBeUndefined();
   });
-  it('uses appointment event keys despite old scalar markers after a reschedule', async () => {
-    state.current.appointmentRevision = 2; state.current.feedbackEscalatedAt = new Date('2026-01-01T10:30:00Z');
-    vi.setSystemTime(new Date('2026-01-03T10:30:00Z')); await remindUnrecordedTourOutcomes();
-    expect(state.queue.mock.calls.map(call => call[1].kind)).toEqual(['feedback_requested', 'feedback_missing']);
+  it('records "Not recorded" and alerts admins with the reason when the visitor said it did not happen', async () => {
+    state.rows = [chefAnswer(false)]; vi.setSystemTime(new Date('2026-01-02T10:30:00Z'));
+    expect(await closeUnrecordedTour(10)).toBe('cancelled');
+    expect(state.current).toMatchObject({ status: 'cancelled', disruptionReason: 'outcome_unknown' });
+    expect(state.queue.mock.calls[0][1].unrecordedReason).toBe('The kitchen was locked and nobody came.');
   });
-  it('leaves failed enqueue retryable without changing lifecycle or fabricating an outcome', async () => {
+  it('records "Not recorded" without an admin reason when the visitor never answered, and ignores the manager answer', async () => {
+    state.rows = [{ respondentRole: 'manager', respondentId: 2, happened: true, reason: null }]; vi.setSystemTime(new Date('2026-01-02T10:30:00Z'));
+    expect(await closeUnrecordedTour(10)).toBe('cancelled');
+    expect(state.current).toMatchObject({ status: 'cancelled', disruptionReason: 'outcome_unknown' });
+    expect(state.queue.mock.calls[0][1].unrecordedReason).toBeUndefined();
+  });
+  it('is idempotent and leaves a failed enqueue retryable', async () => {
     vi.setSystemTime(new Date('2026-01-02T10:30:00Z')); state.queue.mockRejectedValueOnce(Error('Ledger unavailable'));
     expect((await remindUnrecordedTourOutcomes()).errors).toBe(1);
-    expect(state.current.feedbackEscalatedAt).toBeUndefined();
-    await remindUnrecordedTourOutcomes(); expect(state.current.feedbackEscalatedAt).toEqual(new Date('2026-01-02T10:30:00Z'));
-    expect(state.current.lifecycleState).toBe('confirmed');
+    expect(state.current.status).toBe('confirmed');
+    await remindUnrecordedTourOutcomes(); await remindUnrecordedTourOutcomes();
+    expect(state.queue.mock.calls.filter(call => call[1].kind === 'status')).toHaveLength(2);
+    expect(state.current.status).toBe('cancelled');
   });
-  it('does not collect after a concurrent admin decision or without verified confirmation', async () => {
+  it('does not close after a concurrent recording or without verified confirmation', async () => {
     vi.setSystemTime(new Date('2026-01-03T10:30:00Z')); state.current.visitResult = 'unrecorded';
-    await remindUnrecordedTourOutcomes(); expect(state.queue).not.toHaveBeenCalled();
+    expect(await closeUnrecordedTour(10)).toBeNull();
     state.current.visitResult = null; state.current.confirmationVerified = false;
-    await remindUnrecordedTourOutcomes(); expect(state.queue).not.toHaveBeenCalled();
+    expect(await closeUnrecordedTour(10)).toBeNull(); expect(state.queue).not.toHaveBeenCalled();
   });
 });

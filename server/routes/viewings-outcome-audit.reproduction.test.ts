@@ -143,4 +143,39 @@ describe('tour outcome audit reproductions', () => {
     audit.tour.status = 'no_show';
     expect((await request('completed', { id: 2, role: 'admin' }, { sharedManagerNotes: 'Claimed attendance' })).status).toHaveBeenCalledWith(409);
   });
+  describe('the kitchen records the result of an ended, still-open tour', () => {
+    const manager = { id: 1, role: 'manager' };
+    const noNotes = { sharedManagerNotes: undefined };
+    it.each([['completed', {}], ['no_show', { noShowReason: 'visitor_absent' }]])('allows the location manager to record %s without internal notes', async (status, extra) => {
+      const res = await request(status, manager, { ...noNotes, ...extra });
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ status }));
+      expect(audit.writes.at(-1)).toMatchObject({ status, outcomeRecordedBy: 1 });
+      expect(audit.writes.at(-1).outcomeHistory).toEqual([expect.objectContaining({ from: 'confirmed', to: status, actorRole: 'manager', actorId: 1 })]);
+    });
+    it('still requires the no-show reason', async () => {
+      expect((await request('no_show', manager, noNotes)).status).toHaveBeenCalledWith(400);
+    });
+    it('denies recording before the tour ends', async () => {
+      audit.tour.scheduledAt = new Date(Date.now() + 86400000);
+      expect((await request('completed', manager, noNotes)).status).toHaveBeenCalledWith(409);
+      expect(audit.update).not.toHaveBeenCalled();
+    });
+    it('denies recording once the 24-hour window has passed', async () => {
+      audit.tour.scheduledAt = new Date(Date.now() - 3 * 86400000);
+      expect((await request('completed', manager, noNotes)).status).toHaveBeenCalledWith(409);
+      expect(audit.update).not.toHaveBeenCalled();
+    });
+    it('denies disruptions, internal outcome notes, corrections and a Not-recorded fix', async () => {
+      expect((await request('cancelled', manager, { ...noNotes, disruptionReason: 'access_unavailable' })).status).toHaveBeenCalledWith(403);
+      expect((await request('completed', manager, { ...noNotes, outcomeNotes: 'Internal note for admins' })).status).toHaveBeenCalledWith(403);
+      audit.tour.status = 'completed';
+      expect((await request('no_show', manager, { ...noNotes, noShowReason: 'visitor_absent' })).status).toHaveBeenCalledWith(403);
+      audit.tour.status = 'cancelled'; audit.tour.disruptionReason = 'outcome_unknown';
+      expect((await request('completed', manager, noNotes)).status).toHaveBeenCalledWith(403);
+      expect(audit.update).not.toHaveBeenCalled();
+    });
+    it('denies another location manager', async () => {
+      expect((await request('completed', { id: 99, role: 'manager' }, noNotes)).status).toHaveBeenCalledWith(403);
+    });
+  });
 });

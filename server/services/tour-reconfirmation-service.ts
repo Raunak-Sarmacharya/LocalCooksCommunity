@@ -16,27 +16,34 @@ export async function queueTourReconfirmations(maxTours = 20, deadline = Date.no
   for (const candidate of candidates) {
     if (Date.now() >= deadline) break;
     await workerRecord('tourReconfirmation', candidate.id);
-    try { await db.transaction(async tx => {
-      const [tour] = await tx.select().from(kitchenViewings).where(eq(kitchenViewings.id, candidate.id)).limit(1).for('update');
-      if (!tour) return;
-      const [location] = await tx.select({ managerId: locations.managerId }).from(locations).where(eq(locations.id, tour.locationId)).limit(1).for('share');
-      const state = tourReconfirmation(tour, location?.managerId || null);
-      if (!state.canReply) return;
-      for (const kind of ['reconfirmation_requested', 'reconfirmation_escalated', 'reconfirmation_reminder'] as const) {
-        if (kind === 'reconfirmation_requested' ? state.reply !== null : kind === 'reconfirmation_reminder' ? !state.needsVisitorReminder : !state.needsStaffAttention) continue;
-        if (kind === 'reconfirmation_reminder') {
-          const [ask] = await tx.select({ completedAt: tourDeliveryEvents.completedAt }).from(tourDeliveryEvents)
-            .where(eq(tourDeliveryEvents.eventKey, tourReconfirmationEventKey(tour, location?.managerId || null, 'reconfirmation_requested'))).limit(1);
-          // A delayed first delivery must not be followed immediately by another ask.
-          if (!ask?.completedAt || Date.now() - new Date(ask.completedAt).getTime() < 3600000) continue;
-        }
-        const [existing] = await tx.select({ id: tourDeliveryEvents.id }).from(tourDeliveryEvents)
-          .where(eq(tourDeliveryEvents.eventKey, tourReconfirmationEventKey(tour, location?.managerId || null, kind))).limit(1);
-        if (existing) continue;
-        await queueTourEvent(tx, { kind, before: tour, after: { ...tour, managerId: location?.managerId || null }, actorRole: 'automated' });
-        queued++;
-      }
-    }); } catch { errors++; }
+    try { queued += await queueTourReconfirmation(candidate.id); } catch { errors++; }
   }
   return { queued, errors };
+}
+
+/** One tour's reconfirmation asks; idempotent by event key, shared by the sweep and the exact timer. */
+export async function queueTourReconfirmation(id: number) {
+  return db.transaction(async tx => {
+    let queued = 0;
+    const [tour] = await tx.select().from(kitchenViewings).where(eq(kitchenViewings.id, id)).limit(1).for('update');
+    if (!tour) return 0;
+    const [location] = await tx.select({ managerId: locations.managerId }).from(locations).where(eq(locations.id, tour.locationId)).limit(1).for('share');
+    const state = tourReconfirmation(tour, location?.managerId || null);
+    if (!state.canReply) return 0;
+    for (const kind of ['reconfirmation_requested', 'reconfirmation_escalated', 'reconfirmation_reminder'] as const) {
+      if (kind === 'reconfirmation_requested' ? state.reply !== null : kind === 'reconfirmation_reminder' ? !state.needsVisitorReminder : !state.needsStaffAttention) continue;
+      if (kind === 'reconfirmation_reminder') {
+        const [ask] = await tx.select({ completedAt: tourDeliveryEvents.completedAt }).from(tourDeliveryEvents)
+          .where(eq(tourDeliveryEvents.eventKey, tourReconfirmationEventKey(tour, location?.managerId || null, 'reconfirmation_requested'))).limit(1);
+        // A delayed first delivery must not be followed immediately by another ask.
+        if (!ask?.completedAt || Date.now() - new Date(ask.completedAt).getTime() < 3600000) continue;
+      }
+      const [existing] = await tx.select({ id: tourDeliveryEvents.id }).from(tourDeliveryEvents)
+        .where(eq(tourDeliveryEvents.eventKey, tourReconfirmationEventKey(tour, location?.managerId || null, kind))).limit(1);
+      if (existing) continue;
+      await queueTourEvent(tx, { kind, before: tour, after: { ...tour, managerId: location?.managerId || null }, actorRole: 'automated' });
+      queued++;
+    }
+    return queued;
+  });
 }

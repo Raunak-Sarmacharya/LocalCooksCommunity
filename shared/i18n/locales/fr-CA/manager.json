@@ -5079,5 +5079,22 @@
   "arStageAdded": "Ajouté par vous",
   "arStageAddedOn": "Inscrit le {date}",
   "arAddedTitle": "Détails que vous avez ajoutés",
-  "arAddedOn": "Ajouté le {date}"
+  "arAddedOn": "Ajouté le {date}",
+  "arToured": "Visite le {date}",
+  "arTouredShort": "visite le {date}",
+  "arTourYourNotes": "Vos notes : « {notes} »",
+  "arTourNoNotes": "Vous n’avez pas laissé de notes après la visite.",
+  "arViewTour": "Voir la visite",
+  "tourTheyCame": "Ils sont venus",
+  "tourReportNoShow": "Signaler une absence",
+  "tourAddAsCustomer": "Ajouter comme client",
+  "tourRecordBy": "À indiquer avant",
+  "tourNextRecord": "{name} est-il venu à la visite ? Indiquez-le. Sans réponse dans les 24 heures, la visite se ferme d’elle-même.",
+  "tourTheyCameHelp": "Indiquez que {name} est venu à la visite. Il sera invité à faire une demande.",
+  "tourNoShowConfirm": "{name} n’est pas venu et ne vous a pas prévenu.",
+  "tourTheyCameTitle": "{name} est-il venu à la visite?",
+  "tourNoShowTitle": "Signaler une absence",
+  "tourNoShowHelp": "Signalez une absence seulement si {name} n’est pas venu et ne vous a pas prévenu.",
+  "tourNextToured": "{name} est venu à la visite. Cette personne peut faire une demande, ou vous pouvez l’ajouter comme client dès maintenant.",
+  "tourNextUnrecorded": "Cette visite s’est terminée sans résultat. Vous pouvez quand même ajouter {name} comme client."
 }

@@ -65,6 +65,8 @@ export interface KitchenApplicationForManager {
 
   // Chat
   chat_conversation_id?: string | null;
+  /** The customer's latest tour here that took place, with the kitchen's own private notes (owner, Oct 24). */
+  tour?: { id: number; scheduledAt: string; status: string; notes: string | null; rating: number | null } | null;
 
   // Enriched data
   chef: {

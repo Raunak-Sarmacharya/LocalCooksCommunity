@@ -5079,5 +5079,22 @@
   "arStageAdded": "Додано вами",
   "arStageAddedOn": "Приєднався {date}",
   "arAddedTitle": "Дані, які ви додали",
-  "arAddedOn": "Додано {date}"
+  "arAddedOn": "Додано {date}",
+  "arToured": "Огляд {date}",
+  "arTouredShort": "огляд {date}",
+  "arTourYourNotes": "Ваші нотатки: «{notes}»",
+  "arTourNoNotes": "Ви не залишили нотаток після огляду.",
+  "arViewTour": "Переглянути огляд",
+  "tourTheyCame": "Прийшов",
+  "tourReportNoShow": "Повідомити про неявку",
+  "tourAddAsCustomer": "Додати як клієнта",
+  "tourRecordBy": "Позначити до",
+  "tourNextRecord": "Чи прийшов {name} на огляд? Повідомте. Якщо не позначити протягом 24 годин, огляд закриється автоматично.",
+  "tourTheyCameHelp": "Позначте, що {name} прийшов на огляд. Його запросять подати запит.",
+  "tourNoShowConfirm": "{name} не прийшов і не попередив.",
+  "tourTheyCameTitle": "{name} прийшов на огляд?",
+  "tourNoShowTitle": "Повідомити про неявку",
+  "tourNoShowHelp": "Повідомляйте про неявку, лише якщо {name} не прийшов і не попередив заздалегідь.",
+  "tourNextToured": "{name} прийшов на огляд. Він може подати запит, або ви можете додати його як клієнта вже зараз.",
+  "tourNextUnrecorded": "Огляд закрито без результату. Ви все одно можете додати {name} як клієнта."
 }

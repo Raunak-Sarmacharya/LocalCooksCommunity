@@ -21,7 +21,7 @@ describe("normalizeChatSystemMessage", () => {
   it("guards previous system copy and keeps Step 1 separate", () => {
     expect(normalizeChatSystemMessage("Chef Application Requirements complete: You're approved to book this kitchen.")).toBe("");
     expect(normalizeChatSystemMessage("Chef Application Requirements complete: You're approved to book this kitchen.", true)).toBe("You're approved to book this kitchen.");
-    expect(normalizeChatSystemMessage("Request to apply approved: You can now proceed to upload your kitchen documents.")).toContain("booking requirements can be sent next");
+    expect(normalizeChatSystemMessage("Request to apply approved: You can now proceed to upload your kitchen documents.")).toContain("Booking requirements can be sent next");
     expect(normalizeChatSystemMessage("Document verified: Food Safety Certificate has been verified.")).toBe("Food Safety Certificate approved.");
   });
 });
