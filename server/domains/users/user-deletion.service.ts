@@ -87,6 +87,9 @@ export function userDeletionTargets(id: number): Array<{ table: string; where: S
     { table: "session", where: sql`sess->>'userId' = ${String(id)} OR sess->>'neonUserId' = ${String(id)} OR sess->'passport'->>'user' = ${String(id)} OR sess->>'firebaseUid' IN (SELECT firebase_uid FROM users WHERE id = ${id} AND firebase_uid IS NOT NULL)` },
     { table: "storage_listings", where: sql`kitchen_id IN (${kitchenIds})` },
     { table: "equipment_listings", where: sql`kitchen_id IN (${kitchenIds})` },
+    // Policy versions go with their kitchen (migration 0113 allows it only inside this deletion and only with no bookings).
+    { table: "cancellation_policy_audit", where: sql`kitchen_id IN (${kitchenIds})` },
+    { table: "kitchen_cancellation_policies", where: sql`kitchen_id IN (${kitchenIds})` },
     { table: "kitchens", where: sql`id IN (${kitchenIds})` },
     // Location-owned notes about this person. A full purge deletes them with the profiles; anonymizing keeps them.
     { table: "customer_notes", where: sql`chef_id = ${id} OR location_id IN (${locationIds})` },
@@ -109,6 +112,7 @@ export async function deleteUserDependents(tx: any, id: number, options: { keepH
   const counts: Record<string, number> = {};
   // Audit triggers allow only this account's purge/anonymization, for this transaction.
   await tx.execute(sql`SELECT set_config('localcooks.deleting_user_id', ${String(id)}, true)`);
+  await tx.execute(sql`SELECT set_config('localcooks.deleting_kitchen_policies', 'on', true)`);
   await tx.execute(sql`UPDATE tour_visit_events SET actor_id = NULL WHERE actor_id = ${id}`);
   for (const { table, where } of userDeletionTargets(id)) {
     if (options.keepHistory && HISTORY_TABLES.has(table)) continue;

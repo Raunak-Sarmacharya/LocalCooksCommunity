@@ -9,6 +9,7 @@ import * as schema from '@shared/schema';
 import { anonymizedUsername, deleteUserDependents, getUserDeletionImpact } from './user-deletion.service';
 import { UserService } from './user.service';
 import { DeletionBlockedError } from '../../services/deletion-guard';
+import { KitchenRepository } from '../kitchens/kitchen.repository';
 
 vi.mock('../../logger', () => ({ logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn() } }));
 const harness = vi.hoisted(() => ({ db: null as any }));
@@ -75,6 +76,10 @@ async function createCurrentSchema(db: PGlite) {
     CREATE TABLE manager_notifications (
       id serial PRIMARY KEY, manager_id integer, location_id integer REFERENCES locations(id),
       type text, priority text, title text, message text, metadata jsonb);
+    -- Legacy storage tables: still on dev and production until migration 0094 (applied last), gone from the Drizzle schema.
+    CREATE TABLE storage_overstay_quotes (id text PRIMARY KEY, chef_id integer NOT NULL REFERENCES users(id),
+      storage_listing_id integer NOT NULL REFERENCES storage_listings(id));
+    CREATE TABLE pending_storage_extensions (id serial PRIMARY KEY, manager_id integer REFERENCES users(id) ON DELETE CASCADE);
   `);
   await db.exec(migration());
   const validator = readFileSync('migrations/0067_tour_visit_events.sql', 'utf8').match(/CREATE OR REPLACE FUNCTION validate_tour_visit_successor\(\)[\s\S]*?END \$\$;/)?.[0];
@@ -86,6 +91,12 @@ async function createCurrentSchema(db: PGlite) {
     CREATE TRIGGER tour_repeat_authorization_audit BEFORE UPDATE OR DELETE ON tour_repeat_authorizations FOR EACH ROW EXECUTE FUNCTION guard_tour_repeat_authorization();
   `);
   await db.exec(readFileSync('migrations/0089_deletion_safety.sql', 'utf8'));
+  // Published cancellation policies are immutable (0080); 0113 lets a no-booking kitchen's versions go with it.
+  const policyTrigger = readFileSync('migrations/0080_cancellation_policies.sql', 'utf8')
+    .match(/CREATE FUNCTION protect_published_cancellation_policy\(\)[\s\S]*?EXECUTE FUNCTION protect_published_cancellation_policy\(\);/)?.[0];
+  if (!policyTrigger) throw new Error('Missing cancellation policy trigger');
+  await db.exec(policyTrigger);
+  await db.exec(readFileSync('migrations/0113_delete_kitchen_policy_versions.sql', 'utf8'));
   await db.exec(`CREATE EXTENSION IF NOT EXISTS btree_gist`);
   await db.exec(`ALTER TABLE storage_bookings ADD CONSTRAINT storage_unit_no_overlap
     EXCLUDE USING gist (storage_listing_id WITH =, unit_index WITH =, occupancy WITH &&)
@@ -425,4 +436,38 @@ it('blocks a chef or kitchen while a storage rental is open, and keeps a finishe
   expect(await count('storage_rental_terms', 'rental_id=930')).toBe(1);
   expect((await client.query<any>('SELECT decided_by FROM storage_bookings WHERE id=930')).rows[0].decided_by).toBe(4);
   expect((await client.query<any>('SELECT archived_at IS NOT NULL AS archived FROM locations WHERE id=90')).rows[0].archived).toBe(true);
+});
+
+async function policy(kitchenId: number, version = 1) {
+  return insert('kitchen_cancellation_policies', { kitchen_id: kitchenId, version, status: 'published', notice_hours: 24, late_charge_percent: 100, tiers: [], published_at: '2026-10-08T12:00Z' });
+}
+
+it('a manager with a kitchen but no bookings is deleted completely, its cancellation policy versions included', async () => {
+  await insert('users', { id: 5, role: 'manager', username: 'user5@fixture.invalid', password: 'fixture', firebase_uid: 'uid-5' });
+  await insert('locations', { id: 30, manager_id: 5, name: 'New business', address: 'Fixture' });
+  await insert('kitchens', { id: 31, location_id: 30, name: 'New kitchen' });
+  await policy(31);
+  await insert('cancellation_policy_audit', { kitchen_id: 31, actor_id: 5, reason: 'Initial policy', after_state: {} });
+  expect(await service.deleteUser(5, { enforceObligations: false })).toBe('deleted');
+  for (const [table, where] of [['users', 'id=5'], ['locations', 'id=30'], ['kitchens', 'id=31'], ['kitchen_cancellation_policies', 'kitchen_id=31'], ['cancellation_policy_audit', 'kitchen_id=31']])
+    expect(await count(table, where)).toBe(0);
+});
+
+it('deleting a kitchen with no bookings removes it with its policy versions; published policies stay protected otherwise', async () => {
+  await seed();
+  await insert('kitchens', { id: 12, location_id: 10, name: 'Second kitchen' });
+  await policy(12); await policy(11);
+  await insert('cancellation_policy_audit', { kitchen_id: 12, actor_id: 1, reason: 'Initial policy', after_state: {} });
+  await client.query<any>('SAVEPOINT immutable');
+  await expect(client.query<any>('DELETE FROM kitchen_cancellation_policies WHERE kitchen_id=12')).rejects.toThrow('immutable');
+  await client.query<any>('ROLLBACK TO SAVEPOINT immutable');
+  // Kitchen 11 has a real booking: even inside a marked deletion its policy cannot go.
+  await client.query<any>("SELECT set_config('localcooks.deleting_kitchen_policies', 'on', true)");
+  await expect(client.query<any>('DELETE FROM kitchen_cancellation_policies WHERE kitchen_id=11')).rejects.toThrow('immutable');
+  await client.query<any>('ROLLBACK TO SAVEPOINT immutable');
+  await new KitchenRepository().delete(12);
+  expect(await count('kitchens', 'id=12')).toBe(0);
+  expect(await count('kitchen_cancellation_policies', 'kitchen_id=12')).toBe(0);
+  expect(await count('cancellation_policy_audit', 'kitchen_id=12')).toBe(0);
+  expect(await count('kitchen_cancellation_policies', 'kitchen_id=11')).toBe(1);
 });

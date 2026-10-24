@@ -481,6 +481,10 @@ export class KitchenRepository {
   async delete(id: number): Promise<void> {
     await db.transaction(async (tx) => {
       await tx.delete(kitchenBookings).where(and(eq(kitchenBookings.kitchenId, id), eq(kitchenBookings.bookingType, 'manager_blocked')));
+      // Its policy versions go with it; migration 0113 allows this only here and only with no bookings left.
+      await tx.execute(sql`SELECT set_config('localcooks.deleting_kitchen_policies', 'on', true)`);
+      await tx.execute(sql`DELETE FROM cancellation_policy_audit WHERE kitchen_id = ${id}`);
+      await tx.execute(sql`DELETE FROM kitchen_cancellation_policies WHERE kitchen_id = ${id}`);
       await tx.delete(kitchens).where(eq(kitchens.id, id));
     });
   }

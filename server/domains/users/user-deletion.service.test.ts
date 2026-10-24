@@ -66,7 +66,9 @@ describe('complete user deletion', () => {
     expect(await deleteUserDependents(tx, 42)).toEqual({});
     expect(statements[0].sql).toContain("set_config('localcooks.deleting_user_id'");
     expect(statements[0].params).toEqual(['42']);
-    expect(statements[1].sql).toContain('UPDATE tour_visit_events SET actor_id = NULL');
+    // Policy versions of the account's own no-booking kitchens may go with them (migration 0113).
+    expect(statements[1].sql).toContain("set_config('localcooks.deleting_kitchen_policies', 'on', true)");
+    expect(statements[2].sql).toContain('UPDATE tour_visit_events SET actor_id = NULL');
   });
 
   it('uses every cleanup predicate in the impact preview', async () => {
