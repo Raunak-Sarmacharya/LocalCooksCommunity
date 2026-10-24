@@ -520,7 +520,7 @@
   "firstName": "Ім'я",
   "fiveHundredPlusPerMonth": "$500+ на місяць",
   "foodEstablishmentCertificate": "Сертифікат харчового підприємства",
-  "foodEstablishmentExpiryLabel": "Термін дії ліцензії на харчовий заклад",
+  "foodEstablishmentExpiryLabel": "Дата закінчення ліцензії",
   "foodEstablishmentLicenseDesc": "Якщо ви працюєте як зареєстрований харчовий бізнес, завантажте доказ наявності ліцензії.",
   "foodEstablishmentLicenseLabel": "Ліцензія / дозвіл на харчовий заклад",
   "foodHandlerCert": "Сертифікат оператора харчових продуктів",
@@ -1802,5 +1802,6 @@
   "submitKitchenDocuments": "Виконати вимоги до бронювання",
   "kitchenDocuments": "Вимоги до бронювання",
   "step2DocsInReview": "Ваші вимоги до бронювання на перевірці.",
-  "requestInReview": "Ваш запит на перевірці."
+  "requestInReview": "Ваш запит на перевірці.",
+  "submitDocuments": "Надіслати вимоги до бронювання"
 }

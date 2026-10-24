@@ -520,7 +520,7 @@
   "firstName": "First Name",
   "fiveHundredPlusPerMonth": "$500+ per month",
   "foodEstablishmentCertificate": "Food Establishment Certificate",
-  "foodEstablishmentExpiryLabel": "Food Establishment License Expiry Date",
+  "foodEstablishmentExpiryLabel": "Licence expiry date",
   "foodEstablishmentLicenseDesc": "If you operate as a registered food business, upload proof of license.",
   "foodEstablishmentLicenseLabel": "Food establishment licence",
   "foodHandlerCert": "Food Handler Certificate",
@@ -1802,5 +1802,6 @@
   "submitKitchenDocuments": "Complete booking requirements",
   "kitchenDocuments": "Booking requirements",
   "step2DocsInReview": "Your booking requirements are in review.",
-  "requestInReview": "Your request to apply is in review."
+  "requestInReview": "Your request to apply is in review.",
+  "submitDocuments": "Send booking requirements"
 }

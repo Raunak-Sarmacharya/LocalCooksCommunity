@@ -9,19 +9,15 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { NeedsLocation } from "@/components/manager/locations/NeedsPrerequisite";
 import { useToast } from "@/hooks/use-toast";
-import { ClipboardCheck, Search, X } from "@/components/ui/manager-icons";
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { ChefPageHeader } from "@/components/chef/ui";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import UnifiedChatView from "@/components/chat/UnifiedChatView";
 import { getConversationForApplication, createConversation } from "@/services/chat-service";
 import { useLocation } from "wouter";
-import { DataTable } from "@/components/ui/data-table";
-import { getApplicationColumnsV2 } from "@/components/manager/applications/columns-v2";
+import { AccessRequestsList } from "@/components/manager/applications/AccessRequestsList";
 import { ApplicationDetailPanel } from "@/components/manager/applications/components/ApplicationDetailPanel";
 import { KitchenDocumentApprovalDialog, getKitchenDocumentApprovalPlan, type KitchenDocumentField } from "@/components/common/KitchenDocumentApprovalDialog";
 import { Application } from "@/components/manager/applications/types";
@@ -77,8 +73,6 @@ export function ManagerKitchenApplicationsContent({
     const [showApprovalDialog, setShowApprovalDialog] = useState(false);
     const [revokeTarget, setRevokeTarget] = useState<typeof selectedApplication>(null);
     const [isCombinedApproving, setIsCombinedApproving] = useState(false);
-    const [statusFilter, setStatusFilter] = useState<string>("all");
-    const [searchQuery, setSearchQuery] = useState("");
 
     // Chat state
     const [showChatDialog, setShowChatDialog] = useState(false);
@@ -91,72 +85,6 @@ export function ManagerKitchenApplicationsContent({
             ? applications.filter(a => a.locationId === selectedLocationId)
             : applications;
     }, [applications, selectedLocationId]);
-
-    // Application state helpers
-    const isStep2NeedsReview = useCallback(
-        (a: Application) => a.status === 'approved' && a.current_tier === 2 && !!a.tier2_completed_at,
-        []
-    );
-
-    const isStep1ApprovedAwaitingStep2 = useCallback(
-        (a: Application) => a.status === 'approved' && (a.current_tier ?? 1) === 1,
-        []
-    );
-
-    const isFullyApproved = useCallback(
-        (a: Application) => a.status === 'approved' && (a.current_tier ?? 1) >= 3,
-        []
-    );
-
-    // Compute stats
-    const stats = useMemo(() => {
-        const pending = locationFilteredApplications.filter(
-            (a) => a.status === "inReview" || isStep2NeedsReview(a)
-        ).length;
-        const awaitingStep2 = locationFilteredApplications.filter(a => isStep1ApprovedAwaitingStep2(a)).length;
-        const approved = locationFilteredApplications.filter(a => isFullyApproved(a)).length;
-        const rejected = locationFilteredApplications.filter(a => a.status === "rejected").length;
-
-        return { pending, awaitingStep2, approved, rejected, total: locationFilteredApplications.length };
-    }, [locationFilteredApplications, isStep2NeedsReview, isStep1ApprovedAwaitingStep2, isFullyApproved]);
-
-    // Filter applications based on status filter and search
-    const filteredApplications = useMemo(() => {
-        let filtered = locationFilteredApplications;
-
-        // Status filter
-        if (statusFilter !== "all") {
-            filtered = filtered.filter(app => {
-                const tier = app.current_tier ?? 1;
-                const hasStep2 = !!app.tier2_completed_at;
-
-                switch (statusFilter) {
-                    case 'pending':
-                        return app.status === 'inReview' || (app.status === 'approved' && tier === 2 && hasStep2);
-                    case 'awaiting-step2':
-                        return app.status === 'approved' && tier === 1;
-                    case 'approved':
-                        return app.status === 'approved' && tier >= 3;
-                    case 'rejected':
-                        return app.status === 'rejected';
-                    default:
-                        return true;
-                }
-            });
-        }
-
-        // Search filter
-        if (searchQuery.trim()) {
-            const query = searchQuery.toLowerCase();
-            filtered = filtered.filter(app =>
-                app.fullName?.toLowerCase().includes(query) ||
-                app.email?.toLowerCase().includes(query) ||
-                app.location?.name?.toLowerCase().includes(query)
-            );
-        }
-
-        return filtered;
-    }, [locationFilteredApplications, statusFilter, searchQuery]);
 
     // Manager ID for chat - with retry logic
     const { data: managerInfo, refetch: refetchManagerInfo } = useQuery({
@@ -502,21 +430,6 @@ export function ManagerKitchenApplicationsContent({
         if (selectedApplication?.id === revokeTarget.id) closeDetailSheet();
     };
 
-    // Table columns
-    const columns = useMemo(() => getApplicationColumnsV2({
-        onSelect: openDetailSheet,
-        onApprove: (app) => {
-            openDetailSheet(app);
-        },
-        onReject: (app) => {
-            openDetailSheet(app);
-        },
-        onChat: openChat,
-        // Straight to the confirmation dialog: the table menu must not detour through the details sheet.
-        onRevoke: (app) => setRevokeTarget(app),
-        unreadCounts
-    }), [unreadCounts]);
-
     // Loading state
     if (isLoading || isLayoutLoading) {
         return (
@@ -573,79 +486,18 @@ export function ManagerKitchenApplicationsContent({
                         />
                     </div>
                 </div>
-            ) : <>
-            <ChefPageHeader
-                title={mt("chefApplications")}
-                description={mt("reviewAndManageChefApplicationsToYourKitchenLocations").replace(/\s+(?=\S+(?:\s+\S+){0,1}$)/g, "\u00a0")}
-                actions={<Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                        // Use direct view navigation if available (when embedded in dashboard)
-                        // Otherwise use URL navigation (standalone page)
-                        if (onNavigateToView) {
-                            onNavigateToView('application-requirements');
-                        } else {
-                            const locationId = selectedLocationId ?? '';
-                            setLocation(`/manager/dashboard?view=application-requirements${locationId ? `&locationId=${locationId}` : ''}`);
-                        }
-                    }}
-                    className="rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
-                >
-                    <ClipboardCheck className="mr-1.5 h-4 w-4" />{mt("navApplicationRequirements")}
-                </Button>}
-            />
-
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                <div className="relative w-full sm:max-w-md">
-                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input
-                        type="text"
-                        placeholder={mt("searchApplicants")}
-                        value={searchQuery}
-                        onChange={(event) => setSearchQuery(event.target.value)}
-                        className="pl-9 pr-8"
-                    />
-                    {searchQuery && <Button variant="ghost" size="icon" className="absolute right-0 top-1/2 h-7 w-7 -translate-y-1/2" onClick={() => setSearchQuery("")} aria-label={mt("clearSearch")}><X className="h-3 w-3" /></Button>}
-                </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-                {([
-                    ["all", mt("allApplications"), stats.total],
-                    ["pending", mt("pendingReview"), stats.pending],
-                    ["awaiting-step2", mt("awaitingChefSStep2"), stats.awaitingStep2],
-                    ["approved", mt("approved"), stats.approved],
-                    ["rejected", mt("rejected"), stats.rejected],
-                ] as const).map(([value, label, count]) => {
-                    const active = statusFilter === value;
-                    return <button key={value} type="button" onClick={() => setStatusFilter(value)} aria-pressed={active}
-                        className={active
-                            ? "rounded-xl border border-primary bg-primary/[0.04] p-4 text-left transition-colors"
-                            : "rounded-xl border bg-card p-4 text-left transition-colors hover:border-primary/40 hover:bg-muted/30"}>
-                        <p className="text-xs text-muted-foreground">{label}</p>
-                        <p className="mt-2 text-2xl font-semibold tabular-nums">{count}</p>
-                    </button>;
-                })}
-            </div>
-
-            {filteredApplications.length > 0 ? (
-                <DataTable
-                    columns={columns}
-                    data={filteredApplications}
-                    onRowClick={openDetailSheet}
-                    defaultSorting={[{ id: "createdAt", desc: true }]}
-                    pageSize={15}
-                />
             ) : (
-                <Card><CardContent className="flex flex-col items-center gap-3 py-10 text-center">
-                    <p className="font-medium">{mt("noApplicationsFound")}</p>
-                    <p className="max-w-sm text-sm text-muted-foreground">{stats.total === 0 ? mt("overviewWaitingForApplicationsBody") : mt("tryAdjustingYourSearchOrFilterCriteria")}</p>
-                    {statusFilter !== "all" && <Button variant="outline" size="sm" onClick={() => setStatusFilter("all")}>{mt("clearFilters")}</Button>}
-                </CardContent></Card>
+                <AccessRequestsList
+                    applications={locationFilteredApplications}
+                    unreadCounts={unreadCounts}
+                    onOpen={openDetailSheet}
+                    onOpenRequirements={() => {
+                        // Direct view navigation when embedded in the dashboard; URL navigation on the standalone page.
+                        if (onNavigateToView) onNavigateToView('application-requirements');
+                        else setLocation(`/manager/dashboard?view=application-requirements${selectedLocationId ? `&locationId=${selectedLocationId}` : ''}`);
+                    }}
+                />
             )}
-
-            </>}
             <KitchenDocumentApprovalDialog
                 open={showApprovalDialog}
                 onOpenChange={setShowApprovalDialog}

@@ -1,48 +1,50 @@
+"use client"
+/**
+ * One access request, as the kitchen reviews it (rebuilt Oct 24, owner).
+ *
+ * Leads with what the kitchen has to decide: where the request stands, the one next action, then the booking
+ * requirements checklist (every document the kitchen asks for, including its own, and every answer). The request
+ * to apply the customer sent comes after, with readable values. Local Cooks' first-step review is never mentioned.
+ */
 import { accessDocumentStage } from "@shared/location-booking-eligibility";
 import { fromCalendarDate } from "@/lib/calendar-date";
-"use client"
 import { formatPreferredSchedule } from "@/lib/preferred-schedule";
 import { mt } from "@/i18n/manager";
 import i18n from "@/i18n";
-
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, type ReactNode } from "react"
+import { Link } from "wouter"
 import { Application } from "../types"
 import { Button } from "@/components/ui/button"
 import { StatusButton } from "@/components/ui/status-button"
-import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
-import { Separator } from "@/components/ui/separator"
-import { SecureDocumentLink } from "@/components/common/SecureDocumentLink"
-import { VerifiedDocumentChip } from "@/components/common/VerifiedDocumentChip"
-import {
-    DocumentViewerDialog,
-    type DocumentVerificationField,
-    type DocumentVerificationStatus,
-} from "./DocumentViewerDialog"
+import { DocumentViewerDialog, type DocumentVerificationField, type DocumentVerificationStatus } from "./DocumentViewerDialog"
 import { DocumentRenewalReview } from "./DocumentRenewalReview"
 import { Checkbox } from "@/components/ui/checkbox"
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { parseBusinessInfo } from "@/utils/parseBusinessInfo"
-import { Mail, Phone, Building2, Calendar, FileText, Check, X, Clock, MessageCircle, CheckCircle, Eye } from "@/components/ui/manager-icons"
+import { REQUEST_TO_APPLY_BUSINESS_TYPES, REQUEST_TO_APPLY_FREQUENCIES } from "@/components/kitchen-application/request-to-apply-fields"
+import { customerHref } from "@/components/manager/customers/customer-format"
+import { Mail, Phone, MessageCircle, Check } from "@/components/ui/manager-icons"
 import { cn } from "@/lib/utils"
+import { accessRequestTab } from "../AccessRequestsList"
+
+interface RequirementField {
+    id: string;
+    label: string;
+    type: string;
+    required?: boolean;
+    options?: string[];
+    description?: string;
+    expires?: boolean;
+}
 
 interface LocationRequirements {
-    tier1_custom_fields?: Array<{
-        id: string;
-        label: string;
-        type: string;
-        required?: boolean;
-        options?: string[];
-    }>;
-    tier2_custom_fields?: Array<{
-        id: string;
-        label: string;
-        type: string;
-        required?: boolean;
-        options?: string[];
-    }>;
+    tier1_custom_fields?: RequirementField[];
+    tier2_custom_fields?: RequirementField[];
     tier2_insurance_document_required?: boolean;
     tier2_food_establishment_cert_required?: boolean;
+    tier2_kitchen_experience_required?: boolean;
+    food_handler_cert_tracked?: boolean;
     food_establishment_cert_tracked?: boolean;
     insurance_tracked?: boolean;
     /** The admin's request-phase question flag (not used for tier-2 gating). */
@@ -58,7 +60,7 @@ interface ApplicationDetailPanelProps {
     onApproveTier2: () => void;
     onVerifyDocument: (field: DocumentVerificationField, status: 'approved' | 'rejected') => void;
     onReviewRenewal?: (field: DocumentVerificationField, decision: 'approved' | 'rejected', reason?: string) => void | Promise<void>;
-    /** Approve for booking without documents (the kitchen confirmed it takes responsibility). */
+    /** Approve for booking without the booking requirements (the kitchen confirmed it takes responsibility). */
     onApproveWithoutDocuments?: () => void | Promise<void>;
     onReject: () => void;
     onRevokeAccess: () => void;
@@ -79,10 +81,14 @@ interface OpenDocument {
     reviewField?: DocumentVerificationField;
 }
 
+type DocMode = 'required' | 'track' | 'none';
+const dateLong = (value: string) => fromCalendarDate(value).toLocaleDateString(i18n.language, { month: 'short', day: 'numeric', year: 'numeric' });
+const dayOf = (value?: string | null) => value ? new Date(value).toLocaleDateString(i18n.language, { month: 'short', day: 'numeric', year: 'numeric' }) : null;
+const kitchenLabel = (key: string, fallback: string) => i18n.t(key, { ns: 'kitchen', defaultValue: fallback });
+
 export function ApplicationDetailPanel({
     application,
     locationRequirements,
-    onApprove,
     onApproveTier2,
     onVerifyDocument,
     onReviewRenewal,
@@ -96,52 +102,48 @@ export function ApplicationDetailPanel({
 }: ApplicationDetailPanelProps) {
     const [waiverOpen, setWaiverOpen] = useState(false);
     const [waiverConfirmed, setWaiverConfirmed] = useState(false);
-
+    const [declineOpen, setDeclineOpen] = useState(false);
     const [activeAction, setActiveAction] = useState<string | null>(null);
     const [openDocument, setOpenDocument] = useState<OpenDocument | null>(null);
 
-    // Reset activeAction when the operation completes
-    useEffect(() => {
-        if (!isUpdating) setActiveAction(null);
-    }, [isUpdating]);
+    useEffect(() => { if (!isUpdating) setActiveAction(null); }, [isUpdating]);
 
     // Close the viewer only when a review mutation actually finishes (true → false),
     // so the list reflects the new document state instead of a stale preview.
     const wasUpdatingRef = useRef(false);
     useEffect(() => {
-        if (isUpdating) {
-            wasUpdatingRef.current = true;
-        } else if (wasUpdatingRef.current) {
-            wasUpdatingRef.current = false;
-            setOpenDocument(null);
-        }
+        if (isUpdating) wasUpdatingRef.current = true;
+        else if (wasUpdatingRef.current) { wasUpdatingRef.current = false; setOpenDocument(null); }
     }, [isUpdating]);
 
     const tier = application.current_tier ?? 1;
-    const hasStep2 = !!application.tier2_completed_at;
-    const isFullyApproved = application.status === 'approved' && tier >= 3;
-    const isStep2NeedsReview = application.status === 'approved' && tier === 2 && hasStep2;
-    const isPending = application.status === 'inReview';
+    const tab = accessRequestTab(application);
+    const isApproved = application.status === 'approved' && tier >= 3;
+    const isStep2NeedsReview = application.status === 'approved' && tier === 2 && !!application.tier2_completed_at;
+    const documentsWaived = !!application.documentsWaivedAt;
+    const canWaive = !!onApproveWithoutDocuments && application.status === 'approved' && tier < 3 && !documentsWaived;
+    const firstName = application.fullName.split(/\s+/)[0] || application.fullName;
+    const reviewable = isStep2NeedsReview || isApproved;
+    const sent = !!application.tier2_completed_at;
+
     const businessInfo = parseBusinessInfo(application.businessDescription);
     const preferredDays = formatPreferredSchedule(businessInfo?.preferredSchedule, i18n.language, mt("fullDay"));
-
-    // Stage 2 document data lives on the tier payload.
     const tierData = (application.tier_data || {}) as Record<string, any>;
     const tierFiles = (tierData.tierFiles || {}) as Record<string, any>;
+    const answers = (tierData.tier2_custom_fields_data || {}) as Record<string, any>;
     const insuranceUrl = application.insuranceUrl || tierFiles.tier2_insurance_document;
-    const insuranceRequired = locationRequirements?.tier2_insurance_document_required;
-    // A document the kitchen doesn't track or require shows only when one is on file anyway.
-    const showInsurance = !!(insuranceRequired || locationRequirements?.insurance_tracked || insuranceUrl);
-    const showEstablishment = !!(locationRequirements?.tier2_food_establishment_cert_required || locationRequirements?.food_establishment_cert_tracked || application.foodEstablishmentCertUrl);
-    const documentsWaived = !!application.documentsWaivedAt;
-    // Available once the first request is approved, before or after the customer sends documents.
-    const canWaive = !!onApproveWithoutDocuments && application.status === 'approved' && tier < 3 && !documentsWaived;
-    // The KITCHEN's flag: whether this kitchen makes the certificate upload
-    // compulsory. It does not control visibility — a document carried over from
-    // the request phase is always shown so the manager can review it.
-    const licenseRequired = locationRequirements?.requireFoodSafetyUpload;
+    const r = locationRequirements;
+    const modeOf = (required?: boolean, tracked?: boolean): DocMode => required ? 'required' : tracked ? 'track' : 'none';
 
-    // The renewal is reviewed on its own; the current document is untouched until it is approved.
+    const isExpired = (value?: string | null) => accessDocumentStage(value) === 'expired';
+    const reviewNoteFor = (status: DocumentVerificationStatus, expiry?: string | null, verifiedBy?: string): string | null => {
+        if (!status) return null;
+        if (isExpired(expiry)) return mt("documentExpiredNeedsReplacement");
+        if (status === 'approved' && accessDocumentStage(expiry)) return mt('accessDocumentExpiringSoon');
+        if (status === 'approved') return verifiedBy === 'manager' ? mt("documentVerifiedNote") : mt("documentVerifiedGeneric");
+        if (status === 'rejected') return mt("documentRejectedNote");
+        return mt("documentPendingNote");
+    };
     const renewalReview = (key: 'foodSafetyLicense' | 'foodEstablishmentCert' | 'insurance', title: string, field: DocumentVerificationField) => {
         const renewal = (application.documentRenewals || []).find(item => item.key === key && item.status === 'pending');
         if (!renewal || !onReviewRenewal) return null;
@@ -150,433 +152,264 @@ export function ApplicationDetailPanel({
             onReview={(decision, reason) => onReviewRenewal(field, decision, reason)} />;
     };
 
-    const isExpired = (value?: string | null) => accessDocumentStage(value) === 'expired';
+    // Every document this kitchen asks for, built-in first, then its own dated documents.
+    type DocRow = { key: string; title: string; mode: DocMode; url?: string | null; status?: DocumentVerificationStatus; expiry?: string | null; field?: DocumentVerificationField; verifiedBy?: string; renewal?: ReactNode };
+    const docs: DocRow[] = [];
+    const foodSafetyMode = modeOf(r?.requireFoodSafetyUpload, r?.food_handler_cert_tracked);
+    if (foodSafetyMode !== 'none' || application.foodSafetyLicenseUrl) docs.push({ key: 'foodSafety', title: mt("arDocFoodSafety"), mode: foodSafetyMode, url: application.foodSafetyLicenseUrl, status: application.foodSafetyLicenseStatus, expiry: application.foodSafetyLicenseExpiry, field: 'foodSafetyLicenseStatus', verifiedBy: tierData.documentVerification?.foodSafetyLicense, renewal: renewalReview('foodSafetyLicense', mt("arDocFoodSafety"), 'foodSafetyLicenseStatus') });
+    const establishmentMode = modeOf(r?.tier2_food_establishment_cert_required, r?.food_establishment_cert_tracked);
+    if (establishmentMode !== 'none' || application.foodEstablishmentCertUrl) docs.push({ key: 'establishment', title: mt("arDocEstablishment"), mode: establishmentMode, url: application.foodEstablishmentCertUrl, status: application.foodEstablishmentCertStatus, expiry: application.foodEstablishmentCertExpiry, field: 'foodEstablishmentCertStatus', verifiedBy: tierData.documentVerification?.foodEstablishmentCert, renewal: renewalReview('foodEstablishmentCert', mt("arDocEstablishment"), 'foodEstablishmentCertStatus') });
+    const insuranceMode = modeOf(r?.tier2_insurance_document_required, r?.insurance_tracked);
+    if (insuranceMode !== 'none' || insuranceUrl) docs.push({ key: 'insurance', title: mt("arDocInsurance"), mode: insuranceMode, url: insuranceUrl, status: application.insuranceStatus, expiry: application.insuranceExpiry, field: application.insuranceUrl ? 'insuranceStatus' : undefined, verifiedBy: tierData.documentVerification?.insurance, renewal: renewalReview('insurance', mt("arDocInsurance"), 'insuranceStatus') });
+    for (const field of (r?.tier2_custom_fields || []).filter(f => f.expires)) {
+        const url = typeof answers[field.id] === 'string' ? answers[field.id] : tierFiles[field.id];
+        docs.push({ key: field.id, title: field.label, mode: field.required ? 'required' : 'track', url, expiry: answers[`${field.id}__expiry`] ?? null });
+    }
+    const questions = (r?.tier2_custom_fields || []).filter(f => !f.expires);
+    const experience = tierData.kitchen_experience_description as string | undefined;
 
-    // Human copy for the current verification state of a document.
-    const reviewNoteFor = (status: DocumentVerificationStatus, expiry?: string | null, verifiedBy?: string): string | null => {
-        if (!status) return null;
-        if (isExpired(expiry)) return mt("documentExpiredNeedsReplacement");
-        if (status === 'approved' && accessDocumentStage(expiry)) return mt('accessDocumentExpiringSoon');
-        if (status === 'approved') return verifiedBy === 'local_cooks' ? mt("documentVerifiedByLocalCooks") : verifiedBy === 'manager' ? mt("documentVerifiedNote") : mt("documentVerifiedGeneric");
-        if (status === 'rejected') return mt("documentRejectedNote");
-        return mt("documentPendingNote");
+    const docStatus = (doc: DocRow): { label: string; tone: 'muted' | 'amber' | 'green' | 'red' } => {
+        if (!doc.url) return { label: documentsWaived ? mt("arStatusWaived") : mt("arStatusNotSent"), tone: 'muted' };
+        if (isExpired(doc.expiry)) return { label: mt("arStatusExpired"), tone: 'red' };
+        if (!doc.field) return { label: mt("arStatusSent"), tone: 'muted' };
+        if (doc.status === 'approved') return { label: mt("arStatusVerified"), tone: 'green' };
+        if (doc.status === 'rejected') return { label: mt("arStatusReplace"), tone: 'red' };
+        return { label: mt("arStatusToCheck"), tone: 'amber' };
+    };
+    const openDoc = (doc: DocRow) => setOpenDocument({
+        title: doc.title, url: doc.url, status: doc.status, expiry: doc.expiry,
+        reviewNote: doc.field ? reviewNoteFor(doc.status, doc.expiry, doc.verifiedBy) : null,
+        reviewField: doc.field && reviewable ? doc.field : undefined,
+    });
+
+    const answerOf = (field: RequirementField, value: unknown): ReactNode => {
+        if (value === undefined || value === null || value === '' || (Array.isArray(value) && !value.length)) return <span className="text-muted-foreground">{sent ? mt("arNoAnswer") : mt("arStatusNotSent")}</span>;
+        if (field.type === 'checkbox') return Array.isArray(value) ? value.join(', ') : value ? <span className="inline-flex items-center gap-1"><Check className="h-4 w-4 text-emerald-700" />{mt("arAgreed")}</span> : mt("arNoAnswer");
+        if (field.type === 'date' && typeof value === 'string') return dateLong(value);
+        if ((field.type === 'file' || field.type === 'cloudflare_upload') && typeof value === 'string' && (value.startsWith('http') || value.startsWith('/')))
+            return <Button type="button" size="sm" variant="outline" className="mt-1" onClick={() => setOpenDocument({ title: field.label, url: value })}>{mt("view")}</Button>;
+        return String(value);
     };
 
-    // Helper to render custom field value
-    const renderCustomFieldValue = (field: any, value: any) => {
-        if (value === undefined || value === null || value === '') {
-            return <span className="text-muted-foreground italic text-sm">{mt("notProvided")}</span>;
-        }
+    // Readable request-to-apply values (the stored ones are ids like "few-times-month").
+    const businessType = REQUEST_TO_APPLY_BUSINESS_TYPES.find(o => o.value === businessInfo?.businessType);
+    const frequency = REQUEST_TO_APPLY_FREQUENCIES.find(o => o.value === businessInfo?.usageFrequency);
+    const requestRows: [string, ReactNode][] = [
+        [mt("businessName"), businessInfo?.businessName],
+        [mt("arBusinessType"), businessType ? kitchenLabel(businessType.key, businessType.fallback) : businessInfo?.businessType],
+        [mt("arHowOften"), frequency ? kitchenLabel(frequency.key, frequency.fallback) : businessInfo?.usageFrequency],
+        [mt("sessionDuration"), businessInfo?.sessionDuration ? mt("hoursSession", { count: businessInfo.sessionDuration }) : null],
+        [mt("arExperience"), businessInfo?.experience ? mt("yearsExperience", { count: businessInfo.experience }) : null],
+        [mt("preferredDays"), preferredDays],
+        [mt("arFoodSafetyAnswer"), application.foodSafetyLicense === 'yes' ? mt("arYes") : application.foodSafetyLicense === 'no' ? mt("arNo") : mt("arNotSure")],
+        ...((r?.tier1_custom_fields || []).map(field => [field.label, answerOf(field, (application.customFieldsData || {})[field.id])] as [string, ReactNode])),
+    ];
 
-        if (field.type === 'checkbox') {
-            if (Array.isArray(value)) {
-                return <span className="text-foreground">{value.join(', ')}</span>;
-            }
-            return (
-                <span className={cn("inline-flex items-center gap-1", value ? "text-primary" : "text-muted-foreground")}>
-                    {value ? <Check className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}
-                    {value ? 'Yes' : 'No'}
-                </span>
-            );
-        }
+    // Where the request stands, in the customer's journey.
+    const stages = [
+        { title: mt("arStageRequest"), note: mt("arStageApproved", { date: dayOf(application.tier1_completed_at || application.reviewedAt) || '' }), state: 'done' as const },
+        { title: mt("step2"), note: documentsWaived ? mt("arStageWaived") : sent ? mt("arStageSent", { date: dayOf(application.tier2_completed_at) }) : mt("arStageWaiting"), state: (isApproved ? 'done' : 'current') as 'done' | 'current' },
+        { title: mt("arStageCanBook"), note: isApproved ? mt("arStageCanBookNote") : null, state: (isApproved ? 'done' : 'next') as 'done' | 'next' },
+    ];
 
-        if (field.type === 'date') {
-            return (
-                <span className="text-foreground">
-                    {fromCalendarDate(value).toLocaleDateString('en-US', {
-                        month: 'long',
-                        day: 'numeric',
-                        year: 'numeric'
-                    })}
-                </span>
-            );
-        }
-
-        if (field.type === 'file' || field.type === 'cloudflare_upload') {
-            const isUrl = typeof value === 'string' && (value.startsWith('http') || value.startsWith('/'));
-            if (isUrl) {
-                return (
-                    <SecureDocumentLink
-                        url={value}
-                        fileName={field.label}
-                        label={mt("viewDocument")}
-                    />
-                );
-            }
-            return <span className="text-amber-600 text-sm">{String(value)} {mt("notUploaded")}</span>;
-        }
-
-        return <span className="text-foreground">{String(value)}</span>;
-    };
-
-    // A compact status keeps the chef and document actions in focus.
-    const StatusIndicator = () => {
-        const label = isPending ? mt("pendingReview")
-            : isStep2NeedsReview ? mt("step2AwaitingReview")
-            : isFullyApproved ? mt("fullyApproved")
-            : application.status === 'approved' && tier < 3 && !application.tier2_completed_at ? mt("awaitingChefSStep2")
-            : application.status === 'rejected' ? mt("rejected") : null;
-        if (!label) return null;
-        return <span title={application.status === 'approved' && tier < 3 && !application.tier2_completed_at ? mt("chefDocumentsNeeded") : undefined} className="inline-flex items-center gap-2 rounded-full border border-border bg-muted/30 px-3 py-1 text-xs font-medium text-foreground">
-            {isFullyApproved ? <CheckCircle className="h-3.5 w-3.5 text-primary" /> : <Clock className="h-3.5 w-3.5 text-muted-foreground" />}
-            {label}
-        </span>;
-    };
-
-    // Stage rail marker: complete / active / upcoming for a stacked (non-tabbed) layout.
-    const StageMarker = ({ state }: { index: number; state: 'complete' | 'active' | 'upcoming' }) => (
-        <span
-            className={cn(
-                "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
-                state === 'complete' && "bg-primary/10 text-primary",
-                state === 'active' && "bg-primary text-primary-foreground",
-                state === 'upcoming' && "bg-muted text-muted-foreground",
-            )}
-        >
-            {state === 'complete' ? <Check className="h-3.5 w-3.5" /> : state === 'active' ? <Clock className="h-3.5 w-3.5" /> : <span className="h-1.5 w-1.5 rounded-full bg-current" />}
-        </span>
-    );
-
-    const StageHeading = ({
-        index,
-        state,
-        title,
-        caption,
-    }: {
-        index: number;
-        state: 'complete' | 'active' | 'upcoming';
-        title: string;
-        caption?: string | null;
-    }) => (
-        <div className="flex items-center gap-3">
-            <StageMarker index={index} state={state} />
-            <div className="min-w-0">
-                <h3 className="text-sm font-semibold tracking-tight text-foreground">{title}</h3>
-                {caption ? <p className="text-xs text-muted-foreground">{caption}</p> : null}
-            </div>
-        </div>
-    );
-
-    const stage1Marker: 'complete' | 'active' | 'upcoming' =
-        application.status === 'inReview' ? 'active' : 'complete';
-    const stage2Marker: 'complete' | 'active' | 'upcoming' =
-        isFullyApproved ? 'complete' : isStep2NeedsReview ? 'active' : 'upcoming';
+    const statusPill = application.status === 'rejected' ? mt("arTabDeclined") : isApproved ? (documentsWaived ? mt("arPillApprovedWaived") : mt("approved")) : tab === 'review' ? mt("arPillToReview") : mt("arTabWaiting");
 
     return (
         <>
-            <div className="flex flex-col">
-                {/* Header */}
-                <div className="flex-shrink-0 border-b border-border bg-card px-5 py-5 sm:px-6">
-                    <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-primary">{mt("applicationDetails")}</p>
+            <div className="space-y-6">
+                {/* Who, where, and how to reach them */}
+                <header className="space-y-3">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="min-w-0">
-                            <h2 className="text-xl font-semibold tracking-tight text-foreground">{application.fullName}</h2>
-                            <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
-                                <Building2 className="h-4 w-4 shrink-0" />
-                                <span>{application.location?.name || 'Unknown Location'}</span>
-                            </div>
+                            <h1 className="text-2xl font-semibold tracking-tight text-foreground">{application.fullName}</h1>
+                            <p className="mt-1 text-sm text-muted-foreground">
+                                {[businessInfo?.businessName, application.location?.name].filter(Boolean).join(' · ')}
+                            </p>
                         </div>
-                        <StatusIndicator />
+                        <span className={cn("rounded-full px-3 py-1 text-xs font-medium",
+                            tab === 'review' ? "bg-amber-100 text-amber-900" : application.status === 'rejected' ? "bg-muted text-muted-foreground" : isApproved ? "bg-emerald-50 text-emerald-800" : "bg-muted text-foreground")}>
+                            {statusPill}
+                        </span>
                     </div>
-
-                    {/* Quick Info Grid */}
-                    <div className="mt-5 grid gap-3 rounded-xl border border-border bg-muted/20 p-3 sm:grid-cols-2">
-                        <div className="flex min-w-0 items-center gap-2 text-sm">
-                            <Mail className="h-4 w-4 shrink-0 text-muted-foreground" />
-                            <span className="min-w-0 truncate text-foreground" title={application.email}>{application.email}</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-sm">
-                            <Phone className="h-4 w-4 text-muted-foreground" />
-                            <span className="text-foreground">{application.phone || '—'}</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-sm">
-                            <Calendar className="h-4 w-4 text-muted-foreground" />
-                            <span className="text-foreground">
-                                {new Date(application.createdAt).toLocaleDateString('en-US', {
-                                    month: 'short',
-                                    day: 'numeric',
-                                    year: 'numeric'
-                                })}
-                            </span>
-                        </div>
+                    <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
+                        <a href={`mailto:${application.email}`} className="inline-flex min-w-0 items-center gap-1.5 text-foreground hover:underline"><Mail className="h-4 w-4 shrink-0 text-muted-foreground" /><span className="truncate">{application.email}</span></a>
+                        {application.phone && <a href={`tel:${application.phone}`} className="inline-flex items-center gap-1.5 text-foreground hover:underline"><Phone className="h-4 w-4 text-muted-foreground" />{application.phone}</a>}
+                        {/* While waiting, the next-step card below carries Message. */}
+                        {application.status === 'approved' && tab !== 'waiting' && (
+                            <Button type="button" variant="outline" size="sm" onClick={onOpenChat} className="gap-1.5"><MessageCircle className="h-4 w-4" />{mt("arMessage", { name: firstName })}</Button>
+                        )}
                     </div>
+                </header>
 
-                    {/* Chat Button */}
-                    {application.status === 'approved' && (
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={onOpenChat}
-                            className="mt-4 gap-2 border border-border hover:bg-muted"
-                        >
-                            <MessageCircle className="h-4 w-4" />{mt("openChat")}</Button>
-                    )}
-                </div>
+                {/* Journey */}
+                <ol className="grid gap-3 sm:grid-cols-3">
+                    {stages.map((stage, index) => (
+                        <li key={stage.title} className={cn("rounded-xl border p-3", stage.state === 'current' && "border-foreground/30 bg-muted/30")}>
+                            <p className="flex items-center gap-2 text-sm font-medium text-foreground">
+                                <span className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px]",
+                                    stage.state === 'done' ? "bg-emerald-600 text-white" : stage.state === 'current' ? "bg-foreground text-background" : "border text-muted-foreground")}>
+                                    {stage.state === 'done' ? <Check className="h-3 w-3" /> : index + 1}
+                                </span>
+                                {stage.title}
+                            </p>
+                            {stage.note && <p className="mt-1 pl-7 text-xs text-muted-foreground">{stage.note}</p>}
+                        </li>
+                    ))}
+                </ol>
 
-                {/* Content — both stages stacked, no tabs */}
-                <div className="p-5 sm:p-6">
-                    <div className="space-y-8">
-
-                        {/* ───────────────────────── Stage 1 ───────────────────────── */}
-                        <section className="space-y-5">
-                            <StageHeading
-                                index={1}
-                                state={stage1Marker}
-                                title={mt("initialApplication")}
-                                caption={mt("stageOneCaption")}
-                            />
-
-                            {/* Business Information */}
-                            {businessInfo && (
-                                <div className="space-y-3">
-                                    <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{mt("businessInformation")}</h4>
-                                    <div className="grid gap-3 sm:grid-cols-2">
-                                        {businessInfo.businessName && (
-                                            <InfoCard label={mt("businessName")} value={businessInfo.businessName} />
-                                        )}
-                                        {businessInfo.businessType && (
-                                            <InfoCard label={mt("type")} value={businessInfo.businessType} className="capitalize" />
-                                        )}
-                                        {businessInfo.experience && (
-                                            <InfoCard label={mt("experience")} value={mt("yearsExperience", { count: businessInfo.experience })} />
-                                        )}
-                                        {businessInfo.usageFrequency && (
-                                            <InfoCard label={mt("usageFrequency")} value={businessInfo.usageFrequency} className="capitalize" />
-                                        )}
-                                        {businessInfo.sessionDuration && (
-                                            <InfoCard label={mt("sessionDuration")} value={mt("hoursSession", { count: businessInfo.sessionDuration })} />
-                                        )}
-                                        {preferredDays && <InfoCard label={mt("preferredDays")} value={preferredDays} />}
-                                    </div>
-                                    {businessInfo.description && (
-                                        <div className="rounded-xl border border-border bg-card p-4">
-                                            <div className="mb-1 text-xs text-muted-foreground">{mt("description")}</div>
-                                            <p className="text-sm text-foreground">{businessInfo.description}</p>
-                                        </div>
-                                    )}
-                                </div>
+                {/* The one next step */}
+                {application.status === 'rejected' ? (
+                    <section className="rounded-xl border p-4">
+                        <h2 className="text-sm font-semibold text-foreground">{mt("arDeclinedTitle", { date: dayOf(application.reviewedAt || application.updatedAt) })}</h2>
+                        {application.feedback && <p className="mt-1 text-sm text-muted-foreground">“{application.feedback}”</p>}
+                    </section>
+                ) : isApproved ? (
+                    <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4">
+                        <div className="min-w-0">
+                            <h2 className="text-sm font-semibold text-foreground">{mt("arApprovedTitle", { name: firstName })}</h2>
+                            <p className="mt-0.5 text-sm text-muted-foreground">{documentsWaived ? mt("documentsWaivedNote") : mt("arApprovedBody")}</p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                            <StatusButton variant="outline" onClick={() => { setActiveAction('revoke'); onRevokeAccess(); }}
+                                status={activeAction === 'revoke' && isUpdating ? "loading" : "idle"}
+                                className="text-destructive hover:bg-destructive/5"
+                                labels={{ idle: mt("revokeAccess"), loading: mt("revoking"), success: mt("revokedSuccess") }} />
+                            <Button asChild><Link href={customerHref(application.chefId, application.locationId)}>{mt("arOpenCustomer")}</Link></Button>
+                        </div>
+                    </section>
+                ) : (
+                    <section className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-foreground/15 bg-card p-4 sm:p-5">
+                        <div className="min-w-0 max-w-xl">
+                            <h2 className="text-base font-semibold text-foreground">{isStep2NeedsReview ? mt("arNextReviewTitle") : mt("arNextWaitingTitle", { name: firstName })}</h2>
+                            <p className="mt-1 text-sm text-muted-foreground">{isStep2NeedsReview ? mt("arNextReviewBody") : mt("arNextWaitingBody")}</p>
+                        </div>
+                        <div className="flex w-full flex-col-reverse gap-2 sm:w-auto sm:flex-row sm:flex-wrap [&>*]:w-full sm:[&>*]:w-auto">
+                            {canWaive && (
+                                <Button type="button" variant="ghost" onClick={() => { setWaiverConfirmed(false); setWaiverOpen(true); }} disabled={isUpdating} data-testid="approve-without-documents">
+                                    {mt("approveWithoutDocuments")}
+                                </Button>
                             )}
-
-                            {/* Food Safety Licence — shown once, owned by the initial application */}
-                            <div className="space-y-3">
-                                <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{mt("foodSafetyDocuments")}</h4>
-                                <DocumentCard
-                                    title={mt("foodSafetyLicense")}
-                                    subtitle={application.foodSafetyLicenseUrl
-                                        ? licenseRequired
-                                            ? mt("requiredByThisKitchen")
-                                            : mt("optionalForThisKitchen")
-                                        : mt("noDocument")}
-                                    url={application.foodSafetyLicenseUrl}
-                                    status={application.foodSafetyLicenseUrl ? 'complete' : licenseRequired ? 'required' : 'optional'}
-                                    expiry={application.foodSafetyLicenseExpiry}
-                                    verificationStatus={application.foodSafetyLicenseStatus}
-                                    onView={() => setOpenDocument({
-                                        title: mt("foodSafetyLicense"),
-                                        subtitle: mt("foodSafetyLicense"),
-                                        url: application.foodSafetyLicenseUrl,
-                                        status: application.foodSafetyLicenseStatus,
-                                        expiry: application.foodSafetyLicenseExpiry,
-                                        reviewNote: reviewNoteFor(application.foodSafetyLicenseStatus, application.foodSafetyLicenseExpiry, tierData.documentVerification?.foodSafetyLicense),
-                                        reviewField: isStep2NeedsReview || isFullyApproved ? 'foodSafetyLicenseStatus' : undefined,
-                                    })}
-                                />
-                                {renewalReview('foodSafetyLicense', mt("foodSafetyLicense"), 'foodSafetyLicenseStatus')}
-                            </div>
-
-                            {/* Stage 1 Custom Fields */}
-                            {locationRequirements?.tier1_custom_fields &&
-                                locationRequirements.tier1_custom_fields.length > 0 && (
-                                    <div className="space-y-3">
-                                        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{mt("additionalInformation")}</h4>
-                                        <div className="grid gap-3 sm:grid-cols-2">
-                                            {locationRequirements.tier1_custom_fields.map((field) => {
-                                                const customData = (application.customFieldsData || {}) as Record<string, any>;
-                                                const value = customData[field.id];
-                                                return (
-                                                    <div key={field.id} className="rounded-xl border border-border bg-card p-4">
-                                                        <div className="mb-1 flex items-center gap-1 text-xs text-muted-foreground">
-                                                            {field.label}
-                                                            {field.required && <span className="text-red-500">*</span>}
-                                                        </div>
-                                                        {renderCustomFieldValue(field, value)}
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-                                )}
-                        </section>
-
-                        <Separator />
-
-                        {/* ───────────────────────── Stage 2 ───────────────────────── */}
-                        <section className="space-y-5">
-                            <StageHeading
-                                index={2}
-                                state={stage2Marker}
-                                title={mt("kitchenCoordination")}
-                                caption={hasStep2 && application.tier2_completed_at
-                                    ? mt("stageTwoSubmitted", { date: new Date(application.tier2_completed_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) })
-                                    : mt("stageTwoCaption")}
-                            />
-
-                            {!hasStep2 && application.status === 'approved' && tier === 1 ? (
-                                <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-muted/20 px-6 py-12 text-center">
-                                    <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-                                        <Clock className="h-6 w-6 text-primary" />
-                                    </div>
-                                    <h4 className="mb-2 text-base font-medium text-foreground">{mt("awaitingChefSubmission")}</h4>
-                                    <p className="max-w-sm text-sm text-muted-foreground">
-                                        {mt("awaitingChefSubmissionDesc")}
-                                    </p>
-                                </div>
-                            ) : (
+                            {isStep2NeedsReview ? (
                                 <>
-                                    {/* Stage 2 Documents */}
-                                    <div className="space-y-3">
-                                        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{mt("step2Documents")}</h4>
+                                    <Button type="button" variant="outline" onClick={() => setDeclineOpen(true)} disabled={isUpdating}>{mt("arDecline")}</Button>
+                                    <StatusButton onClick={() => { setActiveAction('approveTier2'); onApproveTier2(); }}
+                                        status={activeAction === 'approveTier2' && isUpdating ? "loading" : "idle"}
+                                        disabled={isUpdating && activeAction !== 'approveTier2'}
+                                        className="w-full sm:w-auto"
+                                        labels={{ idle: mt("arApproveForBooking"), loading: mt("approving"), success: mt("approvedSuccess") }} />
+                                </>
+                            ) : (
+                                <Button type="button" onClick={onOpenChat} className="gap-1.5"><MessageCircle className="h-4 w-4" />{mt("arMessage", { name: firstName })}</Button>
+                            )}
+                        </div>
+                    </section>
+                )}
 
-                                        {/* Insurance — a dated document the kitchen reviews like the licence */}
-                                        {showInsurance && <DocumentCard
-                                            title={mt("insuranceDocument")}
-                                            subtitle={mt("commercialLiabilityInsurance")}
-                                            url={insuranceUrl}
-                                            status={insuranceUrl ? 'complete' : insuranceRequired ? 'required' : 'optional'}
-                                            expiry={application.insuranceExpiry}
-                                            verificationStatus={application.insuranceStatus}
-                                            onView={() => setOpenDocument({
-                                                title: mt("insuranceDocument"),
-                                                subtitle: mt("commercialLiabilityInsurance"),
-                                                url: insuranceUrl,
-                                                status: application.insuranceStatus,
-                                                expiry: application.insuranceExpiry,
-                                                reviewNote: reviewNoteFor(application.insuranceStatus, application.insuranceExpiry, tierData.documentVerification?.insurance),
-                                                reviewField: application.insuranceUrl && (isStep2NeedsReview || isFullyApproved) ? 'insuranceStatus' : undefined,
-                                            })}
-                                        />}
-                                        {showInsurance && renewalReview('insurance', mt("insuranceDocument"), 'insuranceStatus')}
-
-                                        {/* Food Establishment Certificate */}
-                                        {showEstablishment && <DocumentCard
-                                            title={mt("foodEstablishmentCertificate")}
-                                            subtitle={application.foodEstablishmentCertUrl
-                                                ? application.foodEstablishmentCertStatus === 'rejected' ? mt("needsAReplacement") : mt("uploadedForThisKitchen")
-                                                : locationRequirements?.tier2_food_establishment_cert_required ? mt("coordinateWithChef") : mt("optionalForThisKitchen")}
-                                            url={application.foodEstablishmentCertUrl}
-                                            status={application.foodEstablishmentCertUrl ? 'complete' : locationRequirements?.tier2_food_establishment_cert_required ? 'required' : 'optional'}
-                                            expiry={application.foodEstablishmentCertExpiry}
-                                            verificationStatus={application.foodEstablishmentCertStatus}
-                                            onView={() => setOpenDocument({
-                                                title: mt("foodEstablishmentCertificate"),
-                                                subtitle: mt("kitchenCoordination"),
-                                                url: application.foodEstablishmentCertUrl,
-                                                status: application.foodEstablishmentCertStatus,
-                                                expiry: application.foodEstablishmentCertExpiry,
-                                                reviewNote: reviewNoteFor(application.foodEstablishmentCertStatus, application.foodEstablishmentCertExpiry, tierData.documentVerification?.foodEstablishmentCert),
-                                                reviewField: isStep2NeedsReview || isFullyApproved ? 'foodEstablishmentCertStatus' : undefined,
-                                            })}
-                                        />}
-                                        {showEstablishment && renewalReview('foodEstablishmentCert', mt("foodEstablishmentCertificate"), 'foodEstablishmentCertStatus')}
-                                    </div>
-
-                                    {/* Stage 2 Custom Fields */}
-                                    {locationRequirements?.tier2_custom_fields &&
-                                        locationRequirements.tier2_custom_fields.length > 0 && (
-                                            <div className="space-y-3">
-                                                <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{mt("additionalStep2Information")}</h4>
-                                                <div className="grid gap-3 sm:grid-cols-2">
-                                                    {locationRequirements.tier2_custom_fields.map((field) => {
-                                                        const tier2CustomData = tierData.tier2_custom_fields_data || {};
-                                                        const value = tier2CustomData[field.id];
-                                                        return (
-                                                            <div key={field.id} className="rounded-xl border border-border bg-card p-4">
-                                                                <div className="mb-1 flex items-center gap-1 text-xs text-muted-foreground">
-                                                                    {field.label}
-                                                                    {field.required && <span className="text-red-500">*</span>}
-                                                                </div>
-                                                                {renderCustomFieldValue(field, value)}
-                                                            </div>
-                                                        );
-                                                    })}
+                {/* Booking requirements: every document and answer */}
+                <section className="rounded-xl border bg-card">
+                    <div className="border-b px-4 py-3 sm:px-5">
+                        <h2 className="text-base font-semibold text-foreground">{mt("step2")}</h2>
+                        <p className="text-sm text-muted-foreground">{sent ? mt("arStageSent", { date: dayOf(application.tier2_completed_at) }) : documentsWaived ? mt("arStageWaived") : mt("arNotSentYet", { name: firstName })}</p>
+                    </div>
+                    {documentsWaived && (
+                        <p className="border-b bg-muted/30 px-4 py-2.5 text-sm text-muted-foreground sm:px-5" data-testid="documents-waived-note">{mt("documentsWaivedNote")}</p>
+                    )}
+                    {docs.length > 0 && (
+                        <div className="px-4 py-3 sm:px-5">
+                            <h3 className="text-xs font-medium text-muted-foreground">{mt("qbDocumentsTitle")}</h3>
+                            <ul className="mt-1 divide-y">
+                                {docs.map(doc => {
+                                    const status = docStatus(doc);
+                                    return (
+                                        <li key={doc.key} className="py-3">
+                                            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+                                                <div className="min-w-0">
+                                                    <p className="text-sm font-medium text-foreground">{doc.title}</p>
+                                                    <p className="text-xs text-muted-foreground">
+                                                        {doc.mode === 'required' ? mt("docModeRequired") : doc.mode === 'track' ? mt("docModeTrack") : mt("arOnFile")}
+                                                        {doc.expiry ? ` · ${isExpired(doc.expiry) ? mt("arExpired", { date: dateLong(doc.expiry) }) : mt("arExpires", { date: dateLong(doc.expiry) })}` : ''}
+                                                    </p>
+                                                </div>
+                                                <div className="flex shrink-0 items-center gap-3">
+                                                    <span className={cn("text-xs font-medium",
+                                                        status.tone === 'green' && "text-emerald-700", status.tone === 'amber' && "text-amber-800",
+                                                        status.tone === 'red' && "text-red-700", status.tone === 'muted' && "text-muted-foreground")}>{status.label}</span>
+                                                    {doc.url && (
+                                                        <Button type="button" size="sm" variant={status.tone === 'amber' && reviewable ? 'default' : 'outline'} onClick={() => openDoc(doc)}>
+                                                            {status.tone === 'amber' && reviewable ? mt("arCheck") : mt("view")}
+                                                        </Button>
+                                                    )}
                                                 </div>
                                             </div>
-                                        )}
-                                </>
-                            )}
-                        </section>
-                    </div>
-                </div>
-
-                {/* Footer Actions */}
-                <div className="flex-shrink-0 border-t border-border bg-card p-5 sm:p-6">
-                    {/* Feedback textarea for Stage 2 review / rejection notes */}
-                    {isStep2NeedsReview && (
-                        <div className="mb-4">
-                            <label className="mb-2 block text-sm font-medium text-foreground">
-                                {mt("feedbackRequiredForRejection")}
-                            </label>
-                            <Textarea
-                                value={reviewFeedback}
-                                onChange={(e) => onFeedbackChange(e.target.value)}
-                                placeholder={mt("provideFeedbackForTheApplicant")}
-                                rows={3}
-                                className="resize-none"
-                            />
+                                            {doc.renewal && <div className="mt-3">{doc.renewal}</div>}
+                                        </li>
+                                    );
+                                })}
+                            </ul>
                         </div>
                     )}
-
-                    {documentsWaived && (
-                        <p className="mb-4 rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground" data-testid="documents-waived-note">
-                            {mt("documentsWaivedNote")}
-                        </p>
+                    {(questions.length > 0 || r?.tier2_kitchen_experience_required || experience) && (
+                        <div className="border-t px-4 py-3 sm:px-5">
+                            <h3 className="text-xs font-medium text-muted-foreground">{mt("customQuestionsForKitchenApplications")}</h3>
+                            <dl className="mt-1 divide-y">
+                                {(r?.tier2_kitchen_experience_required || experience) && (
+                                    <div className="py-3"><dt className="text-sm text-muted-foreground">{mt("arKitchenExperience")}</dt><dd className="mt-0.5 whitespace-pre-line text-sm text-foreground">{experience || <span className="text-muted-foreground">{sent ? mt("arNoAnswer") : mt("arStatusNotSent")}</span>}</dd></div>
+                                )}
+                                {questions.map(field => (
+                                    <div key={field.id} className="py-3">
+                                        <dt className="text-sm text-muted-foreground">{field.label}</dt>
+                                        <dd className="mt-0.5 whitespace-pre-line text-sm text-foreground">{answerOf(field, answers[field.id])}</dd>
+                                    </div>
+                                ))}
+                            </dl>
+                        </div>
                     )}
-                    <div className="flex flex-wrap items-center justify-end gap-3">
-                        {canWaive && (
-                            <Button variant="outline" onClick={() => { setWaiverConfirmed(false); setWaiverOpen(true); }} disabled={isUpdating} data-testid="approve-without-documents">
-                                {mt("approveWithoutDocuments")}
-                            </Button>
-                        )}
-                        {isPending && (
-                            <div className="flex-1 rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-                                The customer’s request is being reviewed. You can review it once the customer sends their booking requirements.
-                            </div>
-                        )}
+                    {!docs.length && !questions.length && !r?.tier2_kitchen_experience_required && (
+                        <p className="px-4 py-4 text-sm text-muted-foreground sm:px-5">{mt("arNoRequirements")}</p>
+                    )}
+                </section>
 
-                        {isStep2NeedsReview && (
-                            <>
-                                <StatusButton
-                                    variant="outline"
-                                    onClick={() => { setActiveAction('reject'); onReject(); }}
-                                    status={activeAction === 'reject' && isUpdating ? "loading" : "idle"}
-                                    disabled={isUpdating && activeAction !== 'reject'}
-                                    className="border-destructive/30 text-destructive hover:bg-destructive/5"
-                                    labels={{ idle: mt("reject"), loading: mt("saving"), success: mt("rejected") }}
-                                />
-                                <StatusButton
-                                    onClick={() => { setActiveAction('approveTier2'); onApproveTier2(); }}
-                                    status={activeAction === 'approveTier2' && isUpdating ? "loading" : "idle"}
-                                    disabled={isUpdating && activeAction !== 'approveTier2'}
-                                    className="min-w-44"
-                                    labels={{ idle: mt("approveStep2"), loading: mt("approving"), success: mt("approvedSuccess") }}
-                                />
-                            </>
-                        )}
-
-                        {isFullyApproved && (
-                            <StatusButton
-                                variant="outline"
-                                onClick={() => { setActiveAction('revoke'); onRevokeAccess(); }}
-                                status={activeAction === 'revoke' && isUpdating ? "loading" : "idle"}
-                                className="border-destructive/30 text-destructive hover:bg-destructive/5"
-                                labels={{ idle: mt("revokeAccess"), loading: mt("revoking"), success: mt("revokedSuccess") }}
-                            />
-                        )}
+                {/* What the customer sent with their request to apply */}
+                <section className="rounded-xl border bg-card">
+                    <div className="border-b px-4 py-3 sm:px-5">
+                        <h2 className="text-base font-semibold text-foreground">{mt("arStageRequest")}</h2>
+                        <p className="text-sm text-muted-foreground">{mt("arRequestSent", { date: dayOf(application.createdAt) })}</p>
                     </div>
-                </div>
+                    <dl className="grid gap-x-6 px-4 py-2 sm:grid-cols-2 sm:px-5">
+                        {requestRows.filter(([, value]) => value !== null && value !== undefined && value !== '').map(([label, value]) => (
+                            <div key={label} className="border-b py-3 last:border-b-0 sm:[&:nth-last-child(2)]:border-b-0">
+                                <dt className="text-sm text-muted-foreground">{label}</dt>
+                                <dd className="mt-0.5 text-sm text-foreground">{value}</dd>
+                            </div>
+                        ))}
+                    </dl>
+                    {businessInfo?.description && (
+                        <div className="border-t px-4 py-3 sm:px-5">
+                            <p className="text-sm text-muted-foreground">{mt("arAboutBusiness")}</p>
+                            <p className="mt-0.5 whitespace-pre-line text-sm text-foreground">{businessInfo.description}</p>
+                        </div>
+                    )}
+                </section>
             </div>
 
-            {/* "Approve without documents": who, what it skips, and the kitchen's responsibility, before it happens. */}
+            {/* Decline asks for the note the customer will see. */}
+            <AlertDialog open={declineOpen} onOpenChange={setDeclineOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>{mt("arDeclineTitle", { name: firstName })}</AlertDialogTitle>
+                        <AlertDialogDescription>{mt("arDeclineBody")}</AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <Textarea value={reviewFeedback} onChange={(e) => onFeedbackChange(e.target.value)} placeholder={mt("arDeclinePlaceholder")} rows={4} className="resize-none" aria-label={mt("arDeclineTitle", { name: firstName })} />
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>{mt("cancel")}</AlertDialogCancel>
+                        <Button variant="destructive" disabled={!reviewFeedback.trim() || isUpdating} onClick={() => { setActiveAction('reject'); onReject(); setDeclineOpen(false); }}>
+                            {mt("arDecline")}
+                        </Button>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
+            {/* "Approve without booking requirements": who, what it skips, and the kitchen's responsibility, before it happens. */}
             <AlertDialog open={waiverOpen} onOpenChange={setWaiverOpen}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
@@ -627,85 +460,5 @@ export function ApplicationDetailPanel({
                 }}
             />
         </>
-    );
-}
-
-// Helper Components
-
-function InfoCard({ label, value, className }: { label: string; value: string; className?: string }) {
-    return (
-        <div className="rounded-xl border border-border bg-card p-4">
-            <div className="mb-1 text-xs text-muted-foreground">{label}</div>
-            <div className={cn("text-sm font-medium text-foreground", className)}>{value}</div>
-        </div>
-    );
-}
-
-function DocumentCard({
-    title,
-    subtitle,
-    url,
-    status,
-    expiry,
-    verificationStatus,
-    onView,
-}: {
-    title: string;
-    subtitle: string;
-    url?: string | null;
-    status: 'complete' | 'missing' | 'required' | 'optional';
-    expiry?: string | null;
-    verificationStatus?: 'pending' | 'approved' | 'rejected' | null;
-    onView?: () => void;
-}) {
-    const expired = !!expiry && Number.isFinite(Date.parse(expiry)) && Date.parse(expiry) < Date.now() - 86_400_000;
-    const stateNote = url && verificationStatus
-        ? expired
-            ? mt("expiredNeedsReplacement")
-            : verificationStatus === 'rejected'
-                ? mt("reviewRejected")
-                : verificationStatus === 'approved'
-                    ? null
-                    : mt("reviewPending")
-        : null;
-
-    return (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-4">
-            <div className="flex min-w-0 items-start gap-3">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted/50">
-                    <FileText className="h-4 w-4 text-muted-foreground" />
-                </span>
-                <div className="min-w-0">
-                    <p className="text-sm font-medium text-foreground">{title}</p>
-                    <p className="text-xs text-muted-foreground">{subtitle}</p>
-                    {expiry && (
-                        <p className="mt-1 text-xs text-muted-foreground">
-                            {mt("expiresLabel", { date: fromCalendarDate(expiry).toLocaleDateString() })}
-                        </p>
-                    )}
-                    {stateNote && (
-                        <p className={cn("mt-1 text-xs font-medium", expired || verificationStatus === 'rejected' ? "text-destructive" : "text-muted-foreground")}>
-                            {stateNote}
-                        </p>
-                    )}
-                </div>
-            </div>
-            {url ? (
-                <div className="flex shrink-0 flex-col items-end gap-2 self-start">
-                    <VerifiedDocumentChip status={verificationStatus} url={url} expiry={expiry} />
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={onView}
-                        className="gap-2 border border-border hover:bg-muted"
-                    >
-                        <Eye className="h-3.5 w-3.5" />
-                        {mt("view")}
-                    </Button>
-                </div>
-            ) : status === 'required' ? (
-                <Badge variant="outline" className="text-xs">{mt("required")}</Badge>
-            ) : null}
-        </div>
     );
 }

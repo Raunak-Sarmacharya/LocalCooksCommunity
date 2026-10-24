@@ -2815,7 +2815,7 @@ export default function KitchenApplicationForm({
                         <div className="rounded-xl border p-4 sm:col-span-2">
                           <p className="mb-4 text-sm font-semibold text-foreground">{t("additionalRequirements", { defaultValue: "Additional requirements" })}</p>
                           {/* One column: every answer gets the full width, as on the rest of this step. Dated documents come first. */}
-                          <div className="grid gap-5">
+                          <div className="flex flex-col gap-5">
                             {[...requirements.tier2_custom_fields].sort((a: CustomField, b: CustomField) => Number(!!b?.expires) - Number(!!a?.expires)).map((field: CustomField) => {
                               if (!field || !field.id || !field.type) return null;
                               const fieldName = `custom_${field.id}` as keyof KitchenApplicationFormData;

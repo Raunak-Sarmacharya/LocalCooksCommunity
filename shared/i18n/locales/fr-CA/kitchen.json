@@ -520,7 +520,7 @@
   "firstName": "Prénom",
   "fiveHundredPlusPerMonth": "500 $+ par mois",
   "foodEstablishmentCertificate": "Certificat d'établissement alimentaire",
-  "foodEstablishmentExpiryLabel": "Date d'expiration de la licence",
+  "foodEstablishmentExpiryLabel": "Date d’expiration du permis",
   "foodEstablishmentLicenseDesc": "Si vous êtes une entreprise enregistrée, téléchargez une preuve.",
   "foodEstablishmentLicenseLabel": "Permis d'établissement",
   "foodHandlerCert": "Certificat de manipulation d'aliments",
@@ -1802,5 +1802,6 @@
   "submitKitchenDocuments": "Remplir les exigences de réservation",
   "kitchenDocuments": "Exigences de réservation",
   "step2DocsInReview": "Vos exigences de réservation sont en cours d’examen.",
-  "requestInReview": "Votre demande est en cours d’examen."
+  "requestInReview": "Votre demande est en cours d’examen.",
+  "submitDocuments": "Envoyer les exigences de réservation"
 }
