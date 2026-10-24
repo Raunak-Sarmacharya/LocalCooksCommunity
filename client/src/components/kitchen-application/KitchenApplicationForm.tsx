@@ -504,7 +504,7 @@ export default function KitchenApplicationForm({
   // The kitchen's choice per document: shown when tracked or required, or when one is already on file.
   const showEstablishment = !!(requirements?.tier2_food_establishment_cert_required || requirements?.food_establishment_cert_tracked || application?.foodEstablishmentCertUrl);
   const showInsurance = !!(requirements?.tier2_insurance_document_required || requirements?.insurance_tracked || existingInsuranceUrl);
-  // Step 2 certificate (owner, Oct 24): Required asks only for the upload and its date; Track it keeps the Yes/No; Not needed hides it.
+  // Step 2 certificate (owner, Oct 24): Required asks only for the upload and its date; Optional keeps the Yes/No; Not needed hides it.
   // The first request keeps its own Yes/No and optional upload.
   const certRequiredStep2 = currentTier >= 2 && !!requirements?.requireFoodSafetyUpload;
   const showFoodSafetyStep2 = certRequiredStep2 || !!requirements?.food_handler_cert_tracked || !!existingFoodHandlerUrl;

@@ -1,5 +1,5 @@
 /**
- * When a kitchen makes a document Required (a new one, or Track it → Required), customers it has already approved
+ * When a kitchen makes a document Required (a new one, or Optional → Required), customers it has already approved
  * who don't have it pause for new bookings at once, as on Food Corridor, and are told at once (owner, Oct 24).
  * Existing bookings are never affected. The kitchen sees how many customers it affects before it saves.
  */

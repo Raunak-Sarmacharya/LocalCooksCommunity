@@ -35,7 +35,7 @@ const FIELD_ROWS = STEP2_BUILT_IN_FIELDS.flatMap((group) => group.fields);
 const SAFETY_KEY = 'requireFoodHandlerCert';
 const ESTABLISHMENT_KEY = 'tier2_food_establishment_cert_required';
 const isComplianceField = (key: keyof LocationRequirements) => key === SAFETY_KEY || key === ESTABLISHMENT_KEY;
-/** The three dated documents: each is Not needed, Track it (date and reminders, never pauses booking) or Required. */
+/** The three dated documents: each is Not needed, Optional (date and reminders, never pauses booking) or Required. */
 const TRACKED_KEY: Partial<Record<keyof LocationRequirements, keyof LocationRequirements>> = {
   requireFoodHandlerCert: 'food_handler_cert_tracked',
   tier2_food_establishment_cert_required: 'food_establishment_cert_tracked',
@@ -79,7 +79,7 @@ export function RequirementsStepTwo({
   };
 
   const tier2CustomFields = (requirements.tier2_custom_fields as CustomField[]) || [];
-  // Documents the kitchen asks for (owner, Oct 24): a file, with or without an expiry date, Track it or Required.
+  // Documents the kitchen asks for (owner, Oct 24): a file, with or without an expiry date, Optional or Required.
   const ownDocuments = tier2CustomFields.filter(isKitchenDocument);
   const [documentEditor, setDocumentEditor] = useState<{ id: string | null; label: string; description: string; mode: 'track' | 'required'; expires: boolean } | null>(null);
   const [documentError, setDocumentError] = useState(false);

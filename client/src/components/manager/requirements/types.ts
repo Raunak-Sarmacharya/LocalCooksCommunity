@@ -64,7 +64,7 @@ export interface LocationRequirements {
   tier2_food_establishment_expiry_required?: boolean;
   tier2_insurance_document_required?: boolean;
   tier2_insurance_minimum_amount?: number;
-  // "Track it": asked as optional, kept with its expiry date and reminded, never pauses booking.
+  // "Optional" (stored as *_tracked): asked as optional, kept with its expiry date and reminded, never pauses booking.
   food_handler_cert_tracked?: boolean;
   food_establishment_cert_tracked?: boolean;
   insurance_tracked?: boolean;
@@ -256,7 +256,7 @@ export interface ResolvedRequirement {
   /** What it is for — shown quietly under the name, so a name alone is not a riddle. */
   description?: string;
   required: boolean;
-  /** Documents only: Not needed, Track it or Required, as the kitchen chose. */
+  /** Documents only: Not needed, Optional or Required, as the kitchen chose. */
   mode?: 'none' | 'track' | 'required';
 }
 
