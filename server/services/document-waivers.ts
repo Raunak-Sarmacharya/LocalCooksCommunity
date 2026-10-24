@@ -82,16 +82,17 @@ async function notifyAdminsOfWaiver(app: typeof chefKitchenApplications.$inferSe
 }
 
 /** Every admin in-app; by email only those with admin email turned on (owner, Oct 22). */
-export async function notifyAdmins(input: { subject: string; message: string; facts: { label: string; value: string }[]; path: string; trackingPrefix: string; metadata: Record<string, unknown> }) {
+export async function notifyAdmins(input: { subject: string; message: string; facts: { label: string; value: string }[]; path: string; trackingPrefix: string; metadata: Record<string, unknown>; actionLabel?: string }) {
+  const actionLabel = input.actionLabel ?? 'View application';
   const admins = await db.select({ id: users.id, username: users.username }).from(users)
     .where(and(eq(users.role, 'admin'), isNotNull(users.username), ne(users.username, '')));
   for (const admin of admins) {
     await notificationService.createForManager({ managerId: admin.id, type: 'system_announcement', priority: 'normal', title: input.subject, message: input.message,
-      metadata: input.metadata, actionUrl: input.path, actionLabel: 'View application' });
+      metadata: input.metadata, actionUrl: input.path, actionLabel });
   }
   // Emails in parallel; each admin's own email setting decides whether theirs is sent.
   await Promise.allSettled(admins.map(admin => sendAdminNotificationEmail(
-    renderTransactionalEmail({ to: admin.username!, recipientName: 'Local Cooks', subject: input.subject, message: input.message, facts: input.facts, actionLabel: 'View application', actionUrl: `${getAppBaseUrl('admin')}${input.path}` }),
+    renderTransactionalEmail({ to: admin.username!, recipientName: 'Local Cooks', subject: input.subject, message: input.message, facts: input.facts, actionLabel, actionUrl: `${getAppBaseUrl('admin')}${input.path}` }),
     { trackingId: `${input.trackingPrefix}_${admin.id}_${Date.now()}` })));
 }
 

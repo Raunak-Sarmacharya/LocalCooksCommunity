@@ -107,8 +107,17 @@ export const startingChatEmail = inngest.createFunction({ id: 'starting-chat-mes
   triggers: [{ event: 'localcooks/chat.message.start' }],
 }, runStartingChatEmail);
 
+/** Daily payout check against Stripe, 7:30 a.m. Newfoundland (10:00 UTC). Same gate as the recurring worker: production and
+ * staging only; dev runs it from admin → Manager Revenues → Run check now. Read-only on Stripe. */
+export const payoutReconciliationDaily = inngest.createFunction({ id: 'payout-reconciliation-daily', concurrency: { limit: 1 }, retries: 1,
+  triggers: recurringCronEnabled() ? [{ cron: '0 10 * * *' }] : [{ event: 'localcooks/staging.payout-reconciliation.rehearsal' }],
+}, async ({ step }) => step.run('compare-payouts-with-stripe', async () => {
+  const result = await (await import('./services/payout-reconciliation')).runPayoutReconciliation();
+  return { kitchens: result.kitchens, transfers: result.transfers, issues: result.issues.length, failures: result.failures.length, repaired: result.repairedReversals };
+}));
+
 export function registerInngest(app: Express) {
-  const handler = serve({ client: inngest, functions: [lifecycleTick, startingChatEmail, bookingNoticeDelivery, invitationNoticeDelivery, deadlineTimer],
+  const handler = serve({ client: inngest, functions: [lifecycleTick, startingChatEmail, bookingNoticeDelivery, invitationNoticeDelivery, deadlineTimer, payoutReconciliationDaily],
     servePath: '/api/inngest', serveOrigin: process.env.INNGEST_SERVE_ORIGIN });
   app.use('/api/inngest', (req, res, next) => {
     res.setHeader('Cache-Control', 'no-store');

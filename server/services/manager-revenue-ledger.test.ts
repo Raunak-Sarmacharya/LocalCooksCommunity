@@ -50,6 +50,12 @@ describe('manager revenue ledger (read-only)', () => {
     expect(ledger.summary.onHold).toEqual({ count: 1, amount: 10942 });
     expect(ledger.summary.upcoming.total).toBe(21884);
   });
+  it('an extension paid separately joins its booking day as one Upcoming line (owner, Oct 24)', () => {
+    const upcoming = build([payment(1), payment(2), payment(3, { day: { number: 2, total: 2, date: '2026-10-22' } })]).upcoming;
+    expect(upcoming).toHaveLength(2);
+    expect(upcoming.find(row => row.day.date === '2026-10-21')).toMatchObject({ payments: 2, amountCents: 2 * 10942 });
+    expect(upcoming.find(row => row.day.date === '2026-10-22')).toMatchObject({ payments: 1, amountCents: 10942 });
+  });
   it('never lists captured payments as paid without transfer evidence', () => {
     const captured = payment(1), sent = payment(2);
     sent.source.transferId = 'tr_paid'; sent.source.metadata = { payoutSent: { amountCents: 10942, sentAt: '2026-10-18T10:00:00Z' } };

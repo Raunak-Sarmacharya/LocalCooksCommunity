@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { PayoutReconciliationCard } from "./PayoutReconciliationCard";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -117,6 +118,8 @@ export function ManagerRevenuesSection({ getFirebaseToken }: ManagerRevenuesSect
           </SelectContent>
         </Select>
       </div>
+
+      <PayoutReconciliationCard getFirebaseToken={getFirebaseToken} />
 
       {isLoading ? (
         <div className="grid gap-4 sm:grid-cols-3" role="status" aria-label="Loading manager revenue">

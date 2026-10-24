@@ -14,6 +14,8 @@ export type RevenuePayoutRow = RevenueIdentity & RevenueAmounts & {
   id: string; amountCents: number; expectedAt: string | null; paidAt: string | null;
   status: 'scheduled' | 'on_hold' | 'paid'; holdReason: string | null;
   reason: 'inspection' | 'processing' | null; stripeUrl: string | null; reversedCents: number;
+  /** Upcoming only: how many customer payments this booking day's line combines (an extension adds one). */
+  payments?: number;
 };
 export type RevenueReportRow = RevenueIdentity & RevenueAmounts & {
   id: string; date: string; bookingsCount: number; hoursBooked: number; paymentCount: number;

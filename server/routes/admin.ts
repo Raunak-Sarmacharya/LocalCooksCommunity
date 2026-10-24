@@ -132,6 +132,16 @@ router.delete("/users/:id/complete", requireFirebaseAuthWithUser, requireAdmin, 
     }
 });
 
+// Daily payout check against Stripe: the latest result, and a manual run (read-only on Stripe).
+router.get("/payout-reconciliation", requireFirebaseAuthWithUser, requireAdmin, async (_req: Request, res: Response) => {
+    try { res.json(await (await import('../services/payout-reconciliation')).latestPayoutReconciliation()); }
+    catch (error: any) { logger.error("Error reading payout reconciliation:", error); res.status(500).json({ error: "The last payout check couldn't be loaded." }); }
+});
+router.post("/payout-reconciliation/run", requireFirebaseAuthWithUser, requireAdmin, async (_req: Request, res: Response) => {
+    try { res.json(await (await import('../services/payout-reconciliation')).runPayoutReconciliation()); }
+    catch (error: any) { logger.error("Error running payout reconciliation:", error); res.status(500).json({ error: error.message || "The payout check couldn't run." }); }
+});
+
 // Preview uses the same ownership predicates as the actual cleanup.
 router.get("/users/:id/delete-impact", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
     try {

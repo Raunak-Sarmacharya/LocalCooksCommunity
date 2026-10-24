@@ -99,7 +99,7 @@ function PayoutItem({ row, onOpenPaymentSettings }: { row: RevenuePayoutRow; onO
             <a className="underline-offset-2 hover:underline focus-visible:underline" href={row.bookingUrl}>{row.bookingReference}</a>
             <span className="text-muted-foreground"> · {row.chefName || mt('r1Guest')}</span>
           </p>
-          <p className="mt-0.5 text-xs text-muted-foreground">{mt(`r1Type_${row.type}`)} · {revenueDayLabel(row.day)} · {row.kitchenName}</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">{mt(`r1Type_${row.type}`)} · {revenueDayLabel(row.day)} · {row.kitchenName}{(row.payments ?? 1) > 1 ? ` · ${mt('r1bPayments', { count: row.payments })}` : ''}</p>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
           <p className="text-base font-semibold tabular-nums">{revenueMoney(row.amountCents)}</p>

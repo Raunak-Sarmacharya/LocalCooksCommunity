@@ -5148,5 +5148,6 @@
   "ksStorageRentalsNote": "Les locations, demandes et emménagements se gèrent dans la page Entreposage.",
   "ksNextStep": "Prochaine étape : {step}",
   "bpTaxChangeIn": "Modifier dans {page}",
-  "ksNotListedYet": "{count, plural, one {# pas encore affiché} other {# pas encore affichés}}"
+  "ksNotListedYet": "{count, plural, one {# pas encore affiché} other {# pas encore affichés}}",
+  "r1bPayments": "{count, plural, one {# paiement} other {# paiements}}"
 }

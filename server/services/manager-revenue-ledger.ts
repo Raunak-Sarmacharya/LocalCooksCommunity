@@ -151,13 +151,14 @@ export function buildManagerRevenue(payments: LedgerPayment[], installments: Led
         reason: s.payoutTiming === 'after_closeout' && payment.payout?.status !== 'sent' ? 'inspection' : 'processing' });
     }
   }
-  // A kitchen receives a day's installments together even when multiple charges funded that day.
-  // Keep different types and hold states separate so a held share never hides a scheduled share.
+  // One line per booking day, like Airbnb's one payout per reservation: an extension's charge joins its booking's day
+  // (owner, Oct 24). Different types and hold states stay separate so a held share never hides a scheduled share.
   const merged = new Map<string, RevenuePayoutRow>();
   for (const row of pending) {
-    const key = row.id.startsWith('day-') ? `${row.bookingUrl}:${row.day.date}:${row.type}:${row.status}:${row.holdReason || ''}` : row.id;
+    const key = `${row.bookingUrl}:${row.day.date}:${row.type}:${row.status}:${row.holdReason || ''}`;
     const previous = merged.get(key);
-    if (!previous) { merged.set(key, { ...row }); continue; }
+    if (!previous) { merged.set(key, { ...row, payments: 1 }); continue; }
+    previous.payments = (previous.payments ?? 1) + 1;
     previous.amountCents += row.amountCents;
     for (const field of Object.keys(emptyRevenueAmounts()) as Array<keyof RevenueAmounts>) previous[field] += row[field];
     // All shares must be ready: don't promise the earliest source's release for a merged payout.

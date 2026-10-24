@@ -5148,5 +5148,6 @@
   "ksStorageRentalsNote": "Оренда, запити та заселення — на сторінці «Зберігання».",
   "ksNextStep": "Далі: {step}",
   "bpTaxChangeIn": "Змінити в {page}",
-  "ksNotListedYet": "{count, plural, one {# ще не опубліковано} other {# ще не опубліковано}}"
+  "ksNotListedYet": "{count, plural, one {# ще не опубліковано} other {# ще не опубліковано}}",
+  "r1bPayments": "{count, plural, one {# платіж} few {# платежі} many {# платежів} other {# платежу}}"
 }
