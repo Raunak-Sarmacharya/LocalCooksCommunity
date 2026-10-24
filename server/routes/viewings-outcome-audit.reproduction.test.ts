@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const audit = vi.hoisted(() => ({ tour: {} as any, update: vi.fn(), writes: [] as any[] }));
 vi.mock('../services/recurring-worker', () => ({ runRecurringWorker: vi.fn(async () => ({ reminded: 0, delivered: 0, errors: 0 })) }));
 vi.mock('../services/scheduled-cancellations', () => ({ processExpiredCancellationRequests: vi.fn() }));
-vi.mock('../services/tour-delivery-service', () => ({ queueTourEvent: vi.fn(), attemptTourDelivery: vi.fn(async () => ({ failed: true })), deliverTourEvents: vi.fn() }));
+vi.mock('../services/tour-delivery-service', () => ({ queueTourEvent: vi.fn(), deliverTourAfterResponse: vi.fn(() => ({ failed: false })), attemptTourDelivery: vi.fn(async () => ({ failed: true })), deliverTourEvents: vi.fn() }));
 vi.mock('../db', () => {
   const db: any = {
     execute: vi.fn(),

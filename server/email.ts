@@ -4452,7 +4452,7 @@ export const generateTourConfirmedEmail = (data: { tourId: number; durationMinut
   );
 
   return {
-    ...renderTransactionalEmail({ to: data.email, tour: data, subject: `${data.previousTourDate ? 'Tour rescheduled' : 'Kitchen tour confirmed'} at ${data.kitchenName}`,
+    ...renderTransactionalEmail({ to: data.email, tour: data, subject: `${data.previousTourDate ? 'Tour rescheduled' : 'Kitchen tour confirmed'} · ${data.kitchenName}`,
       recipientName: data.recipientName, message: data.previousTourDate ? data.isManager
         ? `${data.otherPartyName}’s new tour time at ${data.kitchenName} is confirmed. Review the updated visit details below and replace any event you saved in your calendar.`
         : 'Your new tour time is confirmed. Check the updated details below and replace any event you saved in your calendar.'

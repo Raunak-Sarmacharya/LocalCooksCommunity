@@ -560,7 +560,7 @@ describe('durable tour delivery', () => {
     const emails = messages.filter(message => message.email);
     expect(emails.map(message => message.key)).toEqual(['chef-email', 'manager-email']);
     for (const { email } of emails) {
-      expect(email!.subject).toContain('Kitchen tour confirmed at');
+      expect(email!.subject).toContain('Kitchen tour confirmed · ');
       expect(email!.subject).not.toContain('rescheduled');
       expect(email!.text).not.toContain('Previous time');
       expect(String(email!.attachments![0].content)).toContain('UID:tour-10@localcooks.com');

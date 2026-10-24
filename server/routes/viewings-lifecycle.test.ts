@@ -2,11 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 const state = vi.hoisted(() => ({ tour: {} as any, managerId: 2, bookings: [] as any[], availability: [] as any[], history: [] as any[],
-  settings: {} as any, kitchen: {} as any, updates: [] as any[], rejectWrite: false, notify: vi.fn(), email: vi.fn(), locks: vi.fn(), queue: vi.fn(), insert: vi.fn(), provision: vi.fn(), deliveryFailed: false, listMode: false, getFeedback:vi.fn(), submitFeedback:vi.fn() }));
+  settings: {} as any, kitchen: {} as any, updates: [] as any[], rejectWrite: false, notify: vi.fn(), email: vi.fn(), locks: vi.fn(), queue: vi.fn(), insert: vi.fn(), provision: vi.fn(), deliveryFailed: false, afterResponse: vi.fn((_id: number) => ({ failed: false })), listMode: false, getFeedback:vi.fn(), submitFeedback:vi.fn() }));
 vi.mock('../services/tour-feedback-service', () => ({ getTourFeedback:state.getFeedback,submitTourFeedback:state.submitFeedback,readTourFeedbackStatus:vi.fn(async()=>({chef:false,manager:false})) }));
 vi.mock('../chat-service', () => ({ initializeSharedConversation: state.provision }));
 vi.mock('../services/tour-delivery-service', () => ({ queueTourEvent: state.queue,
-  attemptTourDelivery: vi.fn(async () => ({ failed: state.deliveryFailed })), deliverTourEvents: vi.fn() }));
+  deliverTourAfterResponse: state.afterResponse, attemptTourDelivery: vi.fn(async () => ({ failed: state.deliveryFailed })), deliverTourEvents: vi.fn() }));
 vi.mock('../services/kitchen-checkout-service', () => ({ getCheckinSettings: vi.fn(async () => ({ checkinWindowMinutesBefore: 20 })) }));
 vi.mock('../db', () => {
   const db: any = { execute: state.locks, insert: state.insert, transaction: async (run: any) => {
@@ -257,14 +257,12 @@ describe('tour decisions use current ownership and fresh review', () => {
     expect((await status({ status: 'cancelled', cancellationReason: 'Kitchen unavailable', expectedUpdatedAt: version })).status).toHaveBeenCalledWith(409);
     expect(state.queue).not.toHaveBeenCalled();
   });
-  it('reports saved decisions truthfully when durable delivery remains pending', async () => {
-    state.deliveryFailed = true;
-    expect((await status({ status: 'cancelled', cancellationReason: 'Kitchen unavailable', expectedUpdatedAt: version })).json).toHaveBeenCalledWith(expect.objectContaining({ status: 'cancelled', notificationDeliveryFailed: true }));
+  // Like bookings, the response doesn't wait on mail: notices go out after it; failures surface in delivery recovery.
+  it('saves the decision, queues its notice and sends it after the response', async () => {
+    state.afterResponse.mockClear();
+    expect((await status({ status: 'cancelled', cancellationReason: 'Kitchen unavailable', expectedUpdatedAt: version })).json).toHaveBeenCalledWith(expect.objectContaining({ status: 'cancelled', notificationDeliveryFailed: false }));
     expect(state.queue).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ kind: 'status', after: expect.objectContaining({ status: 'cancelled' }) }));
-  });
-  it('handles an email false result as a delivery failure after saving', async () => {
-    state.deliveryFailed = true;
-    expect((await status({ status: 'cancelled', cancellationReason: 'Kitchen unavailable', expectedUpdatedAt: version })).json).toHaveBeenCalledWith(expect.objectContaining({ notificationDeliveryFailed: true }));
+    expect(state.afterResponse).toHaveBeenCalledWith(state.tour.id);
   });
   it('retains the original confirmed slot when declining a date change', async () => {
     state.tour.status = 'confirmed'; state.tour.requestedRescheduleAt = new Date(state.tour.scheduledAt.getTime() + 86400000);
@@ -593,8 +591,9 @@ describe('feedback replaces attendance recording and admin owns final outcomes',
     const body={happened:true,scheduledAt:state.tour.scheduledAt.toISOString(),appointmentRevision:1};
     expect((await request('/chef/:id/feedback','post',body,{id:7,role:'chef'})).status).toHaveBeenCalledWith(404);
     expect(state.submitFeedback).not.toHaveBeenCalled();
-    state.deliveryFailed=true;
-    expect((await request('/chef/:id/feedback','post',body,{id:8,role:'chef'})).json).toHaveBeenCalledWith(expect.objectContaining({response:{happened:true},notificationDeliveryFailed:true}));
+    state.afterResponse.mockClear();
+    expect((await request('/chef/:id/feedback','post',body,{id:8,role:'chef'})).json).toHaveBeenCalledWith(expect.objectContaining({response:{happened:true},notificationDeliveryFailed:false}));
+    expect(state.afterResponse).toHaveBeenCalledTimes(1);
     expect(state.submitFeedback).toHaveBeenCalledWith(expect.anything(),expect.objectContaining({id:10}),{id:8,role:'chef'},body);
     state.submitFeedback.mockResolvedValueOnce({changed:false,feedback:{response:{happened:true}}});
     expect((await request('/chef/:id/feedback','post',body,{id:8,role:'chef'})).json).toHaveBeenCalledWith(expect.objectContaining({notificationDeliveryFailed:false}));

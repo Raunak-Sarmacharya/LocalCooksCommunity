@@ -641,9 +641,9 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
                   </>
                 )}
                     {statusAction !== "view" && (
-                <div className="flex flex-col-reverse gap-2 rounded-xl border bg-card p-4 sm:flex-row sm:flex-wrap sm:p-6 [&>button]:min-h-11 [&>button]:h-auto [&>button]:whitespace-normal [&>button]:py-2 [&>button]:text-xs sm:[&>button]:min-h-9">
+                <div className="flex flex-col-reverse gap-2 border-t pt-4 sm:flex-row sm:flex-wrap sm:justify-end [&>button]:min-h-11 [&>button]:h-auto [&>button]:whitespace-normal [&>button]:py-2 [&>button]:text-xs sm:[&>button]:min-h-9">
                   <Button
-                    variant="ghost"
+                    variant="outline"
                     onClick={requestClose}
                     className="w-full sm:w-auto"
                   >{mt("cancel")}</Button>

@@ -34,7 +34,7 @@ vi.mock('../db', () => {
   return { db };
 });
 vi.mock('../chat-service', () => ({ initializeSharedConversation: vi.fn() }));
-vi.mock('../services/tour-delivery-service', () => ({ queueTourEvent: state.queue, attemptTourDelivery: vi.fn(async () => ({ failed: false })) }));
+vi.mock('../services/tour-delivery-service', () => ({ queueTourEvent: state.queue, deliverTourAfterResponse: vi.fn(() => ({ failed: false })), attemptTourDelivery: vi.fn(async () => ({ failed: false })) }));
 vi.mock('../services/kitchen-checkout-service', () => ({ getCheckinSettings: vi.fn(async () => ({ checkinWindowMinutesBefore: 20 })) }));
 vi.mock('../firebase-auth-middleware', () => ({ requireFirebaseAuthWithUser: vi.fn(), requireManager: vi.fn(), requireAdmin: vi.fn() }));
 vi.mock('./middleware', () => ({ requireChef: vi.fn() }));

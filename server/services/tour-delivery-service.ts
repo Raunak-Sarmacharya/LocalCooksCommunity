@@ -1,3 +1,4 @@
+import { waitUntil } from '@vercel/functions';
 import { tourReconfirmation, tourReconfirmationEventKey } from '@shared/tour-reconfirmation';
 import { tourRequestDecision, tourRequestEscalationDue, tourRequestEscalationKey } from '@shared/tour-request-decision';
 import { randomUUID } from 'node:crypto';
@@ -625,7 +626,7 @@ async function currentRequestRecipients(payload: Payload, current: Tour): Promis
     .where(eq(locations.id, current.locationId)).limit(1);
   const ids = [current.chefId, location?.managerId, ...payload.admins.map(person => person.id)]
     .filter((value): value is number => value != null);
-  const people = await db.select({ id: users.id, email: users.username, role: users.role, profile: users.managerProfileData, locale: users.preferredLocale })
+  const people = await db.select({ id: users.id, email: users.username, role: users.role, profile: users.managerProfileData, locale: users.preferredLocale, phone: users.phoneNumber, phoneVerifiedAt: users.phoneVerifiedAt })
     .from(users).where(inArray(users.id, ids));
   const names = new Map(await Promise.all(people.filter(person => person.role !== 'admin').map(async person => {
     const saved = person.id === current.chefId ? payload.chef : payload.manager?.id === person.id ? payload.manager : undefined;
@@ -637,7 +638,7 @@ async function currentRequestRecipients(payload: Payload, current: Tour): Promis
     const person = people.find(person => person.id === id && person.role === role);
     const profile = person?.profile as Record<string, unknown> | undefined;
     const name = [profile?.displayName, profile?.fullName].find(value => typeof value === 'string' && value.trim()) || names.get(id);
-    return { id, email: person?.email || null, available: !!person, locale: person?.locale, name: typeof name === 'string' ? name : saved?.name || (role === 'chef' ? 'Chef' : 'Manager') };
+    return { id, email: person?.email || null, available: !!person, locale: person?.locale, phone: person?.phoneVerifiedAt ? person.phone : null, name: typeof name === 'string' ? name : saved?.name || (role === 'chef' ? 'Chef' : 'Manager') };
   };
   return { ...payload, chef: recipient(current.chefId, 'chef', payload.chef),
     manager: location?.managerId && people.some(person => person.id === location.managerId && person.role === 'manager')
@@ -958,4 +959,11 @@ export async function attemptTourDelivery(viewingId: number, manualRecovery = fa
       .where(and(eq(tourDeliveryEvents.viewingId, viewingId), isNull(tourDeliveryEvents.completedAt))).limit(1);
     return { failed: !!pending };
   } catch { logger.error('[Tours] Committed delivery event pending worker recovery', { viewingId }); return { failed: true }; }
+}
+
+/** Sends a tour's queued notices after the response, like bookings, so nobody waits on mail (a tour request took 10 s on dev).
+ * The outbox and the backstop tick stay authoritative; a failure shows up in delivery recovery, not in the response. */
+export function deliverTourAfterResponse(viewingId: number) {
+  waitUntil(attemptTourDelivery(viewingId));
+  return { failed: false };
 }

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ rows: [] as unknown[][], transaction: vi.fn() }));
-vi.mock('../services/tour-delivery-service', () => ({ queueTourEvent: vi.fn(), attemptTourDelivery: vi.fn(async () => ({ failed: false })), deliverTourEvents: vi.fn(async () => ({ delivered: 1, errors: 0 })) }));
+vi.mock('../services/tour-delivery-service', () => ({ queueTourEvent: vi.fn(), deliverTourAfterResponse: vi.fn(() => ({ failed: false })), attemptTourDelivery: vi.fn(async () => ({ failed: false })), deliverTourEvents: vi.fn(async () => ({ delivered: 1, errors: 0 })) }));
 vi.mock('../services/kitchen-checkout-service', () => ({ getCheckinSettings: vi.fn(async () => ({ checkinWindowMinutesBefore: 20 })) }));
 vi.mock("../db", () => ({
   db: { select: () => {

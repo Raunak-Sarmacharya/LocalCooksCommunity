@@ -2,7 +2,7 @@ import { and, eq, inArray, or, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { kitchenViewings, locations, tourDeliveryEvents } from '@shared/schema';
 import { logger } from '../logger';
-import { queueTourEvent, deliverTourEvents, attemptTourDelivery } from './tour-delivery-service';
+import { queueTourEvent, deliverTourEvents, attemptTourDelivery, deliverTourAfterResponse } from './tour-delivery-service';
 import { tourRequestEscalationDue, tourRequestEscalationKey } from '@shared/tour-request-decision';
 import { workerAfter, workerRecord, workerPageEnd, inRecurringWorker } from './worker-context';
 import { queueTourReconfirmations, queueTourReconfirmation } from './tour-reconfirmation-service';
@@ -104,7 +104,7 @@ export async function advanceTour(id: number, now = new Date()) {
   await step(tourResultDue(tour, now), () => closeUnrecordedTour(id, now));
   const [fresh] = changed ? await db.select().from(kitchenViewings).where(eq(kitchenViewings.id, id)).limit(1) : [tour];
   scheduleTourTimer(fresh, t);
-  if (changed) await attemptTourDelivery(id);
+  if (changed) deliverTourAfterResponse(id);
   if (errors.length) throw errors[0];
   return { changed };
 }

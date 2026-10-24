@@ -9,7 +9,7 @@ vi.mock('../db', () => ({ db: { select: () => {
 vi.mock('../services/tour-application-service', () => ({ resolveTourApplicationNextStep: state.next }));
 vi.mock('../services/tour-funnel-service', () => ({ getTourFunnel: state.funnel }));
 vi.mock('../chat-service', () => ({ initializeSharedConversation: vi.fn() }));
-vi.mock('../services/tour-delivery-service', () => ({ queueTourEvent: vi.fn(), attemptTourDelivery: vi.fn() }));
+vi.mock('../services/tour-delivery-service', () => ({ queueTourEvent: vi.fn(), deliverTourAfterResponse: vi.fn(() => ({ failed: false })), attemptTourDelivery: vi.fn() }));
 vi.mock('../services/kitchen-checkout-service', () => ({ getCheckinSettings: vi.fn() }));
 vi.mock('../firebase-auth-middleware', () => ({ requireFirebaseAuthWithUser: vi.fn(), requireManager: vi.fn(), requireAdmin: vi.fn() }));
 vi.mock('./middleware', () => ({ requireChef: vi.fn() }));

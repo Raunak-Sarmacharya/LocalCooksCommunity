@@ -29,7 +29,7 @@ import { tourBookingOverlaps } from "@shared/tour-booking-overlap";
 import { createHash, timingSafeEqual, randomUUID } from 'node:crypto';
 import { DomainError } from '../shared/errors/domain-error';
 import { buildTourConfirmationPdf, tourReference } from "../services/tour-confirmation-pdf";
-import { queueTourEvent, attemptTourDelivery, deliverTourEvents } from '../services/tour-delivery-service';
+import { queueTourEvent, attemptTourDelivery, deliverTourAfterResponse, deliverTourEvents } from '../services/tour-delivery-service';
 import { changedTourInstructions, tourInstructionChangesForVisit } from '@shared/tour-instructions';
 import { publicTour, hasTourConfirmation, chefTourCancellationReason } from '@shared/tour-outcome';
 import { tourAttendance, publicTourAttendanceState } from '@shared/tour-attendance';
@@ -207,7 +207,7 @@ for (const role of ['chef', 'manager', 'admin'] as const) {
           throw new DomainError('FORBIDDEN', 'Tour not found', 404);
         return submitTourFeedback(tx, tour, { id: req.neonUser!.id, role }, req.body || {});
       });
-      const delivery = result.changed ? await attemptTourDelivery(id) : { failed: false };
+      const delivery = result.changed ? deliverTourAfterResponse(id) : { failed: false };
       return res.json({ ...result.feedback, notificationDeliveryFailed: delivery.failed });
     } catch (error) { return errorResponse(res, error); }
   });
@@ -1481,7 +1481,7 @@ router.post(
       });
 
       void scheduleTourTimerById(newViewing.id);
-      const delivery = await attemptTourDelivery(newViewing.id);
+      const delivery = deliverTourAfterResponse(newViewing.id);
       logger.info(`[Viewings] Chef ${chefId} booked viewing ${newViewing.id} for kitchen ${targetedKitchenId} at ${scheduledDate.toISOString()}`);
       res.status(201).json({ ...chefTourResponse(publicTour(newViewing)), notificationDeliveryFailed: delivery.failed });
     } catch (error: any) {
@@ -1676,7 +1676,7 @@ router.post('/chef/:id/reconfirmation', requireFirebaseAuthWithUser, requireChef
       await queueTourEvent(tx, { kind: 'reconfirmation_replied', before: tour, after: saved, actorId: req.neonUser!.id, actorRole: 'chef' });
       return saved;
     });
-    const delivery = await attemptTourDelivery(id);
+    const delivery = deliverTourAfterResponse(id);
     return res.json({ ...chefTourResponse(publicTour(updated)), notificationDeliveryFailed: delivery.failed });
   } catch (error) { return errorResponse(res, error); }
 });
@@ -1709,7 +1709,7 @@ for (const role of ['manager', 'admin'] as const) for (const action of ['attenda
           before: tour, after: result.tour, actorId: req.neonUser!.id, actorRole: role });
         return { attendance: publicTourAttendanceState(tourAttendance(result.tour, settings.checkinWindowMinutesBefore)), changed: result.changed };
       });
-      const delivery = result.changed ? await attemptTourDelivery(id) : { failed: false };
+      const delivery = result.changed ? deliverTourAfterResponse(id) : { failed: false };
       return res.json({ ...result.attendance, notificationDeliveryFailed: delivery.failed });
     } catch (error) { return errorResponse(res, error); }
   });
@@ -1745,7 +1745,7 @@ router.post("/chef/:id/reschedule", requireFirebaseAuthWithUser, requireChef, as
       return { tour, location, updated };
     });
     void scheduleTourTimerById(updated.id);
-    const delivery = await attemptTourDelivery(updated.id);
+    const delivery = deliverTourAfterResponse(updated.id);
     return res.json({ ...(req.neonUser?.role === 'chef' ? chefTourResponse(publicTour(updated)) : publicTour(updated)), notificationDeliveryFailed: delivery.failed });
   } catch (error) { logger.error("Error requesting tour date change:", error); return errorResponse(res, error); }
 });
@@ -1803,7 +1803,7 @@ router.post('/manager/:id/reschedule-proposal', requireFirebaseAuthWithUser, req
       return saved;
     });
     void scheduleTourTimerById(id);
-    const delivery = await attemptTourDelivery(id);
+    const delivery = deliverTourAfterResponse(id);
     return res.json({ ...(req.neonUser?.role === 'chef' ? chefTourResponse(publicTour(updated)) : publicTour(updated)), notificationDeliveryFailed: delivery.failed });
   } catch (error) { return errorResponse(res, error); }
 });
@@ -1829,7 +1829,7 @@ router.patch('/manager/:id/reschedule-proposal', requireFirebaseAuthWithUser, re
       return saved;
     });
     void scheduleTourTimerById(id);
-    const delivery = await attemptTourDelivery(id);
+    const delivery = deliverTourAfterResponse(id);
     return res.json({ ...(req.neonUser?.role === 'chef' ? chefTourResponse(publicTour(updated)) : publicTour(updated)), notificationDeliveryFailed: delivery.failed });
   } catch (error) { return errorResponse(res, error); }
 });
@@ -1866,7 +1866,7 @@ router.patch('/chef/:id/reschedule-proposal', requireFirebaseAuthWithUser, requi
       return saved;
     });
     void scheduleTourTimerById(id);
-    const delivery = await attemptTourDelivery(id);
+    const delivery = deliverTourAfterResponse(id);
     return res.json({ ...(req.neonUser?.role === 'chef' ? chefTourResponse(publicTour(updated)) : publicTour(updated)), notificationDeliveryFailed: delivery.failed });
   } catch (error) { return errorResponse(res, error); }
 });
@@ -1893,7 +1893,7 @@ router.patch("/manager/:id/reschedule", requireFirebaseAuthWithUser, requireMana
       return { tour, location, updated };
     });
     void scheduleTourTimerById(updated.id);
-    const delivery = await attemptTourDelivery(updated.id);
+    const delivery = deliverTourAfterResponse(updated.id);
     return res.json({ ...(req.neonUser?.role === 'chef' ? chefTourResponse(publicTour(updated)) : publicTour(updated)), notificationDeliveryFailed: delivery.failed });
   } catch (error) { logger.error("Error reviewing tour date change:", error); return errorResponse(res, error); }
 });
@@ -2094,7 +2094,7 @@ router.patch(
         catch (error) { chatProvisioningFailed = true; logger.error('Tour approved; chat provision needs retry', error); }
       }
       void scheduleTourTimerById(updated.id);
-      const delivery = await attemptTourDelivery(updated.id);
+      const delivery = deliverTourAfterResponse(updated.id);
       res.json({ ...updated, notificationDeliveryFailed: delivery.failed, chatProvisioningFailed,
         ...(chatProvisioningFailed ? { chatProvisioningMessage: 'Tour approved. Messaging could not be prepared; open Messages to retry.' } : {}) });
     } catch (error) {
@@ -2312,7 +2312,7 @@ router.patch(
       });
       const { viewing, updated, isChef, isManager, isAdmin } = decision;
       void scheduleTourTimerById(updated.id);
-      const delivery = await attemptTourDelivery(updated.id);
+      const delivery = deliverTourAfterResponse(updated.id);
       logger.info(`[Viewings] Viewing ${viewingId} status updated to ${parsed.data.status} by user ${userId}`);
       res.json({ ...(isAdmin ? updated : isChef ? chefTourResponse(publicTour(updated)) : publicTour(updated)), notificationDeliveryFailed: delivery.failed });
     } catch (error) {
