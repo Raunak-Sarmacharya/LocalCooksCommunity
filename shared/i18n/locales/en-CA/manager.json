@@ -4467,7 +4467,6 @@
   "bpTaxUsedByAllKitchens": "{count, plural, =0 {No kitchens at this location yet.} one {Applies to this location’s kitchen.} other {Applies to all # kitchens at this location.}}",
   "bpTaxFanOutWarning": "Saving writes this rate onto every kitchen here so checkout tax stays the same for each kitchen’s readers.",
   "bpTaxSetForLocation": "HST {rate}% · Set for {location}",
-  "bpTaxEditLocation": "Edit HST in location Booking policies for {location}.",
   "bpTaxReadonlyValue": "HST {rate}%",
   "bpTaxUnset": "HST not set",
   "thisLocation": "this location",
@@ -5147,5 +5146,6 @@
   "ksToursSetUpAction": "Set up tours",
   "ksOpenStorageRentals": "Open storage rentals",
   "ksStorageRentalsNote": "Rentals, requests and move-ins are handled on the Storage page.",
-  "ksNextStep": "Next: {step}"
+  "ksNextStep": "Next: {step}",
+  "bpTaxChangeIn": "Change in {page}"
 }

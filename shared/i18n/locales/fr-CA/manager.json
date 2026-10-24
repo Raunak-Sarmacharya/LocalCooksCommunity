@@ -4467,7 +4467,6 @@
   "bpTaxUsedByAllKitchens": "{count, plural, =0 {Aucune cuisine à cet emplacement pour l’instant.} one {S’applique à la cuisine de cet emplacement.} other {S’applique aux # cuisines de cet emplacement.}}",
   "bpTaxFanOutWarning": "L’enregistrement écrit ce taux sur chaque cuisine ici pour que la taxe au paiement reste inchangée pour les lecteurs de chaque cuisine.",
   "bpTaxSetForLocation": "TVH {rate} % · Défini pour {location}",
-  "bpTaxEditLocation": "Modifier la TVH dans les politiques de réservation de {location}.",
   "bpTaxReadonlyValue": "TVH {rate} %",
   "bpTaxUnset": "TVH non définie",
   "thisLocation": "cet établissement",
@@ -5147,5 +5146,6 @@
   "ksToursSetUpAction": "Configurer les visites",
   "ksOpenStorageRentals": "Ouvrir les locations d'entreposage",
   "ksStorageRentalsNote": "Les locations, demandes et emménagements se gèrent dans la page Entreposage.",
-  "ksNextStep": "Prochaine étape : {step}"
+  "ksNextStep": "Prochaine étape : {step}",
+  "bpTaxChangeIn": "Modifier dans {page}"
 }

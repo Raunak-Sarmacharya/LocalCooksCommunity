@@ -9,6 +9,7 @@ import { CurrencyInput } from "@/components/ui/currency-input";
 import { NumericInput } from "@/components/ui/numeric-input";
 import { ManagerPageLayout } from "@/components/layout/ManagerPageLayout";
 import { SettingsRow } from "@/components/manager/settings/SettingsRow";
+import { navigateNotificationHref } from "@/lib/navigate-notification-href";
 import { apiGet, apiPut } from "@/lib/api";
 import { formatCurrency } from "@/lib/formatters";
 import { describeDailyRate, formatBreakEvenHours } from "@/lib/daily-rate-hint";
@@ -385,11 +386,14 @@ export const KitchenPricingContent = forwardRef<
         <SettingsRow
           id="tax-rate"
           label={mt("taxRate2")}
-          hint={mt("bpTaxSetForLocation", {
-            rate: pricing.taxRatePercent || "0",
-            location: resolvedLocationName || locationName || mt("thisLocation"),
-          })}
-          disabledReason={mt("bpTaxEditLocation", { location: resolvedLocationName || locationName || mt("thisLocation") })}
+          hint={<>
+            {mt("bpTaxSetForLocation", { rate: pricing.taxRatePercent || "0", location: resolvedLocationName || locationName || mt("thisLocation") })}
+            {/* Tax is one rate for the whole location; say where it is changed and take the manager there. */}
+            {selectedLocationId != null && <>{" · "}<button type="button"
+              onClick={() => navigateNotificationHref(`/manager/dashboard?view=location&locationId=${selectedLocationId}&section=booking`)}
+              className="!min-h-0 font-medium text-foreground underline decoration-foreground/30 underline-offset-4 hover:decoration-foreground focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              {mt("bpTaxChangeIn", { page: `${mt("navLocation")} › ${mt("locationBookingDefaults")}` })}</button></>}
+          </>}
         >
           <span id="tax-rate" className="text-sm font-medium tabular-nums">
             {pricing.taxRatePercent ? mt("bpTaxReadonlyValue", { rate: pricing.taxRatePercent }) : mt("bpTaxUnset")}
