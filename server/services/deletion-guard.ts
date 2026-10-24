@@ -15,6 +15,9 @@ export interface DeletionBlockers {
   checkoutIncidents: { total: number; refs: DeletionRef[] };
   /** Storage rentals still in the chef's or kitchen's hands. Absent on older callers. */
   openRentals?: { total: number; refs: DeletionRef[] };
+  /** Kitchen and location deletes only: tours not yet held, and booking offers a customer can still accept. */
+  openTours?: { total: number; refs: DeletionRef[] };
+  openInvitations?: { total: number; refs: DeletionRef[] };
   blocked: boolean;
 }
 
@@ -140,8 +143,27 @@ export async function getDeletionBlockers(exec: { execute: (q: SQL) => Promise<{
   // Never a payment-provider session id: the checkout's day is what people recognise.
   const checkoutIncidents = toBucket(incidents.rows, row => ({ ref: friendlyDate(row.operating_date) ? `Checkout for ${friendlyDate(row.operating_date)}` : 'A checkout' }));
   const openRentals = toBucket(rentals.rows, row => ({ ref: row.reference_code || `SB-${row.id}`, detail: friendlyDate(row.term_start) }));
-  const blocked = upcomingBookings.total + openClaims.total + pendingMoney.total + checkoutIncidents.total + openRentals.total > 0;
-  return { upcomingBookings, openClaims, pendingMoney, checkoutIncidents, openRentals, blocked };
+  // A kitchen or location must not vanish under a visit that is still coming or an offer a customer can still accept
+  // (owner, Oct 24). Account deletion keeps its own rule: open offers are removed with the account.
+  let openTours = empty(), openInvitations = empty();
+  if (scope.kind !== "user") {
+    const tourScope = scope.kind === "location" ? sql`v.location_id = ${scope.locationId}` : sql`v.targeted_kitchen_id IN ${kitchensOfScope(scope)}`;
+    const tours = await exec.execute(sql`
+      SELECT v.id, v.scheduled_at, COUNT(*) OVER()::int AS total FROM kitchen_viewings v
+      WHERE ${tourScope} AND v.status IN ('pending_local_cooks', 'pending', 'confirmed')
+        AND v.scheduled_at + v.duration_minutes * interval '1 minute' > now()
+      ORDER BY v.scheduled_at, v.id LIMIT ${REF_LIMIT}`);
+    const invitationScope = scope.kind === "location" ? sql`i.location_id = ${scope.locationId}` : sql`i.kitchen_id IN ${kitchensOfScope(scope)}`;
+    const offers = await exec.execute(sql`
+      SELECT i.id, i.date, COUNT(*) OVER()::int AS total FROM kitchen_invitations i
+      WHERE ${invitationScope} AND i.status = 'sent' AND i.expires_at > now()
+      ORDER BY i.expires_at, i.id LIMIT ${REF_LIMIT}`);
+    openTours = toBucket(tours.rows, row => ({ ref: `TOUR-${row.id}`, detail: friendlyDate(row.scheduled_at) }));
+    openInvitations = toBucket(offers.rows, row => ({ ref: friendlyDate(row.date) ? `Offer for ${friendlyDate(row.date)}` : 'An offer' }));
+  }
+  const blocked = upcomingBookings.total + openClaims.total + pendingMoney.total + checkoutIncidents.total + openRentals.total
+    + openTours.total + openInvitations.total > 0;
+  return { upcomingBookings, openClaims, pendingMoney, checkoutIncidents, openRentals, ...(scope.kind !== "user" ? { openTours, openInvitations } : {}), blocked };
 }
 
 /** Does anything that must be kept (bookings other than manager blocks, claims, incidents) still reference the scope? */
@@ -175,12 +197,16 @@ export function describeDeletionBlockers(subject: DeletionSubject, b: DeletionBl
   if (b.pendingMoney.total) parts.push(`${plural(b.pendingMoney.total, "payment, refund or payout still in progress", "payments, refunds or payouts still in progress")} (${list(b.pendingMoney.refs, b.pendingMoney.total)})`);
   if (b.checkoutIncidents.total) parts.push(`${plural(b.checkoutIncidents.total, "checkout waiting on Local Cooks", "checkouts waiting on Local Cooks")} (${list(b.checkoutIncidents.refs, b.checkoutIncidents.total)})`);
   if (b.openRentals?.total) parts.push(`${plural(b.openRentals.total, "open storage rental", "open storage rentals")} (${list(b.openRentals.refs, b.openRentals.total)})`);
+  if (b.openTours?.total) parts.push(`${plural(b.openTours.total, "upcoming kitchen tour", "upcoming kitchen tours")} (${list(b.openTours.refs, b.openTours.total)})`);
+  if (b.openInvitations?.total) parts.push(`${plural(b.openInvitations.total, "booking offer a customer can still accept", "booking offers customers can still accept")} (${list(b.openInvitations.refs, b.openInvitations.total)})`);
   const what = subject === "account" ? "This account has" : `This ${subject} has`;
   const rentals = b.openRentals?.total ? " and storage rentals" : "";
+  const openItems = [b.openTours?.total ? "cancel the tours" : "", b.openInvitations?.total ? "withdraw the offers" : ""].filter(Boolean).join(" and ");
+  const alsoOpen = openItems ? `, ${openItems}` : "";
   const next = subject === "kitchen"
-    ? `Cancel or finish the bookings${rentals} and resolve the claims and payments first, or take the kitchen off the listing instead.`
+    ? `Cancel or finish the bookings${rentals}${alsoOpen} and resolve the claims and payments first, or take the kitchen off the listing instead.`
     : subject === "location"
-      ? `Cancel or finish the bookings${rentals} and resolve the claims and payments first, or take its kitchens off the listing instead.`
+      ? `Cancel or finish the bookings${rentals}${alsoOpen} and resolve the claims and payments first, or take its kitchens off the listing instead.`
       : `Cancel or finish the bookings${rentals} and resolve the claims and payments first, then delete the account. Contact Local Cooks if you need help.`;
   return `${what} ${parts.join(", ")}. ${next}`;
 }
