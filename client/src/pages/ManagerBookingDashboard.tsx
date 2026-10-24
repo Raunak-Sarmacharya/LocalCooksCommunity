@@ -54,6 +54,7 @@ import { getManagerImprovementDestination } from "@/lib/manager-guidance";
 import NotificationCenter from "@/components/manager/NotificationCenter";
 import { legacyKitchenSection, resolveDestination, type KitchenSection, type ManagerBreadcrumb } from "@/lib/manager-kitchens-navigation";
 import { Skeleton } from "@/components/ui/skeleton";
+import { SettingsContentSkeleton } from "@/components/manager/SettingsContentSkeleton";
 import { ChefPageHeader } from "@/components/chef/ui";
 import { Tab, TabGroup, TabList, TabPanel, TabPanels } from "@tremor/react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
@@ -363,9 +364,12 @@ export default function ManagerBookingDashboard() {
    * Returns null when both are present, so a caller reads as
    * `kitchenPrerequisite ?? <the real view>`.
    */
-  const kitchenPrerequisite = !selectedLocation ? (
-    <NeedsLocation />
-  ) : !hasKitchens ? (
+  // Still loading (or about to pick the first location) is not "no location": a placeholder, never the add-location screen.
+  const locationPending = isLoadingLocations || (locations.length > 0 && !selectedLocation);
+  const needsLocation = locationPending ? <SettingsContentSkeleton /> : <NeedsLocation />;
+  const kitchenPrerequisite = !selectedLocation ? needsLocation
+  : isLoadingOnboardingStatus ? <SettingsContentSkeleton />
+  : !hasKitchens ? (
     //  because this branch only runs when there is none.
     <NeedsKitchen hasKitchen={false} onGoToKitchens={() => handleViewChange('kitchens')} />
   ) : null;
@@ -1330,13 +1334,13 @@ export default function ManagerBookingDashboard() {
         * FAQ is about booking a kitchen rather than running one.
         */}
       {activeView === 'support' && (
-        <div className="animate-in fade-in-50 duration-500">
+        <div>
           <ManagerSupportPage />
         </div>
       )}
 
       {activeView === 'overview' && (
-        <div className="space-y-6 animate-fade-in">
+        <div className="space-y-6">
           <SessionExtensionRequests />
           {isLoadingLocations || (locations.length > 0 && isLoadingKitchens) ? (
             <div className="space-y-5" role="status" aria-label="Loading dashboard"><div className="grid gap-4 sm:grid-cols-3">{Array.from({ length: 3 }, (_, index) => <Skeleton key={index} className="h-28 w-full rounded-xl" />)}</div><Skeleton className="h-72 w-full rounded-xl" /></div>
@@ -1356,17 +1360,18 @@ export default function ManagerBookingDashboard() {
             onNavigate={(view, kitchenId) => handleViewChange(view as ViewType, kitchenId)}
             onSelectLocation={(location) => setSelectedLocation(location as Location)}
           /> : (
-            <NeedsLocation />
+            needsLocation
           )}
         </div>
       )}
 
       {(activeView === 'bookings' || activeView === 'viewings') && (
-        <div className="space-y-6 animate-fade-in">
+        <div className="space-y-6">
           {!(activeView === 'viewings' && detailTourId) && <ChefPageHeader
             title={activeView === 'bookings' ? mt("bookingRequests") : mt("tlTitle")}
             description={activeView === 'bookings' ? mt("reviewAndManageChefBookingRequests") : mt("tlDescription")}
-            actions={activeView === 'bookings' ? (
+            // Only once storage is listed, like the sidebar's Storage item.
+            actions={activeView === 'bookings' && workspaceNavigation?.showStorageBookings ? (
               <Button variant="outline" size="sm" onClick={() => handleViewChange('storage-bookings')}>
                 <Package className="mr-2 h-4 w-4" />{mt("navStorage")}
               </Button>
@@ -1396,7 +1401,7 @@ export default function ManagerBookingDashboard() {
       )}
 
       {activeView === 'storage-bookings' && (
-        <div className="space-y-6 animate-fade-in">
+        <div className="space-y-6">
           <ChefPageHeader
             title={st("stBoardTitle")}
             description={st("stBoardSubtitle")}
@@ -1431,7 +1436,7 @@ export default function ManagerBookingDashboard() {
       )}
 
       {activeView === 'settings' && !selectedLocation && (
-        <NeedsLocation />
+        needsLocation
       )}
 
       {activeView === 'revenue' && (
@@ -1471,7 +1476,7 @@ export default function ManagerBookingDashboard() {
 
 
       {activeView === 'damage-claims' && (
-        <div className="animate-fade-in">
+        <div>
           <DamageClaimQueue />
         </div>
       )}
@@ -1495,7 +1500,7 @@ export default function ManagerBookingDashboard() {
       )}
 
       {activeView === 'kitchens' && !selectedLocation && (
-        <NeedsLocation />
+        needsLocation
       )}
 
       {activeView === 'listing-review' && kitchenForReview && (
@@ -1518,7 +1523,7 @@ export default function ManagerBookingDashboard() {
         * Both cases route to the Kitchens view, which is where a kitchen is created AND where one
         * is chosen, and which already seeds itself from the first kitchen.
         */}
-      {activeView === 'listing-review' && !kitchenForReview && (
+      {activeView === 'listing-review' && !kitchenForReview && (isLoadingOnboardingStatus ? <SettingsContentSkeleton /> :
         <NeedsKitchen
           hasKitchen={hasKitchens}
           onGoToKitchens={() => handleViewChange('kitchens')}
@@ -1544,7 +1549,7 @@ export default function ManagerBookingDashboard() {
       )}
 
       {activeView === 'location' && !selectedLocation && (
-        <NeedsLocation />
+        needsLocation
       )}
 
       {activeView === 'application-requirements' && selectedLocation && (
@@ -1559,7 +1564,7 @@ export default function ManagerBookingDashboard() {
       )}
 
       {activeView === 'application-requirements' && !selectedLocation && (
-        <NeedsLocation />
+        needsLocation
       )}
 
       {activeView === 'notifications' && (
@@ -1592,7 +1597,7 @@ export default function ManagerBookingDashboard() {
       )}
 
       {activeView === 'settings-checkin-checkout' && !selectedLocation && (
-        <NeedsLocation />
+        needsLocation
       )}
 
       {activeView === 'settings-storage-checkin-checkout' && selectedLocation && (
@@ -1604,7 +1609,7 @@ export default function ManagerBookingDashboard() {
       )}
 
       {activeView === 'settings-storage-checkin-checkout' && !selectedLocation && (
-        <NeedsLocation />
+        needsLocation
       )}
 
       <UnsavedChangesDialog

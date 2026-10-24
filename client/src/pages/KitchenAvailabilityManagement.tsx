@@ -756,7 +756,7 @@ const AvailabilityContent = forwardRef<AvailabilityContentHandle, {
   if (scheduleLoadError) return <Card><CardContent className="p-6"><Button variant="outline" onClick={() => void loadWeeklySchedule()}>{mt("retry")}</Button></CardContent></Card>;
 
   return (
-    <div className="space-y-6 animate-in fade-in slide-in-from-top-4">
+    <div className="space-y-6">
       <Tabs defaultValue="weekly" value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="h-auto w-full justify-start gap-4 rounded-none border-b border-border bg-transparent p-0">
           <TabsTrigger value="weekly" className={TAB_TRIGGER}>{mt("weeklySchedule")}</TabsTrigger>

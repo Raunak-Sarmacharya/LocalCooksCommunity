@@ -455,7 +455,7 @@ export function ManagerShell({
 
                 <ScrollArea className={cn("flex-1 min-h-0 min-w-0 bg-muted/30", SCROLL_AREA_FLUID_CONTENT)}>
                     <main className="min-w-0 p-4 md:p-6 lg:p-8 [&_p]:[text-wrap:pretty]">
-                        <div className="mx-auto w-full max-w-7xl min-w-0 animate-fade-in space-y-6">
+                        <div className="mx-auto w-full max-w-7xl min-w-0 space-y-6">
                             {/*
                               Desktop page header. `hidden md:block` because the header bar above
                               already shows the same name below `md` — rendering both is the

@@ -240,7 +240,7 @@ export default function CompletionSummaryStep() {
     }, [isOnboardingComplete, setIsOpen, setLocation, queryClient, selectedLocationId, selectedLocation]);
 
     return (
-        <div className="animate-in fade-in duration-500">
+        <div>
             {/* Where setup stands */}
             <div className="max-w-lg">
                 <p className="text-sm font-medium text-foreground">

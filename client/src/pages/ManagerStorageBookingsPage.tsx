@@ -29,7 +29,7 @@ import { StorageUnitCard } from "@/components/manager/storage/StorageUnitCard";
 
 export default function ManagerStorageBookingsPage() {
   const { t, i18n } = useTranslation("storage");
-  const { kitchens } = useManagerDashboard();
+  const { kitchens, isLoadingKitchens } = useManagerDashboard();
   const kitchenIds = useMemo(() => kitchens.map((kitchen) => kitchen.id), [kitchens]);
   // Reactive: "View units" (Storage tab) narrows to one listing; "Show all storage" clears it without a reload.
   const search = useSearch();
@@ -84,7 +84,8 @@ export default function ManagerStorageBookingsPage() {
   const visibleRows = useMemo(() => filterUnitRows(rows, filter), [rows, filter]);
   const groups = useMemo(() => groupRowsByListing(visibleRows), [visibleRows]);
   const refetch = () => { void rentalsQuery.refetch(); void listingsQuery.refetch(); };
-  const loading = rentalsQuery.isLoading || listingsQuery.isLoading;
+  // Kitchens load first; until then the listings query hasn't even started, which is not "no storage".
+  const loading = rentalsQuery.isLoading || listingsQuery.isLoading || isLoadingKitchens;
   const error = rentalsQuery.error ?? listingsQuery.error;
 
   const filters: Array<[BoardFilter, string, number]> = [
@@ -114,7 +115,7 @@ export default function ManagerStorageBookingsPage() {
         ].map(([label, value, occupancy]) => (
           <div key={String(label)} className="min-w-24">
             <p className="mb-1 text-xs font-medium text-muted-foreground">{label}</p>
-            <p className="text-2xl font-semibold tracking-tight tabular-nums">{value}</p>
+            {loading ? <Skeleton className="h-8 w-16" /> : <p className="text-2xl font-semibold tracking-tight tabular-nums">{value}</p>}
             {occupancy && <div className="mt-2 h-1 w-32 overflow-hidden rounded-full bg-muted" aria-hidden="true"><div className="h-full rounded-full bg-primary" style={{ width: `${summary.units ? Math.min(100, summary.occupied / summary.units * 100) : 0}%` }} /></div>}
           </div>
         ))}

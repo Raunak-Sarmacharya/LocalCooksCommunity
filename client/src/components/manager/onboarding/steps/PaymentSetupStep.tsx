@@ -69,7 +69,7 @@ export default function PaymentSetupStep() {
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
+    <div className="space-y-6">
       {/* Stripe Connect Setup */}
       <Card>
         <div className="p-5">

@@ -103,7 +103,7 @@ export default function ManagerBookingLayout({
                 <ScrollArea className="flex-1 min-h-0 min-w-0 bg-muted/10">
                 <main className="relative min-w-0 p-4 md:p-6 lg:p-8">
                     <AnimatedBackgroundOrbs variant="both" intensity="subtle" />
-                    <div className="relative z-10 mx-auto w-full max-w-7xl min-w-0 animate-fade-in space-y-6">
+                    <div className="relative z-10 mx-auto w-full max-w-7xl min-w-0 space-y-6">
                         {children}
                     </div>
                 </main>

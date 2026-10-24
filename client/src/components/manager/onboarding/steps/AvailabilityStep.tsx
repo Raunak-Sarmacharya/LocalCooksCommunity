@@ -367,7 +367,7 @@ const AvailabilityStep = () => {
     ];
 
     return (
-        <div ref={scrollRef} className="space-y-6 animate-in fade-in duration-500">
+        <div ref={scrollRef} className="space-y-6">
             {/* Part progress — the same segmented dots the Business step uses, so
                 the two multi-part steps read identically. */}
             <div className="flex items-center gap-3">

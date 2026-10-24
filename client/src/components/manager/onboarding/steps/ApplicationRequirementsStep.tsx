@@ -230,7 +230,7 @@ export default function ApplicationRequirementsStep() {
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
+    <div className="space-y-6">
       {!isSummary && (
         <>
           {/* Status line — what the chef will see, and what this step still needs */}

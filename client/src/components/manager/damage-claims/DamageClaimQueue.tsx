@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { DamageClaimCard } from '@/components/booking/DamageClaimCards';
 import { claimRequest, claimMoney, type DamageClaimCardData } from '@/lib/damage-claims';
 import { ListFilters } from '../ListFilters';
@@ -26,7 +27,7 @@ export function DamageClaimQueue() {
   }), { claimed: 0, collected: 0, pending: 0 });
   return <section className="space-y-4"><h1 className="text-xl font-semibold">{t('dcV2PolicyTitle')}</h1><p>{t('dcV2ManagerQueueIntro')}</p>
     <a className="inline-block underline" href="/manager/dashboard?view=bookings">{t('dcV2ChooseBooking')}</a>
-    {query.isPending && <p role="status">{t('dcV2Loading')}</p>}
+    {query.isPending && <div role="status" aria-label={t('dcV2Loading')} className="space-y-3">{[0, 1, 2].map(row => <Skeleton key={row} className="h-24 rounded-xl" />)}</div>}
     {query.isError && <p role="alert">{t('dcV2LoadFailed')} <Button variant="link" onClick={() => void query.refetch()}>{t('dcV2Retry')}</Button></p>}
     {query.data?.claims.length === 0 && <p>{t('dcV2NoClaims')}</p>}
     <ListFilters status={status} onStatus={setStatus} from={from} to={to} onFrom={setFrom} onTo={setTo}

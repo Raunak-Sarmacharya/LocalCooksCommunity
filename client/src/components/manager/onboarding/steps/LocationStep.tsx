@@ -611,7 +611,7 @@ export default function LocationStep() {
   ];
 
   return (
-    <div ref={scrollRef} className="space-y-6 animate-in fade-in duration-500">
+    <div ref={scrollRef} className="space-y-6">
       {/* Part progress — three dots, so the manager always knows how much is left. */}
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-1.5" role="group" aria-label={mt("businessStepProgress", { current: Math.min(activePart + 1, PART_COUNT), total: PART_COUNT })}>

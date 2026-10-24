@@ -758,7 +758,7 @@ export default function CreateKitchenStep() {
     parseInt(data.minimumBookingHours, 10) >= 1;
 
   return (
-    <div ref={scrollRef} className="space-y-6 animate-in fade-in duration-500">
+    <div ref={scrollRef} className="space-y-6">
       {/* Part progress — three dots, so the manager always knows how much is left. */}
       <div className="flex items-center gap-3">
         <div

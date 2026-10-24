@@ -34,7 +34,7 @@ export default function WelcomeStep() {
   const { handleNext, saveAndExit, isSubmitting } = useManagerOnboarding();
 
   return (
-    <div className="mx-auto flex max-w-xl animate-in fade-in flex-col gap-10 duration-500">
+    <div className="mx-auto flex max-w-xl flex-col gap-10">
       <header className="space-y-3">
         {/* `h1`: the shell skips its heading block for the welcome step, so this is the
             page's only heading — it was still starting at level 2. */}
