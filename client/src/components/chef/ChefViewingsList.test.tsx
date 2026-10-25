@@ -155,7 +155,42 @@ describe('chef tour notification links', () => {
     expect(screen.queryByText('Cancelled')).not.toBeInTheDocument();
     expect(screen.queryByText('No show')).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Confirmed on' })).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Discover Kitchens' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Find other kitchens' })).toBeInTheDocument();
+    client.clear();
+  });
+  it.each([
+    ['declined', { cancelledBy: 'manager_declined', cancellationReason: 'Fully booked that week' }, 'Declined', 'Why the kitchen declined', 'Request another time'],
+    ['cancelled by the kitchen', { cancelledBy: 'manager', cancellationReason: 'Inspection' }, 'Cancelled', 'Why the kitchen cancelled', 'Request another time'],
+    ['cancelled by the chef', { cancelledBy: 'chef', cancellationReason: 'Tour cancelled' }, 'Cancelled', 'Your reason', null],
+  ])('says who ended a %s tour and offers the right next step', async (_label, extra, status, reasonHeading, primary) => {
+    const rows = [{ viewing: { id: 77, locationId: 4, targetedKitchenId: 40, status: 'cancelled', cancelledAt: '2026-10-05T12:00:00Z', scheduledAt: '2099-10-05T12:30:00Z', updatedAt: '2026-10-05T12:30:00Z', durationMinutes: 30, ...extra }, locationName: 'Fixture kitchen', chefEmail: 'chef@example.test', managerEmail: 'manager@example.test', managerName: 'Sam Lee', departureNotes: 'Return the badge' }];
+    vi.stubGlobal('fetch', vi.fn(async (path: string) => ({ ok: true, json: async () => path === '/api/viewings/chef' ? rows : { events: [], problems: [], reportingAvailable: false } })));
+    window.history.replaceState({}, '', '/dashboard?view=viewings&viewing=77');
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><ChefViewingsList /></QueryClientProvider>);
+    const next = await screen.findByRole('region', { name: 'What to do next' });
+    expect(screen.getAllByText(status).length).toBeGreaterThan(0);
+    expect(screen.getByText(reasonHeading)).toBeInTheDocument();
+    if (primary) expect(within(next).getByRole('link', { name: primary })).toHaveAttribute('href', '/request-tour/4?kitchenId=40');
+    else expect(within(next).queryByRole('link', { name: 'Request another time' })).not.toBeInTheDocument();
+    expect(within(next).getByRole('link', { name: 'Find other kitchens' })).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent(/chef@example\.test|manager@example\.test|Rejected|Kitchen manager|Departure notes|Return the badge/);
+    client.clear();
+  });
+  it('points a closed tour to the open one at the same kitchen and offers apply after an unverified close', async () => {
+    const rows = [
+      { viewing: { id: 77, locationId: 4, targetedKitchenId: 40, status: 'cancelled', cancelledBy: 'local_cooks', disruptionReason: 'outcome_unknown', scheduledAt: '2026-10-05T12:30:00Z', updatedAt: '2026-10-05T12:30:00Z', durationMinutes: 30 }, locationName: 'Fixture kitchen' },
+      { viewing: { id: 78, locationId: 4, targetedKitchenId: 40, status: 'pending', scheduledAt: '2099-10-05T12:30:00Z', updatedAt: '2026-10-05T12:30:00Z', durationMinutes: 30 }, locationName: 'Fixture kitchen' },
+    ];
+    vi.stubGlobal('fetch', vi.fn(async (path: string) => ({ ok: true, json: async () => path === '/api/viewings/chef' ? rows : { events: [], problems: [], reportingAvailable: false } })));
+    window.history.replaceState({}, '', '/dashboard?view=viewings&viewing=77');
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><ChefViewingsList /></QueryClientProvider>);
+    const next = await screen.findByRole('region', { name: 'What to do next' });
+    expect(within(next).queryByRole('link', { name: 'Request another time' })).not.toBeInTheDocument();
+    expect(within(next).getByRole('link', { name: 'Request to apply' })).toHaveAttribute('href', '/apply-kitchen/4?tourId=77');
+    fireEvent.click(within(next).getByRole('button', { name: 'Open your tour' }));
+    expect(window.location.search).toBe('?view=viewings&viewing=78');
     client.clear();
   });
   it('displays an explicitly recorded confirmation timestamp', async () => {
@@ -179,9 +214,11 @@ describe('chef tour notification links', () => {
     if (window.location.pathname === "/") window.history.replaceState({}, "", "/dashboard?view=viewings&viewing=77");
     render(<QueryClientProvider client={client}><ChefViewingsList /></QueryClientProvider>);
     fireEvent.click(await screen.findByRole('button', { name: 'Review invitation' }));
-    const dialog = await screen.findByRole('dialog');
+    const dialog = await screen.findByRole('dialog', { name: 'The kitchen offered other times' });
     expect(within(dialog).getByText('Requested time')).toBeInTheDocument();
-    expect(within(dialog).getByText(/Your manager offered these available times\. Choose one to confirm your tour/)).toHaveTextContent('Respond before your original requested start time');
+    expect(within(dialog).getByText(/The kitchen offered these times\. Choose one to confirm your tour/)).toHaveTextContent('Answer before your requested start time');
+    expect(dialog).toHaveTextContent(/a\.m\.|p\.m\./);
+    expect(dialog).not.toHaveTextContent(/manager| AM| PM/);
     expect(within(dialog).queryByText(/original tour stays confirmed/)).not.toBeInTheDocument();
     expect(within(dialog).getByRole('button', { name: 'Keep original request' })).toBeEnabled();
     const accept = within(dialog).getByRole('button', { name: 'Accept and confirm tour' });
@@ -241,7 +278,8 @@ describe('chef tour notification links', () => {
     render(<QueryClientProvider client={client}><ChefViewingsList /></QueryClientProvider>);
     expect(await screen.findByRole('heading', { name: 'Arrival notes' })).toBeInTheDocument();
     expect(screen.getByText(/Meet Sam at the side door/)).toHaveClass('whitespace-pre-wrap');
-    expect(screen.getByText('Return the visitor badge')).toBeInTheDocument();
+    expect(screen.queryByText('Return the visitor badge')).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Departure notes' })).not.toBeInTheDocument();
     client.clear();
   });
   it('uses the same authenticated current-tour exclusion in calendar and slot consumers', async () => {
@@ -331,12 +369,12 @@ describe('chef tour action links', () => {
     expect(within(confirmation).getByRole('button', { name: 'Download' })).toBeEnabled();
     expect(confirmation.compareDocumentPosition(screen.getByRole('region', { name: 'Arrival notes' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     const contact = screen.getByRole('region', { name: 'Coordinate with the kitchen' });
-    expect(within(contact).getByRole('button', { name: 'Message manager' })).toBeInTheDocument();
-    expect(within(next).queryByRole('button', { name: 'Message manager' })).not.toBeInTheDocument();
+    expect(within(contact).getByRole('button', { name: 'Message the kitchen' })).toBeInTheDocument();
+    expect(within(next).queryByRole('button', { name: 'Message the kitchen' })).not.toBeInTheDocument();
     expect(within(next).queryByRole('button', { name: 'Download' })).not.toBeInTheDocument();
     expect(within(screen.getByRole('complementary', { name: 'Tour summary' })).queryByRole('button')).not.toBeInTheDocument();
-    expect(screen.getByRole('region', { name: 'Arrival notes' })).toHaveTextContent('The kitchen manager hasn’t shared arrival instructions yet.');
-    expect(screen.getByRole('region', { name: 'Departure notes' })).toHaveTextContent('The kitchen manager hasn’t shared departure instructions yet.');
+    expect(screen.getByRole('region', { name: 'Arrival notes' })).toHaveTextContent('The kitchen hasn’t shared arrival instructions yet.');
+    expect(screen.queryByRole('region', { name: 'Departure notes' })).not.toBeInTheDocument();
     const cancel = screen.getByRole('button', { name: 'Cancel tour' });
     expect(cancel).toHaveClass('rounded-full', 'h-9');
     expect(cancel).not.toHaveClass('rounded-none', 'border-l');
@@ -352,28 +390,30 @@ describe('chef table and dedicated tour page', () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     return { client, page: render(<QueryClientProvider client={client}><ChefViewingsList /></QueryClientProvider>) };
   }
-  it('opens a keyboard activated row as an addressable page and returns to the table', async () => {
+  it('opens a tour card as an addressable page and returns to the list', async () => {
     window.history.replaceState({}, '', '/dashboard?view=viewings');
     const { client, page } = mountPage();
-    const table = await screen.findByTestId('data-table-desktop');
-    const row = within(table).getByText('Kitchen 77').closest('tr')!;
-    expect(row).toHaveAttribute('tabindex', '0');
-    fireEvent.keyDown(row, { key: 'Enter' });
+    expect(await screen.findByRole('tab', { name: 'Upcoming 2' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.queryByRole('textbox', { name: 'Search kitchen tours' })).not.toBeInTheDocument();
+    const card = screen.getByTestId('chef-tour-card-77');
+    expect(card).toHaveTextContent('Confirmed');
+    expect(within(card).getAllByRole('button').map(button => button.textContent)).toEqual(['Open']);
+    fireEvent.click(within(card).getByRole('button', { name: 'Open' }));
     expect(await screen.findByRole('heading', { name: 'Kitchen tour details' })).toBeInTheDocument();
     expect(window.location.search).toBe('?view=viewings&viewing=77');
-    expect(screen.queryByTestId('data-table-desktop')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('chef-tour-card-77')).not.toBeInTheDocument();
     expect(screen.queryByText('Kitchen 88')).not.toBeInTheDocument();
     expect(screen.getByText('Arrival 77')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Reschedule tour' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Cancel tour' })).toBeEnabled();
-    expect(screen.getByRole('button', { name: 'Message manager' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Message the kitchen' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Download' })).toBeInTheDocument();
     page.unmount();
     const reloaded = render(<QueryClientProvider client={client}><ChefViewingsList /></QueryClientProvider>);
     expect(await screen.findByRole('heading', { name: 'Kitchen tour details' })).toBeInTheDocument();
     window.history.replaceState({}, '', '/dashboard?view=viewings');
     window.dispatchEvent(new PopStateEvent('popstate'));
-    expect(await screen.findByTestId('data-table-desktop')).toBeInTheDocument();
+    expect(await screen.findByTestId('chef-tour-card-88')).toBeInTheDocument();
     expect(window.location.search).toBe('?view=viewings');
     reloaded.unmount(); client.clear();
   });
@@ -385,7 +425,7 @@ describe('chef table and dedicated tour page', () => {
     expect(screen.queryByRole('button', { name: /Back/ })).not.toBeInTheDocument();
     window.history.replaceState({}, '', '/dashboard?view=viewings');
     window.dispatchEvent(new PopStateEvent('popstate'));
-    expect(await screen.findByTestId('data-table-desktop')).toBeInTheDocument();
+    expect(await screen.findByTestId('chef-tour-card-77')).toBeInTheDocument();
     client.clear();
   });
 });
@@ -397,7 +437,7 @@ describe('chef next steps and information rail', () => {
     ['confirmed', '2099-10-05T12:30:00Z', 'Tour confirmed. Arrive on time', 'Reschedule tour'],
     ['completed', '2020-10-05T12:30:00Z', 'Your tour is complete.', null],
     ['no_show', '2020-10-05T12:30:00Z', 'Review the tour outcome', null],
-    ['pending', '2020-10-05T12:30:00Z', 'The requested time passed before confirmation.', null],
+    ['pending', '2020-10-05T12:30:00Z', 'The time passed before the kitchen confirmed.', null],
   ])('gives %s an actionable next step and preserves its public information', async (status, scheduledAt, nextStep, action) => {
     const rows = [{ viewing: { id: 77, locationId: 4, status, scheduledAt, durationMinutes: 30, chefNotes: 'Bring equipment questions', intakeData: { purpose: 'Bakery' } }, locationName: 'Fixture kitchen', locationAddress: '123 Water Street', managerName: 'Sam', arrivalNotes: 'Use the side entrance' }];
     vi.stubGlobal('fetch', vi.fn(async (path: string) => ({
@@ -412,7 +452,10 @@ describe('chef next steps and information rail', () => {
     const rail = screen.getByRole('complementary', { name: 'Tour summary' });
     expect(rail).toHaveTextContent('Fixture kitchen');
     expect(within(rail).getByRole('link', { name: '123 Water Street' })).toHaveAttribute('href', expect.stringContaining('123%20Water%20Street'));
-    expect(screen.getByText('Use the side entrance')).toBeInTheDocument();
+    // Arrival notes show only once confirmed; tours have no departure notes.
+    if (status === 'confirmed') expect(screen.getByText('Use the side entrance')).toBeInTheDocument();
+    else expect(screen.queryByRole('region', { name: 'Arrival notes' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Departure notes' })).not.toBeInTheDocument();
     expect(screen.getByText('Bring equipment questions')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Back/ })).not.toBeInTheDocument();
     if (action) expect(within(banner).getByRole('button', { name: action })).toBeEnabled();
@@ -420,10 +463,8 @@ describe('chef next steps and information rail', () => {
       expect(within(banner).queryByRole('button', { name: 'Cancel tour' })).not.toBeInTheDocument();
       expect(within(banner).queryByRole('button', { name: 'Reschedule tour' })).not.toBeInTheDocument();
     }
-    if (status === 'pending') expect(screen.getByRole('region', { name: 'Departure notes' })).toHaveTextContent('Departure instructions are available after your tour is confirmed.');
-    if (status === 'completed' || status === 'no_show') expect(screen.getByRole('region', { name: 'Departure notes' })).toHaveTextContent('Instructions are unavailable for this tour.');
     if (status === 'completed') expect(await within(banner).findByRole('link', { name: 'Request to apply' })).toHaveAttribute('href', '/apply-kitchen/4?tourId=77');
-    if (status === 'no_show' || (status === 'pending' && !action)) expect(within(banner).getByRole('link', { name: 'Discover Kitchens' })).toHaveAttribute('href', '/dashboard?view=discover-kitchens');
+    if (status === 'no_show' || (status === 'pending' && !action)) expect(within(banner).getByRole('link', { name: 'Find other kitchens' })).toHaveAttribute('href', '/dashboard?view=discover-kitchens');
     client.clear();
   });
 });

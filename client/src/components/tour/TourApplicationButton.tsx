@@ -6,7 +6,7 @@ import { apiRequest } from '@/lib/queryClient';
 import { useFirebaseAuth } from '@/hooks/use-auth';
 import type { TourApplicationNextStep } from '@shared/tour-application';
 
-export function TourApplicationButton({ id, version, primary }: { id: number; version: string; primary?: boolean }) {
+export function TourApplicationButton({ id, version, primary, className }: { id: number; version: string; primary?: boolean; className?: string }) {
   const { user } = useFirebaseAuth();
   const { t } = useTranslation('chef');
   const { data, isError, refetch } = useQuery<TourApplicationNextStep>({
@@ -19,5 +19,5 @@ export function TourApplicationButton({ id, version, primary }: { id: number; ve
   const label = data.action === 'apply' ? t('tourRequestToApply', 'Request to apply')
     : data.action === 'continue' ? t('tourContinueApplication', 'Continue application') : data.applicationId
       ? t('tourViewApplication', 'View application') : t('tourViewKitchenAccess', 'View kitchen access');
-  return <Button asChild variant={primary ? 'default' : 'outline'} size="sm" className="h-auto min-h-11 max-w-full whitespace-normal py-2"><Link href={data.href}>{label}</Link></Button>;
+  return <Button asChild variant={primary ? 'default' : 'outline'} size="sm" className={`h-auto min-h-11 max-w-full whitespace-normal py-2 ${className ?? ""}`}><Link href={data.href}>{label}</Link></Button>;
 }

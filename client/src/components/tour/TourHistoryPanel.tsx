@@ -15,10 +15,12 @@ const eventKeys: Record<TourHistoryEvent['kind'], string> = {
   attendance_corrected: 'attendance_corrected', evidence_repaired: 'evidence_repaired',
   reconfirmation_reminder: 'reconfirmation_reminder', reconfirmation_requested: 'reconfirmation_requested', reconfirmation_replied: 'reconfirmation_replied', reconfirmation_escalated: 'reconfirmation_escalated',
 };
-const when = (time: string) => formatTourWhen(time, null, 'America/St_Johns');
-const compactWhen = (time: string) => new Intl.DateTimeFormat('en-US', {
+// "10:30 a.m.", like the rest of the app.
+const ampm = (text: string) => text.replace(/\b([AP])M\b/g, (_, letter: string) => letter === 'A' ? 'a.m.' : 'p.m.');
+const when = (time: string) => ampm(formatTourWhen(time, null, 'America/St_Johns'));
+const compactWhen = (time: string) => ampm(new Intl.DateTimeFormat('en-US', {
   timeZone: 'America/St_Johns', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true,
-}).format(new Date(time));
+}).format(new Date(time)));
 function eventLabel(event: TourHistoryEvent) {
   if (event.kind === 'reconfirmation_replied' && event.reply) return mt(`tourHistory_reply_${event.reply}`);
   if (event.kind === 'status' && event.outcome === 'unverified') return mt('tourHistory_status_unverified');
@@ -27,7 +29,7 @@ function eventLabel(event: TourHistoryEvent) {
   return mt(`tourHistory_${eventKeys[event.kind]}`);
 }
 
-export function TourHistoryPanel({ id, version, role = 'manager' }: { id: number; version: string; role?: 'chef' | 'manager' | 'admin' }) {
+export function TourHistoryPanel({ id, version, role = 'manager', customerName, kitchenName }: { id: number; version: string; role?: 'chef' | 'manager' | 'admin'; customerName?: string; kitchenName?: string }) {
   const history = useQuery<TourHistoryResponse>({
     queryKey: ['tour-history', role, id, version], retry: false, refetchInterval: 60_000,
     queryFn: async () => {
@@ -61,7 +63,7 @@ export function TourHistoryPanel({ id, version, role = 'manager' }: { id: number
             <p className="min-w-0 break-words font-medium leading-4" title={eventLabel(event)}>{eventLabel(event)}</p>
             <time dateTime={event.recordedAt} title={when(event.recordedAt)} className="text-[10px] leading-4 text-muted-foreground sm:whitespace-nowrap sm:text-right">{compactWhen(event.recordedAt)}</time>
           </div>
-          <p className="text-xs text-muted-foreground">{mt(`tourHistoryActor_${event.actor}`)}</p>
+          <p className="text-xs text-muted-foreground">{role === 'chef' && event.actor === 'chef' ? mt('tourHistoryActorYou') : role === 'chef' && event.actor === 'manager' && kitchenName ? kitchenName : event.actor === 'chef' && customerName ? customerName : mt(`tourHistoryActor_${event.actor}`)}</p>
           {(event.previousScheduledAt || event.proposedSlots?.length || (event.actualAt && event.actualAt !== event.recordedAt)) && <details className="pt-1 text-muted-foreground">
             <summary className="cursor-pointer">{mt('tourHistoryDetails')}</summary>
             <div className="space-y-1 pt-2">

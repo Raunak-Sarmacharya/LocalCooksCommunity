@@ -1,4 +1,4 @@
-import { bookingListBounds, bookingListPill, chefBookingTabs, chefNextVisit, listTimezone, listWhenLine, waitingForChef, type BookingListRow } from "@/lib/booking-list-status";
+import { bookingListBounds, bookingListPill, chefBookingTabs, chefNextVisit, listDayLabel, listTimezone, listWhenLine, waitingForChef, type BookingListRow } from "@/lib/booking-list-status";
 import { invitationOpen, invitationRequest, type Invitation } from "@/lib/invitations";
 import { listRentals, storageDay } from "@/lib/storage-rentals";
 import { useMemo, useState, type ReactNode } from "react";
@@ -22,6 +22,7 @@ import { tt } from "@/i18n/common-ns";
 import { useLocation } from "wouter";
 import { normalizeChefTourRow, viewingStatusBadge, type ChefTourRow } from "@/lib/chef-viewing-display";
 import { useTourClock } from "@/hooks/use-tour-clock";
+import { DEFAULT_TIMEZONE } from "@shared/timezone-utils";
 
 interface OverviewTabContentProps {
   user: {
@@ -113,6 +114,13 @@ export default function OverviewTabContent({
     }> = [];
     for (const tour of tourRows) {
       if (tour.status === 'confirmed' && !tour.chefFeedbackSubmitted && Date.parse(tour.scheduledAt) + (tour.durationMinutes ?? 30) * 60_000 <= Date.now()) items.push({ id: `tour-feedback-${tour.id}`, title: tr('tourFeedbackTitle', { ns: 'common' }), description: `${tour.kitchenName || tour.locationName} · TOUR-${tour.id}`, cta: tr('tourFeedbackReview', { ns: 'common' }), onClick: () => navigate(`/dashboard?view=viewings&viewing=${tour.id}&feedback=1`) });
+    }
+    // The kitchen offered other times, or asks whether the chef is still coming: the chef must answer.
+    for (const tour of tourRows) {
+      // Toured and liked it: the next step is the request to apply at that kitchen.
+      if (tour.status === 'completed' && tour.locationId && !kitchenApplications.some((app) => app.locationId === tour.locationId)) items.push({ id: `tour-apply-${tour.id}`, title: t('homeTodoApplyAfterTour', { kitchen: tour.kitchenName || tour.locationName }), description: t('homeTodoApplyAfterTourHint'), cta: t('homeRequestToApply'), onClick: () => navigate(`/apply-kitchen/${tour.locationId}?tourId=${tour.id}`) });
+      if (tour.status === 'pending' && tour.rescheduleProposedSlots?.length) items.push({ id: `tour-offer-${tour.id}`, title: t('homeTodoTourOffer', { kitchen: tour.kitchenName || tour.locationName }), description: `TOUR-${tour.id}`, cta: t('homeReview'), onClick: () => navigate(`/dashboard?view=viewings&viewing=${tour.id}`) });
+      if (tour.reconfirmation?.canReply && !tour.reconfirmation.reply) items.push({ id: `tour-reconfirm-${tour.id}`, title: t('homeTodoTourReconfirm', { kitchen: tour.kitchenName || tour.locationName }), description: `TOUR-${tour.id}`, cta: t('homeReview'), onClick: () => navigate(`/dashboard?view=viewings&viewing=${tour.id}`) });
     }
     for (const tour of tourRows.filter(tour => tour.status === 'no_show' || tour.disruptionReason)) {
       items.push({ id: `tour-${tour.id}`, title: t('ovTourOutcomeReview'),
@@ -228,6 +236,21 @@ export default function OverviewTabContent({
   // Nothing confirmed yet: Up next shows the first request still waiting on the kitchen.
   const nextBooking = confirmedNext ?? (upcoming[0]?.row as unknown as EnrichedBooking | undefined);
   const nextIsRequest = !confirmedNext && Boolean(nextBooking);
+  // A tour that is still ahead (requested or confirmed) belongs in Up next too.
+  const nextTour = tourRows
+    .filter((tour) => ["pending", "pending_local_cooks", "confirmed"].includes(tour.status) && Date.parse(tour.scheduledAt) + (tour.durationMinutes ?? 30) * 60_000 > Date.now())
+    .sort((a, b) => Date.parse(a.scheduledAt) - Date.parse(b.scheduledAt))[0];
+  const nextStart = nextBooking ? bookingListBounds(nextBooking as unknown as BookingListRow)?.startAt.getTime() ?? Infinity : Infinity;
+  const tourFirst = Boolean(nextTour) && Date.parse(nextTour!.scheduledAt) < nextStart;
+  const tourWhen = (tour: ChefTourRow) => {
+    const start = new Date(tour.scheduledAt);
+    const end = new Date(start.getTime() + (tour.durationMinutes ?? 30) * 60_000);
+    const zone = DEFAULT_TIMEZONE;
+    const day = listDayLabel(start, zone, locale, words);
+    const time = new Intl.DateTimeFormat(locale, { timeZone: zone, hour: "numeric", minute: "2-digit" });
+    return `${day} · ${time.format(start)}–${time.format(end)}`;
+  };
+  const openTour = (tour: ChefTourRow) => navigate(`/dashboard?view=viewings&viewing=${tour.id}`);
   const weekAhead = Date.now() + 7 * 86_400_000;
   const laterThisWeek = upcoming.filter(({ row }) => (row as unknown as EnrichedBooking).id !== nextBooking?.id && (bookingListBounds(row)?.startAt.getTime() ?? Infinity) < weekAhead).slice(0, 3);
   const nextBounds = nextBooking ? bookingListBounds(nextBooking as unknown as BookingListRow) : null;
@@ -283,7 +306,7 @@ export default function OverviewTabContent({
     ...(wantsSelling ? [{ id: "selling", title: t("homeSetupSelling"), steps: sellingSteps }] : []),
   ].filter((list) => list.steps.some((step) => !step.done && !("optional" in step && step.optional)));
   // Once something real is happening, setup shrinks to one line under it and can be hidden (Shopify setup guide pattern).
-  const hasActivity = Boolean(nextBooking) || kitchenApplications.length > 0 || Boolean(latestApp) || currentRentals.length > 0;
+  const hasActivity = Boolean(nextBooking) || tourRows.length > 0 || kitchenApplications.length > 0 || Boolean(latestApp) || currentRentals.length > 0;
   const hideKey = (id: string) => `lc-home-hide-setup-${authUser?.uid}-${id}`;
   const [hiddenLists, setHiddenLists] = useState<string[]>(() =>
     typeof window === "undefined" ? [] : ["kitchen", "selling"].filter((id) => localStorage.getItem(hideKey(id)) === "1"));
@@ -310,7 +333,24 @@ export default function OverviewTabContent({
       </div>
 
       <div className="grid gap-4 lg:grid-cols-12">
-        {nextBooking ? (
+        {nextTour && (tourFirst || !nextBooking) ? (
+          <HomePanel className={cn(showSellerAccount ? "lg:col-span-6" : todo.length ? "lg:col-span-8" : "lg:col-span-12")} title={t("homeUpNext")} link={{ label: t("homeAllTours"), onClick: () => onSetActiveTab("viewings") }}>
+            <p className="text-sm font-semibold tabular-nums">{tourWhen(nextTour)}</p>
+            <p className="mt-0.5 text-xl font-semibold tracking-[-0.015em]">{t("homeTourAt", { kitchen: nextTour.kitchenName || nextTour.locationName })}</p>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              {[nextTour.kitchenName ? nextTour.locationName : null, nextTour.status === "confirmed" ? t("homeTourConfirmed") : t("homeWaitingForKitchen")].filter(Boolean).join(" · ")}
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button size="sm" className="rounded-full px-4" onClick={() => openTour(nextTour)}>{t("homeOpenTour")}</Button>
+            </div>
+            {nextBooking && (
+              <div className="mt-5 border-t pt-3">
+                <p className="text-xs text-muted-foreground">{t("homeAfterThat")}</p>
+                <HomeRow title={listWhenLine(nextBooking as unknown as BookingListRow, locale, words)} sub={nextBooking.kitchenName || nextBooking.locationName || ""} onClick={() => navigate(`/booking/${nextBooking.id}`)} />
+              </div>
+            )}
+          </HomePanel>
+        ) : nextBooking ? (
           <HomePanel className={cn(showSellerAccount ? "lg:col-span-6" : todo.length ? "lg:col-span-8" : "lg:col-span-12")} title={t("homeUpNext")} link={{ label: t("homeAllBookings"), onClick: () => onSetActiveTab("bookings") }}>
             <p className="text-sm font-semibold tabular-nums">{listWhenLine(nextBooking as unknown as BookingListRow, locale, words)}</p>
             <p className="mt-0.5 text-xl font-semibold tracking-[-0.015em]">{nextBooking.kitchenName || nextBooking.locationName}</p>
@@ -333,6 +373,12 @@ export default function OverviewTabContent({
                       end={<StatusWord tone={phase === "confirmed" ? "ok" : "wait"}>{t(bookingListPill(phase, false).key as never)}</StatusWord>} />
                   );
                 })}</div>
+              </div>
+            )}
+            {nextTour && !tourFirst && (
+              <div className="mt-3 border-t pt-3">
+                <HomeRow title={tourWhen(nextTour)} sub={t("homeTourAt", { kitchen: nextTour.kitchenName || nextTour.locationName })} onClick={() => openTour(nextTour)}
+                  end={<StatusWord tone={nextTour.status === "confirmed" ? "ok" : "wait"}>{nextTour.status === "confirmed" ? t("homeTourConfirmed") : t("homeTourRequested")}</StatusWord>} />
               </div>
             )}
           </HomePanel>
@@ -359,10 +405,10 @@ export default function OverviewTabContent({
         )}
 
         {todo.length > 0 && (
-          <HomePanel className={cn(nextBooking && !showSellerAccount ? "lg:col-span-4" : "lg:col-span-12")} title={t("homeToDo")} count={todo.length}>
+          <HomePanel className={cn((nextBooking || nextTour) && !showSellerAccount ? "lg:col-span-4" : "lg:col-span-12")} title={t("homeToDo")} count={todo.length}>
             <div className="grid gap-2">
               {todo.slice(0, 5).map((item) => (
-                <div key={item.id} className={cn("grid items-center gap-3 rounded-md border border-border/70 bg-muted/30 px-3.5 py-3", nextBooking && !showSellerAccount ? "grid-cols-1" : "sm:grid-cols-[1fr_auto]")}>
+                <div key={item.id} className={cn("grid items-center gap-3 rounded-md border border-border/70 bg-muted/30 px-3.5 py-3", (nextBooking || nextTour) && !showSellerAccount ? "grid-cols-1" : "sm:grid-cols-[1fr_auto]")}>
                   <div className="min-w-0">
                     <p className="text-sm font-semibold">{item.title}</p>
                     <p className="text-[13px] text-muted-foreground">{item.description}</p>
@@ -372,23 +418,6 @@ export default function OverviewTabContent({
               ))}
             </div>
           </HomePanel>
-        )}
-
-        {hasActivity && visibleChecklists.length > 0 && (
-          <section className="lg:col-span-12 lg:order-last rounded-lg border bg-card px-4 sm:px-5" aria-label={t("homeGetSetUp")}>
-            {visibleChecklists.map((list) => {
-              const done = list.steps.filter((step) => step.done).length;
-              const next = list.steps.find((step) => !step.done);
-              return (
-                <div key={list.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t py-3 first:border-t-0">
-                  <p className="min-w-0 flex-1 text-sm"><span className="font-semibold">{list.title}</span><span className="ml-2 tabular-nums text-muted-foreground">{t("homeStepsDone", { done, total: list.steps.length })}</span></p>
-                  {next && "action" in next && next.action ? <Button size="sm" variant="outline" className="h-8 rounded-full px-3" onClick={next.action.onClick}>{next.action.label}</Button>
-                    : next ? <span className="text-[13px] text-muted-foreground">{next.title}</span> : null}
-                  <button type="button" onClick={() => hideList(list.id)} className="text-[13px] text-muted-foreground hover:text-foreground hover:underline">{t("homeHide")}</button>
-                </div>
-              );
-            })}
-          </section>
         )}
 
         {!hasActivity && checklists.map((list) => {
@@ -437,6 +466,23 @@ export default function OverviewTabContent({
                 end={<StatusWord tone={rental.state === "active" ? "ok" : "wait"}>{t(rental.state === "active" ? "homeActive" : rental.state === "reserved" ? "homeReserved" : "homeMovingOut")}</StatusWord>} />
             ))}
           </HomePanel>
+        )}
+
+        {hasActivity && visibleChecklists.length > 0 && (
+          <section className="lg:col-span-12 rounded-lg border bg-card px-4 sm:px-5" aria-label={t("homeGetSetUp")}>
+            {visibleChecklists.map((list) => {
+              const done = list.steps.filter((step) => step.done).length;
+              const next = list.steps.find((step) => !step.done);
+              return (
+                <div key={list.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t py-3 first:border-t-0">
+                  <p className="min-w-0 flex-1 text-sm"><span className="font-semibold">{list.title}</span><span className="ml-2 tabular-nums text-muted-foreground">{t("homeStepsDone", { done, total: list.steps.length })}</span></p>
+                  {next && "action" in next && next.action ? <Button size="sm" variant="outline" className="h-8 rounded-full px-3" onClick={next.action.onClick}>{next.action.label}</Button>
+                    : next ? <span className="text-[13px] text-muted-foreground">{next.title}</span> : null}
+                  <button type="button" onClick={() => hideList(list.id)} className="text-[13px] text-muted-foreground hover:text-foreground hover:underline">{t("homeHide")}</button>
+                </div>
+              );
+            })}
+          </section>
         )}
 
         {!wantsKitchens && (

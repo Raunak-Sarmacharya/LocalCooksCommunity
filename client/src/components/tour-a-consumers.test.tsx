@@ -63,8 +63,9 @@ describe('Tour A exact task consumers', () => {
       viewing: { ...tour, status: 'confirmed', scheduledAt: new Date(Date.now() + 30 * 60_000).toISOString() }
     }]);
     const coordination = await screen.findByRole('region', { name: 'Coordinate with the kitchen' });
-    expect(within(coordination).getByRole('button', { name: 'Message Morgan' })).toBeInTheDocument();
-    expect(within(coordination).getByRole('link', { name: 'morgan@example.com' })).toHaveAttribute('href', 'mailto:morgan@example.com');
+    expect(within(coordination).getByRole('button', { name: 'Message the kitchen' })).toBeInTheDocument();
+    expect(within(coordination).getByRole('link', { name: '+17095550124' })).toHaveAttribute('href', 'tel:+17095550124');
+    expect(coordination).not.toHaveTextContent(/morgan@example\.com|Morgan/);
     const next = screen.getByRole('region', { name: 'What to do next' });
     expect(within(next).queryByRole('button', { name: 'Running late' })).not.toBeInTheDocument();
     fireEvent.click(within(coordination).getByRole('button', { name: 'Running late?' }));
@@ -142,7 +143,7 @@ describe('Tour A exact task consumers', () => {
     window.history.replaceState({}, '', '/dashboard?view=viewings&viewing=42');
     const client = mount(<ChefViewingsList />, ['/api/viewings', 'chef', 'fixture-chef'], [row]);
     expect(await screen.findByText('Your tour request is pending. We’ll notify you when it’s confirmed or declined.')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Message manager' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Message the kitchen' }));
     await waitFor(() => expect(chat.resolve).toHaveBeenCalledWith(42));
     expect(await screen.findByRole('dialog')).toHaveAccessibleName('Chat with Morgan Lee');
     expect(screen.getByTestId('specific-chat')).toHaveTextContent('shared-tour-thread');

@@ -9,9 +9,9 @@ vi.mock('../db', () => {
   transaction: async (fn: any) => { state.transactionCalls++; return fn({ select, execute: async () => undefined, insert: () => ({ values: (value: any) => {
     state.writes.push(value); return { onConflictDoUpdate: async () => undefined }; } }) }); },
 } }; });
-import { getLifecycleSettings, saveLifecycleSettings, getCloseoutNotificationsFrom, getSavedCloseoutNotificationsFrom, saveCloseoutNotificationsFrom } from './lifecycle-settings';
+import { clearLifecycleSettingsCache, getLifecycleSettings, saveLifecycleSettings, getCloseoutNotificationsFrom, getSavedCloseoutNotificationsFrom, saveCloseoutNotificationsFrom } from './lifecycle-settings';
 describe('admin lifecycle settings', () => {
-  beforeEach(() => { state.rows = []; state.writes = []; state.transactionCalls = 0; });
+  beforeEach(() => { state.rows = []; state.writes = []; state.transactionCalls = 0; clearLifecycleSettingsCache(); });
   it('supplies editable defaults when no setting has been saved', async () => {
     expect(await getLifecycleSettings()).toEqual({ serviceEndGraceMinutes: 15, inspectionAutoCloseHours: 24, historicalVisitReviewAfterHours: 48,
       preparationReminderHours: 48, arrivalReminderHours: 2, departureReminderMinutes: 30, managerNoCheckinMinutes: 15,

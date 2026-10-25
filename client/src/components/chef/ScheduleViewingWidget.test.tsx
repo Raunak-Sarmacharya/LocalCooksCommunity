@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ScheduleViewingWidget from './ScheduleViewingWidget';
@@ -6,20 +6,19 @@ import ScheduleViewingWidget from './ScheduleViewingWidget';
 const session = vi.hoisted(() => ({ user: null as any, currentUser: null as any, loading: false }));
 vi.mock('@/lib/firebase', () => ({ auth: { get currentUser() { return session.currentUser; } } }));
 vi.mock('@/hooks/use-auth', () => ({ useFirebaseAuth: () => ({ user: session.user, loading: session.loading, refreshUserData: async () => {} }) }));
-vi.mock('@/hooks/use-mobile', () => ({ useIsMobile: () => false }));
 vi.mock('@/hooks/use-email-verification-guard', () => ({ useEmailVerificationGuard: () => ({ guard: (callback: () => void) => callback(), gate: null }) }));
 vi.mock('@/components/auth/KitchenJourneyAuth', () => ({ default: () => <p>Account authentication</p> }));
-vi.mock('@/components/kitchen-application/KitchenJourneyLayout', () => ({ default: ({ children }: any) => <div>{children}</div>, KitchenJourneySteps: () => null }));
-vi.mock('@/components/kitchen-application/KitchenJourneyTimeSlot', () => ({ default: ({ onClick }: any) => <button onClick={onClick}>Choose slot</button> }));
+vi.mock('@/components/layout/Header', () => ({ default: () => null }));
+vi.mock('@/layouts/chef-shell-context', () => ({ useIsChefShell: () => true }));
 vi.mock('@/components/ui/calendar', () => ({ Calendar: ({ onSelect }: any) => <button onClick={() => onSelect(new Date(2099, 9, 7))}>Choose date</button> }));
-vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string, fallback?: any) => typeof fallback === 'string' ? fallback : fallback?.defaultValue || key }) }));
+vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string, fallback?: any) => typeof fallback === 'string' ? fallback : fallback?.defaultValue || key, i18n: { language: 'en-CA' } }) }));
 vi.mock('@/i18n/chef-ns', () => ({ ct: (key: string) => key }));
 
 vi.mock('@/components/ui/date-field', () => ({ DateField: ({ id, value, onChange, disabled }: any) => <input id={id} value={value} disabled={disabled} onChange={event => onChange(event.target.value)} /> }));
 
-function choose(label: string, option: string) {
-  fireEvent.keyDown(screen.getByLabelText(label), { key: 'ArrowDown' });
-  fireEvent.click(screen.getByRole('option', { name: option }));
+const USE = 'What will you use the kitchen for?', HOURS = 'About how many hours a week?', START = 'When would you like to start?';
+function choose(group: string, option: string) {
+  fireEvent.click(within(screen.getByRole('group', { name: group })).getByRole('radio', { name: option }));
 }
 
 const slot = { scheduledAt: '2099-10-07T11:30:00Z', startTime: '11:30', endTime: '12:00' };
@@ -38,15 +37,23 @@ function mount(kitchenId = 4) {
 }
 async function reachIntake() {
   fireEvent.click(screen.getByRole('button', { name: 'Choose date' }));
-  fireEvent.click(await screen.findByRole('button', { name: 'Choose slot' }));
-  expect(screen.getByLabelText('What do you plan to use the kitchen for?')).toBeInTheDocument();
+  const time = await screen.findByRole('button', { pressed: false });
+  // Picking a date shows its times in place; picking a time selects it without moving on.
+  expect(time).toHaveTextContent('9:00 a.m.');
+  expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
+  fireEvent.click(time);
+  expect(time).toHaveAttribute('aria-pressed', 'true');
+  expect(screen.getByText(/Wed, Oct 7 · 9:00.+9:30 a\.m\./)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+  expect(screen.getByRole('group', { name: USE })).toBeInTheDocument();
 }
+const send = () => screen.queryByTestId('tour-request-submit') ?? screen.getByRole('button', { name: 'Continue' });
 function fillIntake(notDecided = false) {
-  choose('What do you plan to use the kitchen for?', 'Meal preparation');
-  choose('About how many hours per week would you need?', '11-20 hours per week');
-  fireEvent.click(screen.getByRole('radio', { name: 'No' }));
+  choose(USE, 'Meal preparation');
+  choose(HOURS, '11–20');
+  choose('Do you have a food handler certificate?', 'No');
   if (notDecided) fireEvent.click(screen.getByRole('checkbox', { name: 'Not decided yet' }));
-  else fireEvent.change(screen.getByLabelText('When would you like to start renting?'), { target: { value: answers.targetStartDate } });
+  else fireEvent.change(screen.getByLabelText(START), { target: { value: answers.targetStartDate } });
 }
 function saveDraft(intakeData: any, step = 'confirm', ownerUid?: string) {
   localStorage.setItem('viewing_booking_4', JSON.stringify({ date: '2099-10-07T00:00:00Z', slot, step, chefNotes: 'See ovens', intakeData, ownerUid }));
@@ -62,37 +69,39 @@ afterEach(() => { cleanup(); clients.forEach(client => client.clear()); clients.
 describe('required tour intake', () => {
   it('requires descriptions for Other and restores custom answers after reload', async () => {
     signIn(); const view = mount(); await reachIntake(); fillIntake(true);
-    choose('What do you plan to use the kitchen for?', 'Other');
-    choose('About how many hours per week would you need?', 'Other');
-    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
+    choose(USE, 'Other');
+    choose(HOURS, 'Other');
+    expect(send()).toBeDisabled();
     const descriptions = screen.getAllByLabelText('Please describe');
     fireEvent.change(descriptions[0], { target: { value: 'Recipe development' } });
     fireEvent.change(descriptions[1], { target: { value: 'Weekends, depending on orders' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
-    expect(screen.getByText('Recipe development')).toBeInTheDocument();
-    expect(screen.getByText('Weekends, depending on orders')).toBeInTheDocument();
+    expect(send()).toBeEnabled();
+    await waitFor(() => expect(JSON.parse(localStorage.getItem('viewing_booking_4')!).intakeData.estimatedWeeklyHours).toBe('Weekends, depending on orders'));
     view.unmount(); mount();
-    fireEvent.click(await screen.findByRole('button', { name: 'Edit answers' }));
-    expect(screen.getAllByRole('combobox').slice(0, 2).map(input => input.textContent)).toEqual(['Other', 'Other']);
+    expect(await screen.findByTestId('tour-request-submit')).toBeEnabled();
+    expect(within(screen.getByRole('group', { name: USE })).getByRole('radio', { name: 'Other' })).toBeChecked();
+    expect(within(screen.getByRole('group', { name: HOURS })).getByRole('radio', { name: 'Other' })).toBeChecked();
     expect(screen.getAllByLabelText('Please describe')[1]).toHaveValue('Weekends, depending on orders');
   });
+
   it.each(['guest', 'verified chef'])('requires explicit answers for %s after choosing a slot', async actor => {
     if (actor === 'verified chef') signIn();
     mount(); await reachIntake();
-    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
-    choose('What do you plan to use the kitchen for?', 'Meal preparation');
-    choose('About how many hours per week would you need?', '11-20 hours per week');
-    fireEvent.change(screen.getByLabelText('When would you like to start renting?'), { target: { value: answers.targetStartDate } });
-    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
+    expect(send()).toBeDisabled();
+    choose(USE, 'Meal preparation');
+    choose(HOURS, '11–20');
+    fireEvent.change(screen.getByLabelText(START), { target: { value: answers.targetStartDate } });
+    expect(send()).toBeDisabled();
     expect(screen.getByRole('radio', { name: 'No' })).not.toBeChecked();
-    fireEvent.click(screen.getByRole('radio', { name: 'No' }));
-    expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled();
+    choose('Do you have a food handler certificate?', 'No');
+    expect(send()).toBeEnabled();
+    expect(send()).toHaveTextContent(actor === 'guest' ? 'Continue' : 'Request tour');
   });
 
-  it.each([false, true])('submits the four answers, including No and date undecided=%s, only on confirmation', async notDecided => {
+  it.each([false, true])('submits the four answers, including No and date undecided=%s, only on Request tour', async notDecided => {
     signIn(); mount(); await reachIntake(); fillIntake(notDecided);
-    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
     expect(vi.mocked(fetch).mock.calls.some(([url]) => url === '/api/viewings/book')).toBe(false);
+    expect(screen.queryByText(/confirmation notification/i)).not.toBeInTheDocument();
     fireEvent.click(screen.getByTestId('tour-request-submit'));
     await waitFor(() => expect(vi.mocked(fetch).mock.calls.some(([url]) => url === '/api/viewings/book')).toBe(true));
     const request = vi.mocked(fetch).mock.calls.find(([url]) => url === '/api/viewings/book')!;
@@ -102,6 +111,14 @@ describe('required tour intake', () => {
     expect(screen.queryByText(/review it first|forwarded|sent for review|under review/i)).not.toBeInTheDocument();
   });
 
+  it('Change returns to day and time keeping the date and time', async () => {
+    signIn(); mount(); await reachIntake(); fillIntake();
+    fireEvent.click(screen.getByRole('button', { name: 'Change' }));
+    expect(screen.getByRole('button', { pressed: true })).toHaveTextContent('9:00 a.m.');
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(screen.getByRole('radio', { name: 'No' })).toBeChecked();
+  });
+
   it('retains guest answers through reload and verified auth handoff without automatically submitting', async () => {
     const view = mount(); await reachIntake(); fillIntake(true);
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
@@ -109,17 +126,14 @@ describe('required tour intake', () => {
     await waitFor(() => expect(JSON.parse(localStorage.getItem('viewing_booking_4')!).intakeData.hasLicense).toBe(false));
     view.unmount(); signIn(); mount();
     expect(await screen.findByTestId('tour-request-submit')).toBeEnabled();
-    expect(screen.getByText('Not decided yet')).toBeInTheDocument();
     expect(vi.mocked(fetch).mock.calls.some(([url]) => url === '/api/viewings/book')).toBe(false);
-    fireEvent.click(screen.getByRole('button', { name: 'Edit answers' }));
     expect(screen.getByRole('radio', { name: 'No' })).toBeChecked();
     expect(screen.getByRole('checkbox', { name: 'Not decided yet' })).toBeChecked();
   });
 
-  it('restores legacy confirmation with missing answers to intake', async () => {
+  it('restores a legacy confirmation draft with missing answers to the details screen', async () => {
     signIn(); saveDraft({}); mount();
-    expect(await screen.findByRole('button', { name: 'Continue' })).toBeDisabled();
-    expect(screen.queryByTestId('tour-request-submit')).not.toBeInTheDocument();
+    expect(await screen.findByTestId('tour-request-submit')).toBeDisabled();
   });
 
   it('waits for auth hydration before restoring an owned draft', async () => {
@@ -145,9 +159,8 @@ describe('required tour intake', () => {
     signIn(); view.rerenderKitchen();
     expect(await screen.findByTestId('tour-request-submit')).toBeEnabled();
     expect(vi.mocked(fetch).mock.calls.some(([url]) => url === '/api/viewings/book')).toBe(false);
-    fireEvent.click(screen.getByRole('button', { name: 'Edit answers' }));
-    choose('What do you plan to use the kitchen for?', 'Other');
-    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
+    choose(USE, 'Other');
+    expect(screen.getByTestId('tour-request-submit')).toBeDisabled();
   });
 
   it('does not restore another user’s answers or carry them to another kitchen', async () => {
@@ -166,16 +179,17 @@ describe('required tour intake', () => {
     expect(await screen.findByRole('button', { name: 'Choose date' })).toBeInTheDocument();
     expect(screen.queryByTestId('tour-request-submit')).not.toBeInTheDocument();
     await reachIntake();
-    expect(screen.getByLabelText('What do you plan to use the kitchen for?')).toHaveTextContent('Select an option');
+    expect(screen.getByRole('radio', { name: 'Meal preparation' })).not.toBeChecked();
     expect(screen.getByRole('radio', { name: 'No' })).not.toBeChecked();
   });
 
-  it('retains answers when a slot is taken and another time is selected', async () => {
+  it('returns to day and time with answers kept when a slot is taken', async () => {
     signIn(); saveDraft(answers); mount();
     vi.mocked(fetch).mockImplementation(async (url: any) => ({ ok: !url.includes('/book'), json: async () => url.includes('/book') ? { code: 'SLOT_TAKEN' } : null }) as any);
     fireEvent.click(await screen.findByTestId('tour-request-submit'));
-    fireEvent.click(await screen.findByRole('button', { name: 'Choose slot' }));
+    fireEvent.click(await screen.findByRole('button', { pressed: false }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
     expect(screen.getByRole('radio', { name: 'No' })).toBeChecked();
-    expect(screen.getByLabelText('When would you like to start renting?')).toHaveValue(answers.targetStartDate);
+    expect(screen.getByLabelText(START)).toHaveValue(answers.targetStartDate);
   });
 });

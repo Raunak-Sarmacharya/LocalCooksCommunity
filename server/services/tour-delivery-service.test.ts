@@ -224,8 +224,22 @@ describe('tour dashboard action acknowledgments', () => {
   });
 });
 
+describe('tour time in subjects and notifications', () => {
+  it('shows the requested new time for a reschedule request and names the kitchen for offered times', () => {
+    const asked = payload('reschedule_requested', 'confirmed');
+    asked.after.requestedRescheduleAt = new Date('2026-10-29T13:45:00Z') as any;
+    const messages = tourEventMessages(asked);
+    expect(messages.find(m => m.key === 'chef-email')!.email!.subject).toMatch(/→ Oct 29, 11:15 a\.m\. · TOUR-10$/);
+    expect(messages.find(m => m.key === 'manager-email')!.email!.subject).toMatch(/→ Oct 29, 11:15 a\.m\. · TOUR-10$/);
+    const offered = payload('reschedule_proposed', 'confirmed');
+    offered.after.rescheduleProposedSlots = ['2026-10-29T13:45:00.000Z'];
+    const out = tourEventMessages(offered);
+    expect(out.find(m => m.key === 'chef-email')!.email!.subject).toBe('Invitation to reschedule your kitchen tour · Oct 29, 11:15 a.m. · TOUR-10');
+    expect(out.find(m => m.key === 'chef')!.notification!.title).toBe('Fixture room offered a new time');
+  });
+});
 describe('instruction-change tour emails', () => {
-  it.each([[true, false], [false, true], [true, true]])('identifies the tour and includes only changed instructions (%s/%s)', (arrival, departure) => {
+  it.each([[true, false], [true, true]])('identifies the tour and includes arrival instructions only (%s/%s)', (arrival, departure) => {
     const event = instructionPayload(arrival, departure);
     const messages = tourEventMessages(event);
     expect(messages.map(message => message.key)).toEqual(['chef', 'chef-email']);
@@ -238,7 +252,7 @@ describe('instruction-change tour emails', () => {
     expect(mail.text).toContain('Date: Oct 7, 2026');
     expect(mail.text).toContain('Time: 11:45 PM');
     expect(mail.text!.includes('Arrival instructions:')).toBe(arrival);
-    expect(mail.text!.includes('Departure instructions:')).toBe(departure);
+    expect(mail.text!.includes('Departure instructions:')).toBe(false);
     expect(mail.text).toContain('View details: https://chef.localcooks.ca/dashboard?view=viewings&viewing=10');
     expect(mail.text).toContain('Message manager: https://chef.localcooks.ca/dashboard?view=viewings&viewing=10&action=message');
     expect(mail.text).not.toContain('ADMIN PRIVATE');
@@ -276,7 +290,7 @@ describe('instruction-change tour emails', () => {
     const mail = state.email.mock.calls[1][0];
     expect(mail.to).toBe('current-chef@example.test');
     expect(mail.text).toContain('Arrival instructions: Latest entrance');
-    expect(mail.text).toContain('Departure instructions: Give the key to Alex');
+    expect(mail.text).not.toContain('Departure instructions:');
     expect(mail.text).not.toContain('Return the key');
     expect(mail.text).not.toContain('Recorded notice');
     await deliverTourEvents(10, 1);
@@ -287,8 +301,7 @@ describe('instruction-change tour emails', () => {
     state.currentTour.checkedInAt = new Date('2026-10-04T12:00:00Z');
     state.currentTour.scheduledAt = new Date('2026-10-04T12:00:00Z');
     await deliverTourEvents(10, 1);
-    expect(state.email.mock.calls[0][0].text).not.toContain('Arrival instructions:');
-    expect(state.email.mock.calls[0][0].text).toContain('Departure instructions: Return badge');
+    expect(state.email).not.toHaveBeenCalled();
     state.event.completedAt = null; state.event.deliveredKeys = []; state.email.mockClear();
     state.currentTour.checkedOutAt = new Date();
     await deliverTourEvents(10, 1);
@@ -444,8 +457,8 @@ describe('durable tour delivery', () => {
     const messages = tourEventMessages(event);
     const email = messages.find(message => message.key === 'chef-email')!.email!;
     expect(email.subject).toContain('Invitation to reschedule your kitchen tour');
-    expect(email.text).toContain('Fixture manager invites you to reschedule your tour at Fixture room');
-    expect(email.text).toContain('decline the invitation to keep your original confirmed visit');
+    expect(email.text).toContain('Fixture room offered other times for your tour');
+    expect(email.text).toContain('decline to keep your original confirmed visit');
     expect(email.text).toContain('Review invitation:');
     expect(email.text).not.toContain('Respond before');
     expect(email.text).toContain('Original confirmed time');
@@ -470,7 +483,7 @@ describe('durable tour delivery', () => {
     expect(email.text).toContain('Respond before the original requested start time');
     expect(email.text).not.toContain('original time remains confirmed');
     expect(email.attachments).toBeUndefined();
-    expect(messages.find(message => message.key === 'chef')!.notification!.message).toContain('original request pending');
+    expect(messages.find(message => message.key === 'chef')!.notification!.message).toContain('keep your request');
   });
   it.each(['reschedule_proposal_declined', 'reschedule_proposal_withdrawn'])('keeps pending requests unconfirmed after %s', kind => {
     const messages = tourEventMessages(payload(kind, 'pending'));
@@ -547,8 +560,8 @@ describe('durable tour delivery', () => {
     expect(state.email).toHaveBeenCalledTimes(1);
     const email = state.email.mock.calls[0][0];
     expect(email.subject).toContain('Invitation to your kitchen tour');
-    expect(email.text).toContain('Fixture manager invites you to tour Fixture room');
-    expect(email.text).toContain('Decline the invitation');
+    expect(email.text).toContain('Fixture room offered other times for your tour');
+    expect(email.text).toContain('decline to keep your original request');
     expect(email.text).not.toMatch(/Local Cooks review|ADMIN PRIVATE|Message manager:/);
     expect(state.email.mock.calls[0][1].trackingId).toBe('tour-event:1:chef-email');
   });
@@ -1447,7 +1460,7 @@ it.each(['status', 'reschedule_proposal_accepted', 'reschedule_accepted'])('publ
   event.after.confirmedAt = new Date('2026-10-05T12:00:00Z');
   const mail = tourEventMessages(event).find(message => message.key === 'chef-email')!.email!;
   expect(mail.text).toContain('Arrival instructions: Side entrance Олена <&>');
-  expect(mail.text).toContain('Departure instructions: Return badge');
+  expect(mail.text).not.toContain('Departure instructions:');
   expect(mail.text).toContain('Manager notes: Shared entrance instructions');
   expect(mail.text).not.toContain('ADMIN PRIVATE');
   expect(String(mail.attachments![0].content)).toContain('Arrival instructions:');

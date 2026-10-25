@@ -121,30 +121,31 @@ describe('manager acceptance review', () => {
     expect(screen.getByText('confirmed')).toBeInTheDocument();
     client.clear();
   });
-  it('requires a shared reason for a pending decline while leaving confirmed cancellation optional', () => {
+  it('requires one shared reason for a pending decline and sends it as the cancellation reason', () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     client.setQueryData(['/api/viewings/manager'], [record]);
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ events: [], complete: false, problems: [], reportingAvailable: false }) })));
     render(<QueryClientProvider client={client}><ViewingsDashboard /></QueryClientProvider>);
     fireEvent.click(screen.getByRole('button', { name: 'Open tour' }));
     fireEvent.click(screen.getByRole('button', { name: 'declineRequest' }));
-    const save = screen.getByRole('button', { name: 'cancelViewing' });
+    const save = screen.getByRole('button', { name: 'declineRequest' });
+    expect(screen.getByRole('button', { name: 'back' })).toBeInTheDocument();
+    expect(screen.queryByText('tourMessageToChefOptional')).not.toBeInTheDocument();
     expect(save).toBeDisabled();
     fireEvent.change(screen.getByLabelText('tourDeclineReason'), { target: { value: 'The kitchen is unavailable.' } });
     expect(save).toBeEnabled();
-    expect(screen.getByText('tourDeclineReasonHelp')).toBeInTheDocument();
     client.clear();
   });
-  it('gives instructions their own preparation section while retaining visitor contact and the notes destination', () => {
+  it('gives instructions their own preparation section while retaining customer card and the notes destination', () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
     client.setQueryData(['/api/viewings/manager'], [{ ...record, chefName: 'Ada Lovelace', chefEmail: 'ada@example.test', arrivalNotes: 'Meet at the north entrance.', departureNotes: 'Return your visitor badge to the host.', viewing: { ...record.viewing, adminReviewDecision: 'approved' } }]);
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ events: [], complete: false, problems: [], reportingAvailable: false }) })));
     const configure = vi.fn();
     render(<QueryClientProvider client={client}><ViewingsDashboard onConfigureNotes={configure} /></QueryClientProvider>);
     fireEvent.click(screen.getByRole('button', { name: 'Open tour' }));
-    const card = within(screen.getByRole('region', { name: 'tourVisitorContactTitle' }));
+    const card = within(screen.getByRole('region', { name: 'tourCustomerTitle' }));
     expect(card.getByText('Ada Lovelace')).toBeInTheDocument();
-    expect(card.getByRole('link', { name: 'ada@example.test' })).toBeInTheDocument();
+    expect(card.queryByText('ada@example.test')).not.toBeInTheDocument();
     expect(card.getByRole('button', { name: 'Message Ada' })).toBeInTheDocument();
     const instructions = within(screen.getByRole('region', { name: 'tourMeetingInstructionsTitle' }));
     const notes = instructions.getByRole('button', { name: 'tourVisitNotesButton' });
@@ -167,10 +168,10 @@ describe('manager acceptance review', () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ problems: [], reportingAvailable: false }) })));
     render(<QueryClientProvider client={client}><ViewingsDashboard /></QueryClientProvider>);
     fireEvent.click(screen.getByRole('button', { name: 'Open tour' }));
-    const chef = screen.getByRole('region', { name: 'tourVisitorContactTitle' });
+    const chef = screen.getByRole('region', { name: 'tourCustomerTitle' });
     expect(chef).toHaveTextContent('Fixture chef');
-    expect(chef).toHaveTextContent('sam@example.test');
-    expect(chef).toHaveTextContent('+17095550123');
+    expect(chef).not.toHaveTextContent('sam@example.test');
+    expect(chef).not.toHaveTextContent('+17095550123');
     const request = screen.getByRole('region', { name: 'tourChefRequestDetails' });
     expect(request).toHaveTextContent('Meal preparation');
     expect(request).toHaveTextContent('10-20');
@@ -329,7 +330,7 @@ describe('manager grouped tour actions and email reviews', () => {
       await waitFor(() => expect(trigger).toBeEnabled());
       fireEvent.keyDown(trigger, { key: 'ArrowDown' });
       const options = await screen.findAllByRole('option');
-      expect(options[0]).toHaveTextContent('10:30 AM – 11:00 AM');
+      expect(options[0]).toHaveTextContent('10:30 a.m. – 11:00 a.m.');
       expect(options[0]).not.toHaveTextContent('NST');
       if (index === 1) expect(options[0]).toHaveAttribute('aria-disabled', 'true');
       fireEvent.click(options[index === 1 ? 2 : 0]);
@@ -354,8 +355,8 @@ describe('manager grouped tour actions and email reviews', () => {
     const labels = (await screen.findAllByRole('option')).map(option => option.textContent);
     expect(labels).toHaveLength(2);
     expect(labels[0]).not.toEqual(labels[1]);
-    expect(labels[0]).toContain('1:00 AM – 1:30 AM');
-    expect(labels[1]).toContain('1:00 AM – 1:30 AM');
+    expect(labels[0]).toContain('1:00 a.m. – 1:30 a.m.');
+    expect(labels[1]).toContain('1:00 a.m. – 1:30 a.m.');
     client.clear();
   });
   it('groups withdrawal with decisions while the original confirmation is blocked', () => {
@@ -422,7 +423,7 @@ describe('manager grouped tour actions and email reviews', () => {
   it('opens a confirmed cancellation review from its link without cancelling', async () => {
     const tour = { ...record, viewing: { ...record.viewing, status: 'confirmed' } };
     const { client, fetcher } = mountActions(tour, 'cancel');
-    await screen.findByPlaceholderText('reasonForCancellation');
+    await screen.findByPlaceholderText('tourReasonPlaceholder');
     expect(screen.getByRole('button', { name: 'cancelViewing' })).toBeInTheDocument();
     expect(fetcher.mock.calls.some(([, options]) => options?.method && options.method !== 'GET')).toBe(false);
     client.clear();

@@ -602,13 +602,17 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
     const tour = task.tour!;
     const chef = chefDisplayName(tour);
     const listed = tourListState(asListTour(tour.viewing));
+    // Requests expire at their start time, not at respond-by: a passed deadline on an open request is not shown as a deadline.
+    const late = !!listed.dueAt && Date.parse(listed.dueAt) <= Date.now();
+    const change = listed.action === "review_change" && tour.viewing.requestedRescheduleAt;
+    const dayTime = (iso: string) => new Intl.DateTimeFormat(i18n.language, { timeZone: DEFAULT_TIMEZONE, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(iso));
     return tintedRequest({ key: task.id, testId: listed.action === "review_change" ? "tour-change-request" : "tour-request", chef, href: task.href!,
       facts: [mt(listed.action === "review_change" ? "ovrWantsChange" : "ovrLegendTour")],
-      due: listed.dueAt ? formatResponseDeadline(new Date(listed.dueAt), i18n.language, timezone, false) : null,
-      when: tourWhenLine(asListTour(tour.viewing), timezone, i18n.language, words),
+      due: listed.dueAt && !late ? formatResponseDeadline(new Date(listed.dueAt), i18n.language, timezone, false) : null, waiting: late,
+      when: change ? `${dayTime(tour.viewing.scheduledAt)} → ${dayTime(String(tour.viewing.requestedRescheduleAt))}` : tourWhenLine(asListTour(tour.viewing), timezone, i18n.language, words),
       who: [chef, kitchenName(tour.viewing.targetedKitchenId, tour.kitchenName)].filter(Boolean).join(" · ") });
   };
-  function tintedRequest({ key, testId, chef, when, who, facts, due, href }: { key: string; testId: string; chef: string; when: string; who: string; facts: string[]; due: string | null | undefined; href: string }) {
+  function tintedRequest({ key, testId, chef, when, who, facts, due, href, waiting }: { key: string; testId: string; chef: string; when: string; who: string; facts: string[]; due: string | null | undefined; href: string; waiting?: boolean }) {
     const initials = chef.split(/\s+/).map(part => part[0]).slice(0, 2).join("").toUpperCase();
     return <div key={key} className="grid gap-3 rounded-[10px] bg-[#fef3f5] px-4 py-3.5 lg:grid-cols-[36px_minmax(0,1fr)_auto] lg:items-center lg:gap-x-4 [&+&]:mt-2" data-testid={testId}>
       <span aria-hidden="true" className="hidden size-9 items-center justify-center rounded-full bg-white text-xs font-semibold text-[#8f0a2b] ring-1 ring-[#fbcbd6] lg:flex">{initials}</span>
@@ -616,6 +620,7 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
         <p className="break-words font-medium text-stone-900">{when}</p>
         <p className={cn("mt-0.5", sub)}>{who}{facts.length > 0 && <><span className="hidden sm:inline"> · </span><span className="block sm:inline">{facts.join(" · ")}</span></>}</p>
         {due && <p className="mt-1.5 flex items-center gap-1.5 text-[13px] font-medium text-[#8f0a2b]"><Clock className="size-3.5 shrink-0" aria-hidden="true" />{mt("ovrRespondBy", { when: due })}</p>}
+        {!due && waiting && <p className="mt-1.5 flex items-center gap-1.5 text-[13px] text-stone-600"><Clock className="size-3.5 shrink-0" aria-hidden="true" />{mt("ovrWaitingForAnswer", { defaultValue: "Waiting for your answer" })}</p>}
       </div>
       <Link href={href} className={cn(btnPrimary, "sm:h-11 sm:w-full lg:h-9 lg:w-auto")}>{mt("ovrReviewRequest")}</Link>
     </div>;

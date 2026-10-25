@@ -332,7 +332,6 @@ export async function currentReminders(tx: Transaction, source: ReminderSource, 
         contactPhone: (role === 'chef' ? manager : chef)?.phoneVerifiedAt ? (role === 'chef' ? manager : chef)?.phoneNumber || undefined : undefined,
         meetingNotes: row.tour.sharedManagerNotes || undefined,
         ...(role === 'chef' && tourSettings?.arrivalNotes ? { arrivalNotes: tourSettings.arrivalNotes } : {}),
-        ...(role === 'chef' && tourSettings?.departureNotes ? { departureNotes: tourSettings.departureNotes } : {}),
         // Timing changes update unsent due times; they do not create a new accepted notice.
         revision: hash([start.toISOString(), end.toISOString(), row.location.id, row.tour.targetedKitchenId, person.id, row.tour.appointmentRevision]),
         arrivalLeadHours: 0,
@@ -500,13 +499,12 @@ export function renderTourReminder(r: Reminder, url = `${getAppBaseUrl(r.role ==
       { label: 'Time', value: formatTourSlotRange(r.start, (Date.parse(r.end) - Date.parse(r.start)) / 60000, true) },
       { label: isManager ? 'Customer' : 'Kitchen manager', value: (isManager ? r.visitorName : r.managerName) || 'See tour details' },
       { label: 'Reference', value: `TOUR-${r.reservationId}` }] },
-      { title: isManager ? 'Coordinate the visit' : 'Arrival and departure', facts: [
+      { title: isManager ? 'Coordinate the visit' : 'Arrival', facts: [
       ...(r.address ? [{ label: 'Address', value: r.address, url: 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(r.address) }] : []),
       ...(r.contactEmail ? [{ label: isManager ? 'Customer contact' : 'Arrival contact', value: r.contactEmail }] : []),
       ...(r.contactPhone ? [{ label: 'Phone', value: r.contactPhone, url: `tel:${r.contactPhone}` }] : []),
       ...(r.meetingNotes ? [{ label: 'Manager notes', value: r.meetingNotes }] : []),
-      ...(r.arrivalNotes ? [{ label: 'Arrival instructions', value: r.arrivalNotes }] : []),
-      ...(r.departureNotes ? [{ label: 'Departure instructions', value: r.departureNotes }] : [])] }],
+      ...(r.arrivalNotes ? [{ label: 'Arrival instructions', value: r.arrivalNotes }] : [])] }],
     actionLabel: 'View tour', actionUrl: url,
     secondaryButton: { label: isManager ? 'Message customer' : 'Message manager', url: url + '&action=message' } });
 }

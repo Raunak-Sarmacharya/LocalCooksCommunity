@@ -33,7 +33,7 @@ it.each(['chef','manager'] as const)('shows private feedback after the appointme
  expect(fetcher.mock.calls.every(([,options])=>!(options as any)?.method || (options as any).method === 'GET')).toBe(true);
 });
 it.each(['chef','manager'] as const)('offers no feedback or attendance actions before tour end for %s',async role=>{
- mount(role,true);await screen.findByText('Fixture kitchen');expect(screen.queryByRole('region',{name:'tourFeedbackTitle'})).not.toBeInTheDocument();
+ mount(role,true);await screen.findAllByText('Fixture kitchen');expect(screen.queryByRole('region',{name:'tourFeedbackTitle'})).not.toBeInTheDocument();
 });
 it('gives the kitchen a record task after the tour, not a feedback task (feedback is optional, asked by email)',()=>{
  const fixed={...tour,scheduledAt:'2026-10-05T12:00:00.000Z'};

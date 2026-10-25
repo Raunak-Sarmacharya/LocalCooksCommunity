@@ -86,7 +86,7 @@ describe('tour time and downloadable calendar', () => {
         expect(content).toContain('Add to Google Calendar'); expect(content).not.toContain('NDT');
       }
       expect(email.text).toContain('Door & "bell"'); expect(email.html).toContain('emailHeader-brand-red.png');
-      expect(email.text).toMatch(/Your visit|Tour details/); expect(email.text).toMatch(/Arrival and departure|Preparing for/);
+      expect(email.text).toMatch(/Your visit|Tour details/); expect(email.text).toMatch(/Arrival|Preparing for/);
       expect(email.text).not.toContain('Confirmed at:');
       expect(email.html).not.toContain('callback.example.test');
     }
@@ -199,13 +199,13 @@ describe('separate public confirmation guidance', () => {
     const google = email.text!.match(/https:\/\/calendar.google.com[^\s]+/)?.[0];
     expect(google).toBeDefined();
     const details = new URL(google!).searchParams.get('details');
-    for (const value of [arrivalNotes, departureNotes].filter(Boolean)) {
+    for (const value of [arrivalNotes].filter(Boolean)) {
       expect(email.text).toContain(value);
       expect(ics).toContain(value);
       expect(details).toContain(value);
     }
     if (arrivalNotes) expect(email.html).toContain('&lt;&amp;&gt;');
     else expect(email.text).not.toContain('Arrival instructions:');
-    if (!departureNotes) expect(email.text).not.toContain('Departure instructions:');
+    expect(email.text).not.toContain('Departure instructions:');
   });
 });

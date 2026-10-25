@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chefTourRowHasDetails, chefTourVisitAction, countPendingOrUpcomingTours, formatTourWhen, isPendingOrUpcomingTour, normalizeChefTourRow, viewingStatusBadge } from "./chef-viewing-display";
+import { chefTourCard, chefTourWhen, chefTourRowHasDetails, chefTourVisitAction, countPendingOrUpcomingTours, formatTourWhen, isPendingOrUpcomingTour, normalizeChefTourRow, viewingStatusBadge } from "./chef-viewing-display";
 import { tourAttendance } from '@shared/tour-attendance';
 
 describe('chef visit action timing', () => {
@@ -32,8 +32,8 @@ describe("viewingStatusBadge", () => {
     });
     expect(viewingStatusBadge("pending").variant).toBe("warning");
     expect(viewingStatusBadge("confirmed").variant).toBe("success");
-    expect(viewingStatusBadge("cancelled", "denied").defaultLabel).toBe("Rejected");
-    expect(viewingStatusBadge("cancelled", "approved", "manager_declined").defaultLabel).toBe("Rejected");
+    expect(viewingStatusBadge("cancelled", "denied").defaultLabel).toBe("Declined");
+    expect(viewingStatusBadge("cancelled", "approved", "manager_declined").defaultLabel).toBe("Declined");
     expect(viewingStatusBadge("cancelled", "approved", "chef").defaultLabel).toBe("Cancelled");
   });
 
@@ -163,5 +163,27 @@ describe("isPendingOrUpcomingTour", () => {
     expect(isPendingOrUpcomingTour(tour, Date.parse('2026-09-05T12:00:00Z'))).toBe(true);
     expect(isPendingOrUpcomingTour(tour, Date.parse('2026-09-05T12:15:01Z'))).toBe(false);
     expect(tour.status).toBe('confirmed');
+  });
+});
+
+describe('chef tour cards', () => {
+  const now = Date.parse('2026-10-25T12:00:00Z');
+  const row = (viewing: Record<string, unknown>, extra: Record<string, unknown> = {}) => normalizeChefTourRow({ viewing: { id: 9, locationId: 4, targetedKitchenId: 40, status: 'confirmed', scheduledAt: '2026-10-29T13:45:00Z', durationMinutes: 30, ...viewing }, locationName: 'Water St', ...extra })!;
+  it('writes the when line in 12-hour a.m./p.m. Newfoundland time, year only when it differs', () => {
+    expect(chefTourWhen('2026-10-29T13:45:00Z', 30, 'en-CA', now)).toBe('Thu, Oct 29 · 11:15–11:45 a.m.');
+    expect(chefTourWhen('2027-01-07T20:00:00Z', null, 'en-CA', now)).toContain('2027');
+  });
+  it('asks for action only when the chef must act and files closed tours under past', () => {
+    const pick = (card: ReturnType<typeof chefTourCard>) => [card.past, card.tone, card.status[1], card.action];
+    expect(pick(chefTourCard(row({ status: 'pending', rescheduleProposedSlots: ['2026-10-30T13:45:00Z'] }), now))).toEqual([false, 'amber', 'Answer needed', 'review']);
+    expect(pick(chefTourCard(row({ status: 'pending' }), now))).toEqual([false, 'grey', 'Requested', 'open']);
+    expect(pick(chefTourCard(row({}, { reconfirmation: { canReply: true, reply: null } }), now))).toEqual([false, 'amber', 'Answer needed', 'review']);
+    expect(pick(chefTourCard(row({}), now))).toEqual([false, 'green', 'Confirmed', 'open']);
+    expect(pick(chefTourCard(row({ status: 'completed', scheduledAt: '2026-10-20T13:45:00Z' }), now))).toEqual([true, 'green', 'Toured', 'apply']);
+    expect(pick(chefTourCard(row({ status: 'cancelled', cancelledBy: 'manager_declined' }), now))).toEqual([true, 'grey', 'Declined', 'open']);
+    expect(pick(chefTourCard(row({ status: 'pending', scheduledAt: '2026-10-20T13:45:00Z' }), now))).toEqual([true, 'grey', 'Request expired', 'open']);
+    expect(chefTourCard(row({ status: 'cancelled', cancelledBy: 'chef' }), now).line[1]).toBe('You cancelled this tour.');
+    expect(chefTourCard(row({ status: 'cancelled', cancelledBy: 'manager' }), now).line[1]).toBe('The kitchen cancelled this tour.');
+    expect(chefTourCard(row({ status: 'cancelled', cancelledBy: 'local_cooks', disruptionReason: 'outcome_unknown' }), now).status[1]).toBe('Closed');
   });
 });

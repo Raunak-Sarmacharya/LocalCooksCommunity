@@ -147,9 +147,9 @@ describe('chef tour reschedule proposals', () => {
     window.history.replaceState({}, "", "/dashboard?view=viewings&viewing=77");
     render(<QueryClientProvider client={queries}><ChefViewingsList /></QueryClientProvider>);
     fireEvent.click(await screen.findByRole('button', { name: 'Review invitation' }));
-    await screen.findByRole('dialog', { name: 'Reschedule invitation' });
+    await screen.findByRole('dialog', { name: 'The kitchen offered other times' });
     expect(screen.queryByText('Reschedule tour')).not.toBeInTheDocument();
-    expect(screen.getByText(/Your original tour stays confirmed/)).toBeInTheDocument();
+    expect(screen.getByText(/Your current tour stays confirmed/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Accept new time' })).toBeDisabled();
     if (decision === 'accept') fireEvent.click(screen.getAllByRole('radio')[1]);
     fireEvent.click(screen.getByRole('button', { name: decision === 'accept' ? 'Accept new time' : 'Keep original time' }));
@@ -173,7 +173,7 @@ describe('chef tour reschedule proposals', () => {
     expect(fetcher.mock.calls.some(([url]) => String(url).includes('available-slots'))).toBe(false);
     queries.setQueryData(['/api/viewings', 'chef', 'fixture-chef'], [{ ...row, viewing: { ...row.viewing, rescheduleProposedSlots: alternatives.slice(0, 1) } }]);
     fireEvent.click(await screen.findByRole('button', { name: 'Review invitation' }));
-    await screen.findByRole('dialog', { name: 'Reschedule invitation' });
+    await screen.findByRole('dialog', { name: 'The kitchen offered other times' });
     expect(screen.getByRole('button', { name: 'Keep original time' })).toBeEnabled();
     page.unmount(); queries.clear();
   });

@@ -5,9 +5,9 @@ vi.mock('../db', () => ({ db: { select: () => {
     then: (resolve: any) => resolve(state.rows.shift() ?? []) };
   return chain;
 } } }));
-import { getCheckinSettings, validateRequiredChecklistItems, validateRequiredPhotos } from './kitchen-checkout-service';
+import { clearCheckinSettingsCache, getCheckinSettings, validateRequiredChecklistItems, validateRequiredPhotos } from './kitchen-checkout-service';
 describe('configured kitchen windows', () => {
-  beforeEach(() => { state.rows = []; });
+  beforeEach(() => { state.rows = []; clearCheckinSettingsCache(); });
   it('ignores retired access settings even when their persisted values are invalid', async () => {
     state.rows.push([{ key: 'kitchen_access_code_valid_before_minutes', value: 'invalid' },
       { key: 'kitchen_access_code_valid_after_minutes', value: '-42' },

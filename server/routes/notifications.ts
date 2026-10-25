@@ -29,6 +29,7 @@ type NotificationType =
   | 'booking_new' 
   | 'booking_cancelled' 
   | 'booking_confirmed'
+  | 'tour_update'
   | 'application_new' 
   | 'application_approved' 
   | 'application_rejected'

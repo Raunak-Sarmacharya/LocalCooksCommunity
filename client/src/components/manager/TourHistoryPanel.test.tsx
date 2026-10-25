@@ -27,7 +27,7 @@ it('shows recorded event chronology in Newfoundland time and refreshes after a v
   expect(await screen.findByText('Invitation accepted')).toBeInTheDocument();
   expect(screen.getByText('Some earlier activity is unavailable. Only recorded events are shown.')).toBeInTheDocument();
   expect(screen.getAllByRole('listitem')[0]).toHaveTextContent('Tour requested');
-  expect(screen.getAllByRole('listitem')[0]).toHaveTextContent('9:30 AM');
+  expect(screen.getAllByRole('listitem')[0]).toHaveTextContent('9:30 a.m.');
   expect(screen.getByText('Newfoundland time')).toBeInTheDocument();
   expect(screen.getByText('Arrival recorded with manager assistance')).toBeInTheDocument();
   expect(screen.getByText('Tour disruption recorded')).toBeInTheDocument();
@@ -43,7 +43,7 @@ it('shows recorded event chronology in Newfoundland time and refreshes after a v
   const timestamp = scroll.querySelector('time')!;
   expect(timestamp).toHaveClass('sm:whitespace-nowrap', 'sm:text-right');
   expect(timestamp.parentElement).toHaveClass('sm:grid-cols-[minmax(0,1fr)_auto]');
-  expect(timestamp).toHaveAttribute('title', 'Oct 7, 2026, 9:30 AM');
+  expect(timestamp).toHaveAttribute('title', 'Oct 7, 2026, 9:30 a.m.');
   expect(fetcher).toHaveBeenCalledWith('/api/viewings/manager/10/history', { headers: { Authorization: 'Bearer fixture-token' }, cache: 'no-store' });
   view.rerender(<QueryClientProvider client={client}><TourHistoryPanel id={10} version="second" /></QueryClientProvider>);
   await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));

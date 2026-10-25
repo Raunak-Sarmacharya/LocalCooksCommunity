@@ -326,7 +326,7 @@ it('uses current kitchen tour notes in visitor emails, without booking instructi
   await dispatch(new Date('2026-10-05T10:30:00Z'));
   const chef = state.send.mock.calls.map(([mail]) => mail).find(mail => mail.to === 'chef@example.test');
   expect(chef.text).toContain('Arrival instructions: Use <side> entrance\nAsk for Sam');
-  expect(chef.text).toContain('Departure instructions: Return visitor badge');
+  expect(chef.text).not.toContain('Departure instructions:');
   expect(chef.subject).toContain('Your kitchen tour is coming up');
   expect(chef.html).toContain('Use &lt;side&gt; entrance');
   expect(chef.html).toContain('white-space:pre-line');
@@ -716,7 +716,7 @@ describe('Tour C authoritative timed communication', () => {
     expect(chef.text).toContain('Arrival contact: morgan+tour@example.test');
     expect(chef.text).toContain('Manager notes: Ask for Morgan at reception');
     expect(chef.text).toContain('Arrival instructions: Use the side entrance');
-    expect(chef.text).toContain('Departure instructions: Return your badge');
+    expect(chef.text).not.toContain('Departure instructions:');
     expect(chef.text).toContain('Hi Alex Chen,'); expect(chef.text).toContain('Kitchen manager: Morgan Lee');
     for (const label of ['Date:', 'Time:', 'Kitchen:', 'Location:', 'Address:', 'Reference: TOUR-20']) expect(chef.text).toContain(label);
     expect(chef.text).not.toMatch(/Check-in opens:|check in when|check out when/i);

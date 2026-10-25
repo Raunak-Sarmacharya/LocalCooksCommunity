@@ -60,4 +60,12 @@ describe('private post-tour feedback',()=>{
   const{fetcher}=mount('chef',initial,false);await openForm();fireEvent.click(screen.getByRole('radio',{name:'Yes'}));fireEvent.click(screen.getByRole('button',{name:'Submit feedback'}));
   await screen.findByRole('alert');expect(screen.getByRole('radio',{name:'Yes'})).toBeChecked();expect(fetcher.mock.calls.filter(([,options])=>options?.method==='POST')).toHaveLength(1);
  });
+ it('rates with tappable stars and sends one comment box with empty suggestions for the chef',async()=>{
+  const{fetcher}=mount();await openForm();fireEvent.click(screen.getByRole('radio',{name:'Yes'}));
+  expect(screen.queryByLabelText('Suggestions · optional')).not.toBeInTheDocument();
+  const star=screen.getByRole('radio',{name:'4/5 · Very good'});fireEvent.click(star);expect(star).toHaveAttribute('aria-checked','true');
+  fireEvent.change(screen.getByLabelText('Comments · optional'),{target:{value:'Bright space'}});fireEvent.click(screen.getByRole('button',{name:'Submit feedback'}));
+  await screen.findByText('The tour took place.');
+  expect(JSON.parse(fetcher.mock.calls.find(([,options])=>options?.method==='POST')![1].body)).toMatchObject({happened:true,rating:4,comments:'Bright space',suggestions:''});
+ });
 });

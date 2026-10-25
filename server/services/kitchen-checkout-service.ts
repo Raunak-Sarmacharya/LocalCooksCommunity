@@ -63,11 +63,20 @@ export interface AutoClearResult {
 // PLATFORM SETTINGS HELPERS
 // ============================================================================
 
+const CHECKIN_SETTING_KEYS = ['kitchen_checkin_window_minutes_before', 'kitchen_no_show_grace_minutes', 'kitchen_checkout_review_window_minutes'];
+// Read on almost every booking request; cache the platform rows 30 s per instance (Supabase egress). Transactions read fresh.
+let checkinRowsCache: { at: number; rows: Array<{ key: string; value: string }> } | null = null;
+export const clearCheckinSettingsCache = () => { checkinRowsCache = null; };
+
 export async function getCheckinSettings(locationId?: number, reader: Pick<typeof db, 'select'> = db) {
-  // Query platform defaults at once
-  const allSettings = await reader
-    .select({ key: platformSettings.key, value: platformSettings.value })
-    .from(platformSettings);
+  let allSettings = reader === db && checkinRowsCache && Date.now() - checkinRowsCache.at < 30_000 ? checkinRowsCache.rows : null;
+  if (!allSettings) {
+    allSettings = await reader
+      .select({ key: platformSettings.key, value: platformSettings.value })
+      .from(platformSettings)
+      .where(inArray(platformSettings.key, CHECKIN_SETTING_KEYS));
+    if (reader === db) checkinRowsCache = { at: Date.now(), rows: allSettings };
+  }
 
   const settingsMap = new Map(allSettings.map(s => [s.key, s.value]));
 

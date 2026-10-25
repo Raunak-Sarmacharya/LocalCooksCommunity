@@ -24,3 +24,9 @@ export function formatTourSlotRange(scheduledAt: string | Date, durationMinutes:
   const range = `${formatTourClock(start)} – ${tourDateKey(start) !== tourDateKey(end) ? formatTourDate(end) + ', ' : ''}${formatTourClock(end)}`;
   return withZone ? `${range} ${friendlyTimezoneName(DEFAULT_TIMEZONE)}` : range;
 }
+
+/** App-style tour time, e.g. "Oct 29, 11:15 a.m." (weekday adds "Thu, "). */
+export function formatTourWhen(date: Date, weekday = false): string {
+  const day = new Intl.DateTimeFormat('en-US', { timeZone: DEFAULT_TIMEZONE, month: 'short', day: 'numeric', ...(weekday ? { weekday: 'short' as const } : {}) }).format(date);
+  return `${day}, ${formatTourClock(date).replace(/\s?(AM|PM)$/i, (_, p: string) => ` ${p.toUpperCase() === 'AM' ? 'a.m.' : 'p.m.'}`)}`;
+}

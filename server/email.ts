@@ -16,7 +16,7 @@ import { tEmail } from "./i18n/outbound";
 import { addHour, calendarDateForBookingTime, sortTimesInOperatingWindow } from '@shared/operating-hours';
 import { matchingLocalInstants } from '@shared/booking-dst';
 import { DEFAULT_TIMEZONE } from '@shared/timezone-utils';
-import { formatTourDate, formatTourClock, formatTourSlotRange } from '@shared/tour-time';
+import { formatTourDate, formatTourClock, formatTourSlotRange, formatTourWhen } from '@shared/tour-time';
 import { publicTourCancellationReason } from '@shared/tour-outcome';
 import { canChefRequestReschedule, canManagerProposeReschedule } from '@shared/tour-reschedule';
 
@@ -4377,7 +4377,8 @@ export const generateTourManagerChangeEmail = (data: { tourId: number; durationM
   const when = (date: Date) => `${formatTourDate(date)}, ${formatTourSlotRange(date, data.durationMinutes, true)}`;
   const cancelled = data.kind === 'cancelled';
   return renderTransactionalEmail({ to: data.managerEmail, recipientName: data.managerName || 'Manager',
-    tour: { tourId: data.tourId, tourDate: data.scheduledAt, durationMinutes: data.durationMinutes },
+    tour: { tourId: data.tourId, tourDate: data.scheduledAt, durationMinutes: data.durationMinutes,
+      ...(!cancelled && data.requestedAt ? { subjectWhen: `${formatTourWhen(data.scheduledAt)} → ${formatTourWhen(data.requestedAt)}` } : {}) },
     subject: `${data.withdrawn ? 'Tour request withdrawn' : cancelled ? 'Kitchen tour cancelled' : 'Kitchen tour reschedule requested'} · TOUR-${data.tourId}`,
     message: data.withdrawn ? `${data.chefName} withdrew their tour request for ${data.kitchenName}. Nothing was confirmed, so no action is needed.` : cancelled ? `${data.chefName}’s tour of ${data.kitchenName} was cancelled.` : `${data.chefName} would like a new time for their tour of ${data.kitchenName}. Review the proposed time below. The original time remains confirmed until the change is accepted.`,
     facts: [{ label: 'Kitchen', value: data.kitchenName },
@@ -4406,7 +4407,7 @@ export const generateTourRequestedManagerEmail = (data: TourRequestEmailDetails 
       { label: 'Decline request', url: getSubdomainUrl('kitchen') + '/manager/dashboard?view=viewings&viewing=' + data.tourId + '&action=cancel' }] });
 
 function tourCalendarDescription(data: { kitchenName: string; notes?: string; arrivalNotes?: string | null; departureNotes?: string | null; sharedManagerNotes?: string | null }) {
-  return [`Kitchen tour at ${data.kitchenName}.`, data.arrivalNotes?.trim() ? `Arrival instructions: ${data.arrivalNotes.trim()}` : '', data.departureNotes?.trim() ? `Departure instructions: ${data.departureNotes.trim()}` : '', data.sharedManagerNotes?.trim() ? `Manager notes: ${data.sharedManagerNotes.trim()}` : '', data.notes?.trim() ? `Notes: ${data.notes.trim()}` : ''].filter(Boolean).join('\n\n');
+  return [`Kitchen tour at ${data.kitchenName}.`, data.arrivalNotes?.trim() ? `Arrival instructions: ${data.arrivalNotes.trim()}` : '', data.sharedManagerNotes?.trim() ? `Manager notes: ${data.sharedManagerNotes.trim()}` : '', data.notes?.trim() ? `Notes: ${data.notes.trim()}` : ''].filter(Boolean).join('\n\n');
 }
 
 export function generateTourCalendarAttachment(data: {
@@ -4462,10 +4463,9 @@ export const generateTourConfirmedEmail = (data: { tourId: number; durationMinut
         { label: 'Date', value: dateStr }, { label: 'Time', value: startTime },
         ...(data.previousTourDate ? [{ label: 'Previous time', value: `${formatTourDate(data.previousTourDate)}, ${formatTourSlotRange(data.previousTourDate, data.durationMinutes, true)}` }] : []),
         { label: 'Reference', value: `TOUR-${data.tourId}` }], links: [{ label: 'Add to Google Calendar', url: googleCalendarUrl }] },
-        { title: data.isManager ? `Preparing for ${data.otherPartyName}’s visit` : 'Arrival and departure', facts: [
+        { title: data.isManager ? `Preparing for ${data.otherPartyName}’s visit` : 'Arrival', facts: [
         { label: 'Address', value: data.locationAddress, url: data.locationAddress ? 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(data.locationAddress) : undefined },
         ...(data.arrivalNotes?.trim() ? [{ label: 'Arrival instructions', value: data.arrivalNotes.trim() }] : []),
-        ...(data.departureNotes?.trim() ? [{ label: 'Departure instructions', value: data.departureNotes.trim() }] : []),
         { label: data.contactEmail ? data.isManager ? 'Customer contact' : 'Arrival contact' : 'Tour assistance', value: data.contactEmail || getSupportEmail() },
         ...(data.contactPhone ? [{ label: 'Phone', value: data.contactPhone, url: `tel:${data.contactPhone}` }] : [])] },
         { title: 'Meeting notes', facts: [
@@ -4498,13 +4498,13 @@ const LOCAL_COOKS_COMMUNICATION_NOTE = 'For your safety, always communicate thro
 /** Explicit opt-in shell: supplied content stays literal in HTML and plain text. */
 export function renderTransactionalEmail(data: {
   to: string; subject: string; recipientName: string; message: string; locale?: string | null;
-  tour?: { tourId: number; tourDate: string | Date; durationMinutes: number };
+  tour?: { tourId: number; tourDate: string | Date; durationMinutes: number; subjectWhen?: string };
   facts: { label: string; value: string; url?: string }[]; actionLabel: string; actionUrl: string; note?: string; secondaryLink?: { label: string; url: string };
   secondaryButton?: { label: string; url: string }; heading?: string;
   actions?: { label: string; url: string }[];
   sections?: { title: string; facts: { label: string; value: string; url?: string }[]; links?: { label: string; url: string }[] }[];
 }): EmailContent {
-  const tourSubjectSuffix = data.tour ? `${formatTourDate(new Date(data.tour.tourDate))}, ${formatTourSlotRange(data.tour.tourDate, data.tour.durationMinutes, true)} · TOUR-${data.tour.tourId}` : undefined;
+  const tourSubjectSuffix = data.tour ? `${data.tour.subjectWhen ?? `${formatTourDate(new Date(data.tour.tourDate))}, ${formatTourSlotRange(data.tour.tourDate, data.tour.durationMinutes, true)}`} · TOUR-${data.tour.tourId}` : undefined;
   const subjectTitle = tourSubjectSuffix && data.subject.endsWith(` · ${tourSubjectSuffix}`)
     ? data.subject.slice(0, -(` · ${tourSubjectSuffix}`).length) : data.subject.replace(/\s*· TOUR-\d+$/, '');
   const heading = data.heading || subjectTitle;

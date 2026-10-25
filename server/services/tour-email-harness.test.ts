@@ -12,7 +12,7 @@ describe('tour email preview harness', () => {
     const { samples } = await buildTourEmailSamples();
     const preparation = samples.find(sample => sample.scenario === 'Before the tour · arrival' && sample.role === 'Chef')!;
     expect(preparation).toBeDefined();
-    for (const label of ['Kitchen:', 'Location:', 'Date:', 'Time:', 'Address:', 'Kitchen manager:', 'Arrival contact:', 'Manager notes:', 'Arrival instructions:', 'Departure instructions:', 'Reference: TOUR-42', 'Message manager:'])
+    for (const label of ['Kitchen:', 'Location:', 'Date:', 'Time:', 'Address:', 'Kitchen manager:', 'Arrival contact:', 'Manager notes:', 'Arrival instructions:', 'Reference: TOUR-42', 'Message manager:'])
       expect(preparation.text).toContain(label);
     expect(samples.some(sample => sample.scenario.endsWith(' · preparation'))).toBe(false);
     expect(samples.some(sample => sample.role === 'Manager' && sample.scenario === 'Before the tour · arrival')).toBe(true);

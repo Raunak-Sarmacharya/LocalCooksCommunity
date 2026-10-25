@@ -90,6 +90,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
 function getNotificationIcon(type: string) {
   switch (type) {
     case "booking_new":
+    case "tour_update":
     case "booking_confirmed":
     case "booking_cancelled":
       return <Calendar className="h-4 w-4" />;

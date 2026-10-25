@@ -93,6 +93,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
 // Get icon for notification type
 function getNotificationIcon(type: string) {
   switch (type) {
+    case "tour_update":
     case "booking_confirmed":
     case "booking_cancelled":
     case "booking_reminder":

@@ -204,7 +204,6 @@ export function AdminTourRequestsSection() {
       {isError && <div role="alert"><p>We couldn’t load tour requests.</p><Button variant="outline" onClick={() => void refetch()}>Try again</Button></div>}
       {!isLoading && !isError && linkedTourId > 0 && !requests.some(request => request.viewing.id === linkedTourId) &&
         <div role="alert"><p>This tour is unavailable. Check your access or try again.</p><Button variant="outline" onClick={() => void refetch()}>Try again</Button></div>}
-      <HistoricalVisitReviews />
       {!linkedTourId && <TourFunnel role="admin" />}
       {pendingDeliveries.length > 0 && <Card><CardHeader><CardTitle>Tour communications pending ({pendingDeliveries.length})</CardTitle></CardHeader>
         <CardContent className="space-y-2">{Array.from(new Set(pendingDeliveries.map(event => event.viewingId))).map(id => <div key={id} className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -310,6 +309,9 @@ export function AdminTourRequestsSection() {
           ))}
         </div>
       )}
+
+      {/* Older paid visits sit below the live requests so they never push them off screen. */}
+      <HistoricalVisitReviews />
 
       <Dialog open={!!takeover} onOpenChange={open => !open && !confirmTakeover.isPending && setTakeover(null)}>
         <DialogContent className="min-w-0 [overflow-wrap:anywhere]"><DialogHeader><DialogTitle>{t('tourTakeoverConfirm', 'Review and confirm overdue request')}</DialogTitle><DialogDescription>{t('tourTakeoverHelp', 'Confirm the current tour time after reviewing availability. Your reason will be shared with the visitor and manager.')}</DialogDescription></DialogHeader>

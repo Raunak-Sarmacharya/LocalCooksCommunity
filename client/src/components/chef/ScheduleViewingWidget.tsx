@@ -1,16 +1,13 @@
 /**
  * ScheduleViewingWidget — request an in-person kitchen tour (visit only, not an application).
- * Guest: Date → Time → Intake → Account → Verify → Confirm → Success
- * Signed-in (including veterans): Date → Time → Intake → Confirm → Success
+ * Signed-in: Day and time → Your details (sends) → Success
+ * Guest: Day and time → Your details → Account → Verify → Your details (sends) → Success
  */
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Icon } from "@iconify/react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { CalendarDays, Clock, Loader2, CheckCircle, ArrowLeft, Send, Mail, RefreshCw } from "lucide-react";
-import { KitchenIcon } from "@/components/ui/kitchen-icon";
-import { KitchenTour } from "@/components/ui/manager-icons";
+import { CheckCircle, Loader2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { auth } from "@/lib/firebase";
@@ -19,34 +16,26 @@ import KitchenJourneyAuth from "@/components/auth/KitchenJourneyAuth";
 import { useEmailVerificationGuard } from "@/hooks/use-email-verification-guard";
 import { useLocation } from "wouter";
 import { chefDashboardHref } from "@/lib/chef-dashboard-nav";
-import { saveAuthIntentFromCurrentPage, getAuthIntent, resolveVerificationReturnPath, kitchenActor, nextTourStepAfterSlot, coerceTourStepForActor, skipKitchenVerify } from "@/lib/auth-intent";
+import { saveAuthIntentFromCurrentPage, kitchenActor, nextTourStepAfterSlot, coerceTourStepForActor } from "@/lib/auth-intent";
 import { isPendingGoogleRegistration } from "@/lib/pending-google-registration";
-import KitchenJourneyLayout, { KitchenJourneySteps } from "@/components/kitchen-application/KitchenJourneyLayout";
-import { journeyCalendarClassNames, journeyCalendarContainer } from "@/components/kitchen-application/journey-calendar-style";
-import KitchenJourneyTimeSlot from "@/components/kitchen-application/KitchenJourneyTimeSlot";
-import { formatTourSlotRange } from '@shared/tour-time';
-import { sendVerificationEmailWithFallback } from "@/lib/send-verification-email";
 import { hasVerifiedEmail } from "@/lib/auth-verification";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { DateField } from "@/components/ui/date-field";
 import { Checkbox } from "@/components/ui/checkbox";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { TourIntakeChoice } from "@/components/tour/TourIntakeChoice";
-import { TourIntakeDetails } from "@/components/tour/TourIntakeDetails";
+import { TourChip, TourIntakeChoice } from "@/components/tour/TourIntakeChoice";
 import { requiredViewingIntakeDataSchema, type ViewingIntakeData } from "@shared/schema";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent } from "@/components/ui/card";
 import { InfoChip } from "@/components/chef/info-chip";
 import { Calendar } from "@/components/ui/calendar";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Separator } from "@/components/ui/separator";
+import Header from "@/components/layout/Header";
+import { useIsChefShell } from "@/layouts/chef-shell-context";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { ct } from "@/i18n/chef-ns";
-import { useIsMobile } from "@/hooks/use-mobile";
 import { tourAvailableDate, tourToday } from "@/lib/tour-available-date";
+import { DEFAULT_TIMEZONE, friendlyTimezoneName } from "@shared/timezone-utils";
 
 async function getAuthHeaders(forceRefresh = false): Promise<HeadersInit> {
   const currentUser = auth.currentUser;
@@ -79,7 +68,7 @@ interface AvailabilityResponse {
   } | null;
 }
 
-type TourStep = "date" | "time" | "intake" | "account" | "verify" | "confirm" | "success";
+type TourStep = "schedule" | "details" | "account" | "verify" | "success";
 
 interface ScheduleViewingWidgetProps {
   locationId: number;
@@ -88,9 +77,8 @@ interface ScheduleViewingWidgetProps {
   targetedKitchenName?: string;
   kitchenImageUrl?: string | null;
   onClose?: () => void;
-  onRequireOpen?: () => void;
-  open?: boolean;
-  presentation?: "dialog" | "page";
+  /** Only the full-page flow exists; the prop stays so existing callers keep compiling. */
+  presentation?: "page";
 }
 
 /**
@@ -107,6 +95,31 @@ function isUserVerified(
   );
 }
 
+// Drafts saved before the two-screen flow used these step names.
+const legacySteps: Record<string, string> = { date: "schedule", time: "schedule", intake: "details", register: "account" };
+
+const calendarClassNames = {
+  months: "w-full",
+  month: "w-full space-y-3",
+  caption: "flex items-center justify-between",
+  caption_label: "text-[15px] font-medium text-foreground",
+  nav: "flex items-center gap-1",
+  nav_button: "inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-30",
+  nav_button_previous: "",
+  nav_button_next: "",
+  table: "w-full table-fixed border-collapse",
+  head_row: "",
+  head_cell: "pb-2 text-center text-xs font-normal text-muted-foreground",
+  row: "",
+  cell: "p-0.5 text-center",
+  day: "mx-auto flex h-10 w-full max-w-[52px] items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground transition-colors hover:bg-foreground/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+  day_selected: "!bg-foreground !text-background",
+  day_today: "ring-1 ring-inset ring-foreground/25",
+  day_disabled: "pointer-events-none !bg-transparent font-normal text-muted-foreground/50",
+  day_outside: "invisible",
+  day_hidden: "invisible",
+};
+
 export function ScheduleViewingWidget({
   locationId,
   locationName,
@@ -114,24 +127,24 @@ export function ScheduleViewingWidget({
   targetedKitchenName,
   kitchenImageUrl,
   onClose,
-  onRequireOpen,
-  open = true,
-  presentation = "dialog",
 }: ScheduleViewingWidgetProps) {
-  const isMobile = useIsMobile();
   const queryClient = useQueryClient();
-  const { t } = useTranslation("kitchen");
+  const { t, i18n } = useTranslation("kitchen");
   const { t: common } = useTranslation("common");
-  const { user, loading: authLoading, refreshUserData } = useFirebaseAuth();
+  const locale = i18n?.language || "en-CA";
+  const inChefShell = useIsChefShell();
+  const { user, loading: authLoading } = useFirebaseAuth();
   const { guard, gate } = useEmailVerificationGuard();
   const [, setLocation] = useLocation();
   const isAuthenticated = !!user && !isPendingGoogleRegistration(auth.currentUser?.uid);
   const [registeredInFlow, setRegisteredInFlow] = useState(false);
   const actor = kitchenActor(isAuthenticated, registeredInFlow);
   const emailVerified = isUserVerified(user);
-  const skipVerify = skipKitchenVerify(actor, emailVerified);
+  // "confirm" means this person can send now; otherwise Your details continues to account or verify.
+  const nextAfterDetails = nextTourStepAfterSlot(actor, emailVerified);
+  const readyToSend = nextAfterDetails === "confirm";
 
-  const [step, setStep] = useState<TourStep>("date");
+  const [step, setStep] = useState<TourStep>("schedule");
   const [progressRestored, setProgressRestored] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [selectedSlot, setSelectedSlot] = useState<TimeSlot | null>(null);
@@ -141,14 +154,10 @@ export function ScheduleViewingWidget({
   const intakeComplete = intakeResult.success;
   const draftOwnerUid = useRef<string | null>(null);
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
-  const [isCheckingVerification, setIsCheckingVerification] = useState(false);
-  const [verifyError, setVerifyError] = useState<string | null>(null);
-  const [isResendingVerification, setIsResendingVerification] = useState(false);
-  const [resendCooldown, setResendCooldown] = useState(0);
 
   const hasProgress =
-    step !== "date" || !!selectedDate || !!selectedSlot || chefNotes.trim().length > 0 || Object.keys(intakeData).length > 0;
-  const isDataTaking = open && step !== "success";
+    step !== "schedule" || !!selectedDate || !!selectedSlot || chefNotes.trim().length > 0 || Object.keys(intakeData).length > 0;
+  const isDataTaking = step !== "success";
 
   const storageKey = `viewing_booking_${targetedKitchenId}`;
 
@@ -173,7 +182,7 @@ export function ScheduleViewingWidget({
         localStorage.removeItem(storageKey);
         return;
       }
-      if (date || slot || st !== "date" || notes || Object.keys(intake).length) {
+      if (date || slot || st !== "schedule" || notes || Object.keys(intake).length) {
         draftOwnerUid.current = auth.currentUser?.uid || draftOwnerUid.current;
         localStorage.setItem(
           storageKey,
@@ -187,9 +196,9 @@ export function ScheduleViewingWidget({
   );
 
   useEffect(() => {
-    if (!open || authLoading || step === "success" || progressRestored !== storageKey) return;
+    if (authLoading || step === "success" || progressRestored !== storageKey) return;
     persistProgress();
-  }, [open, authLoading, persistProgress, step, progressRestored, storageKey]);
+  }, [authLoading, persistProgress, step, progressRestored, storageKey]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -199,7 +208,7 @@ export function ScheduleViewingWidget({
       setChefNotes("");
       setIntakeData({});
       setRegisteredInFlow(false);
-      setStep("date");
+      setStep("schedule");
       draftOwnerUid.current = null;
       const savedData = localStorage.getItem(storageKey) || sessionStorage.getItem(storageKey);
       if (!savedData) return;
@@ -218,19 +227,11 @@ export function ScheduleViewingWidget({
       const registering = parsed.registeredInFlow === true;
       setRegisteredInFlow(registering);
       const restoreActor = kitchenActor(isAuthenticated, registering);
-      const rawStep: string =
-        parsed.step === "register"
-          ? "account"
-          : parsed.step || (parsed.slot ? "time" : "date");
-      const needsIntake = parsed.slot && !requiredViewingIntakeDataSchema.safeParse(restoredIntake).success && ["intake", "account", "verify", "confirm"].includes(rawStep);
-      const restored = needsIntake ? "intake" : coerceTourStepForActor(
-        rawStep,
-        restoreActor,
-        !!parsed.slot,
-        emailVerified
-      ) as TourStep;
-      // Resume fields only — the preview page decides whether to reopen the dialog.
-      if (restored !== "date") setStep(restored);
+      const rawStep: string = legacySteps[parsed.step] ?? parsed.step ?? "schedule";
+      const needsIntake = parsed.slot && !requiredViewingIntakeDataSchema.safeParse(restoredIntake).success && ["details", "account", "verify", "confirm"].includes(rawStep);
+      const coerced = needsIntake ? "details" : coerceTourStepForActor(rawStep, restoreActor, !!parsed.slot, emailVerified);
+      const restored = !parsed.slot ? "schedule" : coerced === "confirm" ? "details" : coerced === "date" ? "schedule" : coerced;
+      if (restored !== "schedule") setStep(restored as TourStep);
     } catch (e) {
       console.error("Failed to restore tour booking data", e);
     } finally {
@@ -240,28 +241,13 @@ export function ScheduleViewingWidget({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storageKey, isAuthenticated, authLoading, user?.uid]);
 
-  // After login / in-flow register, advance when we have a slot.
+  // After login / in-flow register / verification, return to Your details to send.
   useEffect(() => {
-    if (!selectedSlot) return;
-    if (!intakeComplete) return;
-    if (step === "time" || step === "date" || step === "success") return;
-    const next = nextTourStepAfterSlot(actor, emailVerified);
-    if (next === "confirm" && (step === "verify" || step === "account")) {
-      setStep("confirm");
-      onRequireOpen?.();
-    } else if (next === "verify" && step === "account") {
-      setStep("verify");
-      onRequireOpen?.();
-    }
-  }, [actor, emailVerified, selectedSlot, step, onRequireOpen, intakeComplete]);
-
-  useEffect(() => {
-    if (resendCooldown <= 0) return;
-    const timer = setInterval(() => {
-      setResendCooldown((prev) => (prev <= 1 ? 0 : prev - 1));
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [resendCooldown]);
+    if (!selectedSlot || !intakeComplete) return;
+    if (step !== "account" && step !== "verify") return;
+    if (nextAfterDetails === "confirm") setStep("details");
+    else if (nextAfterDetails === "verify" && step === "account") setStep("verify");
+  }, [nextAfterDetails, selectedSlot, step, intakeComplete]);
 
   const dateStr = selectedDate ? format(selectedDate, "yyyy-MM-dd") : "";
   const {
@@ -350,7 +336,8 @@ export function ScheduleViewingWidget({
       }
       if (error.code === "SLOT_TAKEN") {
         setSelectedSlot(null);
-        setStep("time");
+        setStep("schedule");
+        void refetchSlots();
       }
     },
   });
@@ -358,34 +345,21 @@ export function ScheduleViewingWidget({
   const today = tourToday();
 
   const handleDateSelect = useCallback((date: Date | undefined) => {
+    if (!date) return;
     setSelectedDate(date);
     setSelectedSlot(null);
-    if (date) setStep("time");
   }, []);
 
-  const continueAfterSlot = useCallback(
-    (slot: TimeSlot) => {
-      setSelectedSlot(slot);
-      sessionStorage.removeItem("pending_application_modal");
-      saveAuthIntentFromCurrentPage("tour", locationId, targetedKitchenId);
-
-      const next = "intake";
-      persistProgress({ slot, step: next });
-      setStep(next);
-    },
-    [locationId, targetedKitchenId, persistProgress]
-  );
-
-  const handleBack = useCallback(() => {
-    if (step === "time") setStep("date");
-    else if (step === "intake") setStep("time");
-    else if (step === "account") setStep("intake");
-    else if (step === "verify") setStep(isAuthenticated ? "time" : "account");
-    else if (step === "confirm") setStep("time");
-  }, [step, isAuthenticated]);
+  const continueToDetails = useCallback(() => {
+    if (!selectedSlot) return;
+    sessionStorage.removeItem("pending_application_modal");
+    saveAuthIntentFromCurrentPage("tour", locationId, targetedKitchenId);
+    persistProgress({ step: "details" });
+    setStep("details");
+  }, [selectedSlot, locationId, targetedKitchenId, persistProgress]);
 
   const resetForm = useCallback(() => {
-    setStep("date");
+    setStep("schedule");
     setSelectedDate(undefined);
     setSelectedSlot(null);
     setChefNotes("");
@@ -410,655 +384,268 @@ export function ScheduleViewingWidget({
     onClose?.();
   };
 
-  const handleCheckVerified = async () => {
-    setIsCheckingVerification(true);
-    setVerifyError(null);
-    try {
-      await auth.currentUser?.reload();
-      await refreshUserData();
-      const verified = isUserVerified(user);
-      if (!verified) {
-        setVerifyError(
-          t(
-            "notVerifiedYet",
-            "We haven't detected a verified email address yet. Verify your email, then try again."
-          )
-        );
-        return;
-      }
-      setStep("confirm");
-    } catch {
-      setVerifyError(t("verifyCheckFailed", "Could not check verification status. Please try again."));
-    } finally {
-      setIsCheckingVerification(false);
-    }
+  // Times are the kitchen's (Newfoundland) clock, 12-hour, in the reader's language.
+  const timezone = availability?.timezone || DEFAULT_TIMEZONE;
+  const duration = availability?.settings?.defaultDurationMinutes;
+  const minutes = duration ?? 30;
+  const clock = new Intl.DateTimeFormat(locale, { timeZone: timezone, hour: "numeric", minute: "2-digit", hour12: true });
+  const slotStart = (slot: TimeSlot) => clock.format(new Date(slot.scheduledAt));
+  const slotRange = (slot: TimeSlot) => {
+    const start = new Date(slot.scheduledAt);
+    // Non-breaking spaces so "11:00 a.m." never splits; lines break only around the " · ".
+    return clock.formatRange(start, new Date(start.getTime() + minutes * 60_000)).replace(/\s/g, " ");
   };
+  const longDate = selectedDate && new Intl.DateTimeFormat(locale, { weekday: "long", month: "long", day: "numeric" }).format(selectedDate);
+  const shortDate = selectedDate && new Intl.DateTimeFormat(locale, { weekday: "short", month: "short", day: "numeric" }).format(selectedDate).replace(/\s/g, " ");
+  const zoneName = friendlyTimezoneName(timezone, locale).replace(/ Time$/, " time");
+  const whenLine = selectedDate && selectedSlot ? `${shortDate} · ${slotRange(selectedSlot)}` : null;
 
-  const handleResendVerification = async () => {
-    if (isResendingVerification || resendCooldown > 0) return;
-    const email = auth.currentUser?.email || user?.email;
-    if (!email) {
-      setVerifyError(
-        t("resendVerificationNoEmail", "No email on file. Please register again.")
-      );
-      return;
-    }
+  const kitchenName = targetedKitchenName || locationName || t("applyFlowKitchenFallbackName", "Kitchen");
+  const placeName = availability?.locationName && availability.locationName !== kitchenName
+    ? availability.locationName
+    : locationName && locationName !== kitchenName ? locationName : null;
 
-    setIsResendingVerification(true);
-    setVerifyError(null);
-    try {
-      await sendVerificationEmailWithFallback({
-        email,
-        role: "chef",
-        returnUrl:
-          resolveVerificationReturnPath() ||
-          getAuthIntent()?.returnPath ||
-          `${window.location.pathname}${window.location.search}`,
-      });
-      setResendCooldown(60);
-      toast.success(t("verificationEmailSent", "Verification email sent"));
-    } catch (err) {
-      setVerifyError(
-        err instanceof Error && err.message
-          ? err.message
-          : t("resendVerificationFailed", "Failed to resend verification email.")
-      );
-    } finally {
-      setIsResendingVerification(false);
-    }
-  };
+  const stepLabels = [
+    t("tourBookStepSchedule", "Day and time"),
+    t("tourBookStepDetails", "Your details"),
+    ...(readyToSend && step !== "account" && step !== "verify" ? [] : [t("tourBookStepAccount", "Account")]),
+  ];
+  const stepIndex = step === "schedule" ? 0 : step === "details" ? 1 : 2;
 
-  const guidedChrome = (() => {
-    switch (step) {
-      case "date":
-        return {
-          title: t("tourModalDateTitle", "Pick a tour date"),
-          subtext: t(
-            "tourModalDateSubtext",
-            "Choose a day to visit in person. You’re not applying — just checking if it fits."
-          ),
-        };
-      case "time":
-        return {
-          title: t("tourModalTimeTitle", "Choose a time"),
-          subtext: t("tourModalTimeSubtext", "Select an available time slot for your visit."),
-        };
-      case "account":
-        return {
-          title: t("tourModalAccountTitle", "Continue with your account"),
-          subtext: t(
-            "tourModalAccountSubtext",
-            "Sign in or create an account to continue your tour request."
-          ),
-        };
-      case "intake":
-        return {
-          title: t("tourIntakeTitle", "Tell us about your plans"),
-          subtext: t("tourIntakeSubtext", "Answer all four questions so the kitchen team can prepare for your visit."),
-        };
-      case "verify":
-        return {
-          title: t("tourModalVerifyTitle", "We’re waiting on you"),
-          subtext: t(
-            "tourModalVerifySubtext",
-            "Check your email (and spam) and click the verify link. Nothing else happens until you do."
-          ),
-        };
-      case "confirm":
-        return {
-          title: t("tourModalConfirmTitle", "Confirm your visit"),
-          subtext: t(
-            "tourModalConfirmSubtext",
-            "Double-check the time. Optional notes help the manager prepare."
-          ),
-        };
-      case "success":
-        return {
-          title: t("tourModalDoneTitle", "Tour requested"),
-          subtext: t(
-            "tourModalDoneSubtext",
-            "Your tour request was sent. We'll let you know when it's approved or rejected."
-          ),
-        };
-      default:
-        return {
-          title: t("scheduleKitchenTour", "Request a Kitchen Tour"),
-          subtext: t("bookInPersonKitchenTour", {
-            defaultValue: "Request an in-person kitchen tour of {locationName}",
-            locationName: locationName || t("theKitchenFacility", "the kitchen facility"),
-          }),
-        };
-    }
-  })();
+  const heading = step === "schedule"
+    ? { title: t("tourBookTitle", "Book a tour"), subtext: t("tourBookSubtext", "Pick a day and time to see the kitchen in person. It’s free, and you’re not applying yet.") }
+    : step === "success"
+      ? { title: t("tourBookDoneTitle", "Tour requested"), subtext: t("tourBookDoneSubtext", "The kitchen will confirm or suggest another time.") }
+      : step === "details"
+        ? { title: t("tourBookDetailsTitle", "Almost done"), subtext: t("tourBookDetailsSubtext", "A few quick answers help the kitchen prepare for your visit.") }
+        : { title: t("tourBookDetailsTitle", "Almost done"), subtext: t("tourBookAccountSubtext", "Sign in or create an account so the kitchen can reply to your request.") };
 
-  const renderGuideRail = () => {
-    const steps: { id: string; label: string }[] = skipVerify
-      ? [
-          { id: "date", label: t("tourGuideStepDate") },
-          { id: "time", label: t("tourGuideStepTime") },
-          { id: "intake", label: t("tourGuideStepIntake", "Your plans") },
-          { id: "confirm", label: t("tourGuideStepConfirmShort") },
-        ]
-      : [
-          { id: "date", label: t("tourGuideStepDate") },
-          { id: "time", label: t("tourGuideStepTime") },
-          { id: "intake", label: t("tourGuideStepIntake", "Your plans") },
-          { id: "account", label: isAuthenticated && !emailVerified ? "Verify email" : t("tourGuideStepAccount") },
-          { id: "confirm", label: t("tourGuideStepConfirm") },
-        ];
-    const railIdx = skipVerify
-      ? step === "date"
-        ? 0
-        : step === "time"
-          ? 1
-          : step === "intake" ? 2 : 3
-      : step === "date"
-        ? 0
-        : step === "time"
-          ? 1
-          : step === "intake" ? 2 : step === "account" || step === "verify"
-            ? 3
-            : 4;
+  const optional = <span className="font-normal text-muted-foreground">{t("tourBookOptional", "Optional")}</span>;
 
-    return <KitchenJourneySteps steps={steps.map((s) => s.label.replace(/^\d+\.\s*/, ""))} current={railIdx} compact={presentation === "dialog"} />;
-  };
-
-  const renderDateStep = () => (
-    <div className="space-y-3">
-      <div className={presentation === "page" ? journeyCalendarContainer : "flex justify-center"}>
-        <Calendar
-          mode="single"
-          numberOfMonths={presentation === "page" && !isMobile ? 2 : 1}
-          pagedNavigation={presentation === "page" && !isMobile}
-          selected={selectedDate}
-          onSelect={handleDateSelect}
-          disabled={(date) => !tourAvailableDate(date, calMetadata, today)}
-          className={presentation === "page" ? "w-full bg-transparent p-1" : "rounded-xl border"}
-          classNames={presentation === "page" ? journeyCalendarClassNames(!isMobile) : undefined}
-        />
+  const kitchenHeader = (
+    <div className="flex items-center justify-between gap-3 border-b p-4 sm:p-5">
+      <div className="flex min-w-0 items-center gap-3">
+        {kitchenImageUrl && <img src={kitchenImageUrl} alt="" className="h-12 w-12 shrink-0 rounded-md object-cover sm:h-14 sm:w-14" />}
+        <div className="min-w-0">
+          <p className="truncate text-[15px] font-medium text-foreground">{kitchenName}</p>
+          {placeName && <p className="truncate text-sm text-muted-foreground">{placeName}</p>}
+        </div>
+      </div>
+      <div className="hidden text-sm text-muted-foreground sm:block sm:text-right">
+        <p>{duration ? t("tourBookDuration", { defaultValue: "{minutes}-minute tour · free", minutes: duration }) : t("tourBookFree", "Free tour")}</p>
+        <p>{t("tourBookConfirmsWithin", "The kitchen confirms within 24 hours")}</p>
       </div>
     </div>
   );
 
-  const renderTimeStep = () => (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-muted-foreground">
-          {selectedDate && format(selectedDate, "EEEE, MMMM d, yyyy")}
-        </p>
-        <Button variant="ghost" size="sm" className="shrink-0 text-primary" onClick={handleBack}>Change date</Button>
-      </div>
+  const summaryRow = whenLine && (
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-lg border bg-muted/40 px-4 py-3 text-sm">
+      <p className="min-w-0">
+        <span className="font-medium text-foreground">{whenLine}</span>
+        <span className="block text-muted-foreground sm:ml-2 sm:inline">{zoneName}</span>
+      </p>
+      {step !== "success" && <button type="button" onClick={() => setStep("schedule")}
+        className="min-h-9 shrink-0 rounded text-sm font-medium text-foreground underline underline-offset-4 hover:text-foreground/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        {t("tourBookChange", "Change")}
+      </button>}
+    </div>
+  );
 
-      {slotsLoading || slotsFetching ? (
-        <div className="grid grid-cols-2 gap-3 py-4 sm:grid-cols-3" role="status" aria-label={t("loadingAvailableTimes", "Loading available times...")}>
-          {Array.from({ length: 6 }, (_, index) => <Skeleton key={index} className="h-11 w-full rounded-xl" />)}
+  const footer = (left: ReactNode, action: ReactNode) => (
+    <div className="sticky bottom-0 z-20 flex items-center justify-between gap-3 rounded-b-lg border-t bg-background px-4 py-3 shadow-[0_-1px_0_hsl(var(--border))] sm:static sm:bg-muted/60 sm:px-5 sm:py-4 sm:shadow-none">
+      <div className="min-w-0 text-sm">{left}</div>
+      {action}
+    </div>
+  );
+
+  const renderSlots = () => {
+    if (!selectedDate) return <p className="text-sm text-muted-foreground">{t("tourBookPickDay", "Pick a day to see the times.")}</p>;
+    if (slotsLoading || slotsFetching) return (
+      <div className="grid grid-cols-3 gap-2 md:grid-cols-1" role="status" aria-label={t("loadingAvailableTimes", "Loading available times...")}>
+        {Array.from({ length: 6 }, (_, index) => <Skeleton key={index} className="h-11 w-full rounded-lg" />)}
+      </div>
+    );
+    if (slotsError) return (
+      <div className="rounded-lg border p-4 text-center">
+        <p className="text-sm text-muted-foreground">{t("tourBookTimesError", "We couldn’t load the times for this day.")}</p>
+        <Button variant="outline" size="sm" className="mt-3" onClick={() => void refetchSlots()}>{t("tourBookTryAgain", "Try again")}</Button>
+      </div>
+    );
+    if (!availability?.slots.length) return <p className="text-sm text-muted-foreground">{t("tourBookNoTimes", "No times left this day. Try another day.")}</p>;
+    return (
+      <div className="grid grid-cols-3 gap-2 md:max-h-[22rem] md:grid-cols-1 md:overflow-y-auto md:pr-1">
+        {availability.slots.map((slot) => {
+          const selected = selectedSlot?.scheduledAt === slot.scheduledAt;
+          return <button key={slot.scheduledAt} type="button" aria-pressed={selected} onClick={() => setSelectedSlot(slot)}
+            className={cn("min-h-11 rounded-lg border px-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+              selected ? "border-foreground bg-foreground text-background" : "border-border bg-background text-foreground hover:border-foreground/40")}>
+            {slotStart(slot)}
+          </button>;
+        })}
+      </div>
+    );
+  };
+
+  const renderScheduleStep = () => (
+    <>
+      <div className="grid md:grid-cols-[minmax(0,1fr)_17.5rem]">
+        <div className="p-4 sm:p-5">
+          <Calendar
+            mode="single"
+            required
+            showOutsideDays={false}
+            defaultMonth={selectedDate}
+            selected={selectedDate}
+            onSelect={handleDateSelect}
+            disabled={(date) => !tourAvailableDate(date, calMetadata, today)}
+            className="w-full p-0"
+            classNames={calendarClassNames}
+          />
         </div>
-      ) : slotsError ? (
-        <div className="rounded-xl border border-border p-5 text-center">
-          <p className="text-sm text-muted-foreground">We couldn’t load the available times for this day.</p>
-          <Button variant="outline" size="sm" className="mt-3" onClick={() => void refetchSlots()}>Try again</Button>
+        <div className="border-t p-4 sm:p-5 md:border-l md:border-t-0">
+          {selectedDate && <div className="mb-3">
+            <h2 className="text-[15px] font-medium text-foreground">{longDate}</h2>
+            <p className="text-sm text-muted-foreground">{t("tourBookZoneLine", { defaultValue: "{zone} · {minutes} minutes", zone: zoneName, minutes })}</p>
+          </div>}
+          {renderSlots()}
         </div>
-      ) : availability?.slots.length === 0 ? (
-        <div className="text-center py-12 space-y-3">
-          <Clock className="h-10 w-10 mx-auto text-muted-foreground opacity-40" />
-          <p className="text-sm text-muted-foreground">
-            {t("noAvailableTimeSlots", "No available time slots on this date.")}
-          </p>
-          <Button variant="outline" size="sm" onClick={() => setStep("date")}>
-            <CalendarDays className="h-4 w-4 mr-2" />
-            {t("tryAnotherDate", "Try another date")}
-          </Button>
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 gap-1.5 min-[420px]:grid-cols-3 sm:grid-cols-4">
-          {availability?.slots.map((slot) => (
-            <KitchenJourneyTimeSlot
-              key={slot.scheduledAt}
-              label={formatTourSlotRange(slot.scheduledAt, availability.settings?.defaultDurationMinutes ?? 30)}
-              selected={selectedSlot?.scheduledAt === slot.scheduledAt}
-              onClick={() => continueAfterSlot(slot)}
-            />
-          ))}
-        </div>
+      </div>
+      {footer(
+        whenLine ? <span className="whitespace-nowrap font-medium text-foreground">{whenLine}</span> : <span className="text-muted-foreground">{t("tourBookPickTime", "Pick a day and time")}</span>,
+        <Button className="shrink-0" disabled={!selectedSlot} onClick={continueToDetails}>{t("tourBookContinue", "Continue")}</Button>
       )}
-    </div>
+    </>
   );
 
-  const renderIntakeStep = () => (
-    <form className="space-y-5" onSubmit={(event) => {
+  const renderDetailsStep = () => (
+    <form onSubmit={(event) => {
       event.preventDefault();
       if (!intakeComplete) return;
-      const next = nextTourStepAfterSlot(actor, emailVerified);
+      if (readyToSend) {
+        guard(() => bookMutation.mutate());
+        return;
+      }
+      const next = nextAfterDetails as "account" | "verify";
       persistProgress({ step: next });
       setStep(next);
     }}>
-      <TourIntakeChoice key={`use-${targetedKitchenId}`} id="tour-intended-use"
-        label={t("tourIntendedUse", "What do you plan to use the kitchen for?")}
-        value={intakeData.intendedUse}
-        choices={[
-          { value: "catering", label: common("tourIntakeUse_catering", "Catering") },
-          { value: "meal_prep", label: common("tourIntakeUse_meal_prep", "Meal preparation") },
-          { value: "food_truck", label: common("tourIntakeUse_food_truck", "Food truck") },
-          { value: "baking", label: common("tourIntakeUse_baking", "Baking") },
-        ]}
-        onChange={intendedUse => setIntakeData({ ...intakeData, intendedUse })} />
-      <TourIntakeChoice key={`hours-${targetedKitchenId}`} id="tour-weekly-hours"
-        label={t("tourWeeklyHours", "About how many hours per week would you need?")}
-        value={intakeData.estimatedWeeklyHours}
-        choices={["1-5", "6-10", "11-20", "21-30", "31-40", "40+"].map(hours => ({
-          value: hours, label: common("tourIntakeHoursPerWeek", { defaultValue: `${hours} hours per week`, hours })
-        }))}
-        onChange={estimatedWeeklyHours => setIntakeData({ ...intakeData, estimatedWeeklyHours })} />
-      <fieldset className="space-y-2">
-        <legend className="text-sm font-medium">{t("tourHasLicense", "Do you have a food safety certificate?")}</legend>
-        <RadioGroup name="tour-license" required aria-label={t("tourHasLicense", "Do you have a food safety certificate?")}
-          value={intakeData.hasLicense === undefined ? "" : String(intakeData.hasLicense)}
-          onValueChange={answer => setIntakeData({ ...intakeData, hasLicense: answer === "true" })}
-          className="grid grid-cols-2 gap-3">
-          {[true, false].map(answer => <Label key={String(answer)} htmlFor={`tour-license-${answer}`}
-            className={cn("flex min-h-11 cursor-pointer items-center gap-2.5 rounded-lg border px-4 py-3 font-normal transition-colors", intakeData.hasLicense === answer ? "border-primary bg-primary/5" : "border-border hover:border-primary/60 hover:bg-primary/[0.03]")}>
-            <RadioGroupItem id={`tour-license-${answer}`} value={String(answer)} />
-            {answer ? t("tourIntakeYes", "Yes") : t("tourIntakeNo", "No")}
-          </Label>)}
-        </RadioGroup>
-      </fieldset>
-      <div className="space-y-2">
-        <Label htmlFor="tour-start-date">{t("tourTargetStartDate", "When would you like to start renting?")}</Label>
-        <DateField id="tour-start-date" minToday={false}
-          placeholder={t("tourTargetStartDate", "When would you like to start renting?")}
-          disabled={intakeData.targetStartDate === "not_decided"}
-          value={intakeData.targetStartDate === "not_decided" ? "" : intakeData.targetStartDate || ""}
-          onChange={targetStartDate => setIntakeData({ ...intakeData, targetStartDate })}
-          className="min-h-11 rounded-lg" />
-        <Label htmlFor="tour-start-undecided" className="flex min-h-11 cursor-pointer items-center gap-2.5 font-normal">
-          <Checkbox id="tour-start-undecided" checked={intakeData.targetStartDate === "not_decided"}
-            onCheckedChange={checked => setIntakeData({ ...intakeData, targetStartDate: checked === true ? "not_decided" : "" })} />
-          {t("tourIntakeNotDecided", "Not decided yet")}
-        </Label>
+      <div className="max-w-2xl space-y-6 p-4 sm:p-5">
+        {summaryRow}
+        <TourIntakeChoice key={`use-${targetedKitchenId}`} id="tour-intended-use"
+          label={t("tourBookUse", "What will you use the kitchen for?")}
+          value={intakeData.intendedUse}
+          choices={[
+            { value: "catering", label: common("tourIntakeUse_catering", "Catering") },
+            { value: "meal_prep", label: common("tourIntakeUse_meal_prep", "Meal preparation") },
+            { value: "food_truck", label: common("tourIntakeUse_food_truck", "Food truck") },
+            { value: "baking", label: common("tourIntakeUse_baking", "Baking") },
+          ]}
+          onChange={intendedUse => setIntakeData({ ...intakeData, intendedUse })} />
+        <TourIntakeChoice key={`hours-${targetedKitchenId}`} id="tour-weekly-hours"
+          label={t("tourBookHours", "About how many hours a week?")}
+          value={intakeData.estimatedWeeklyHours}
+          choices={["1-5", "6-10", "11-20", "21-30", "31-40", "40+"].map(hours => ({ value: hours, label: hours.replace("-", "–") }))}
+          onChange={estimatedWeeklyHours => setIntakeData({ ...intakeData, estimatedWeeklyHours })} />
+        <fieldset className="min-w-0">
+          <legend className="mb-2 text-sm font-medium text-foreground">{t("tourBookCertificate", "Do you have a food handler certificate?")}</legend>
+          <div className="flex flex-wrap gap-2">
+            {[true, false].map(answer => <TourChip key={String(answer)} name="tour-license" value={String(answer)}
+              checked={intakeData.hasLicense === answer} onSelect={() => setIntakeData({ ...intakeData, hasLicense: answer })}>
+              {answer ? t("tourIntakeYes", "Yes") : t("tourIntakeNo", "No")}
+            </TourChip>)}
+          </div>
+        </fieldset>
+        <div className="space-y-2.5">
+          <Label htmlFor="tour-start-date" className="text-sm font-medium">{t("tourBookStart", "When would you like to start?")}</Label>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+            <DateField id="tour-start-date" minToday={false}
+              placeholder={t("tourBookStartPlaceholder", "Pick a date")}
+              disabled={intakeData.targetStartDate === "not_decided"}
+              value={intakeData.targetStartDate === "not_decided" ? "" : intakeData.targetStartDate || ""}
+              onChange={targetStartDate => setIntakeData({ ...intakeData, targetStartDate })}
+              className="min-h-10 rounded-lg sm:w-56" />
+            <Label htmlFor="tour-start-undecided" className="flex min-h-10 cursor-pointer items-center gap-2.5 font-normal">
+              <Checkbox id="tour-start-undecided" checked={intakeData.targetStartDate === "not_decided"}
+                onCheckedChange={checked => setIntakeData({ ...intakeData, targetStartDate: checked === true ? "not_decided" : "" })} />
+              {t("tourIntakeNotDecided", "Not decided yet")}
+            </Label>
+          </div>
+        </div>
+        <div className="space-y-2.5">
+          <Label htmlFor="tour-notes" className="text-sm font-medium">{t("tourBookNotes", "Anything you want to see or ask?")} {optional}</Label>
+          <Textarea id="tour-notes" value={chefNotes} onChange={(e) => setChefNotes(e.target.value)}
+            placeholder={t("tourBookNotesPlaceholder", "Equipment you need, storage, parking…")} maxLength={500} rows={3} />
+          <p className="text-right text-xs text-muted-foreground">{chefNotes.length}/500</p>
+        </div>
       </div>
-      <p className="text-xs text-muted-foreground">{t("tourIntakeRequired", "Answer all four questions to continue.")}</p>
-      <div className="flex gap-3 border-t border-border pt-4">
-        <Button type="button" variant="outline" onClick={handleBack}>{t("modalBack", "Back")}</Button>
-        <Button type="submit" className="flex-1" disabled={!intakeComplete}>{t("tourIntakeContinue", "Continue")}</Button>
-      </div>
+      {footer(
+        <span className="hidden text-muted-foreground sm:inline">{t("tourBookFooterNote", "The kitchen confirms within 24 hours. Cancel any time.")}</span>,
+        readyToSend
+          ? <Button type="submit" className="shrink-0" data-testid="tour-request-submit" disabled={bookMutation.isPending || !intakeComplete}>
+            {bookMutation.isPending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{t("tourBookSending", "Sending…")}</> : t("tourBookRequest", "Request tour")}
+          </Button>
+          : <Button type="submit" className="shrink-0" disabled={!intakeComplete}>{t("tourBookContinue", "Continue")}</Button>
+      )}
     </form>
   );
 
-  const renderAccountStep = () => (
-    <div className="space-y-5">
-      <KitchenJourneyAuth title="Continue your tour request" subject="tour request" />
-    </div>
-  );
-
-  const renderVerifyStep = () => presentation === "page" ? (
-    <KitchenJourneyAuth title="Verify your email to continue" subject="tour request" />
-  ) : (
-    <div className="space-y-4">
-      <div className="rounded-[1.35rem] border-2 border-[#E10939]/30 bg-[#E10939]/5 p-5 text-center space-y-3">
-        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#E10939] text-white">
-          <Mail className="h-6 w-6" aria-hidden />
-        </div>
-        <p className="text-lg font-bold text-gray-900 leading-snug">
-          {t("applyVerifyWaitingHeadline", "Open your email and verify")}
-        </p>
-        <ol className="text-left text-sm text-gray-800 space-y-2 max-w-sm mx-auto">
-          <li className="flex gap-2">
-            <span className="font-bold text-[#E10939] shrink-0">1.</span>
-            <span>
-              {t("applyVerifyStep1", "Open the email from Local Cooks")}
-              {user?.email ? (
-                <>
-                  {" "}
-                  (<span className="font-semibold break-all">{user.email}</span>)
-                </>
-              ) : null}
-              {t("applyVerifyStep1Spam", " — check your spam folder if you don’t see it")}
-            </span>
-          </li>
-          <li className="flex gap-2">
-            <span className="font-bold text-[#E10939] shrink-0">2.</span>
-            <span>
-              {t("applyVerifyStep2", "Click the “Verify my email” button in that email")}
-            </span>
-          </li>
-          <li className="flex gap-2">
-            <span className="font-bold text-[#E10939] shrink-0">3.</span>
-            <span>{t("applyVerifyStep3", "Come back here and tap Continue below")}</span>
-          </li>
-        </ol>
-        <p className="text-sm font-medium text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
-          {t("applyVerifySpamOneLiner", "Tip: it often lands in Spam or Promotions.")}
-        </p>
-      </div>
-      {verifyError && <p className="text-sm text-red-600 text-center">{verifyError}</p>}
-      <Button
-        className="w-full bg-[#E10939] hover:bg-[#C90832] text-white"
-        onClick={() => void handleCheckVerified()}
-        disabled={isCheckingVerification}
-      >
-        {isCheckingVerification ? (
-          <>
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            {t("checkingVerification", "Checking...")}
-          </>
-        ) : (
-          t("applyVerifyContinueBtn", "I’ve verified — continue")
-        )}
-      </Button>
-      <button
-        type="button"
-        onClick={() => void handleResendVerification()}
-        disabled={isResendingVerification || resendCooldown > 0}
-        className="w-full text-sm font-medium text-gray-600 hover:text-gray-900 py-1.5 flex items-center justify-center gap-2 disabled:opacity-60"
-      >
-        {isResendingVerification ? (
-          <>
-            <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-            {t("sendingVerificationEmail", "Sending...")}
-          </>
-        ) : resendCooldown > 0 ? (
-          t("resendVerificationWait", {
-            seconds: resendCooldown,
-            defaultValue: `Resend in ${resendCooldown}s`,
-          })
-        ) : (
-          <>
-            <RefreshCw className="h-3.5 w-3.5" />
-            {t("resendVerificationEmail", "Resend email")}
-          </>
-        )}
-      </button>
-      <Button variant="ghost" size="sm" onClick={handleBack} className="w-full text-gray-500">
-        <ArrowLeft className="h-4 w-4 mr-1" />
-        {t("modalBack")}
-      </Button>
-    </div>
-  );
-
-  const renderConfirmStep = () => (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h3 className="text-base font-semibold">{t("confirmKitchenTour", "Your tour")}</h3>
-        <Button variant="ghost" size="sm" className="shrink-0 text-primary" onClick={handleBack}>Edit time</Button>
-      </div>
-
-      <Card className="border-primary/20">
-        <CardContent className="pt-4 space-y-3">
-          <div className="flex items-start gap-3">
-            <KitchenIcon className="h-5 w-5 text-primary mt-0.5 flex-shrink-0" />
-            <div>
-              <p className="text-sm font-medium">
-                {targetedKitchenName || locationName || t("applyFlowKitchenFallbackName", "Kitchen")}
-              </p>
-              {locationName && targetedKitchenName && targetedKitchenName !== locationName && (
-                <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <Icon icon="mdi:map-marker" className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                  {locationName}
-                </p>
-              )}
-            </div>
-          </div>
-          <Separator />
-          <div className="flex items-start gap-3">
-            <CalendarDays className="h-5 w-5 text-primary mt-0.5 flex-shrink-0" />
-            <div>
-              <p className="text-sm font-medium">
-                {selectedDate && format(selectedDate, "EEEE, MMMM d, yyyy")}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {selectedSlot && formatTourSlotRange(selectedSlot.scheduledAt, availability?.settings?.defaultDurationMinutes ?? 30)}
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="rounded-xl border p-4 space-y-2 text-sm">
-        <div className="flex justify-between items-center">
-          <h4 className="font-semibold">{t("tourGuideStepIntake", "Your plans")}</h4>
-          <Button variant="ghost" size="sm" onClick={() => setStep("intake")}>{t("tourIntakeEdit", "Edit answers")}</Button>
-        </div>
-        <TourIntakeDetails data={intakeData} />
-      </div>
-
-      {/* Optional after required summary */}
-      <div className="space-y-2">
-        <Label className="text-sm">
-          {t(
-            "anythingSpecificToSee",
-            "Anything specific you want to see or discuss? (optional)"
-          )}
-        </Label>
-        <Textarea
-          value={chefNotes}
-          onChange={(e) => setChefNotes(e.target.value)}
-          placeholder={t("egEquipmentNeeds", "e.g., equipment needs, storage requirements...")}
-          maxLength={500}
-          rows={3}
-        />
-        <p className="text-xs text-muted-foreground text-right">{chefNotes.length}/500</p>
-      </div>
-
-      <Button
-        className="w-full bg-[#E10939] hover:bg-[#C90832] text-white"
-        size="lg"
-        data-testid="tour-request-submit"
-        // Left enabled for unverified users so the guard can explain the refusal
-        // instead of presenting a dead control with no reason attached.
-        onClick={() => guard(() => bookMutation.mutate())}
-        disabled={bookMutation.isPending || !isAuthenticated || !intakeComplete}
-      >
-        {bookMutation.isPending ? (
-          <>
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            {t("tourSending", "Sending…")}
-          </>
-        ) : (
-          <>
-            <Send className="h-4 w-4 mr-2" />
-            {t("bookKitchenTour", "Request tour")}
-          </>
-        )}
-      </Button>
-      <p className="text-xs text-center text-muted-foreground">
-        {t(
-          "receiveConfirmationNotification",
-          "You'll receive a confirmation notification and email."
-        )}
-      </p>
+  const renderAuthStep = () => (
+    <div className="space-y-5 p-4 sm:p-5">
+      {summaryRow}
+      <KitchenJourneyAuth
+        title={step === "verify" ? t("tourBookVerifyTitle", "Verify your email to continue") : t("tourBookAccountTitle", "Continue your tour request")}
+        subject="tour request" />
     </div>
   );
 
   const renderSuccessStep = () => (
-    <div className="text-center space-y-4 py-2">
-      <div className="mx-auto w-14 h-14 rounded-full border flex items-center justify-center">
-        <CheckCircle className="h-7 w-7 text-emerald-600" />
-      </div>
-      <div className="space-y-1">
-        <div className="flex flex-wrap items-center justify-center gap-2">
-          <h3 className="text-lg font-semibold">
-            {t("kitchenTourRequested", "Kitchen Tour Requested")}
-          </h3>
+    <div className="space-y-5 p-4 sm:p-5">
+      <div className="flex items-start gap-3">
+        <CheckCircle className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" aria-hidden />
+        <div className="min-w-0 space-y-1">
           <InfoChip variant="warning">{t("tourRequestPendingLabel", "Pending")}</InfoChip>
+          <p className="text-sm text-muted-foreground">
+            {t("kitchenTourRequestedAwaitingApproval", "Your tour request is pending. We’ll notify you when it’s confirmed or declined.")}
+          </p>
+          <p className="text-xs text-muted-foreground">{t('tourPendingResponseExpectation', 'We aim to respond within 24 hours. Your tour is not confirmed until you receive confirmation; a request expires when its requested start time passes.')}</p>
         </div>
-        <p className="text-sm text-muted-foreground">
-          {t("kitchenTourRequestedAwaitingApproval", "Your tour request is pending. We’ll notify you when it’s confirmed or declined.")}
-          <span className="mt-2 block text-xs">{t('tourPendingResponseExpectation', 'We aim to respond within 24 hours. Your tour is not confirmed until you receive confirmation; a request expires when its requested start time passes.')}</span>
-        </p>
       </div>
-
-      <Card className="bg-muted/50 text-left">
-        <CardContent className="pt-4 text-sm space-y-1.5">
-          <p>
-            <span className="text-muted-foreground">{t("dateLabel", "Date:")}</span>{" "}
-            <span className="font-medium">
-              {selectedDate && format(selectedDate, "EEEE, MMMM d, yyyy")}
-            </span>
-          </p>
-          <p>
-            <span className="text-muted-foreground">{t("timeLabel", "Time:")}</span>{" "}
-            <span className="font-medium">
-              {selectedSlot && formatTourSlotRange(selectedSlot.scheduledAt, availability?.settings?.defaultDurationMinutes ?? 30)}
-            </span>
-          </p>
-        </CardContent>
-      </Card>
-
-      <div className="flex flex-col gap-2 pt-1">
-        <Button
-          className="w-full bg-[#E10939] hover:bg-[#C90832] text-white"
-          onClick={() => {
-            onClose?.();
-            setLocation(chefDashboardHref("viewings"));
-          }}
-        >
-          {t("viewMyTours", "View My Tours")}
+      {summaryRow}
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <Button onClick={() => { onClose?.(); setLocation(chefDashboardHref("viewings")); }}>
+          {t("tourBookViewMyTours", "View my tours")}
         </Button>
-        <Button
-          variant="outline"
-          className="w-full"
-          onClick={() => {
-            resetForm();
-            onClose?.();
-          }}
-        >
+        <Button variant="outline" onClick={() => { resetForm(); onClose?.(); }}>
           {t("doneStayOnPreview", "Done")}
         </Button>
       </div>
     </div>
   );
 
-  // In the dialog the wizard owns the scrolling, so this is its scroll body.
-  // In `presentation="page"` it sits inside KitchenJourneyLayout where the
-  // DOCUMENT is the scroller — and a nested overflow-y-auto that cannot scroll
-  // still swallows the wheel instead of chaining it to the page, which froze
-  // scrolling over the whole right column. Only be a scroll container in dialog mode.
-  const body = (
-    <div className={cn("min-w-0 [overflow-wrap:anywhere] [&>div>button]:h-auto [&>div>button]:min-h-11 [&>div>button]:whitespace-normal [&>div>button]:py-2 [&>form>div>button]:h-auto [&>form>div>button]:min-h-11 [&>form>div>button]:whitespace-normal [&>form>div>button]:py-2", presentation === "dialog" && "min-h-0 flex-1 overflow-y-auto overscroll-contain")}>
-      {step === "date" && renderDateStep()}
-      {step === "time" && renderTimeStep()}
-      {step === "intake" && renderIntakeStep()}
-      {step === "account" && renderAccountStep()}
-      {step === "verify" && renderVerifyStep()}
-      {step === "confirm" && renderConfirmStep()}
-      {step === "success" && renderSuccessStep()}
-    </div>
-  );
-
   return (
     <>
-      {presentation === "page" ? (
-        <KitchenJourneyLayout
-          eyebrow="Request a tour"
-          title={`Visit ${targetedKitchenName || locationName || "this kitchen"}`}
-          description="Your visit is requested only when you confirm the details."
-          imageUrl={kitchenImageUrl}
-          onBack={requestClose}
-          backLabel="Cancel"
-          showCancel={step !== "success"}
-          compactContent={step === "account" || step === "verify"}
-          aside={<div className="flex flex-col gap-6">
-            {step !== "success" && renderGuideRail()}
-            {selectedDate && selectedSlot && step !== "confirm" && step !== "success" && <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground sm:text-sm">
-              <p className="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-1 sm:gap-x-1.5">
-                <span className="sm:hidden">{format(selectedDate, "MMM d")}</span>
-                <span className="hidden sm:inline">{format(selectedDate, "EEE, MMM d, yyyy")}</span>
-                <span aria-hidden className="text-muted-foreground/60">·</span>
-                <span className="font-medium text-foreground">{formatTourSlotRange(selectedSlot.scheduledAt, availability?.settings?.defaultDurationMinutes ?? 30)}</span>
-              </p>
-              {(step === "account" || step === "verify") && <Button variant="ghost" size="sm" className="shrink-0 px-1 text-xs text-primary sm:px-3 sm:text-sm" onClick={() => setStep("time")}>Change time</Button>}
-            </div>}
-          </div>}
-        >
-          <div className="min-w-0">
-            {step !== "account" && step !== "verify" && <>
-              <h2 className="text-xl font-semibold tracking-tight">{guidedChrome.title}</h2>
-              <p className="mb-5 mt-1 text-sm leading-6 text-muted-foreground">{guidedChrome.subtext}</p>
-            </>}
-            <div className="max-w-3xl">{body}</div>
-          </div>
-        </KitchenJourneyLayout>
-      ) : <Dialog
-        open={open}
-        onOpenChange={(o) => {
-          if (!o) requestClose();
-        }}
-      >
-        <DialogContent
-          className={cn(
-            "p-0 !overflow-hidden bg-background flex flex-col min-w-0 [overflow-wrap:anywhere] lg:flex-row sm:max-w-[820px]"
-          )}
-          onPointerDownOutside={(e) => {
-            if (isDataTaking) e.preventDefault();
-          }}
-          onInteractOutside={(e) => {
-            if (isDataTaking) e.preventDefault();
-          }}
-          onEscapeKeyDown={(e) => {
-            if (isDataTaking) {
-              e.preventDefault();
-              requestClose();
-            }
-          }}
-        >
-          <div className="hidden lg:flex lg:w-5/12 shrink-0 flex-col p-8 border-r border-gray-100 bg-[#F8F9FA] overflow-hidden">
-            <DialogHeader className="text-left space-y-4">
-              <DialogTitle className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-                <KitchenTour className="h-5 w-5 text-[#E10939] shrink-0" />
-                {guidedChrome.title}
-              </DialogTitle>
-              <DialogDescription asChild>
-                <div className="text-muted-foreground text-sm leading-relaxed space-y-6">
-                  <p className="text-gray-600 text-[15px]">{guidedChrome.subtext}</p>
-                  {step !== "success" && renderGuideRail()}
-                </div>
-              </DialogDescription>
-            </DialogHeader>
-            {isDataTaking && (
-              <Button
-                type="button"
-                variant="ghost"
-                className="mt-auto self-start text-gray-500"
-                onClick={requestClose}
-              >
-                <Icon icon="mdi:close" className="size-4" aria-hidden />
-                Cancel
-              </Button>
-            )}
-          </div>
-
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-            <div className="shrink-0 px-4 pt-4 pb-3 lg:hidden">
-              <DialogHeader>
-                <DialogTitle className="text-xl font-bold text-gray-900">
-                  {guidedChrome.title}
-                </DialogTitle>
-                <DialogDescription asChild>
-                  <div className="text-muted-foreground mt-2 text-sm leading-relaxed space-y-3">
-                    <p>{guidedChrome.subtext}</p>
-                    {step !== "success" && renderGuideRail()}
-                  </div>
-                </DialogDescription>
-              </DialogHeader>
-              {isDataTaking && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="mt-3 -ml-2 self-start text-gray-500"
-                  onClick={requestClose}
-                >
-                  <Icon icon="mdi:close" className="size-4" aria-hidden />
-                  Cancel
-                </Button>
-              )}
+      <div className={cn("min-w-0 [overflow-wrap:anywhere]", !inChefShell && "min-h-screen")}>
+        {!inChefShell && <Header />}
+        <div className={cn("mx-auto max-w-[57rem] px-4 pb-12 sm:px-6", inChefShell ? "pt-4 sm:pt-6" : "pt-[calc(var(--header-total)_+_1.5rem)]")}>
+          <div className="mb-5 flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              {step !== "success" && <p className="mb-1 text-xs text-muted-foreground">
+                {t("tourBookStep", { defaultValue: "Step {current} of {total} · {label}", current: stepIndex + 1, total: stepLabels.length, label: stepLabels[stepIndex] })}
+              </p>}
+              <h1 className="text-2xl font-semibold tracking-tight text-foreground">{heading.title}</h1>
+              <p className="mt-1 text-sm text-muted-foreground">{heading.subtext}</p>
             </div>
-            <div className="min-h-0 min-w-0 flex-1 flex flex-col px-4 pb-4 sm:px-8 sm:pb-8 sm:pt-8">
-              {body}
-            </div>
+            {isDataTaking && <Button variant="ghost" size="sm" className="shrink-0 text-muted-foreground" onClick={requestClose}>{t("tourBookCancel", "Cancel")}</Button>}
           </div>
-        </DialogContent>
-      </Dialog>}
+          <div className="rounded-lg border bg-card">
+            {kitchenHeader}
+            {step === "schedule" && renderScheduleStep()}
+            {step === "details" && renderDetailsStep()}
+            {(step === "account" || step === "verify") && renderAuthStep()}
+            {step === "success" && renderSuccessStep()}
+          </div>
+        </div>
+      </div>
 
       <AlertDialog open={cancelConfirmOpen} onOpenChange={setCancelConfirmOpen}>
         <AlertDialogContent>

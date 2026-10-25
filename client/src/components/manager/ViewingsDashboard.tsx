@@ -30,7 +30,7 @@ import { Separator } from "@/components/ui/separator"
 import { UnsavedChangesDialog } from "@/components/manager/UnsavedChangesDialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
-import { formatTourDate, formatTourClock, formatTourSlotRange } from "@shared/tour-time"
+import { formatTourDate, formatTourClock } from "@shared/tour-time"
 import type { TourBookingOverlap } from "@shared/tour-booking-overlap"
 import { useTourClock } from "@/hooks/use-tour-clock"
 import { hasTourConfirmation, tourDisruptionReasons } from '@shared/tour-outcome'
@@ -38,7 +38,12 @@ import { TourChatButton } from '@/components/chat/TourChatButton'
 import { Checkbox } from "@/components/ui/checkbox"
 import { TourFeedbackPanel } from '@/components/tour/TourFeedbackPanel'
 import { tourFeedbackOpen } from '@shared/tour-feedback'
-import { formatTourWhen } from "@/lib/chef-viewing-display"
+import { formatTourWhen as formatTourWhenRaw } from "@/lib/chef-viewing-display"
+import { formatTourSlotRange as formatTourSlotRangeRaw } from "@shared/tour-time"
+// The app writes times as "10:30 a.m."; the shared tour formatter returns "AM"/"PM".
+const ampm = (text: string) => text.replace(/\b([AP])M\b/g, (_, letter: string) => letter === 'A' ? 'a.m.' : 'p.m.')
+const formatTourWhen = (...args: Parameters<typeof formatTourWhenRaw>) => ampm(formatTourWhenRaw(...args))
+const formatTourSlotRange = (...args: Parameters<typeof formatTourSlotRangeRaw>) => ampm(formatTourSlotRangeRaw(...args))
 import { DateField } from '@/components/ui/date-field'
 import { tourAvailableDate, type TourCalendarAvailability } from '@/lib/tour-available-date'
 import { canManagerProposeReschedule } from '@shared/tour-reschedule'
@@ -582,21 +587,20 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
                     {statusAction === "no_show" && <p className="text-xs text-muted-foreground">{mt('tourNoShowDisclosure')}</p>}
                     {statusAction === "cancel" && (
                       <div className="space-y-2">
-                        <Label htmlFor="tour-cancellation-reason" className="text-sm">{mt(selectedViewing.viewing.status === 'pending' ? 'tourDeclineReason' : 'cancellationReason')}</Label>
+                        <Label htmlFor="tour-cancellation-reason" className="text-sm">{mt(selectedViewing.viewing.status === 'pending' ? 'tourDeclineReason' : 'tourCancelReasonLabel')}</Label>
                         <Textarea
                           id="tour-cancellation-reason"
                           maxLength={500}
-                          required={selectedViewing.viewing.status === 'pending'}
+                          required
                           value={cancellationReason}
                           onChange={(e) => setCancellationReason(e.target.value)}
-                          placeholder={mt("reasonForCancellation")}
-                          rows={2}
+                          placeholder={mt("tourReasonPlaceholder", { name: firstName })}
+                          rows={3}
                         />
-                        {selectedViewing.viewing.status === 'pending' && <p className="text-xs text-muted-foreground">{mt('tourDeclineReasonHelp')}</p>}
                       </div>
                     )}
 
-                    {!['complete', 'no_show'].includes(statusAction) && <div className="space-y-2">
+                    {!['complete', 'no_show', 'cancel'].includes(statusAction) && <div className="space-y-2">
                       <Label className="text-sm">{mt(correctingOutcome || (statusAction === "disrupt" && disruptionReason === "other") ? "tourSharedExplanationRequired" : "tourMessageToChefOptional")}</Label>
                       <Textarea
                         value={managerNotes}
@@ -613,8 +617,9 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
                     variant="outline"
                     onClick={requestClose}
                     className="w-full sm:w-auto"
-                  >{mt("cancel")}</Button>
+                  >{mt(statusAction === "cancel" ? "back" : "cancel")}</Button>
                   <Button
+                    variant={statusAction === "cancel" ? "destructive" : "default"}
                     onClick={() =>
                       updateStatusMutation.mutate({
                         viewingId: selectedViewing.viewing.id,
@@ -626,7 +631,7 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
                             : statusAction === "no_show"
                             ? "no_show"
                             : "cancelled",
-                        notes: managerNotes,
+                        notes: statusAction === "cancel" ? "" : managerNotes,
                         noShow: noShowReason,
                         cancelReason: cancellationReason,
                       })
@@ -637,11 +642,10 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
                       reviewReschedule.isPending ||
                       (statusAction === "confirm" && (!acceptanceReady || !!selectedViewing.viewing.rescheduleProposedSlots?.length)) ||
                       (statusAction === "no_show" && (!noShowReason || !absentConfirmed)) || (statusAction === "disrupt" && !disruptionReason) || ((correctingOutcome || (statusAction === "disrupt" && disruptionReason === "other")) && !managerNotes.trim())
-                      || (statusAction === 'cancel' && selectedViewing.viewing.status === 'pending' && !cancellationReason.trim())
+                      || (statusAction === 'cancel' && !cancellationReason.trim())
                     }
                     className={cn(
                       "w-full sm:w-auto",
-                      statusAction === "cancel" && "bg-destructive hover:bg-destructive/90",
                       statusAction === "no_show" && "bg-amber-600 hover:bg-amber-700"
                     )}
                   >
@@ -651,7 +655,7 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
                     {statusAction === "confirm" && mt("confirmViewing")}
                     {statusAction === "complete" && mt("tourTheyCame")}
                     {statusAction === "no_show" && mt("tourReportNoShow")}
-                    {statusAction === "cancel" && mt("cancelViewing")}
+                    {statusAction === "cancel" && mt(selectedViewing.viewing.status !== 'pending' ? "cancelViewing" : Date.parse(selectedViewing.viewing.scheduledAt) > Date.now() ? "declineRequest" : "tourCloseExpiredRequest")}
                     {statusAction === "disrupt" && mt("tourRecordDisruption")}
                   </Button>
                 </div>
@@ -870,18 +874,17 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
               </div>
               </div>
               <aside className="contents lg:block lg:min-w-0 lg:space-y-4">
-                <section aria-label={mt('tourVisitorContactTitle')} className="order-3 space-y-3 rounded-2xl border bg-card p-4 text-sm sm:px-5">
-                  <h2 className="text-sm font-semibold leading-5">{mt('tourVisitorContactTitle')}</h2>
+                <section aria-label={mt('tourCustomerTitle')} className="order-3 space-y-3 rounded-2xl border bg-card p-4 text-sm sm:px-5">
+                  <h2 className="text-sm font-semibold leading-5">{mt('tourCustomerTitle')}</h2>
                   <dl className="space-y-3">
-                    <div><dt className="text-xs text-muted-foreground">{mt('chef')}</dt><dd className="mt-1 font-medium">{selectedViewing.chefName || selectedViewing.chefUsername || mt('tourNotShared')}</dd></div>
-                    <div><dt className="text-xs text-muted-foreground">{mt('tourChefEmail')}</dt><dd className="mt-1 break-all">{selectedViewing.chefEmail ? <a className="text-primary underline underline-offset-2" href={`mailto:${selectedViewing.chefEmail}`}>{selectedViewing.chefEmail}</a> : mt('tourNotShared')}</dd></div>
-                    <div><dt className="text-xs text-muted-foreground">{mt('tourChefPhone')}</dt><dd className="mt-1">{selectedViewing.chefPhone ? <a className="text-primary underline underline-offset-2" href={`tel:${selectedViewing.chefPhone}`}>{selectedViewing.chefPhone}</a> : mt('tourNotShared')}</dd></div>
+                    <div><dd className="font-medium">{selectedViewing.chefName || selectedViewing.chefUsername || mt('chef')}</dd></div>
+                    {selectedViewing.viewing.status === 'confirmed' && <div><dt className="text-xs text-muted-foreground">{mt('tourChefPhone')}</dt><dd className="mt-1">{selectedViewing.chefPhone ? <a className="text-primary underline underline-offset-2" href={`tel:${selectedViewing.chefPhone}`}>{selectedViewing.chefPhone}</a> : mt('tourNotShared')}</dd></div>}
                   </dl>
                   <div className="min-w-0 [&_button]:h-auto [&_button]:min-h-11 [&_button]:w-full [&_button]:whitespace-normal [&_button]:py-2">
-                    <TourChatButton tour={selectedViewing.viewing} role="manager" openFromLink buttonLabel={mt('tourMessageVisitor', { name: selectedViewing.chefName?.trim().split(/\s+/)[0] || mt('tourHistoryActor_chef') })} />
+                    <TourChatButton tour={selectedViewing.viewing} role="manager" openFromLink buttonLabel={mt('tourMessageVisitor', { name: selectedViewing.chefName?.trim().split(/\s+/)[0] || mt('chef') })} />
                   </div>
                 </section>
-                <div className="order-5 min-w-0 [&>section]:rounded-2xl [&>section]:p-4 sm:[&>section]:px-5"><TourHistoryPanel id={selectedViewing.viewing.id} version={selectedViewing.viewing.updatedAt} /></div>
+                <div className="order-5 min-w-0 [&>section]:rounded-2xl [&>section]:p-4 sm:[&>section]:px-5"><TourHistoryPanel id={selectedViewing.viewing.id} version={selectedViewing.viewing.updatedAt} customerName={selectedViewing.chefName?.trim() || undefined} /></div>
               </aside>
               </div>
             </>

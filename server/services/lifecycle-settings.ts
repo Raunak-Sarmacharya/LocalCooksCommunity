@@ -20,7 +20,17 @@ export const lifecycleSettings = {
   inspectionWarningPercent: { key: 'inspection_warning_percent', defaultValue: 50, min: 1, max: 99 },
 };
 type SettingsReader = Pick<typeof db, 'select'>;
+// Read on almost every request; a 30 s per-instance cache cut Supabase egress (one admin save may take 30 s to reach other instances).
+let cached: { at: number; value: Awaited<ReturnType<typeof readLifecycleSettings>> } | null = null;
 export async function getLifecycleSettings(reader: SettingsReader = db) {
+  if (reader !== db) return readLifecycleSettings(reader);
+  if (cached && Date.now() - cached.at < 30_000) return cached.value;
+  const value = await readLifecycleSettings(db);
+  cached = { at: Date.now(), value };
+  return value;
+}
+export const clearLifecycleSettingsCache = () => { cached = null; };
+async function readLifecycleSettings(reader: SettingsReader) {
   const rows = await reader.select({ key: platformSettings.key, value: platformSettings.value }).from(platformSettings)
     .where(inArray(platformSettings.key, Object.values(lifecycleSettings).map(setting => setting.key)));
   const values = new Map(rows.map(row => [row.key, row.value]));
@@ -58,6 +68,7 @@ export async function saveLifecycleSettings(input: Record<string, unknown>, admi
     for (const update of updates) await tx.insert(platformSettings).values(update)
       .onConflictDoUpdate({ target: platformSettings.key, set: update });
   });
+  cached = null;
   return getLifecycleSettings();
 }
 
