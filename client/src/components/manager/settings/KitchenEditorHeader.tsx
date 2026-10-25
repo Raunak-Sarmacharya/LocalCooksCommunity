@@ -48,6 +48,9 @@ export function KitchenEditorHeader({ kitchen, locationId, locationName, review,
   const listed = (review?.listingStatus ?? kitchen.listingStatus) === "active";
   const hidden = review?.adminHidden === true;
   const canPublish = review?.checklist?.canPublish === true;
+  // Booking facts mean nothing before a kitchen can take bookings (the cards hide them too); a taken-down kitchen
+  // with bookings or requests still shows them.
+  const showFacts = Boolean(facts && (listed || facts.nextBooking || facts.pendingRequests > 0));
 
   const takeDown = useStatusButton(async () => {
     try {
@@ -81,7 +84,7 @@ export function KitchenEditorHeader({ kitchen, locationId, locationName, review,
               <ListingPill listed={listed} hidden={hidden} />
             </div>
             <p className="truncate text-sm text-muted-foreground">{locationName}</p>
-            {facts && <KitchenFactsLine facts={facts} timezone={timezone} onOpenRequests={onOpenRequests} className="hidden sm:flex" />}
+            {showFacts && <KitchenFactsLine facts={facts!} timezone={timezone} onOpenRequests={onOpenRequests} className="hidden sm:flex" />}
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -89,7 +92,7 @@ export function KitchenEditorHeader({ kitchen, locationId, locationName, review,
           {onViewListing && <Button variant="outline" size="sm" className={ICON_BUTTON} onClick={onViewListing}><ExternalLink className="mr-1.5 size-4" />{mt("ksViewListing")}</Button>}
           {onShare && <Button variant="outline" size="sm" className={ICON_BUTTON} onClick={onShare}><Copy className="mr-1.5 size-4" />{mt("shareKitchen")}</Button>}
           {!listed && !hidden && review && (
-            <Button size="sm" className={ICON_BUTTON} variant={canPublish ? "default" : "outline"} onClick={onList}>{mt(canPublish ? "ksListKitchen" : "listingStatusReviewAndGoLive")}</Button>
+            <Button size="sm" className={ICON_BUTTON} variant={canPublish ? "default" : "outline"} onClick={onList}>{mt("listingStatusReviewAndGoLive")}</Button>
           )}
           <DropdownMenu modal={false}>
             <DropdownMenuTrigger asChild>
@@ -106,7 +109,7 @@ export function KitchenEditorHeader({ kitchen, locationId, locationName, review,
           </DropdownMenu>
         </div>
       </div>
-      {facts && <KitchenFactsLine facts={facts} timezone={timezone} onOpenRequests={onOpenRequests} className="sm:hidden" />}
+      {showFacts && <KitchenFactsLine facts={facts!} timezone={timezone} onOpenRequests={onOpenRequests} className="sm:hidden" />}
       {hidden && <p className="flex items-start gap-2 rounded-xl bg-muted/60 px-3.5 py-2.5 text-sm text-muted-foreground"><EyeOff className="mt-0.5 size-4 shrink-0" />{mt("listingStatusHiddenDesc")}</p>}
 
       {/* Names the consequence rather than asking "are you sure"; the endpoint only changes listing_status. */}

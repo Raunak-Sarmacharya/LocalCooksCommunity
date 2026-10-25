@@ -159,6 +159,8 @@ function TermsAcceptanceScreen() {
   }
 
   const open = reading ? DOCUMENTS[reading] : null;
+  // Someone who agreed to an earlier version is re-accepting, not starting out.
+  const returning = Boolean(user.termsAccepted && user.termsVersion && user.termsVersion !== CURRENT_POLICY_VERSION);
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#FBFAF9]">
@@ -179,10 +181,12 @@ function TermsAcceptanceScreen() {
 
       <main className="relative mx-auto w-full max-w-[34rem] px-5 pb-16 pt-8 sm:pt-16">
         <h1 className="text-balance text-[28px] font-bold leading-tight tracking-[-0.025em] text-slate-950 sm:text-[32px]">
-          One last thing before you start
+          {returning ? "We've updated our terms" : "One last thing before you start"}
         </h1>
         <p className="mt-3 text-pretty text-[15px] leading-relaxed text-slate-600">
-          These two documents cover how Local Cooks works: bookings, payments and your data.
+          {returning
+            ? "We rewrote our Terms of Service and Privacy Policy to match how Local Cooks works today: bookings, payments, payouts and your data. Please read and agree to continue."
+            : "These two documents cover how Local Cooks works: bookings, payments and your data."}
         </p>
 
         <ul className="mt-8 divide-y divide-slate-100 overflow-hidden rounded-2xl bg-white ring-1 ring-slate-200/80 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_12px_32px_-18px_rgba(15,23,42,0.18)]">
@@ -241,8 +245,8 @@ function TermsAcceptanceScreen() {
                 <SheetTitle className="text-lg font-bold tracking-[-0.015em] text-slate-950">{open.title}</SheetTitle>
                 <SheetDescription className="mt-1 text-[13px] text-slate-500">{open.description}</SheetDescription>
               </div>
-              <div className="terms-legal-content min-h-0 flex-1 overflow-y-auto px-6 pb-10 pt-2" tabIndex={0}>
-                {reading === "terms" ? <TermsContent /> : <PrivacyContent />}
+              <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-10 pt-6" tabIndex={0}>
+                {reading === "terms" ? <TermsContent variant="reader" /> : <PrivacyContent variant="reader" />}
               </div>
               <div className="shrink-0 border-t border-slate-100 px-6 py-4">
                 <Button variant="outline" className="h-11 w-full rounded-xl" onClick={() => setReading(null)}>Done reading</Button>
@@ -252,16 +256,6 @@ function TermsAcceptanceScreen() {
         </SheetContent>
       </Sheet>
 
-      <style dangerouslySetInnerHTML={{ __html: `
-        .terms-legal-content h1 { display: none !important; }
-        .terms-legal-content h2 { font-size: 1rem !important; font-weight: 700 !important; margin: 2rem 0 0.75rem !important; color: rgb(15 23 42) !important; letter-spacing: -0.01em !important; }
-        .terms-legal-content h3 { font-size: 0.9375rem !important; font-weight: 600 !important; margin: 1.5rem 0 0.5rem !important; color: rgb(15 23 42) !important; }
-        .terms-legal-content p, .terms-legal-content li { font-size: 0.9375rem !important; line-height: 1.7 !important; margin-bottom: 0.875rem !important; color: rgb(71 85 105) !important; max-width: 68ch; }
-        .terms-legal-content hr { margin: 2rem 0 !important; border: none; height: 1px; background: rgb(241 245 249); }
-        .terms-legal-content strong { color: rgb(15 23 42) !important; font-weight: 600 !important; }
-        .terms-legal-content ul, .terms-legal-content ol { padding-left: 1.25rem !important; margin-bottom: 1rem !important; }
-        .terms-legal-content a { color: #E10939; text-underline-offset: 3px; }
-      ` }} />
     </div>
   );
 }

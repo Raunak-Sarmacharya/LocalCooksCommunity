@@ -1,1098 +1,334 @@
-import { DamageCleaningPolicy } from './DamageCleaningPolicy';
-import React from "react";
+import { LegalDocument, type LegalSection } from "./LegalDocument";
 
 /**
- * Reusable Terms of Service content component.
- * Used standalone on the Terms page and inline in the TermsAcceptanceScreen.
+ * Local Cooks Terms of Service (rewritten Oct 24, 2026 from the policy register, docs/architecture/phase0/
+ * policy-facts-booking.md, and research on The Food Corridor, Peerspace, Airbnb and Turo). One document for kitchens
+ * and customers, with parts for each side, because each side's promises bind the other. Counsel reviews the binding
+ * wording before production (owner, Oct 15). When a booking rule changes in the product, change it here too.
  */
-export default function TermsContent() {
+export const TERMS_UPDATED = "October 24, 2026";
+export const TERMS_EFFECTIVE = "November 23, 2026";
+
+const SUPPORT = <a href="mailto:support@localcooks.ca">support@localcooks.ca</a>;
+const PRIVACY = <a href="/privacy">Privacy Policy</a>;
+
+const sections: LegalSection[] = [
+  {
+    id: "about",
+    title: "About these terms",
+    body: <>
+      <p>These terms are an agreement between you and Jawrophi Delivery Inc., which operates Local Cooks (“Local Cooks”, “we”, “us”). They apply when you use localcooks.ca, its kitchen and customer sites, and anything else we offer under the Local Cooks name (together, the “platform”).</p>
+      <p>Two kinds of people use Local Cooks. <strong>Kitchens</strong> are businesses that list a commercial kitchen, storage or equipment. <strong>Customers</strong> are cooks and food businesses who rent them (parts of the app call them chefs). Sections 4 and 5 apply to everyone. Some sections apply to one side only, and they say so in their first line.</p>
+      <p>Our {PRIVACY} explains how we handle personal information. The booking details you see before you pay, such as the price, the kitchen's cancellation policy and its booking requirements, also form part of your agreement for that booking.</p>
+      <p>By creating an account or ticking “I agree”, you accept these terms. If you accept on behalf of a business, you confirm you are allowed to bind it.</p>
+    </>,
+  },
+  {
+    id: "what-we-do",
+    title: "What Local Cooks does",
+    body: <>
+      <p>Local Cooks is a marketplace. We help kitchens list space and help customers find, request, book and pay for it. When a kitchen accepts a booking, the agreement to use the space is between the kitchen and the customer. We are not a party to it.</p>
+      <p>We don't own, run, inspect or manage kitchens, and we don't prepare, inspect or sell food. We check a kitchen's food premises licence before its first listing goes live, but that check doesn't guarantee the kitchen's condition, equipment or safety. Kitchens and customers are independent of us and of each other. Nobody on the platform is our employee, agent or partner.</p>
+      <p>To run bookings we collect payments, hold card authorizations, issue refunds, pay kitchens and review some disagreements. Section 12 explains our role in payments, and section 10 explains how we review damage claims.</p>
+    </>,
+  },
+  {
+    id: "accounts",
+    title: "Your account",
+    body: <>
+      <ul>
+        <li>You must be at least the age of majority where you live (19 in Newfoundland and Labrador) and able to enter a binding contract.</li>
+        <li>Local Cooks is for business use: running a kitchen, or cooking and producing food as a business or for a business.</li>
+        <li>Give accurate information and keep it current, including your contact details, your business details and any document you upload.</li>
+        <li>Keep your sign-in private. You are responsible for what happens under your account. Tell us at {SUPPORT} if you think someone else has used it.</li>
+        <li>We may ask you to verify your email, your phone number or your identity, and we may limit your account until you do.</li>
+      </ul>
+    </>,
+  },
+  {
+    id: "using-the-platform",
+    title: "Using the platform",
+    body: <>
+      <p>We give you a limited right to use the platform for its intended purpose while these terms apply. You may not:</p>
+      <ul>
+        <li>give false information, impersonate anyone or upload a document that isn't genuine;</li>
+        <li>discriminate against anyone, or harass, threaten or abuse anyone on or off the platform;</li>
+        <li>use the platform for anything illegal, including producing or selling food you aren't permitted to make;</li>
+        <li>arrange payment for a Local Cooks booking outside the platform (section 13);</li>
+        <li>copy, scrape or resell the platform or its listings, or interfere with how it works or how it is secured;</li>
+        <li>post content you don't have the right to share, or content that is misleading, hateful or explicit.</li>
+      </ul>
+      <p>We may remove content or listings that break these rules. Section 18 covers suspension.</p>
+    </>,
+  },
+  {
+    id: "kitchens",
+    title: "For kitchens: your listing and your space",
+    body: <>
+      <p><em>This section applies to kitchens.</em></p>
+      <ul>
+        <li><strong>Accurate listings.</strong> Describe the space, equipment, storage, rates, opening hours and rules as they really are, and keep them current. Photos must show your own space.</li>
+        <li><strong>Licences.</strong> Hold the food premises licence and any other permit your space needs under Newfoundland and Labrador law, keep it valid and upload renewals. We may pause a listing when a licence is missing or expired.</li>
+        <li><strong>Your policies.</strong> You choose your booking rules, your cancellation policy (section 8) and the documents you require from customers (section 6). The policy in force when a customer books applies to that booking, even if you change it later.</li>
+        <li><strong>Arrival and departure.</strong> Give clear arrival and departure instructions and make the space available, clean, safe and in working order for every booking you accept.</li>
+        <li><strong>Insurance.</strong> Keep the property and liability insurance a commercial kitchen in your situation needs (section 16).</li>
+        <li><strong>Honest answers.</strong> Record arrivals, no-shows and inspections truthfully. Local Cooks relies on these records when it moves money.</li>
+      </ul>
+      <p>If you can't host a booking you accepted, cancel it in the app as early as you can. The customer then gets a full refund (section 8), and repeated cancellations may affect your listing.</p>
+    </>,
+  },
+  {
+    id: "requirements",
+    title: "Access requests and booking requirements",
+    body: <>
+      <p>A customer books a kitchen only after the kitchen gives them access. To ask for access, the customer sends an access request with the documents and answers the kitchen asks for, such as a food handler certificate, a food establishment licence or proof of insurance. The kitchen reviews the request and decides.</p>
+      <ul>
+        <li><strong>Customers</strong> must send genuine, current documents and replace them when they expire. When a kitchen marks a document as required, a missing or expired one pauses new bookings at that kitchen until it is replaced. Existing bookings are not affected.</li>
+        <li><strong>Kitchens</strong> decide who they accept, but they must do so without discrimination, and use the documents they receive only to decide and to manage bookings.</li>
+        <li>A kitchen can add a customer it already works with by invitation. The customer still accepts these terms and the kitchen's requirements in the app.</li>
+      </ul>
+      <p>Local Cooks may review any request, document or account to keep the platform safe, but we don't verify every document, and a kitchen remains responsible for its own decision.</p>
+    </>,
+  },
+  {
+    id: "tours",
+    title: "Kitchen tours",
+    body: <>
+      <p>Customers can ask to visit a kitchen before booking. Tours are free on Local Cooks. A kitchen may limit how many tours it offers and confirms a time in the app. Both sides should arrive as agreed or cancel in the app. After the visit, the kitchen records whether the customer came.</p>
+      <p>A tour gives no right to use the kitchen for cooking or storage. Kitchens and customers are responsible for their own conduct and safety during a tour.</p>
+    </>,
+  },
+  {
+    id: "refund-policy",
+    title: "Bookings, cancellations and refunds",
+    body: <>
+      <h3>Requesting a booking</h3>
+      <p>Before you request, you see the full price: kitchen time, add-ons, HST at the kitchen's rate and any Local Cooks service fee. Requesting places a hold on your card. You are charged only if the kitchen accepts. If it declines, or doesn't answer in time, the hold is released. Kitchens answer within 24 hours, and sooner when the booking starts soon. You can withdraw a pending request at no cost.</p>
+      <p>A kitchen can accept your request, decline it, suggest other times, or accept it without an add-on or a day it can't provide. In the last case nothing is charged until you approve the new total. If you don't answer by the deadline shown, the request closes and the hold is released.</p>
+      <h3>Changing a booking</h3>
+      <p>You can ask to change a confirmed booking until its refund deadline. The kitchen approves or declines the change. If the new price is higher, the difference is charged when the kitchen approves. If it is lower, the difference is refunded, minus the card processing fee on that amount.</p>
+      <h3>When you cancel</h3>
+      <p>Each kitchen sets a notice period (24, 48 or 72 hours before the start) and a late charge (50% or 100% of the booking total). The booking page and checkout show both before you pay.</p>
+      <ul>
+        <li><strong>Before the deadline:</strong> you get back everything you paid, minus the card processing fee, which we show in dollars before you confirm.</li>
+        <li><strong>After the deadline:</strong> the late charge applies. A 50% kitchen refunds half of what you paid, minus that half's share of the card processing fee. A 100% kitchen refunds nothing.</li>
+        <li><strong>Multi-day bookings</strong> have one deadline, set by the first booked day. Before it you can drop any day. After it, dropped days follow the late charge. Days that have started are not refundable.</li>
+        <li><strong>No-shows</strong> are not refunded at any kitchen, whatever its late charge.</li>
+        <li>Leaving early doesn't refund unused time, and extra time is not refundable once added.</li>
+      </ul>
+      <h3>When the kitchen cancels</h3>
+      <p>You get a full refund, including the card processing fee. On a multi-day booking, if the kitchen cancels one day, you may also drop the remaining days without the late charge.</p>
+      <h3>Refund timing</h3>
+      <p>We issue refunds right away to the card you paid with. Banks usually show them within 5 to 10 business days. A kitchen may refund more than its policy requires; that extra comes from its own payout.</p>
+      <p>If something outside anyone's control stops a booking, contact us. We look at each case, but the kitchen's policy is what applies unless the kitchen agrees otherwise.</p>
+    </>,
+  },
+  {
+    id: "at-the-kitchen",
+    title: "At the kitchen: arrival, extra time and problems",
+    body: <>
+      <ul>
+        <li><strong>Check-in</strong> opens shortly before your start time. Use the check-in step in the app, with the code from the kitchen's staff or the kitchen's self check-in. Arriving late doesn't move your end time.</li>
+        <li><strong>Extra time.</strong> While checked in you can ask for more time, and the kitchen can offer it. The kitchen approves every request. Your card is held and charged only when the kitchen approves, or when you accept its offer, at the extra-time rate shown when you booked.</li>
+        <li><strong>Leaving late.</strong> If you stay past your booked end, the kitchen may record when you left and send a charge for the extra time in 30-minute blocks, within 24 hours. You can pay it or dispute it. It is never charged automatically. Local Cooks decides disputed or unanswered charges, and an upheld charge must be paid within 7 days or new bookings pause until it is.</li>
+        <li><strong>Leave the space as you found it,</strong> following the kitchen's departure instructions.</li>
+        <li><strong>Problems.</strong> If you can't get in or something is unsafe, report it in the app. The kitchen and Local Cooks are told at once. In an emergency, call 911 first.</li>
+      </ul>
+    </>,
+  },
+  {
+    id: "damage-and-cleaning",
+    title: "Damage and cleaning claims",
+    body: <>
+      <p>After each visit the kitchen has 24 hours to inspect the space. If it finds damage or cleaning beyond normal use, it can file one claim per visit in the app within 72 hours of the customer leaving:</p>
+      <ul>
+        <li>The claim lists each cost with a receipt, invoice or quote, up to $250 in total. Claims cover repair, replacement and cleaning only, not fines or lost income.</li>
+        <li>Local Cooks reviews every claim before the customer sees it. We may ask the kitchen for more information, reduce the claim, close it, or pay the kitchen ourselves at no cost to the customer.</li>
+        <li>The customer has 72 hours to pay or dispute a claim we send. We decide disputed and unanswered claims, and that decision ends the in-app process.</li>
+        <li>Cards are never charged automatically for a claim. If an upheld claim is unpaid 7 days after our decision, the customer can't make new bookings until it is paid. Existing bookings continue.</li>
+      </ul>
+      <p>For larger losses, Local Cooks can help both sides talk, but the claim is between the kitchen and the customer and may need their insurers or the courts (section 21).</p>
+    </>,
+  },
+  {
+    id: "storage-and-equipment",
+    title: "Storage and equipment",
+    body: <>
+      <p>Kitchens may rent equipment with a booking and rent storage on its own.</p>
+      <ul>
+        <li><strong>Storage</strong> is priced per day and rented for 1 to 30 days, starting within 14 days. It never renews automatically. To keep your space, extend it in the app and pay; you can extend once 14 days or fewer remain.</li>
+        <li>Cancelling storage before it starts follows the kitchen's cancellation policy. Ending a rental early is not refunded, though the kitchen may refund unused days.</li>
+        <li>After a rental ends you have 5 days to extend at the same price or move out. After that the kitchen may charge a holdover fee at the daily price, which you can pay or dispute within 72 hours.</li>
+        <li>If items stay 15 days or more past the end, Local Cooks reviews the rental and contacts you. After our final notice, the kitchen may dispose of perishable items after 48 hours and other items after 7 days, with photos and a list, and never sell them.</li>
+        <li>A kitchen may ask you to move out early with 7 days' notice for rentals longer than 7 days, and refunds the unused days.</li>
+        <li>Store only what the kitchen allows. Nothing illegal, hazardous or alive.</li>
+      </ul>
+    </>,
+  },
+  {
+    id: "payments",
+    title: "Payments, fees and payouts",
+    body: <>
+      <h3>How payments work</h3>
+      <p>Payments go through Stripe. Customers pay Local Cooks, and we collect that money as the kitchen's limited payment collection agent: once you pay us, you have paid the kitchen. Card details go to Stripe, not to us.</p>
+      <h3>Fees</h3>
+      <ul>
+        <li>Local Cooks may add a service fee to a booking. It is always shown before you pay.</li>
+        <li>Card processing fees are what Stripe charges for each payment. They are deducted from the kitchen's payout and from refunds as described in section 8.</li>
+        <li>Kitchens set their HST rate. We collect HST with each booking and pass it to the kitchen in its payout. Kitchens are responsible for registering for, reporting and remitting their own taxes.</li>
+      </ul>
+      <h3>Payouts to kitchens</h3>
+      <ul>
+        <li>Kitchens need a Stripe account in good standing to be paid. Stripe's terms apply to it.</li>
+        <li>A kitchen is paid what the customer paid, minus the Local Cooks service fee and the card processing fee. We send it when the kitchen finishes its inspection, or 24 hours after the visit ends. Storage is paid at the end of each paid term.</li>
+        <li>We hold a payout while a problem report or a claim on that visit is open, or while we need to check a payment.</li>
+        <li>If a kitchen owes money back, for example a refund after its payout was sent, we may take it from its future payouts or ask the kitchen to pay it.</li>
+      </ul>
+      <h3>Card disputes</h3>
+      <p>Contact the kitchen or us before you dispute a charge with your bank. We answer card disputes using the booking's records. Filing a dispute you know is unfounded may lead us to close your account.</p>
+    </>,
+  },
+  {
+    id: "off-platform",
+    title: "Keep payments on Local Cooks",
+    body: <>
+      <p>Kitchens and customers who meet on Local Cooks must book and pay for those bookings through Local Cooks. Don't ask for, offer or accept payment outside the platform for a booking, a tour, storage, equipment or extra time arranged here.</p>
+      <p>If you do, Local Cooks is not responsible for that arrangement. Our cancellation and refund rules, damage claims, payouts, problem reports and support don't apply to it. We may also warn you, and suspend or close the account of anyone who arranges or accepts it. Tell us at {SUPPORT} if someone asks you to pay outside the platform.</p>
+    </>,
+  },
+  {
+    id: "plans",
+    title: "For kitchens: plans and subscriptions",
+    body: <>
+      <p><em>This section applies to kitchens.</em></p>
+      <p>Listing on Local Cooks is free during early access. We plan to offer paid kitchen plans. Before any plan applies to you, we will email you and tell you in the app at least 30 days ahead, with the price and what it includes. Nothing is charged unless you choose a paid plan, and you can close your listing or account before a plan would apply.</p>
+    </>,
+  },
+  {
+    id: "food-safety",
+    title: "Food safety and the law",
+    body: <>
+      <p>Everyone is responsible for following the laws that apply to them, including Newfoundland and Labrador's Food and Drug Act and Food Premises Regulations, federal food rules, municipal rules, and labelling, allergen and tax rules.</p>
+      <ul>
+        <li><strong>Customers</strong> are responsible for the food they make, its ingredients, handling, labelling and sale, and for holding the certificates and permits their business needs.</li>
+        <li><strong>Kitchens</strong> are responsible for their premises, equipment and licences, and for cooperating with health inspectors.</li>
+      </ul>
+      <p>Local Cooks doesn't inspect food or premises and is not responsible for any illness or loss caused by food made in a kitchen booked through the platform.</p>
+    </>,
+  },
+  {
+    id: "insurance",
+    title: "Insurance",
+    body: <>
+      <p>Local Cooks is not an insurer, and using the platform doesn't give anyone insurance coverage.</p>
+      <ul>
+        <li>Kitchens keep the property and commercial general liability insurance their space needs.</li>
+        <li>Customers keep the liability insurance their business needs, and any coverage a kitchen requires as a booking requirement.</li>
+      </ul>
+      <p>Where a loss is covered by insurance, the person who suffered it should claim from their insurer.</p>
+    </>,
+  },
+  {
+    id: "content",
+    title: "Your content and our platform",
+    body: <>
+      <p>You keep ownership of the photos, text and documents you add. You let Local Cooks host, display, adapt and share them as needed to run and promote the platform, for example showing your listing photos in search results and on social media. That permission ends when you remove the content, except where we need records for a booking, a dispute or the law.</p>
+      <p>Documents you send to a kitchen are shared only with that kitchen and with Local Cooks staff who need them. Private feedback you give after a visit is seen only by Local Cooks.</p>
+      <p>The platform, its design, software and the Local Cooks name belong to us. If you send us ideas or suggestions, we may use them without owing you anything.</p>
+    </>,
+  },
+  {
+    id: "suspension",
+    title: "Suspension and closing an account",
+    body: <>
+      <p>You can close your account at any time by contacting {SUPPORT}. Open bookings, storage rentals, claims and payouts must be finished or cancelled first.</p>
+      <p>We may limit, suspend or close an account, or remove a listing, if someone breaks these terms, puts people or property at risk, acts fraudulently, leaves amounts unpaid, or if the law requires it. We tell you why unless the law or someone's safety prevents it. You can ask us to reconsider by writing to {SUPPORT}.</p>
+      <p>When an account closes, bookings that can't continue are cancelled under section 8, and the parts of these terms that by their nature continue (payments owed, liability and disputes) still apply.</p>
+    </>,
+  },
+  {
+    id: "liability",
+    title: "Liability",
+    body: <>
+      <p>We work to keep the platform available and accurate, but we provide it as it is and as available. We don't promise it will always work without interruption or error, or that a kitchen, customer or listing will meet your expectations.</p>
+      <p>As far as the law allows:</p>
+      <ul>
+        <li>Local Cooks is not responsible for what kitchens and customers do or fail to do, for the condition of any kitchen, or for any food.</li>
+        <li>We are not responsible for indirect or consequential losses, such as lost profits, lost business or lost data.</li>
+        <li>Our total responsibility to you for all claims relating to the platform is limited to the greater of the fees you paid Local Cooks in the 12 months before the claim, or $100 CAD.</li>
+      </ul>
+      <p>Nothing in these terms limits our responsibility for fraud, for harm we cause deliberately or through gross negligence, or for anything else the law doesn't allow us to limit.</p>
+    </>,
+  },
+  {
+    id: "indemnity",
+    title: "Your responsibility for claims",
+    body: <>
+      <p>If someone makes a claim against Local Cooks because of your breach of these terms, your use of a kitchen, your premises, your food or your conduct, you agree to cover our reasonable losses and costs, including legal fees. We will tell you about the claim and let you take part in responding to it.</p>
+    </>,
+  },
+  {
+    id: "disputes",
+    title: "Resolving disputes",
+    body: <>
+      <ul>
+        <li><strong>Between kitchens and customers.</strong> Try the app first: message each other, and use the tools for cancellations, extra-time charges, problem reports and damage claims. Local Cooks decides the in-app processes described in sections 9 and 10. Either side can still go to court over a disagreement.</li>
+        <li><strong>With Local Cooks.</strong> Write to {SUPPORT} and tell us what happened and what you'd like. We reply within 10 business days and will try to resolve it within 30 days.</li>
+        <li><strong>Courts.</strong> If we can't resolve it, you or we may go to the courts of Newfoundland and Labrador, including Small Claims Court for smaller amounts. Nothing here stops you from contacting a regulator or using rights the law gives you that can't be waived.</li>
+      </ul>
+    </>,
+  },
+  {
+    id: "changes",
+    title: "Changes to these terms",
+    body: <>
+      <p>We may update these terms as the platform changes or the law requires. For changes that affect your rights or what you pay, we email you and tell you in the app at least 30 days before they apply, and we ask you to accept the new version. If you don't agree, you can close your account before then. Smaller changes, such as clearer wording or fixed errors, apply when we publish them, with the date at the top updated.</p>
+    </>,
+  },
+  {
+    id: "general",
+    title: "General",
+    body: <>
+      <ul>
+        <li>These terms, the {PRIVACY} and the details shown at checkout are the whole agreement between you and Local Cooks about the platform.</li>
+        <li>The laws of Newfoundland and Labrador and the federal laws of Canada that apply there govern these terms.</li>
+        <li>If a court finds part of these terms invalid, the rest still applies. If we don't enforce a term right away, we can still enforce it later.</li>
+        <li>You may not transfer your account or these terms to someone else without our written consent. We may transfer them as part of selling or reorganizing our business, and we will tell you if we do.</li>
+        <li>We are not responsible for delays or failures caused by events outside our reasonable control, such as outages at our service providers, storms or power cuts.</li>
+        <li>We send notices by email or in the app. You can reach us at {SUPPORT}.</li>
+        <li>These terms are written in English. If a translation differs, the English version applies.</li>
+      </ul>
+    </>,
+  },
+  {
+    id: "contact",
+    title: "Contact",
+    body: <>
+      <p>Jawrophi Delivery Inc., operating as Local Cooks<br />St. John's, Newfoundland and Labrador, Canada<br />{SUPPORT}</p>
+    </>,
+  },
+];
+
+const summary = [
+  "Local Cooks is a marketplace. When a kitchen accepts a booking, the agreement to use the space is between the kitchen and the customer.",
+  "Requesting a booking only holds your card. You're charged when the kitchen accepts.",
+  "Each kitchen sets its cancellation policy, and you see it before you pay. Cancelling before the deadline refunds everything except the card processing fee. No-shows aren't refunded.",
+  "Kitchens are paid after each visit, minus the Local Cooks fee and the card processing fee.",
+  "Damage claims are capped at $250 in the app, need receipts, and Local Cooks reviews every claim first. Cards are never charged automatically for a claim.",
+  "Pay only through Local Cooks. Arrangements made outside the platform aren't covered.",
+  "Listing is free during early access. We give kitchens 30 days' notice before any paid plan.",
+];
+
+export default function TermsContent({ variant = "page" }: { variant?: "page" | "reader" }) {
   return (
-    <div className="prose prose-gray max-w-none">
-      <h1 className="text-3xl font-bold mb-4">LOCAL COOKS PLATFORM COMPREHENSIVE TERMS &amp; CONDITIONS</h1>
-      <p className="mb-4">
-        These Terms and Conditions form a legally binding agreement between Jawrophi Delivery Inc., operating as &ldquo;Local Cooks&rdquo; (collectively, &ldquo;Local Cooks&rdquo;, &ldquo;we&rdquo;, &ldquo;us&rdquo;, or &ldquo;our&rdquo;) and you, the Kitchen Owner or Chef using the Platform.
-      </p>
-      <p className="text-sm text-gray-600 mb-2">
-        <strong>St. John&apos;s, Newfoundland &amp; Labrador</strong><br />
-        <strong>Effective Date:</strong> 01-02-2026<br />
-        <strong>Last Updated:</strong> 01-05-2026<br />
-        <strong>Jurisdiction:</strong> Newfoundland &amp; Labrador, Canada
-      </p>
-
-      <hr className="my-8" />
-
-      <h2 className="text-2xl font-bold mt-8 mb-4">TABLE OF CONTENTS</h2>
-      <ol className="list-decimal pl-6 mb-8">
-        <li><strong>Definitions</strong></li>
-        <li><strong>Platform Role &amp; Disclaimer</strong></li>
-        <li><strong>Eligibility &amp; Onboarding</strong></li>
-        <li><strong>Kitchen Owner (Host) Terms</strong></li>
-        <li><strong>Chef/User (Renter) Terms</strong></li>
-        <li><strong>Insurance Requirements</strong></li>
-        <li><strong>Liability &amp; Indemnification</strong></li>
-        <li><strong>Food Safety &amp; Legal Compliance</strong></li>
-        <li><strong>Payments, Fees &amp; Taxes</strong></li>
-        <li><strong>Acceptable Use &amp; Conduct</strong></li>
-        <li><strong>Intellectual Property &amp; Data</strong></li>
-        <li><strong>Dispute Resolution</strong></li>
-        <li><strong>Termination &amp; Account Suspension</strong></li>
-        <li><strong>Limitation of Liability</strong></li>
-        <li><strong>Miscellaneous</strong></li>
-      </ol>
-
-      <hr className="my-8" />
-
-      {/* SECTION 1 */}
-      <h2 className="text-2xl font-bold mt-8 mb-4">1. DEFINITIONS</h2>
-      <ul className="list-disc pl-6 mb-4">
-        <li><strong>&quot;Local Cooks&quot; or &quot;Platform&quot;:</strong> The web/mobile application and marketplace operated by Jawrophi Delivery Inc., operating as &ldquo;Local Cooks&rdquo;, that facilitates bookings between Kitchen Owners and Chefs.</li>
-        <li><strong>&quot;Kitchen Owner&quot; or &quot;Host&quot;:</strong> Any natural person or business entity that owns, leases, or operates a licensed commercial kitchen in Newfoundland &amp; Labrador and lists it on the Platform for rental to others.</li>
-        <li><strong>&quot;Chef&quot; or &quot;Renter&quot; or &quot;User&quot;:</strong> Any natural person or business entity who books and uses a Kitchen through the Platform to prepare, cook, package, or process food products for commercial sale.</li>
-        <li><strong>&quot;Kitchen&quot; or &quot;Licensed Space&quot;:</strong> A fixed or mobile food premises that holds a valid Food Premises Licence issued by Service NL, Department of Digital Government and Service NL, Newfoundland &amp; Labrador, and complies with the Food Premises Regulations under the Food and Drug Act.</li>
-        <li><strong>&quot;Food Premises Licence&quot;:</strong> The regulatory licence issued by Service NL permitting operation of a commercial food preparation, manufacturing, or processing facility in compliance with Newfoundland &amp; Labrador&apos;s Food Premises Regulations (Consolidated Newfoundland Regulation 1022/96).</li>
-        <li><strong>&quot;Booking&quot;:</strong> A confirmed rental agreement between a Kitchen Owner and Chef, specifying date, time, hourly or monthly rate, equipment use, and terms of access.</li>
-        <li><strong>&quot;Applicable Law&quot;:</strong> All federal, provincial, territorial, and municipal laws, regulations, bylaws, and ordinances applicable in Newfoundland &amp; Labrador, including but not limited to the Food and Drug Act, Food Premises Regulations, Health and Community Services Act, Building Codes, and Occupational Health &amp; Safety legislation.</li>
-        <li><strong>&quot;Personal Information&quot;:</strong> Information that identifies, relates to, or can be associated with an individual or business, including but not limited to name, address, email, phone, payment information, and food product details.</li>
-        <li><strong>&quot;Confidential Information&quot;:</strong> Non-public information disclosed by a party that is marked as confidential or reasonably understood to be confidential.</li>
-      </ul>
-
-      <hr className="my-8" />
-
-      {/* SECTION 2 */}
-      <h2 className="text-2xl font-bold mt-8 mb-4">2. PLATFORM ROLE &amp; DISCLAIMER</h2>
-      
-      <h3 className="text-xl font-semibold mt-6 mb-3">2.1 Intermediary Role Only</h3>
-      <p className="mb-4">Local Cooks is a technology platform and marketplace intermediary only. The Platform does NOT:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Operate, own, manage, or supervise any Kitchen</li>
-        <li>Provide food preparation, cooking, or food safety services</li>
-        <li>Inspect, approve, or guarantee the condition, safety, or equipment of any Kitchen</li>
-        <li>Inspect or approve the food products prepared in any Kitchen</li>
-        <li>Represent or warrant the quality, safety, or legality of food prepared on the Platform</li>
-        <li>Act as an agent, employee, or representative of either Kitchen Owners or Chefs</li>
-        <li>Provide legal, tax, food safety, or business advice</li>
-      </ul>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">2.2 Kitchen Owner Responsibility</h3>
-      <p className="mb-4">Kitchen Owners are solely responsible for:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Obtaining and maintaining a valid Food Premises Licence</li>
-        <li>Complying with all Applicable Law, including the Food Premises Regulations</li>
-        <li>Maintaining the Kitchen in sanitary, safe, and code-compliant condition</li>
-        <li>Maintaining comprehensive insurance coverage</li>
-        <li>Ensuring all equipment functions properly and is maintained to food safety standards</li>
-        <li>Conducting cleaning and maintenance between rentals</li>
-        <li>Inspecting the Kitchen before each Chef rental</li>
-        <li>Cooperating fully with provincial and municipal food safety inspectors</li>
-        <li>Reporting any kitchen condition changes, license suspensions, or equipment failures to Local Cooks immediately</li>
-      </ul>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">2.3 Chef Responsibility</h3>
-      <p className="mb-4">Chefs are solely responsible for:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Obtaining and maintaining valid Food Handler Certification</li>
-        <li>Complying with all Applicable Law and food safety regulations</li>
-        <li>Operating only within the scope permitted by their food business licence/permit</li>
-        <li>Using the Kitchen in a safe, sanitary, and legal manner</li>
-        <li>Following all food safety protocols, temperature controls, and hygiene standards</li>
-        <li>Supervising their staff and controlling access to the Kitchen during their rental period</li>
-        <li>Leaving the Kitchen in clean, sanitary, orderly condition after use</li>
-        <li>Reporting any injuries, incidents, or kitchen defects to the Kitchen Owner immediately</li>
-      </ul>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">2.4 &quot;AS IS&quot; &amp; &quot;AS AVAILABLE&quot; Disclaimer</h3>
-      <p className="mb-4">The Platform, Kitchen listings, and all services are provided &quot;AS IS&quot; and &quot;AS AVAILABLE&quot; without warranties of any kind, express or implied. Local Cooks does NOT warrant that:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Any Kitchen is safe, clean, compliant with food safety regulations, or suitable for intended use</li>
-        <li>Any Kitchen equipment functions properly or meets food service standards</li>
-        <li>Any Kitchen Owner possesses valid licenses or insurance</li>
-        <li>Any Chef possesses proper certifications or legal authority to operate</li>
-        <li>The Platform will be uninterrupted, error-free, or secure</li>
-        <li>Food prepared in any Kitchen is safe, wholesome, or fit for human consumption</li>
-      </ul>
-
-      <hr className="my-8" />
-
-      {/* SECTION 3 */}
-      <h2 className="text-2xl font-bold mt-8 mb-4">3. ELIGIBILITY &amp; ONBOARDING</h2>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">3.1 Kitchen Owner Eligibility</h3>
-      <p className="mb-4">To list a Kitchen on Local Cooks, the Kitchen Owner must:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Hold a valid, unexpired Food Premises Licence issued by Service NL for a fixed food premises OR have an approved plan for obtaining one within 30 days of listing request. Proof of licence (or application confirmation) must be provided.</li>
-        <li>Own, lease, or have documented authority to list and rent the Kitchen. Local Cooks may request proof (deed, lease, property manager authorization, etc.).</li>
-        <li>
-          Certify compliance with Applicable Law, including but not limited to:
-          <ul className="list-disc pl-6 mt-2">
-            <li>Building code, fire code, zoning, occupancy permits</li>
-            <li>Water supply and sewage standards</li>
-            <li>Equipment maintenance and food safety standards</li>
-            <li>No outstanding violations, suspensions, or delinquencies with regulatory bodies</li>
-          </ul>
-        </li>
-        <li>Be of legal age (18+ in Canada) and of sound legal capacity.</li>
-        <li>Agree to conduct background screening if requested by Local Cooks for fraud/safety purposes (per privacy laws).</li>
-      </ul>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">3.2 Chef Eligibility</h3>
-      <p className="mb-4">To book a Kitchen on Local Cooks, the Chef must:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Hold a valid Food Handler Certification (or equivalent food safety training) issued by an approved provider. Proof must be provided before first booking.</li>
-        <li>
-          Hold all required food business permits/licenses for the food product(s) they intend to prepare. This may include:
-          <ul className="list-disc pl-6 mt-2">
-            <li>A Health Permit / Food Business Licence from the Provincial Health Authority (if preparing for retail sale)</li>
-            <li>Municipal business registration (if operating in St. John&apos;s)</li>
-            <li>Proof that their intended food products are legally permissible in a commercial kitchen</li>
-          </ul>
-        </li>
-        <li>
-          Agree to operate legally and ethically, including:
-          <ul className="list-disc pl-6 mt-2">
-            <li>No preparation of prohibited foods (e.g., foods requiring specialized facilities or licensing)</li>
-            <li>No home-based business expansion without proper conversion/licensing</li>
-            <li>No misrepresentation of product origin or safety credentials</li>
-          </ul>
-        </li>
-        <li>Be of legal age (18+ in Canada) and of sound legal capacity.</li>
-        <li>Agree to conduct background screening if requested by Local Cooks (per privacy laws).</li>
-      </ul>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">3.3 Onboarding &amp; Verification Process</h3>
-
-      <p className="mb-2 font-semibold">Kitchen Owner Onboarding:</p>
-      <p className="mb-2">Local Cooks will require and verify the following before a Kitchen is listed as &quot;Active&quot;:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Food Premises Licence (copy, expiry date, renewal dates)</li>
-        <li>Building occupancy permit or zoning verification (St. John&apos;s)</li>
-        <li>Signed Kitchen Owner Terms &amp; Conditions (this document)</li>
-        <li>Kitchen photos/description for listing</li>
-        <li>Owner contact information and emergency contact</li>
-        <li>Cancellation/no-show policy preferences</li>
-        <li>Equipment list and any equipment restrictions</li>
-      </ul>
-
-      <p className="mb-2 font-semibold">Kitchen Owner Annual Re-Verification:</p>
-      <p className="mb-4">Local Cooks will request updated Food Premises Licence and insurance certificates annually. If not provided within 30 days of request, the Kitchen listing will be automatically suspended until documentation is provided.</p>
-
-      <p className="mb-2 font-semibold">Chef Onboarding:</p>
-      <p className="mb-2">Local Cooks will require and verify the following before a Chef may make a booking:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Food Handler Certification (copy, expiry date)</li>
-        <li>Proof of food business licence/permit (if required for their food product)</li>
-        <li>Proof of General/Product Liability Insurance (min $1M&ndash;$2M per occurrence) naming the Kitchen Owner as additional insured, where required by the Kitchen Owner</li>
-        <li>Signed Chef Terms &amp; Conditions (this document)</li>
-        <li>Chef contact information and emergency contact</li>
-        <li>Food product description (type, ingredients, allergens)</li>
-        <li>Experience/background in food preparation (brief description)</li>
-      </ul>
-
-      <p className="mb-2 font-semibold">Local Cooks Verification Scope:</p>
-      <p className="mb-2">Local Cooks will verify the validity and non-expiry of documents provided, but will NOT:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Conduct independent food safety inspections</li>
-        <li>Verify accuracy of information provided</li>
-        <li>Monitor ongoing regulatory compliance between verifications</li>
-        <li>Conduct criminal background checks (unless Privacy Act permits)</li>
-      </ul>
-      <p className="mb-4">By submitting documents, both Owners and Chefs represent and warrant that all information is true, accurate, and complete.</p>
-
-      <hr className="my-8" />
-
-      {/* SECTION 4 */}
-      <h2 className="text-2xl font-bold mt-8 mb-4">4. KITCHEN OWNER (HOST) TERMS</h2>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">4.1 Listing Creation &amp; Accuracy</h3>
-      <p className="mb-4">Kitchen Owners grant Local Cooks a non-exclusive, non-transferable right to display their Kitchen listing on the Platform and related marketing channels.</p>
-      <p className="mb-4">Kitchen Owners warrant that all listing information&mdash;including description, location, amenities, equipment, hours, restrictions, and pricing&mdash;is accurate, complete, and not misleading. Local Cooks may remove listings or suspend Owners for material misrepresentations.</p>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">4.2 Kitchen Access &amp; Condition</h3>
-      <p className="mb-4">Kitchen Owners agree to:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Grant Chefs access to the full Kitchen (all areas described in the listing) on the date/time specified in the Booking.</li>
-        <li>Provide functioning, food-safe equipment as represented in the listing. If equipment fails mid-rental, Owner shall offer a refund or rescheduling option.</li>
-        <li>Ensure Kitchen is clean, sanitary, pest-free, and in safe condition before each Chef arrival.</li>
-        <li>Maintain all food service equipment to manufacturer specifications and Applicable Law.</li>
-        <li>Provide hot and cold running water, adequate refrigeration, and cooking appliances as listed.</li>
-        <li>Ensure fire safety systems (extinguishers, alarms) are functional.</li>
-        <li>Provide or clearly state any equipment/resource restrictions.</li>
-      </ul>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">4.3 Rental Agreement with Chefs</h3>
-      <p className="mb-4">Kitchen Owners must execute a written Rental Agreement with each Chef before Kitchen use. At minimum, the Rental Agreement must:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>State rental period, hours, and fees</li>
-        <li>List specific equipment included and any restrictions</li>
-        <li>Define cleaning obligations and expected condition upon return</li>
-        <li>Include indemnity clause requiring Chef to hold Kitchen Owner harmless from claims arising from Chef&apos;s use, food products, or negligence</li>
-        <li>Require Chef to name Kitchen Owner as additional insured on Chef&apos;s insurance (where Chef insurance is required)</li>
-        <li>Reserve Owner&apos;s right to inspect/enter during rental (with notice where practical)</li>
-        <li>Specify damage deposit, damage liability, and remedies</li>
-        <li>Address cancellation, no-show, and dispute resolution terms</li>
-      </ul>
-      <p className="mb-4">Sample language is available from Local Cooks, but Owners may customize with legal counsel.</p>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">4.4 Insurance &amp; Liability</h3>
-      <p className="mb-4"><strong>Kitchen Owner Insurance Expectations.</strong> Local Cooks strongly recommends that all Kitchen Owners maintain appropriate Commercial General Liability Insurance and Property Insurance for their premises and operations. The specific type and amount of insurance required for a particular Kitchen is determined by the Kitchen Owner and any Applicable Law.</p>
-      <p className="mb-4">Kitchen Owners may choose to make proof of insurance a condition of listing their Kitchen on the Platform or a condition of allowing Chefs to book and use the Kitchen. Any such requirements must be disclosed in the Kitchen listing and/or the Rental Agreement.</p>
-      <p className="mb-4"><strong>Additional Insured.</strong> Local Cooks may request that a Kitchen Owner name Local Cooks as an additional insured on the Kitchen Owner&apos;s Commercial General Liability policy. If this is required for a particular Kitchen, it will be communicated in writing and reflected in the Kitchen listing or Rental Agreement.</p>
-      <p className="mb-4"><strong>Kitchen Owner Liability.</strong> Kitchen Owner remains fully responsible for complying with Applicable Law and for any injuries, property damage, or losses arising from the condition, maintenance, or operation of the Kitchen, as further described in this Section and Section 7.</p>
-      <p className="mb-2 font-semibold">Kitchen Owner is fully liable for:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>All injuries, death, or property damage caused by the Kitchen Owner&apos;s negligence or willful misconduct</li>
-        <li>All injuries, death, or property damage caused by defective equipment, poor maintenance, or unsafe conditions</li>
-        <li>All claims arising from the Kitchen Owner&apos;s failure to comply with Applicable Law</li>
-        <li>All claims arising from the Kitchen Owner&apos;s breach of these Terms</li>
-      </ul>
-      <p className="mb-4">Kitchen Owner shall indemnify and hold harmless Local Cooks, its officers, employees, and agents from all claims, losses, damages, and costs (including reasonable attorneys&apos; fees) arising from Kitchen Owner&apos;s operation of the Kitchen or breach of these Terms.</p>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">4.5 Food Safety Compliance</h3>
-      <p className="mb-2">Kitchen Owners must:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Maintain a valid, non-suspended Food Premises Licence at all times.</li>
-        <li>Cooperate fully with food safety inspectors and provide Local Cooks with copies of any inspection reports or violation notices within 5 business days.</li>
-        <li>Immediately notify Local Cooks if the Food Premises Licence is suspended, revoked, or placed under conditions.</li>
-        <li>Maintain kitchen sanitation, temperature control, and equipment per Food Premises Regulations.</li>
-        <li>Require at least one Food Handler Certified staff member on premises at all times when food preparation is occurring.</li>
-        <li>Not allow any Chef to operate without proof of Food Handler Certification.</li>
-        <li>Ensure Chefs&apos; food products comply with Applicable Law (e.g., approved menu items, proper labeling, allergen disclosure).</li>
-      </ul>
-      <p className="mb-2 font-semibold">Upon License Suspension or Revocation:</p>
-      <p className="mb-4">If a Kitchen Owner&apos;s Food Premises Licence is suspended or revoked, Local Cooks will immediately and automatically suspend or remove the Kitchen listing and notify all affected Chefs. Suspended Kitchens cannot be re-listed until the Food Premises Licence is reinstated.</p>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">4.6 Inspection Rights</h3>
-      <p className="mb-2">Local Cooks reserves the right, without prior notice, to:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Request updated documentation (licenses, insurance, inspection reports) at any time</li>
-        <li>Remove or suspend a Kitchen listing if requested documentation is not provided within 7 days</li>
-        <li>Work with regulatory authorities (provincial food safety inspectors, municipal health officials) to verify Kitchen compliance</li>
-      </ul>
-      <p className="mb-4">Regulatory inspections by provincial/municipal authorities shall proceed without Local Cooks&apos; intervention. Kitchen Owners are responsible for coordinating with inspectors.</p>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">4.7 Reservation &amp; Cancellation Policies</h3>
-      <p className="mb-2">Kitchen Owners may set their own cancellation policies (within reason), such as:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li><strong>No cancellations:</strong> Non-refundable bookings</li>
-        <li>Full refund if cancelled &gt;7 days in advance</li>
-        <li>Partial refund (e.g., 50%) if cancelled 3&ndash;7 days in advance</li>
-        <li>No refund if cancelled &lt;24 hours</li>
-      </ul>
-      <p className="mb-4">Policies must be clearly stated in the Kitchen listing and Booking confirmation. Local Cooks will facilitate refunds per the stated policy.</p>
-      <p className="mb-4">Kitchen Owners who frequently cancel or no-show may face suspension of listing or account termination.</p>
-
-      <DamageCleaningPolicy />
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">4.9 Payment &amp; Payout</h3>
-      <p className="mb-2">Local Cooks will:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Collect Chef&apos;s rental payment via Stripe or similar secure payment processor</li>
-        <li>Remit Kitchen Owner&apos;s share (e.g., 80&ndash;85%) within 5&ndash;7 business days of rental completion</li>
-      </ul>
-      <p className="mb-4">Kitchen Owner may not charge Chefs directly or circumvent the Platform for payment; doing so may result in account suspension.</p>
-
-      <hr className="my-8" />
-
-      {/* SECTION 5 */}
-      <h2 className="text-2xl font-bold mt-8 mb-4">5. CHEF/USER (RENTER) TERMS</h2>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">5.1 Booking &amp; Reservation</h3>
-      <p className="mb-4">By submitting a Booking request, Chef agrees to:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Rent the Kitchen for the specified date, time, and fee</li>
-        <li>Provide accurate information about the food product(s) to be prepared</li>
-        <li>Disclose all major allergens and ingredients in food products</li>
-        <li>Use the Kitchen only for the stated purpose and for the stated duration</li>
-        <li>Not sublicense, share, or transfer Kitchen access to others without written Owner consent</li>
-        <li>Not use the Kitchen for purposes other than food preparation for commercial sale</li>
-      </ul>
-      <p className="mb-2 font-semibold">Booking Confirmation:</p>
-      <p className="mb-4">A Booking is confirmed when Chef receives an acceptance email from the Kitchen Owner through Local Cooks. Local Cooks facilitates this communication but is not a party to the Kitchen rental agreement.</p>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">5.2 Food Safety &amp; Legal Compliance</h3>
-      <p className="mb-2">Chefs must:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Hold a valid Food Handler Certification (or equivalent) from an accredited provider. Proof must be current and non-expired.</li>
-        <li>Operate only with valid food business permits/licenses required by Newfoundland &amp; Labrador (Provincial Health Authority, municipality, etc.).</li>
-        <li>Disclose all major allergens and ingredients in food products to the Kitchen Owner.</li>
-        <li>Comply with all Applicable Law regarding food preparation, packaging, labeling, storage, and sale.</li>
-        <li>Follow the Food Premises Regulations and all kitchen-specific rules provided by Kitchen Owner.</li>
-        <li>Prepare, handle, store, and transport food under sanitary conditions to prevent contamination.</li>
-        <li>Use only single-service food contact surfaces (unless approved otherwise) and avoid cross-contamination.</li>
-        <li>Maintain proper food temperatures (hot foods &ge;63&deg;C, cold foods &le;4&deg;C).</li>
-        <li>Wear appropriate clothing (hair restraint, clean clothing, no exposed jewelry) while food preparation occurs.</li>
-        <li>Not allow any person who is ill or has infected skin lesions to handle food.</li>
-        <li>Not use tobacco while preparing food.</li>
-      </ul>
-      <p className="mb-2 font-semibold">Food Product Pre-Approval:</p>
-      <p className="mb-4">If the Kitchen Owner requires Chef to obtain pre-approval of specific food products (e.g., for licensing/process verification), Chef must submit product description, ingredients, and process details for Owner review before rental date. Unapproved products may not be prepared in the Kitchen.</p>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">5.3 Kitchen Use &amp; Rules</h3>
-      <p className="mb-2">Chefs must:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Arrive no earlier than 15 minutes before scheduled rental start time</li>
-        <li>Depart no later than the scheduled rental end time (additional hourly fees apply for overstays)</li>
-        <li>Use ONLY the Kitchen areas specified in the Booking (e.g., do not access private areas or other renters&apos; storage)</li>
-        <li>Operate only the equipment specified in the Booking; do not remove, alter, or repair equipment</li>
-        <li>Follow all Kitchen-specific rules provided by Kitchen Owner (safety, equipment operation, parking, entry/exit, etc.)</li>
-        <li>Not make any modifications, installations, or changes to the Kitchen without prior written Owner consent</li>
-        <li>Not sublet, share, or allow unauthorized persons to access the Kitchen during rental time</li>
-        <li>Supervise all employees/staff working in the Kitchen; Chef is solely responsible for their conduct</li>
-      </ul>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">5.4 Overstays, Storage &amp; Late Checkout</h3>
-      <p className="mb-4"><strong>Definition of Overstay.</strong> If a Chef does not fully vacate the Kitchen and remove all equipment, ingredients, and stored items by the Booking end time, the Chef will be considered to have overstayed. For any overstay period, Chef remains bound by these Terms and is fully responsible for safety, compliance, and any damage caused.</p>
-      <p className="mb-4"><strong>Location and listing-level policies.</strong> Kitchen Owners may set their own overstay and storage policies for a Kitchen, including grace periods, daily penalty rates, maximum penalty days, and any additional handling or storage fees. Where a Kitchen Owner has set such policies, they must be disclosed in the Kitchen listing and/or during the checkout or storage-booking flow and will take priority over any platform-wide default settings.</p>
-      <p className="mb-2"><strong>Platform-wide defaults.</strong> Where a Kitchen Owner has not set custom values, Local Cooks may apply platform-wide default settings for storage and overstay penalties, including:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>A grace period (for example, 3 days) after the Booking end before penalties begin to accrue;</li>
-        <li>A daily penalty rate calculated as a percentage of the applicable daily storage or rental rate for each day (or part day) of overstay (for example, 10% per overdue day); and</li>
-        <li>A maximum number of penalty days (for example, 30 days) after which penalties stop accruing.</li>
-      </ul>
-      <p className="mb-4">The current default values in effect at the time of Booking will be displayed in the Platform&apos;s settings or in the Booking summary and may be updated by Local Cooks from time to time.</p>
-      <p className="mb-4"><strong>Auto-charging and escalation.</strong> Chef authorizes Local Cooks to calculate and charge overstay penalties to Chef&apos;s payment method on file on behalf of the Kitchen Owner. If an automatic charge fails, Local Cooks may immediately escalate the penalty (for example, by sending a self-serve payment link, pausing Chef&apos;s ability to make new Bookings, and/or referring the matter to the dispute and collections process described in these Terms). Local Cooks has no obligation to re-attempt automatic charges.</p>
-      <p className="mb-4"><strong>No tenancy rights.</strong> Overstays do not create any tenancy, lease, or occupancy rights in favour of Chef. Local Cooks and the Kitchen Owner reserve all rights and remedies available under these Terms and Applicable Law, including seeking additional compensation for losses caused by an overstay.</p>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">5.5 Cleaning &amp; Sanitation</h3>
-      <p className="mb-2">Chef must:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Leave the Kitchen in clean, sanitary, orderly condition at the end of the rental period, equivalent to condition upon arrival</li>
-        <li>Clean and sanitize all food contact surfaces, equipment, and utensils used</li>
-        <li>Empty all trash, compost, and recycling into designated receptacles</li>
-        <li>Mop floors and wipe down counters, sinks, and stove</li>
-        <li>Clean inside refrigerators/freezers if used</li>
-        <li>Clean any spills immediately to prevent slipping hazards or pest attraction</li>
-        <li>Complete a Cleaning Checklist (provided by Kitchen Owner or Local Cooks) confirming tasks completed</li>
-      </ul>
-      <p className="mb-4">Extra cleaning costs follow the Damage and cleaning section above. Claims are never charged automatically.</p>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">5.6 Insurance &amp; Liability</h3>
-      <p className="mb-4"><strong>Chef Insurance Expectations.</strong> Chefs are responsible for ensuring they have appropriate insurance for their food operations. Whether insurance is required as a condition of booking is determined by the Kitchen Owner and Applicable Law.</p>
-      <p className="mb-4">Some Kitchens will require Chefs to carry and provide proof of General or Product Liability Insurance (and, where applicable, Workers&apos; Compensation Insurance) before a booking is accepted. Where a Kitchen Owner requires such coverage, this requirement will be disclosed in the Kitchen listing and/or Rental Agreement, and Chef must provide acceptable proof of insurance before using that Kitchen and maintain such coverage for the duration of use.</p>
-      <p className="mb-4">Where a Kitchen Owner does not require insurance, Chef is still strongly encouraged to maintain appropriate coverage for their operations and remains fully responsible for any injuries, illnesses, property damage, or other losses caused by Chef&apos;s food products, staff, or activities in the Kitchen.</p>
-      <p className="mb-2 font-semibold">Chef is fully liable for:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>All injuries, death, or property damage caused by Chef&apos;s negligence or willful misconduct</li>
-        <li>All injuries, death, or property damage caused by Chef&apos;s food products (foodborne illness, allergic reactions, contamination)</li>
-        <li>All injuries, death, or property damage caused by Chef&apos;s employees or staff</li>
-        <li>All property damage to the Kitchen caused by Chef&apos;s use or negligence</li>
-        <li>All violations of Applicable Law or Kitchen rules caused by Chef</li>
-        <li>All claims arising from Chef&apos;s failure to comply with these Terms</li>
-      </ul>
-      <p className="mb-2">Chef shall indemnify and hold harmless Kitchen Owner and Local Cooks, their officers, employees, and agents from all claims, losses, damages, costs, and expenses (including reasonable attorneys&apos; fees) arising from:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Chef&apos;s use of the Kitchen</li>
-        <li>Chef&apos;s food products or food safety practices</li>
-        <li>Chef&apos;s employees or staff</li>
-        <li>Chef&apos;s breach of these Terms or Applicable Law</li>
-        <li>Any injury to third parties (e.g., Chef&apos;s customers) caused by Chef&apos;s food or operations</li>
-      </ul>
-      <p className="mb-4">Chefs may wish to discuss with their insurance broker whether to add the Kitchen Owner and/or Local Cooks as additional insureds on their policies. This is optional unless expressly required by a Kitchen Owner or by Local Cooks in writing.</p>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">5.7 No Liability for Third-Party Injuries or Food Safety</h3>
-      <p className="mb-2">Chef acknowledges that Local Cooks and the Kitchen Owner are NOT liable for:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Any injury or illness caused by food prepared by Chef</li>
-        <li>Any injury or illness caused by Chef&apos;s handling, storage, or preparation practices</li>
-        <li>Any property damage caused by Chef&apos;s use of equipment or the Kitchen</li>
-        <li>Any violations of Applicable Law by Chef</li>
-        <li>Any claims by third parties (e.g., Chef&apos;s customers or Chef&apos;s employees)</li>
-      </ul>
-      <p className="mb-4">Chef assumes all risk of preparing food in the Kitchen and is solely responsible for food safety, ingredient quality, and compliance with food science and labeling requirements.</p>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">5.8 Incident Reporting</h3>
-      <p className="mb-2">Chef must immediately report to Kitchen Owner (and Local Cooks within 24 hours) any:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Injuries to Chef or staff</li>
-        <li>Allergic reactions or foodborne illness complaints from customers</li>
-        <li>Equipment damage or malfunction</li>
-        <li>Health and safety hazards observed in Kitchen</li>
-        <li>Spills, contamination, or sanitation issues</li>
-      </ul>
-      <p className="mb-4">Prompt reporting helps document incidents and allows Kitchen Owner to take corrective action.</p>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">5.9 Non-Circumvention Agreement</h3>
-      <p className="mb-2">Chef agrees NOT to:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Obtain Kitchen Owner&apos;s contact information from the Platform and contact Owner directly to bypass Local Cooks and avoid Platform fees</li>
-        <li>Arrange future bookings with Kitchen Owner outside of Local Cooks Platform</li>
-        <li>Recommend to other Chefs that they contact Kitchen Owner directly to avoid the Platform fee</li>
-      </ul>
-      <p className="mb-2">Violation of this clause may result in:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Chef account suspension or termination</li>
-        <li>Dispute regarding any Platform fees owed</li>
-        <li>Legal action to recover Platform fees (which may exceed the single transaction value)</li>
-      </ul>
-
-      <hr className="my-8" />
-
-      {/* SECTION 6 */}
-      <h2 className="text-2xl font-bold mt-8 mb-4">6. INSURANCE REQUIREMENTS</h2>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">6.1 Chef Insurance Summary</h3>
-      <div className="overflow-x-auto mb-4">
-        <table className="min-w-full border border-gray-300 text-sm">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="border border-gray-300 px-3 py-2 text-left">Coverage Type</th>
-              <th className="border border-gray-300 px-3 py-2 text-left">Minimum Limit</th>
-              <th className="border border-gray-300 px-3 py-2 text-left">Key Provisions</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td className="border border-gray-300 px-3 py-2">General or Product Liability</td>
-              <td className="border border-gray-300 px-3 py-2">$1M per occurrence</td>
-              <td className="border border-gray-300 px-3 py-2">Must name Kitchen Owner as additional insured where required; primary, non-contributory</td>
-            </tr>
-            <tr>
-              <td className="border border-gray-300 px-3 py-2">Workers&apos; Compensation (if applicable)</td>
-              <td className="border border-gray-300 px-3 py-2">Statutory limits (per province)</td>
-              <td className="border border-gray-300 px-3 py-2">Mandatory if Chef has employees; depends on provincial legislation</td>
-            </tr>
-            <tr>
-              <td className="border border-gray-300 px-3 py-2">Food Borne Illness</td>
-              <td className="border border-gray-300 px-3 py-2">Industry standard</td>
-              <td className="border border-gray-300 px-3 py-2">Recommended if preparing potentially hazardous foods</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">6.2 Certificate of Insurance</h3>
-      <p className="mb-2">Both Kitchen Owners and Chefs must provide, where insurance is required:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li><strong>Certificate of Insurance</strong> (issued by broker or insurer) evidencing the required coverage</li>
-        <li><strong>Proof of Additional Insured endorsement</strong> (e.g., ISO CG 20 01 for liability, or policy schedule)</li>
-        <li><strong>Non-cancellation notice</strong> (at least 10 days&apos; notice to Local Cooks if policy is cancelled or non-renewed)</li>
-      </ul>
-      <p className="mb-4">Certificates are valid for one year. Local Cooks will request updated certificates annually.</p>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">6.3 Insurance Verification</h3>
-      <p className="mb-2">Local Cooks will verify that:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Certificate is issued by a licensed insurance broker/insurer</li>
-        <li>Coverage limits meet minimums</li>
-        <li>Additional insured endorsement is present</li>
-        <li>Certificate has not expired</li>
-      </ul>
-      <p className="mb-2">Local Cooks will NOT:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Verify that insurance is active or has been paid</li>
-        <li>Contact insurers independently to confirm coverage</li>
-        <li>Assess adequacy of coverage for specific risks</li>
-        <li>Provide insurance advice</li>
-      </ul>
-      <p className="mb-4">Both parties are responsible for ensuring their insurance is active and adequate.</p>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">6.4 Waiver of Subrogation</h3>
-      <p className="mb-2">Both Kitchen Owners and Chefs grant each other and Local Cooks a waiver of subrogation rights. This means:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>If a Chef is injured in the Kitchen and their insurance covers the injury, the Chef&apos;s insurer waives the right to sue the Kitchen Owner for reimbursement.</li>
-        <li>Conversely, if the Kitchen Owner causes property damage to the Chef&apos;s equipment, the Kitchen Owner&apos;s insurer waives the right to sue the Chef.</li>
-      </ul>
-      <p className="mb-4">This mutual waiver reduces claim disputes and fosters cooperation.</p>
-
-      <hr className="my-8" />
-
-      {/* SECTION 7 */}
-      <h2 className="text-2xl font-bold mt-8 mb-4">7. LIABILITY &amp; INDEMNIFICATION</h2>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">7.1 Local Cooks&apos; Limited Liability</h3>
-      <p className="mb-2">Local Cooks does NOT assume liability for:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>The condition, safety, or regulatory compliance of any Kitchen</li>
-        <li>The quality, safety, or legality of food prepared in any Kitchen</li>
-        <li>Any injuries, illnesses, or property damage occurring in any Kitchen</li>
-        <li>Any breach by Kitchen Owner or Chef of Applicable Law</li>
-        <li>Any foodborne illness or allergic reactions caused by food products</li>
-        <li>Any equipment failure or malfunction in any Kitchen</li>
-        <li>Any third-party claims (e.g., Chef&apos;s customer claims)</li>
-        <li>Any business losses, lost profits, or interruption caused by Kitchen unavailability</li>
-        <li>Any cyber-attacks, data breaches, or platform downtime</li>
-        <li>Any acts or omissions of Kitchen Owners, Chefs, or third parties</li>
-      </ul>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">7.2 Chef Indemnity to Kitchen Owner</h3>
-      <p className="mb-2">Chef shall indemnify, defend (at Chef&apos;s expense), and hold harmless Kitchen Owner and all Kitchen Owner affiliates, officers, employees, agents, and representatives from and against all claims, lawsuits, damages, liabilities, costs, and expenses (including reasonable attorneys&apos; fees and court costs) arising from or related to:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Chef&apos;s use of the Kitchen or food products prepared by Chef</li>
-        <li>Chef&apos;s breach of these Terms or Applicable Law</li>
-        <li>Injury to any person (including Chef&apos;s staff, customers, or third parties) caused by Chef&apos;s actions or food</li>
-        <li>Property damage to the Kitchen or Kitchen Owner&apos;s equipment caused by Chef</li>
-        <li>Chef&apos;s negligence, willful misconduct, or violation of food safety regulations</li>
-        <li>Any foodborne illness, allergic reaction, or contamination claim related to Chef&apos;s food</li>
-      </ul>
-      <p className="mb-4">This indemnity survives termination of the Booking and survives Local Cooks&apos; involvement.</p>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">7.3 Kitchen Owner Indemnity to Chef</h3>
-      <p className="mb-2">Kitchen Owner shall indemnify, defend (at Owner&apos;s expense), and hold harmless Chef and all Chef affiliates, officers, employees, agents, and representatives from and against all claims, lawsuits, damages, liabilities, costs, and expenses (including reasonable attorneys&apos; fees and court costs) arising from or related to:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>The Kitchen condition, equipment, or facilities (including defective equipment, unsafe conditions, poor maintenance)</li>
-        <li>Kitchen Owner&apos;s breach of these Terms or Applicable Law</li>
-        <li>Injury to Chef caused by the Kitchen condition, equipment failure, or Kitchen Owner&apos;s negligence</li>
-        <li>Any violation of food safety, building, or fire code requirements caused by Kitchen Owner</li>
-        <li>Kitchen Owner&apos;s failure to maintain valid licensing, insurance, or permits</li>
-      </ul>
-      <p className="mb-4">This indemnity survives termination of the Booking and survives Local Cooks&apos; involvement.</p>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">7.4 Local Cooks Indemnity (Limited)</h3>
-      <p className="mb-2">Local Cooks shall indemnify Kitchen Owner and Chef from claims arising solely from:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Local Cooks&apos; gross negligence or willful misconduct in operating the Platform</li>
-        <li>Local Cooks&apos; breach of these Terms (but NOT from third-party actions or food safety claims)</li>
-        <li>Data breach or unauthorized access to Personal Information (if caused by Local Cooks&apos; security failure)</li>
-      </ul>
-      <p className="mb-2">Local Cooks does NOT indemnify for claims arising from:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Kitchen Owner or Chef conduct or negligence</li>
-        <li>Food safety or foodborne illness claims</li>
-        <li>Equipment or kitchen condition issues</li>
-        <li>Third-party claims (e.g., customers&apos; complaints)</li>
-      </ul>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">7.5 Mutual Cooperation on Claims</h3>
-      <p className="mb-2">If a third party (e.g., a customer injured by Chef&apos;s food) sues both Kitchen Owner and Chef through Local Cooks:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Chef and Kitchen Owner shall cooperate fully in defending the claim</li>
-        <li>Each shall share relevant information with the other&apos;s insurer</li>
-        <li>Indemnities apply to the extent one party&apos;s conduct caused the injury (Chef if food-related; Owner if kitchen condition-related)</li>
-        <li>If a court determines both parties are jointly liable, their insurers shall contribute proportionally</li>
-      </ul>
-
-      <hr className="my-8" />
-
-      {/* SECTION 8 */}
-      <h2 className="text-2xl font-bold mt-8 mb-4">8. FOOD SAFETY &amp; LEGAL COMPLIANCE</h2>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">8.1 Newfoundland &amp; Labrador Food Premises Regulations</h3>
-      <p className="mb-2">All Kitchens and food preparation must comply with:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Food Premises Regulations (Consolidated Newfoundland Regulation 1022/96) under the Food and Drug Act</li>
-        <li>Health and Community Services Act</li>
-        <li>Occupational Health &amp; Safety Act (for worker safety)</li>
-        <li>Building Code (National Building Code as adopted by Newfoundland)</li>
-        <li>Municipal bylaws (St. John&apos;s or applicable municipality)</li>
-      </ul>
-      <p className="mb-4">Copies of regulations are available from Service NL (www.gov.nl.ca) and must be reviewed by all Owners and Chefs.</p>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">8.2 Food Premises Licence Requirements</h3>
-      <p className="mb-2">Kitchen Owner&apos;s Food Premises Licence must:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Be valid and non-expired (as shown on the certificate)</li>
-        <li>Cover the specific address and type of food operation listed on Local Cooks</li>
-        <li>Have no outstanding violations, conditions, or suspensions (as of the most recent inspection)</li>
-        <li>Be maintained in continuous good standing for the duration of Kitchen Owner&apos;s use of the Platform</li>
-      </ul>
-      <p className="mb-2">Kitchen Owner must:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Provide a copy of the licence to Local Cooks at the time of listing and annually thereafter</li>
-        <li>Notify Local Cooks within 24 hours if the licence is suspended, revoked, or placed under conditions</li>
-        <li>Immediately cooperate with food safety inspectors and provide Local Cooks with inspection reports within 5 days</li>
-      </ul>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">8.3 Food Handler Certification</h3>
-      <p className="mb-2">At least one person present during food preparation in the Kitchen must hold a valid Food Handler Certification (or equivalent food safety training certificate) issued by an approved provider, such as:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Health Canada-approved online courses</li>
-        <li>Canadian Food Safety Certification Board courses</li>
-        <li>Alberta Health Services&apos; FoodSafe training</li>
-        <li>Other accredited providers recognized in Newfoundland &amp; Labrador</li>
-      </ul>
-      <p className="mb-2">Both Kitchen Owner staff and Chefs must provide proof of certification to Local Cooks. Proof must include:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Certificate name and number</li>
-        <li>Certificant&apos;s name (matching the person&apos;s identity)</li>
-        <li>Issue and expiry dates</li>
-        <li>Course provider name</li>
-      </ul>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">8.4 Approved Food Products &amp; Processes</h3>
-      <p className="mb-2">Kitchen Owner may restrict the types of food products prepared in the Kitchen. Common restrictions include:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li><strong>High-risk foods (potentially hazardous):</strong> Require special handling, temperature control, and hazard analysis</li>
-        <li><strong>Meat and fish products:</strong> May require separate facilities or specific licensing</li>
-        <li><strong>Allergen-prone foods:</strong> May require separate preparation areas and equipment</li>
-        <li><strong>Foods requiring Scheduled Processes:</strong> Acidified foods (pickles, relishes, dressings, jams) may require additional licensing/process approval</li>
-      </ul>
-      <p className="mb-2">Chef must:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Disclose the specific food product(s) planned for preparation (e.g., &quot;vegan chocolate mousse&quot; vs. &quot;raw ground meat patties&quot;)</li>
-        <li>Obtain Kitchen Owner approval before the Booking if product type is not pre-approved</li>
-        <li>Follow all food safety protocols specific to the product (time/temperature logs, allergen separation, etc.)</li>
-        <li>Obtain any required regulatory approvals before preparation (e.g., if the product requires a Scheduled Process approval from a qualified processing authority)</li>
-      </ul>
-      <p className="mb-4">Local Cooks does not approve food products or processes. This is solely between Kitchen Owner and Chef.</p>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">8.5 Temperature Control &amp; HACCP</h3>
-      <p className="mb-2">Chefs must maintain proper food temperatures:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li><strong>Hot foods:</strong> &ge;63&deg;C (145&deg;F) until service</li>
-        <li><strong>Cold foods:</strong> &le;4&deg;C (40&deg;F) during storage and service</li>
-        <li><strong>Freezer:</strong> &le;&minus;18&deg;C (0&deg;F)</li>
-      </ul>
-      <p className="mb-2">Chefs preparing potentially hazardous foods are recommended to implement Hazard Analysis and Critical Control Points (HACCP) principles:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Identify critical control points (e.g., cooking temperature, cooling time)</li>
-        <li>Establish monitoring procedures (e.g., use of food thermometers)</li>
-        <li>Maintain records/logs of critical temperatures</li>
-        <li>Corrective actions if temperatures are out of range</li>
-      </ul>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">8.6 Allergen Management</h3>
-      <p className="mb-2">Chef must:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Disclose all major allergens in food products (peanuts, tree nuts, milk, eggs, soy, wheat, fish, shellfish, sesame, sulphites, mustard, celery, etc.)</li>
-        <li>Label finished products with complete ingredient lists and allergen statements</li>
-        <li>Prevent cross-contamination by using separate utensils, cutting boards, and surfaces for allergen-sensitive foods</li>
-        <li>Inform customers of all allergens before sale</li>
-      </ul>
-      <p className="mb-4">Local Cooks and Kitchen Owner are NOT responsible for allergen accuracy; this is Chef&apos;s responsibility.</p>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">8.7 Inspection Cooperation</h3>
-      <p className="mb-2">If local/provincial food safety inspectors visit the Kitchen during Chef&apos;s rental:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Chef must cooperate fully with inspectors and answer all questions truthfully</li>
-        <li>Chef must not obstruct or impede the inspection in any way</li>
-        <li>Chef must remain on premises until the inspection is complete</li>
-        <li>Chef must provide documentation (Food Handler Cert, product labels, process records) upon request</li>
-      </ul>
-      <p className="mb-2">Failure to cooperate may result in:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Inspection violations noted against the Kitchen&apos;s Food Premises Licence</li>
-        <li>Health code citations or fines</li>
-        <li>Potential license suspension or revocation</li>
-        <li>Chef suspension from the Platform</li>
-      </ul>
-      <p className="mb-4">Kitchen Owner is responsible for Kitchen maintenance; Chef is responsible for food product safety during Chef&apos;s rental.</p>
-
-      <hr className="my-8" />
-
-      {/* SECTION 9 */}
-      <h2 className="text-2xl font-bold mt-8 mb-4">9. PAYMENTS, FEES &amp; TAXES</h2>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">9.1 Rental Fees &amp; Pricing</h3>
-      <p className="mb-4">Kitchen Owner sets the hourly rental fee for the Kitchen (e.g., $25/hour). This fee is displayed in the Kitchen listing and Booking confirmation.</p>
-      <p className="mb-4">Chef agrees to pay the stated fee for the rental period booked. Overstay (use beyond the scheduled end time) will be charged at the hourly rate (prorated) or as stated in the Kitchen Owner&apos;s cancellation policy.</p>
-
-      <h3 id="refund-policy" className="scroll-mt-24 text-xl font-semibold mt-6 mb-3">9.2 Payment Processing &amp; Payout</h3>
-      <p className="mb-2 font-semibold">Payment Flow:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Chef submits Booking and payment through Local Cooks (via Stripe or similar processor)</li>
-        <li>Local Cooks verifies payment with the processor (typically 1&ndash;2 business days)</li>
-        <li>Upon rental completion and Chef&apos;s confirmation (or automatic 24 hours post-rental): Local Cooks pays Kitchen Owner&apos;s share (e.g., 80&ndash;85%) within 5&ndash;7 business days</li>
-        <li>Kitchen Owner receives payment to their designated bank account (e-transfer, direct deposit, etc.)</li>
-      </ul>
-      <p className="mb-2 font-semibold">Refunds:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Before a Booking is confirmed, the Chef is eligible for a 100% refund of any amount paid, including taxes and fees. If payment is only authorized, the card hold is released instead.</li>
-        <li>After confirmation, if Kitchen Owner cancels a Booking, the Chef is entitled to a refund of the booking charges, excluding the original payment processing fee (processed within 5&ndash;7 business days)</li>
-        <li>After confirmation, if Chef cancels per Kitchen Owner&apos;s stated cancellation policy, the refund amount depends on the policy (non-refundable, 50%, 100%, etc.)</li>
-        <li>After confirmation, payment processing fees charged on the original transaction are not returned as part of a refund.</li>
-      </ul>
-      <p className="mb-2 font-semibold">No Chargebacks:</p>
-      <p className="mb-4">Chef agrees not to dispute or chargeback the payment with their credit card company unless Local Cooks fails to process the payment correctly. Fraudulent chargebacks may result in Chef account termination.</p>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">9.3 HST/Sales Tax Obligations</h3>
-      <p className="mb-2 font-semibold">Kitchen Owner Tax Responsibility:</p>
-      <p className="mb-2">If Kitchen Owner&apos;s annual income from kitchen rentals exceeds $30,000 CAD, Owner must register for GST/HST with the Canada Revenue Agency (CRA) and collect/remit HST on rental fees.</p>
-      <p className="mb-2">Local Cooks does NOT collect HST on behalf of Kitchen Owners. Kitchen Owner is solely responsible for:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Determining HST registration requirement</li>
-        <li>Registering with CRA if required</li>
-        <li>Collecting HST from Chefs (by invoicing separately or including in stated fee)</li>
-        <li>Remitting HST to CRA quarterly or as required</li>
-        <li>Maintaining records of all rentals and HST collected</li>
-        <li>Filing annual tax returns with CRA and provincial tax authority</li>
-      </ul>
-      <p className="mb-2 font-semibold">Chef Tax Responsibility:</p>
-      <p className="mb-2">If Chef&apos;s annual food business revenue exceeds $30,000 CAD, Chef must register for GST/HST and remit on sales of food products. Chef is solely responsible for:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Determining HST registration requirement</li>
-        <li>Registering with CRA if required</li>
-        <li>Collecting HST from customers if required</li>
-        <li>Remitting HST to CRA</li>
-        <li>Maintaining accurate business records</li>
-        <li>Filing tax returns with CRA</li>
-      </ul>
-      <p className="mb-2 font-semibold">Local Cooks Tax Responsibility:</p>
-      <p className="mb-2">Local Cooks&apos; Platform Fee is subject to HST. Local Cooks will:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Register for HST with CRA (if not already registered)</li>
-        <li>Collect HST on Platform Fees where applicable</li>
-        <li>Remit HST to CRA quarterly</li>
-        <li>Provide tax reporting to Kitchen Owners annually (if applicable)</li>
-      </ul>
-      <p className="mb-2 font-semibold">No Tax Advice:</p>
-      <p className="mb-2">Local Cooks does NOT provide tax or accounting advice. Both Kitchen Owners and Chefs should:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Consult with an accountant or tax professional about GST/HST obligations</li>
-        <li>Keep detailed records of all bookings, fees, and income</li>
-        <li>File accurate tax returns with CRA and provincial authorities</li>
-      </ul>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">9.4 Overstay and Storage Fees</h3>
-      <p className="mb-4">Any overstay and storage-related penalties and fees described in Section 5.4 form part of the Booking charges and may be collected and remitted by Local Cooks through the Platform in the same manner as other Booking and service fees.</p>
-
-      <hr className="my-8" />
-
-      {/* SECTION 10 */}
-      <h2 className="text-2xl font-bold mt-8 mb-4">10. ACCEPTABLE USE &amp; CONDUCT</h2>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">10.1 Prohibited Conduct</h3>
-      <p className="mb-2">Users agree NOT to:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Use the Platform for any illegal purpose or violate Applicable Law</li>
-        <li>Prepare or distribute food that is unsafe, contaminated, mislabeled, or misrepresented</li>
-        <li>Discriminate against, harass, threaten, or abuse other users based on protected characteristics (race, gender, religion, disability, etc.)</li>
-        <li>Engage in fraud, misrepresentation, or deception</li>
-        <li>Access or use the Platform with automated tools (bots, scrapers) without permission</li>
-        <li>Reverse-engineer, hack, or attempt to compromise the Platform&apos;s security</li>
-        <li>Disrupt Platform operations or interfere with other users&apos; access</li>
-        <li>Engage in any form of food tampering, contamination, or adulteration</li>
-        <li>Operate without required licenses, permits, or certifications</li>
-        <li>Sublicense, resell, or transfer Platform access to unauthorized parties</li>
-        <li>Post false, defamatory, or malicious content in user profiles or reviews</li>
-      </ul>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">10.2 Compliance with Laws</h3>
-      <p className="mb-2">All users represent and warrant that:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>They are of legal age (18+) and of sound legal capacity</li>
-        <li>They possess all necessary licenses, permits, and certifications required by Applicable Law</li>
-        <li>They will comply with all federal, provincial, territorial, and municipal laws and regulations</li>
-        <li>They will comply with food safety, health, building, fire, zoning, and labor laws</li>
-        <li>They will not engage in any illegal activity</li>
-        <li>Their use of the Platform does not violate any third-party rights or obligations</li>
-      </ul>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">10.3 Monitoring &amp; Enforcement</h3>
-      <p className="mb-2">Local Cooks may:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Monitor user conduct on the Platform and respond to complaints</li>
-        <li>Request documentation (licenses, insurance, certifications) at any time</li>
-        <li>Suspend or terminate accounts for violations of these Terms or Applicable Law</li>
-        <li>Cooperate with law enforcement and regulatory authorities as required by law</li>
-        <li>Remove content (messages, reviews, listings) that violates these Terms</li>
-      </ul>
-      <p className="mb-4">Local Cooks is NOT responsible for monitoring every interaction or ensuring 100% compliance. Users are responsible for their own conduct.</p>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">10.4 Third-Party Claims &amp; Dispute Resolution</h3>
-      <p className="mb-2">If a Chef&apos;s customer suffers foodborne illness or injury and files a claim against both Chef and Kitchen Owner:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Local Cooks will not mediate the claim (it is a legal matter between the parties and their insurers)</li>
-        <li>Both parties should immediately notify their insurers and retain legal counsel if necessary</li>
-        <li>Indemnities (Section 7) will govern who is ultimately responsible</li>
-        <li>Local Cooks may be subpoenaed for information but is not a liable party</li>
-      </ul>
-
-      <hr className="my-8" />
-
-      {/* SECTION 11 */}
-      <h2 className="text-2xl font-bold mt-8 mb-4">11. INTELLECTUAL PROPERTY &amp; DATA</h2>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">11.1 Platform Intellectual Property</h3>
-      <p className="mb-2">Local Cooks retains all rights to:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>The Platform website, mobile app, technology, and software</li>
-        <li>All branding, logos, trademarks, and marketing materials</li>
-        <li>All databases, algorithms, and business processes</li>
-        <li>All user feedback and improvement suggestions</li>
-      </ul>
-      <p className="mb-4">Users grant Local Cooks a non-exclusive, royalty-free, perpetual right to use any feedback or suggestions for Platform improvement.</p>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">11.2 User-Generated Content</h3>
-      <p className="mb-2">Kitchen Owners and Chefs retain ownership of:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Kitchen photos and descriptions</li>
-        <li>Food product descriptions and images</li>
-        <li>Business names and branding</li>
-      </ul>
-      <p className="mb-2">By posting content on the Platform, users grant Local Cooks a non-exclusive, perpetual, royalty-free right to:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Display content on the Platform and marketing materials</li>
-        <li>Use content in promotional materials (with or without attribution)</li>
-        <li>License content to partners or third-party services</li>
-      </ul>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">11.3 Personal Information &amp; Privacy (Summary &mdash; see full Privacy Policy)</h3>
-      <p className="mb-2">Local Cooks collects Personal Information (name, email, phone, address, payment info, food product details) to:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Facilitate Bookings and communicate with users</li>
-        <li>Process payments and prevent fraud</li>
-        <li>Comply with legal obligations (e.g., tax reporting, food safety investigations)</li>
-        <li>Improve Platform features</li>
-      </ul>
-      <p className="mb-2">Local Cooks will NOT:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Sell or rent Personal Information to third parties</li>
-        <li>Share Personal Information except as required by law or to facilitate Bookings</li>
-        <li>Use Personal Information for marketing without consent</li>
-      </ul>
-      <p className="mb-4">Users may access, correct, or delete their Personal Information by contacting Local Cooks (contact info in Section 15). See Local Cooks&apos; Privacy Policy for full details (linked on the Platform website).</p>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">11.4 Data Security (Summary)</h3>
-      <p className="mb-4">Local Cooks uses industry-standard encryption (SSL/TLS) and security practices to protect Personal Information. However, no online system is 100% secure.</p>
-      <p className="mb-2">Users are responsible for:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Protecting their account login credentials</li>
-        <li>Using secure passwords (at least 12 characters, mix of upper/lowercase, numbers, symbols)</li>
-        <li>Not sharing login credentials with others</li>
-        <li>Reporting unauthorized access immediately</li>
-      </ul>
-
-      <hr className="my-8" />
-
-      {/* SECTION 12 */}
-      <h2 className="text-2xl font-bold mt-8 mb-4">12. DISPUTE RESOLUTION</h2>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">12.1 Communication &amp; Informal Resolution</h3>
-      <p className="mb-2">If a dispute arises between Kitchen Owner and Chef (e.g., damage claim, booking cancellation, food quality):</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Both parties should communicate directly and attempt to resolve the dispute within 7 days</li>
-        <li>Document the issue with photos, messages, or written records</li>
-        <li>
-          Contact Local Cooks if informal resolution fails, providing:
-          <ul className="list-disc pl-6 mt-2">
-            <li>Booking confirmation number</li>
-            <li>Description of the dispute</li>
-            <li>Supporting evidence (photos, messages, inspection reports, etc.)</li>
-            <li>Requested resolution (refund, rescheduling, damage payment, etc.)</li>
-          </ul>
-        </li>
-      </ul>
-      <p className="mb-4">Local Cooks will review the dispute and attempt to mediate but is not obligated to intervene. Disputes are ultimately between the parties.</p>
-      <p className="mb-4"><strong>Use of Platform Tools.</strong> For disputes related to damage, overstay penalties, or other Booking-specific charges, Kitchen Owners and Chefs agree to first use the Platform&apos;s tools and flows (including damage claims, overstay penalties, and messaging) and follow the applicable timelines before escalating to arbitration or court, except where immediate legal action is required to prevent expiry of a statutory limitation period.</p>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">12.2 Binding Arbitration</h3>
-      <p className="mb-4">Any dispute arising from these Terms or the use of the Platform will be resolved by binding arbitration, not by court litigation.</p>
-      <p className="mb-2 font-semibold">Scope:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Arbitration applies to disputes between: (a) Chef and Kitchen Owner, (b) User and Local Cooks, (c) Kitchen Owner and Local Cooks</li>
-        <li>Arbitration does NOT apply to disputes involving food safety or regulatory violations (these may be reported to authorities)</li>
-      </ul>
-      <p className="mb-2 font-semibold">Arbitration Process:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>
-          <strong>Demand for Arbitration:</strong> Claimant submits written demand to respondent and Local Cooks, specifying:
-          <ul className="list-disc pl-6 mt-2">
-            <li>Names and contact info of parties</li>
-            <li>Detailed description of the claim</li>
-            <li>Requested relief (money amount, specific performance, etc.)</li>
-            <li>Choice of arbitrator or arbitration organization</li>
-          </ul>
-        </li>
-        <li><strong>Arbitrator Selection:</strong> Parties mutually select an arbitrator (e.g., retired judge, mediator) within 14 days. If no agreement, a neutral arbitrator is appointed per arbitration rules.</li>
-        <li><strong>Arbitration Hearing:</strong> Hearing occurs within 30&ndash;60 days (may be in person, by phone, or by written submission). Each party presents evidence and arguments.</li>
-        <li><strong>Arbitrator&apos;s Award:</strong> Arbitrator issues a written decision and award (typically within 14 days of hearing). Award is final and binding and may be enforced in any court of competent jurisdiction.</li>
-        <li><strong>Costs:</strong> Each party pays its own attorneys&apos; fees and costs. Arbitrator&apos;s fees are split 50/50 unless the arbitrator orders otherwise.</li>
-      </ul>
-      <p className="mb-4"><strong>Alternative (Class Action Waiver).</strong> All parties agree that arbitration will be conducted on an individual basis only. Class action lawsuits or representative actions are not permitted. Each claim must be arbitrated separately.</p>
-
-      <hr className="my-8" />
-
-      {/* SECTION 13 */}
-      <h2 className="text-2xl font-bold mt-8 mb-4">13. TERMINATION &amp; ACCOUNT SUSPENSION</h2>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">13.1 Voluntary Termination by User</h3>
-      <p className="mb-2">Kitchen Owners or Chefs may close their Local Cooks account at any time by:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Logging into their account and selecting &quot;Delete Account&quot; or &quot;Deactivate&quot;</li>
-        <li>Confirming the decision via email</li>
-        <li>Remaining outstanding obligations (refunds to Chefs, payments to Kitchen Owners, taxes) will be settled within 7&ndash;14 days</li>
-      </ul>
-      <p className="mb-2 font-semibold">Effect of Termination:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>User&apos;s listing/profile is removed from the Platform immediately</li>
-        <li>Pending Bookings are cancelled and refunded per the Kitchen Owner&apos;s cancellation policy</li>
-        <li>Outstanding disputes are referred to arbitration if unresolved</li>
-      </ul>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">13.2 Suspension for Violation</h3>
-      <p className="mb-2">Local Cooks may immediately suspend or terminate a user&apos;s account without prior notice if:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li><strong>Food Safety Violation:</strong> The user&apos;s Food Premises Licence is suspended/revoked, or a food safety violation is confirmed by a regulatory authority</li>
-        <li><strong>Insurance Lapse:</strong> User fails to maintain required insurance or provide current certificates</li>
-        <li><strong>Fraud or Misrepresentation:</strong> User provides false information, misrepresents credentials, or engages in deceptive conduct</li>
-        <li><strong>Payment Default:</strong> User fails to pay Local Cooks fees or owed refunds after 7 days&apos; notice</li>
-        <li><strong>Illegal Activity:</strong> User engages in illegal conduct or violates Applicable Law</li>
-        <li><strong>Harassment or Abuse:</strong> User harasses, threatens, or abuses another user or Local Cooks staff</li>
-        <li><strong>Platform Abuse:</strong> User disrupts Platform operations, uses automated tools without permission, or attempts to hack/circumvent the system</li>
-        <li><strong>Breach of Terms:</strong> User materially breaches these Terms and fails to cure within 3 days of written notice</li>
-      </ul>
-      <p className="mb-2 font-semibold">Effect of Suspension/Termination:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>User&apos;s listing/profile is removed immediately</li>
-        <li>Pending Bookings are cancelled and refunded per the Kitchen Owner&apos;s cancellation policy</li>
-        <li>User forfeits access to the Platform and cannot create a new account</li>
-        <li>Outstanding disputes are referred to arbitration if unresolved</li>
-        <li>User remains liable for any damages or claims arising from their conduct</li>
-      </ul>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">13.3 Appeal Process</h3>
-      <p className="mb-2">If a user believes their account was suspended in error, they may:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>
-          Contact Local Cooks within 7 days of suspension with:
-          <ul className="list-disc pl-6 mt-2">
-            <li>Explanation of why the suspension was improper</li>
-            <li>Documentation supporting their position (updated license, certificate, etc.)</li>
-          </ul>
-        </li>
-        <li>Local Cooks will review and respond within 7 days</li>
-        <li>If unresolved, the dispute goes to arbitration (Section 12)</li>
-      </ul>
-
-      <hr className="my-8" />
-
-      {/* SECTION 14 */}
-      <h2 className="text-2xl font-bold mt-8 mb-4">14. LIMITATION OF LIABILITY</h2>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">14.1 Disclaimer of Warranties</h3>
-      <p className="mb-4 uppercase font-semibold">The Platform, Kitchen listings, and all services are provided &quot;AS IS&quot; and &quot;AS AVAILABLE&quot; without any warranties of any kind, express or implied.</p>
-      <p className="mb-2">Local Cooks expressly disclaims:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li><strong>Implied Warranties:</strong> Merchantability, fitness for a particular purpose, non-infringement, title, and quiet enjoyment</li>
-        <li><strong>Quality Warranty:</strong> That the Platform will be error-free, uninterrupted, or secure</li>
-        <li><strong>Kitchen Warranty:</strong> That any Kitchen is safe, clean, compliant, or suitable for intended use</li>
-        <li><strong>Food Safety Warranty:</strong> That any food prepared is safe or fit for human consumption</li>
-        <li><strong>User Warranty:</strong> That Kitchen Owners or Chefs are competent, licensed, or trustworthy</li>
-      </ul>
-      <p className="mb-4">If any part of these disclaimers is found invalid, the remaining disclaimers remain in full force.</p>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">14.2 Cap on Liability</h3>
-      <p className="mb-4 uppercase font-semibold">To the fullest extent permitted by Applicable Law, Local Cooks&apos; total liability to any user for any claim, demand, or action (whether in contract, tort, negligence, or otherwise) shall not exceed the Platform fees paid by the user in the 12 months preceding the claim.</p>
-      <p className="mb-4">If a user has paid no fees, Local Cooks&apos; liability is capped at zero.</p>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">14.3 No Liability for Consequential Damages</h3>
-      <p className="mb-2 uppercase font-semibold">Local Cooks shall not be liable for any:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Indirect, incidental, consequential, special, or punitive damages</li>
-        <li>Lost profits, lost revenue, lost savings, lost business opportunity, or lost goodwill</li>
-        <li>Cost of substitute services or products</li>
-        <li>Reputational harm or damage to business relationships</li>
-        <li>Loss of data or corruption of data (unless caused by Local Cooks&apos; gross negligence)</li>
-      </ul>
-      <p className="mb-4">Even if Local Cooks has been advised of the possibility of such damages.</p>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">14.4 No Liability for User Conduct</h3>
-      <p className="mb-2 uppercase font-semibold">Local Cooks is not liable for:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Any conduct, statements, or actions of Kitchen Owners, Chefs, or other users</li>
-        <li>Any food safety violations, foodborne illness, or allergic reactions</li>
-        <li>Any equipment failure, property damage, or personal injury in any Kitchen</li>
-        <li>Any breach of Applicable Law by users</li>
-        <li>Any damage caused by third parties (customers, invitees, etc.)</li>
-      </ul>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">14.5 No Liability for Platform Downtime</h3>
-      <p className="mb-2 uppercase font-semibold">Local Cooks is not liable for:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Any interruption, delay, or unavailability of the Platform (e.g., maintenance, cyber-attacks, natural disasters)</li>
-        <li>Any loss of access to Bookings, messages, or user data due to downtime</li>
-        <li>Any business losses resulting from inability to book or access the Platform</li>
-      </ul>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">14.6 Exception: Gross Negligence</h3>
-      <p className="mb-2">The above limitations do NOT apply to:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Gross negligence or willful misconduct by Local Cooks</li>
-        <li>Breach of Local Cooks&apos; duty to indemnify (Section 7.4)</li>
-        <li>Data breaches caused by Local Cooks&apos; failure to implement industry-standard security measures</li>
-        <li>Violations of privacy law by Local Cooks</li>
-      </ul>
-
-      <hr className="my-8" />
-
-      {/* SECTION 15 */}
-      <h2 className="text-2xl font-bold mt-8 mb-4">15. MISCELLANEOUS</h2>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">15.1 Governing Law &amp; Jurisdiction</h3>
-      <p className="mb-4">These Terms shall be governed by and construed in accordance with the laws of Newfoundland &amp; Labrador, Canada, without regard to conflicts of law principles.</p>
-      <p className="mb-4">Disputes arising under these Terms shall be resolved by binding arbitration (Section 12), not by court litigation. Arbitration shall be conducted in St. John&apos;s, Newfoundland &amp; Labrador (or by written submission if parties agree).</p>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">15.2 Entire Agreement</h3>
-      <p className="mb-2">These Terms and Conditions, together with:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>The Platform&apos;s Privacy Policy</li>
-        <li>Kitchen Owner&ndash;Chef Rental Agreements (individual Bookings)</li>
-        <li>Any supplementary rules posted on the Platform</li>
-      </ul>
-      <p className="mb-4">constitute the entire agreement between users and Local Cooks regarding the use of the Platform and booking of Kitchens.</p>
-      <p className="mb-4"><strong>If a Kitchen Rental Agreement conflicts with these Platform Terms, the Rental Agreement controls for that specific Booking.</strong></p>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">15.3 Amendment &amp; Updates</h3>
-      <p className="mb-2">Local Cooks may update these Terms at any time by:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Posting the updated Terms on the Platform website</li>
-        <li>Notifying users via email (at the email address on file)</li>
-        <li>Requiring users to accept updated Terms before subsequent Bookings or Platform use</li>
-      </ul>
-      <p className="mb-4">Continued use of the Platform after notification constitutes acceptance of updated Terms.</p>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">15.4 Severability</h3>
-      <p className="mb-2">If any provision of these Terms is found invalid, illegal, or unenforceable:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>The invalid provision is severed from the Terms</li>
-        <li>The remaining provisions remain in full force and effect</li>
-        <li>Local Cooks and users will negotiate a valid replacement provision as close as possible to the original intent</li>
-      </ul>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">15.5 No Waiver</h3>
-      <p className="mb-4">Failure by Local Cooks to enforce any right or provision of these Terms does not constitute a waiver of that right. Local Cooks may enforce rights selectively, in any order, and multiple times.</p>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">15.6 Assignment</h3>
-      <p className="mb-4">Users cannot assign or transfer their rights under these Terms without Local Cooks&apos; written consent. Any attempted assignment is void.</p>
-      <p className="mb-4">Local Cooks may assign its rights and obligations to a successor company or buyer (e.g., in a merger, acquisition, or bankruptcy) upon notice to users. Users&apos; rights and obligations survive the assignment.</p>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">15.7 Notices</h3>
-      <p className="mb-2">All notices must be in writing and delivered via:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Email to the email address on file (effective upon sending)</li>
-        <li>Postal mail to the mailing address on file (effective 5 business days after mailing)</li>
-        <li>In person at Local Cooks&apos; office address (effective upon receipt)</li>
-      </ul>
-      <p className="mb-2 font-semibold">Local Cooks&apos; Contact Information:</p>
-      <p className="mb-4">
-        Jawrophi Delivery Inc. operating as &ldquo;Local Cooks&rdquo;<br />
-        4 Priscilla Place, Paradise, Newfoundland and Labrador, A1L 1E6, Canada<br />
-        Email: support@localcooks.ca<br />
-        Phone: +1 (709)-631-8480<br />
-        Website: www.localcooks.ca
-      </p>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">15.8 Force Majeure</h3>
-      <p className="mb-2">Neither party is liable for failure to perform obligations under these Terms due to circumstances beyond reasonable control, including:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Natural disasters (earthquake, flood, hurricane, etc.)</li>
-        <li>Epidemic or pandemic (e.g., COVID-19)</li>
-        <li>War, terrorism, or civil unrest</li>
-        <li>Government actions or regulatory changes</li>
-        <li>Utility failures or supply chain disruptions</li>
-        <li>Acts of God</li>
-      </ul>
-      <p className="mb-4"><strong>Exception:</strong> Obligations to pay fees are NOT excused by force majeure. If a Kitchen is unavailable due to force majeure, the Kitchen Owner must refund fees and reschedule the Booking.</p>
-
-      <h3 className="text-xl font-semibold mt-6 mb-3">15.9 Relationship of Parties</h3>
-      <p className="mb-4">Local Cooks is an independent contractor and NOT the employee, agent, partner, or joint venturer of any user. No user is an employee or contractor of Local Cooks.</p>
-
-      <hr className="my-8" />
-
-      {/* SECTION 16 */}
-      <h2 className="text-2xl font-bold mt-8 mb-4">16. ACKNOWLEDGMENT &amp; ACCEPTANCE</h2>
-      <p className="mb-4">By registering an account on Local Cooks and/or making a Booking, each user (Kitchen Owner or Chef) acknowledges that they:</p>
-      <ul className="list-none pl-0 mb-4 space-y-2">
-        <li>&#10003; Have read and understood these Terms and Conditions in their entirety</li>
-        <li>&#10003; Agree to be bound by all terms, conditions, and provisions herein</li>
-        <li>&#10003; Understand that they are assuming all risks associated with using the Platform and the Kitchen</li>
-        <li>&#10003; Understand that they are waiving certain legal rights (including the right to sue in court)</li>
-        <li>&#10003; Represent that they possess all necessary licenses, permits, certifications, and insurance required by Applicable Law</li>
-        <li>&#10003; Accept personal responsibility for food safety, regulatory compliance, and any injuries or property damage caused by their conduct</li>
-        <li>&#10003; Release Local Cooks, Kitchen Owners, and/or Chefs from liability to the fullest extent permitted by law</li>
-        <li>&#10003; Indemnify and defend the other party from all third-party claims arising from their conduct</li>
-        <li>&#10003; Understand that failure to comply may result in account suspension, termination, and legal liability</li>
-        <li>&#10003; Agree to submit disputes to binding arbitration rather than court litigation</li>
-      </ul>
-    </div>
+    <LegalDocument
+      variant={variant}
+      title="Terms of Service"
+      updated={TERMS_UPDATED}
+      effective={TERMS_EFFECTIVE}
+      intro={<p>These terms explain how Local Cooks works for kitchens and for the customers who book them: what each side agrees to, how bookings, payments and refunds work, and what happens when something goes wrong. If you joined before {TERMS_UPDATED}, they apply to you from {TERMS_EFFECTIVE}.</p>}
+      summary={summary}
+      sections={sections}
+    />
   );
 }
