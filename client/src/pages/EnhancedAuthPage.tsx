@@ -5,7 +5,6 @@ import AuthFlow, { type AuthFlowStep } from "@/components/auth/AuthFlow";
 import Logo from "@/components/ui/logo";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
-import WelcomeScreen from "@/pages/welcome-screen";
 import { motion, useReducedMotion } from "framer-motion";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useLocation, Redirect } from "wouter";
@@ -375,89 +374,6 @@ export default function EnhancedAuthPage() {
     }
   }, [loading, user, hasAttemptedLogin, retryCount, navigateAfterAuth]);
 
-  // Handle welcome screen completion
-  const handleWelcomeContinue = async () => {
-    try {
-      logger.info('🎉 WELCOME SCREEN COMPLETION STARTED');
-      
-      const firebaseUser = auth.currentUser;
-      if (!firebaseUser) {
-        logger.error('❌ No Firebase user available for welcome completion');
-        return;
-      }
-
-      const token = await firebaseUser.getIdToken();
-      
-      const response = await fetch('/api/user/seen-welcome', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      if (response.ok) {
-        const result = await response.json();
-        logger.info('✅ WELCOME COMPLETION SUCCESS:', result);
-        
-        // Update local user meta
-        if (userMeta) {
-          setUserMeta({
-            ...userMeta,
-            has_seen_welcome: true
-          });
-        }
-        
-        // Redirect based on role:
-        // - Admins go to admin dashboard
-        // - Chefs go to chef-setup for the existing OnboardJS wizard
-        // - Others go to dashboard
-        const redirectPath = getRedirectPath();
-        let targetPath = redirectPath !== '/' ? redirectPath : '/dashboard';
-        
-        if (redirectPath === '/' || redirectPath === '/dashboard') {
-          if (userMeta?.role === 'admin') {
-            targetPath = '/admin';
-          } else if (userMeta?.role === 'manager') {
-            targetPath = '/manager/dashboard';
-          } else {
-            targetPath = getChefPostAuthPath(userMeta);
-          }
-        }
-        logger.info(`🚀 WELCOME COMPLETE - REDIRECTING TO: ${targetPath}`);
-        navigateAfterAuth(targetPath);
-      } else {
-        logger.error('⚠️ Welcome completion API failed:', response.status);
-        const errorText = await response.text();
-        logger.error('⚠️ Error details:', errorText);
-        
-        let targetPath = '/dashboard';
-        if (userMeta?.role === 'admin') {
-          targetPath = '/admin';
-        } else if (userMeta?.role === 'manager') {
-          targetPath = '/manager/dashboard';
-        } else {
-          targetPath = getChefPostAuthPath(userMeta);
-        }
-        logger.info(`🔄 REDIRECTING DESPITE ERROR TO: ${targetPath}`);
-        navigateAfterAuth(targetPath);
-      }
-    } catch (error) {
-      logger.error('❌ Error completing welcome screen:', error);
-      
-      let targetPath = '/dashboard';
-      if (userMeta?.role === 'admin') {
-        targetPath = '/admin';
-      } else if (userMeta?.role === 'manager') {
-        targetPath = '/manager/dashboard';
-      } else {
-        targetPath = getChefPostAuthPath(userMeta);
-      }
-      logger.info(`🔄 REDIRECTING DESPITE ERROR TO: ${targetPath}`);
-      navigateAfterAuth(targetPath);
-    }
-  };
-
   // Redirect authenticated users away from the auth page. This also handles
   // browser Back restoring /auth after a successful sign-in: hasAttemptedLogin
   // is component-local state and resets when /auth remounts, while the Firebase
@@ -517,7 +433,7 @@ export default function EnhancedAuthPage() {
       // Skip welcome screen for admins and managers
       // Admins: Go straight to admin dashboard
       // Managers: Go to dashboard where ManagerOnboardingWizard will show
-      // Other users: Show welcome screen if needed
+      // Chefs: redirect as usual; /chef-setup shows the welcome first
       if (!userMeta.has_seen_welcome) {
         if (userMeta.role === 'admin') {
           logger.info('👑 Admin user - skipping welcome screen, redirecting to admin');
@@ -527,12 +443,6 @@ export default function EnhancedAuthPage() {
           logger.info('🏢 Manager user - skipping welcome screen, redirecting to manager dashboard');
           navigateAfterAuth('/manager/dashboard');
           return;
-        } else {
-          logger.info('🎉 WELCOME SCREEN REQUIRED - Not redirecting yet');
-          // The welcome screen is a destination. Drop the cover so it is not
-          // hidden behind "Redirecting to your dashboard...".
-          endHandoff();
-          return; // Don't redirect, show welcome screen for chefs
         }
       }
 
@@ -699,14 +609,12 @@ export default function EnhancedAuthPage() {
   // Skip welcome screen for admins and managers
   // Admins: Go straight to admin dashboard
   // Managers: Go to dashboard where ManagerOnboardingWizard will show
-  // Only show welcome screen for chefs
+  // Chefs see the welcome on /chef-setup
   if (!loading && !userMetaLoading && user && userMeta && hasVerifiedContact(user, userMeta) && !userMeta.has_seen_welcome) {
     if (userMeta.role === 'admin') {
       return <Redirect to="/admin" replace />;
     } else if (userMeta.role === 'manager') {
       return <Redirect to="/manager/dashboard" replace />;
-    } else {
-      return <WelcomeScreen onContinue={handleWelcomeContinue} />;
     }
   }
 

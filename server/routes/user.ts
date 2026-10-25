@@ -190,6 +190,10 @@ router.post("/chef-onboarding-complete", requireFirebaseAuthWithUser, async (req
   try {
     const user = req.neonUser!;
     const { selectedPaths } = req.body;
+    const allowed = ['kitchen', 'localcooks'];
+    if (selectedPaths !== undefined && (!Array.isArray(selectedPaths) || selectedPaths.length > 2 || !selectedPaths.every((p: unknown) => typeof p === 'string' && allowed.includes(p)))) {
+      return res.status(400).json({ error: 'selectedPaths must be a list of "kitchen" and/or "localcooks"' });
+    }
     
     logger.info(`🎓 Marking chef onboarding complete for user ${user.id}, paths: ${JSON.stringify(selectedPaths)}`);
     
