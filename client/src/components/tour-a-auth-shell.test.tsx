@@ -196,7 +196,6 @@ describe('Tour A coordinator exact-task review reproductions', () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true })));
     const queries = client(); queries.setQueryData(['/api/user/profile', state.user.uid], { role: 'admin', termsAccepted: false });
     render(<QueryClientProvider client={queries}><TermsAcceptanceScreen /></QueryClientProvider>);
-    fireEvent.click(screen.getByRole('button', { name: 'Skip to the end' }));
     fireEvent.click(screen.getByRole('checkbox'));
     fireEvent.click(screen.getByRole('button', { name: 'Agree & continue' }));
     await waitFor(() => expect(window.location.pathname + window.location.search).toBe(path), { timeout: 2000 });

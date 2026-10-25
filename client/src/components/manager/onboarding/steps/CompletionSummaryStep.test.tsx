@@ -18,24 +18,22 @@ vi.mock("../ManagerOnboardingContext", () => ({ useManagerOnboarding: () => ({
 }) }));
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
+// Payouts can be left for later (owner, Oct 24): setup still finishes, and the row says listing needs them.
 it.each([
   { connected: true, submitted: true, label: "onboardingStripeConnected" },
   { connected: false, submitted: true, label: "verificationPending" },
-  { connected: false, submitted: false, label: "onboardingConnectStripe" },
+  { connected: false, submitted: false, label: "onboardingPayoutsLater" },
 ])("shows Stripe status in the summary: $label", ({ connected, submitted, label }) => {
   state.connected = connected;
   state.submitted = submitted;
   render(<CompletionSummaryStep />);
-  if (!submitted) expect(screen.getByText("onboardingPayments")).toBeInTheDocument();
-  else {
-    expect(screen.queryByText("onboardingPayments")).toBeNull();
-    expect(screen.getByText(label, { selector: submitted && !connected ? "button" : "span" }).closest("li")?.parentElement?.tagName).toBe("OL");
-  }
-  expect(screen.getAllByText(label).length).toBeGreaterThan(0);
+  expect(screen.queryByText("onboardingPayments")).toBeNull();
+  expect(screen.getByText(label, { selector: connected ? "span" : "button" }).closest("li")?.parentElement?.tagName).toBe("OL");
   if (!connected) {
-    fireEvent.click(submitted ? screen.getByRole("button", { name: label }) : screen.getByText("onboardingPayments"));
+    fireEvent.click(screen.getByRole("button", { name: label }));
     expect(state.goToStep).toHaveBeenCalledWith("payment-setup");
+    expect(screen.queryByText("kitchenReadyForBookings")).toBeNull();
   }
-  if (submitted) expect(screen.getByText("goToDashboard")).toBeInTheDocument();
-  if (submitted && !connected) expect(screen.queryByText("kitchenReadyForBookings")).toBeNull();
+  if (!submitted) expect(screen.getByText("onboardingPayoutsLaterBody")).toBeInTheDocument();
+  expect(screen.getByText("goToDashboard")).toBeInTheDocument();
 });

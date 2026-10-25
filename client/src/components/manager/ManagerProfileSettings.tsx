@@ -32,7 +32,6 @@ import { PHONE_AUTH_ENABLED } from "@/lib/feature-flags";
 import { SettingsRow } from "@/components/manager/settings/SettingsRow";
 import { LanguageSwitcher } from "@/components/i18n/LanguageSwitcher";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import StripeConnectSetup from "@/components/manager/StripeConnectSetup";
 import NotificationsSettings from "@/components/manager/settings/NotificationsSettings";
 import { NeedsLocation } from "@/components/manager/locations/NeedsPrerequisite";
 
@@ -61,7 +60,7 @@ interface ManagerProfileSettingsProps {
  * `email-verification-nav.test.ts` asserts that string. It is the tab that holds
  * the email card, so the value stays even though the label is now "Sign-in & security".
  */
-const KNOWN_TABS = ["profile", "account", "payments", "notifications", "teams"] as const;
+const KNOWN_TABS = ["profile", "account", "notifications", "teams"] as const;
 
 const CARD = "overflow-hidden rounded-[1.35rem] border bg-card";
 
@@ -101,11 +100,10 @@ export default function ManagerProfileSettings({
     const [isEditingPassword, setIsEditingPassword] = useState(false);
     const [activeTab, setActiveTab] = useState(() => {
         // A deep link to the email section wins over any remembered tab, otherwise
-        // "verify your email" could land the manager on Payments with no card in sight.
+        // "verify your email" could land the manager on another tab with no card in sight.
         if (isEmailSectionFocused()) return "account";
         const params = new URLSearchParams(window.location.search);
         const legacyView = params.get("view");
-        if (legacyView === "payments") return "payments";
         if (legacyView === "notification-settings") return "notifications";
         const tab = params.get("tab");
         // "password" was a tab of its own before security was grouped under one roof.
@@ -325,7 +323,6 @@ export default function ManagerProfileSettings({
                     {[
                         ["profile", mt("shellProfile")],
                         ["account", mt("tabSignInSecurity")],
-                        ["payments", mt("paymentsPayouts")],
                         ["notifications", mt("notificationSettings")],
                         ["teams", mt("navTeams")],
                     ].map(([value, label]) => (
@@ -483,16 +480,6 @@ export default function ManagerProfileSettings({
 
                 {/* ── Location ─────────────────────────────────────────────────── */}
 
-                {/* ── Payments ─────────────────────────────────────────────────── */}
-                <TabsContent value="payments" className="mt-6 focus-visible:ring-0">
-                    {/* The onboarding wizard already wraps this in a Card
-                        (`PaymentSetupStep`); this tab rendered it bare, which is why
-                        Payments looked unlike every other tab on the page. The component
-                        supplies its own state-dependent heading, so there is no CardHead. */}
-                    <div className={`${CARD} p-5`}>
-                        <StripeConnectSetup />
-                    </div>
-                </TabsContent>
 
                 {/* ── Notifications ────────────────────────────────────────────── */}
                 <TabsContent value="notifications" className="mt-6 focus-visible:ring-0">

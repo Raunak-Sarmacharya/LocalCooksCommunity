@@ -4,7 +4,7 @@ import { SiStripe } from "react-icons/si";
 import { CalendarClock, Check, ChevronDown, KitchenTour, ImageIcon, Phone, Rocket } from "@/components/ui/manager-icons";
 import { KitchenIcon } from "@/components/ui/kitchen-icon";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { SidebarGroup, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
+import { SidebarGroup, SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import { mt } from "@/i18n/manager";
 import {
@@ -67,6 +67,17 @@ const ITEM_ICONS: Record<GettingStartedItemId, { Icon: ElementType; iconClassNam
  * migration, and it is per-device by nature. Without it the widget would re-celebrate on every mount.
  */
 const CELEBRATED_KEY = "localcooks.gettingStarted.celebrated";
+/** The list opens by itself once per device, the first time the dashboard shows it (after setup ends or is left). */
+const INTRODUCED_KEY = "localcooks.gettingStarted.introduced";
+function takeIntroduction(): boolean {
+  try {
+    if (window.localStorage.getItem(INTRODUCED_KEY) === "1") return false;
+    window.localStorage.setItem(INTRODUCED_KEY, "1");
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function readCelebrated(): boolean {
   try {
@@ -241,8 +252,15 @@ export function ManagerGettingStarted({
 }: ManagerGettingStartedProps) {
   const [open, setOpen] = useState(false);
   const [celebrated, setCelebrated] = useState(readCelebrated);
+  const { isMobile } = useSidebar();
 
   const isComplete = items.length > 0 && completed === total;
+
+  // Desktop only: on a phone the sidebar is a closed sheet, so there is nothing to open beside.
+  const ready = !isLoading && items.length > 0 && !isComplete;
+  useEffect(() => {
+    if (ready && !isMobile && takeIntroduction()) setOpen(true);
+  }, [ready, isMobile]);
 
   useEffect(() => {
     if (!isComplete) return;
@@ -470,13 +488,15 @@ export function ManagerGettingStarted({
           <Popover open={open} onOpenChange={setOpen}>
             <PopoverTrigger asChild>{launcher}</PopoverTrigger>
             <PopoverContent
-              side="right"
-              align="end"
+              // On a phone the sidebar is a sheet as wide as the screen allows, so beside it is off-screen: open above.
+              side={isMobile ? "top" : "right"}
+              align={isMobile ? "start" : "end"}
               sideOffset={10}
+              collisionPadding={12}
               // Sized to the copy in EVERY locale, not just English. `fr-CA` is the widest: its longest
               // description is 36 characters against English's 28, and its longest label 34 against 23.
               // 20rem gives the text box ~252px, which holds both with a little headroom.
-              className="w-[20rem] p-0"
+              className="w-[min(20rem,calc(100vw-1.5rem))] p-0"
               // The panel brings its own surface and shadow, so the popover's are stripped. Inline
               // styles, not classes: `PopoverContent` sets `bg-popover`/`border`/`shadow-md` itself
               // and tailwind-merge is not guaranteed to drop them.

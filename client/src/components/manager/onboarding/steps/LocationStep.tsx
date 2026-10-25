@@ -147,7 +147,8 @@ export default function LocationStep() {
   const recordResumePart = useMemo((): number | null => {
     const loc: any = selectedLocation;
     if (!loc) return 0;
-    if (!(loc.name && loc.address && (loc.logoUrl || loc.logo_url))) return 0;
+    // The logo is optional (owner, Oct 24): it can be added any time from Location.
+    if (!(loc.name && loc.address)) return 0;
     if (!loc.contactEmail) return 1;
     const licence = loc.kitchenLicenseUrl || loc.kitchen_license_url;
     const expiry = loc.kitchenLicenseExpiry || loc.kitchen_license_expiry;
@@ -437,11 +438,7 @@ export default function LocationStep() {
   /** Which part is still missing something required. */
   const partIsValid = (part: number): boolean => {
     if (part === 0) {
-      return Boolean(
-        locationForm.name &&
-        locationForm.address &&
-        locationForm.logoUrl
-      );
+      return Boolean(locationForm.name && locationForm.address);
     }
     if (part === 1) return Boolean(locationForm.contactEmail) && phoneSatisfied;
     return Boolean(
@@ -686,7 +683,6 @@ export default function LocationStep() {
             <SettingsRow
               id="location-logo"
               label={mt("locationLogo")}
-              required
               layout="stacked"
               hint={mt("locationLogoHint")}
             >

@@ -78,6 +78,8 @@ interface WeeklyScheduleItem {
 
 interface AvailabilityContentHandle {
   saveWeeklySchedule: () => Promise<boolean>;
+  /** Whether the week on screen (saved or not) opens at least one day. */
+  hasOpenDay: () => boolean;
 }
 
 export interface KitchenAvailabilityManagementHandle extends AvailabilityContentHandle {
@@ -110,6 +112,8 @@ interface KitchenAvailabilityManagementProps {
   onDirtyChange?: (dirty: boolean) => void;
   onSaveSuccess?: () => void | Promise<void>; // [NEW] Callback when availability is saved
   hideWeeklyScheduleSaveButton?: boolean;
+  /** Setup wizard: a kitchen with no hours yet starts on a suggested week (unsaved) instead of seven closed days. */
+  prefillWhenEmpty?: boolean;
 }
 
 type PendingAvailabilityChange =
@@ -124,6 +128,7 @@ const KitchenAvailabilityManagement = forwardRef<KitchenAvailabilityManagementHa
   onDirtyChange,
   onSaveSuccess,
   hideWeeklyScheduleSaveButton = false,
+  prefillWhenEmpty = false,
 }, ref) {
   const { kitchens, isLoadingKitchens } = useManagerDashboard();
   const availableKitchens = kitchens.filter((kitchen) => !initialLocationId || kitchen.locationId === initialLocationId);
@@ -177,6 +182,7 @@ const KitchenAvailabilityManagement = forwardRef<KitchenAvailabilityManagementHa
 
   useImperativeHandle(ref, () => ({
     saveWeeklySchedule: () => bookingRef.current?.saveWeeklySchedule() ?? Promise.resolve(true),
+    hasOpenDay: () => bookingRef.current?.hasOpenDay() ?? false,
     saveAllChanges,
   }), [saveAllChanges]);
 
@@ -229,6 +235,7 @@ const KitchenAvailabilityManagement = forwardRef<KitchenAvailabilityManagementHa
         facilityKitchenCount={facilityKitchenCount}
         onSaveSuccess={onSaveSuccess}
         hideWeeklyScheduleSaveButton={hideWeeklyScheduleSaveButton}
+        prefillWhenEmpty={prefillWhenEmpty}
         onDirtyChange={setBookingDirty}
       />
     );
@@ -329,6 +336,7 @@ const AvailabilityContent = forwardRef<AvailabilityContentHandle, {
   facilityKitchenCount: number,
   onSaveSuccess?: () => void | Promise<void>,
   hideWeeklyScheduleSaveButton?: boolean,
+  prefillWhenEmpty?: boolean,
   onDirtyChange?: (dirty: boolean) => void
 }>(function AvailabilityContent({
   selectedLocationId,
@@ -337,6 +345,7 @@ const AvailabilityContent = forwardRef<AvailabilityContentHandle, {
   facilityKitchenCount,
   onSaveSuccess,
   hideWeeklyScheduleSaveButton = false,
+  prefillWhenEmpty = false,
   onDirtyChange
 }, ref) {
   const { toast } = useToast();
@@ -466,8 +475,13 @@ const AvailabilityContent = forwardRef<AvailabilityContentHandle, {
             }
           });
         }
-        setWeeklySchedule(scheduleMap);
         setSavedWeeklySchedule(JSON.stringify(scheduleMap));
+        // Nothing saved yet: suggest Mon–Fri, 8 a.m.–8 p.m. It stays a draft until saved, so the wizard says
+        // "Save and continue" and the manager confirms or adjusts it rather than building a week from scratch.
+        if (prefillWhenEmpty && !Object.values(scheduleMap).some(day => day.isAvailable)) {
+          [1, 2, 3, 4, 5].forEach(day => { scheduleMap[day] = { dayOfWeek: day, isAvailable: true, startTime: "08:00", endTime: "20:00" }; });
+        }
+        setWeeklySchedule(scheduleMap);
       }
     } catch (error) {
       logger.error("Failed to load schedule", error);
@@ -475,7 +489,7 @@ const AvailabilityContent = forwardRef<AvailabilityContentHandle, {
     } finally {
       setIsLoadingSchedule(false);
     }
-  }, [selectedKitchenId]);
+  }, [selectedKitchenId, prefillWhenEmpty]);
 
   useEffect(() => {
     if (selectedKitchenId) {
@@ -635,8 +649,9 @@ const AvailabilityContent = forwardRef<AvailabilityContentHandle, {
   }, [onSaveSuccess, queryClient, selectedKitchenId, selectedLocationId, toast, weeklySchedule, listingImpact.confirm]);
 
   useImperativeHandle(ref, () => ({
-    saveWeeklySchedule: handleSaveWeeklySchedule
-  }), [handleSaveWeeklySchedule]);
+    saveWeeklySchedule: handleSaveWeeklySchedule,
+    hasOpenDay: () => Object.values(weeklySchedule).some(day => day.isAvailable),
+  }), [handleSaveWeeklySchedule, weeklySchedule]);
 
   const handleDateClick = (clickedDate: Date | undefined) => {
     if (!clickedDate) return;

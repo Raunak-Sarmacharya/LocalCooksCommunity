@@ -1916,7 +1916,9 @@ router.post(
       const status = await getAccountStatus(manager.stripeConnectAccountId);
 
       // Update user status in DB
-      const onboardingStatus = status.detailsSubmitted
+      // Same rule as GET /stripe-connect/status: "complete" only once Stripe can take and send money. A submitted
+      // form under review is still in progress; the two used to overwrite each other.
+      const onboardingStatus = status.chargesEnabled && status.payoutsEnabled
         ? "complete"
         : "in_progress";
 

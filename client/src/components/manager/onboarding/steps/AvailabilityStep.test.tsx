@@ -1,5 +1,6 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 /**
  * Availability finishes when its REVIEW is reached — and only this component knows that happened.
@@ -25,6 +26,7 @@ vi.mock("@/i18n", () => ({ default: { t: (key: string) => key } }));
 vi.mock("@/lib/firebase", () => ({
   auth: { currentUser: { getIdToken: async () => "token" } },
 }));
+vi.mock("@/lib/api", () => ({ apiGet: vi.fn(async () => ({ checkinInstructions: null, checkoutInstructions: null })), apiPut: vi.fn() }));
 vi.mock("@/hooks/use-scroll-to-top-on-change", () => ({ useScrollToTopOnChange: () => ({ current: null }) }));
 vi.mock("@/pages/KitchenAvailabilityManagement", () => ({
   default: () => <div>schedule-form</div>,
@@ -61,6 +63,7 @@ vi.mock("../ManagerOnboardingContext", () => ({
 }));
 
 import AvailabilityStep from "./AvailabilityStep";
+const wrapper = ({ children }: { children: React.ReactNode }) => <QueryClientProvider client={new QueryClient()}>{children}</QueryClientProvider>;
 
 beforeEach(() => {
   h.isAvailabilityComplete = false;
@@ -76,14 +79,14 @@ afterEach(() => {
 describe("Availability step — what finishes it", () => {
   it("records the step when its review is shown", () => {
     h.isAvailabilityComplete = true;
-    render(<AvailabilityStep />);
+    render(<AvailabilityStep />, { wrapper });
 
     expect(screen.getByText("availability-review")).toBeInTheDocument();
     expect(h.trackStepCompletion).toHaveBeenCalledWith("availability");
   });
 
   it("records nothing while the manager is still working through the parts", () => {
-    render(<AvailabilityStep />);
+    render(<AvailabilityStep />, { wrapper });
 
     expect(screen.getByText("schedule-form")).toBeInTheDocument();
     expect(h.trackStepCompletion).not.toHaveBeenCalled();
@@ -94,7 +97,7 @@ describe("Availability step — what finishes it", () => {
     // — so nothing may be recorded from it either.
     h.isAvailabilityComplete = true;
     h.availabilityLoaded = false;
-    render(<AvailabilityStep />);
+    render(<AvailabilityStep />, { wrapper });
 
     expect(h.trackStepCompletion).not.toHaveBeenCalled();
   });

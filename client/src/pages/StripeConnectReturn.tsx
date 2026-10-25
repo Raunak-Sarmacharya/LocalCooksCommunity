@@ -1,264 +1,123 @@
 import { logger } from "@/lib/logger";
 /**
- * Stripe Connect Return Page
- * 
- * This page handles the return from Stripe's hosted onboarding flow.
- * It handles both:
- * 1. New tab scenario - when Stripe opens in a new tab
- * 2. Same tab redirect - when returning from Stripe ID verification
- * 
- * The page will:
- * 1. Sync status with backend
- * 2. Broadcast success to other tabs (for new tab scenario)
- * 3. Auto-redirect to the appropriate page after a short delay
+ * Where Stripe's hosted onboarding sends a kitchen back (same tab).
+ *
+ * Stripe's return_url "doesn't mean that all information has been collected", so this page asks Stripe for the
+ * account's real stage and says that, the way the email-verification page does: payouts on, details under review
+ * (nothing to do), more details needed (continue with Stripe), or rejected (contact support). Then it returns to the
+ * step the kitchen left: the Payments step of setup, or Payment settings.
  */
-
-import { useEffect, useState, useRef } from "react";
-import { CheckCircle2, Loader2, AlertCircle, X, ExternalLink } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { auth } from "@/lib/firebase";
+import { useEffect, useRef, useState } from "react";
+import { CheckCircle2, Clock, Loader2, AlertCircle, XCircle } from "lucide-react";
 import { onAuthStateChanged } from "firebase/auth";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import Logo from "@/components/ui/logo";
+import { auth } from "@/lib/firebase";
+import { mt } from "@/i18n/manager";
 
-type SyncStatus = 'loading' | 'success' | 'error' | 'unauthenticated';
+type Outcome = "loading" | "connected" | "reviewing" | "needs_more" | "rejected" | "unknown";
+
+const params = () => new URLSearchParams(window.location.search);
+function destination() {
+  const role = params().get("role") || "manager";
+  if (role === "chef") return "/chef/dashboard";
+  return params().get("from") === "setup" ? "/manager/setup?step=payment-setup" : "/manager/dashboard?view=revenue&tab=payouts";
+}
+function outcomeFor(stage: string | undefined, detailsSubmitted: boolean): Outcome {
+  if (stage === "complete") return "connected";
+  if (stage === "rejected") return "rejected";
+  if (stage === "pending_verification" || (detailsSubmitted && !stage)) return "reviewing";
+  return "needs_more";
+}
 
 export default function StripeConnectReturn() {
-  const [syncStatus, setSyncStatus] = useState<SyncStatus>('loading');
-  const [errorMessage, setErrorMessage] = useState<string>('');
-  const [countdown, setCountdown] = useState(5);
-  const redirectTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Get redirect destination based on URL params
-  const getRedirectDestination = () => {
-    const params = new URLSearchParams(window.location.search);
-    const role = params.get('role') || 'manager';
-    const fromSetup = params.get('from') === 'setup';
-    
-    if (role === 'chef') {
-      return { url: '/chef/dashboard', label: 'Chef Dashboard' };
-    } else if (fromSetup) {
-      return { url: '/manager/setup', label: 'Setup Page' };
-    } else {
-      return { url: '/manager/dashboard?view=profile&tab=payments', label: 'Payment Settings' };
-    }
-  };
+  const [outcome, setOutcome] = useState<Outcome>("loading");
+  const [continuing, setContinuing] = useState(false);
+  const leaveTimer = useRef<ReturnType<typeof setTimeout>>();
+  const goBack = () => { if (leaveTimer.current) clearTimeout(leaveTimer.current); window.location.assign(destination()); };
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const isSuccess = params.get('success') === 'true';
-    const role = params.get('role') || 'manager';
-
-    if (!isSuccess) {
-      setSyncStatus('error');
-      setErrorMessage('Stripe setup was not completed. Please try again.');
-      return;
-    }
-
-    // Wait for Firebase auth to be ready
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        // User is authenticated, try to sync
-        try {
-          const token = await user.getIdToken();
-          const endpoint = role === 'chef' 
-            ? '/api/chef/stripe-connect/sync'
-            : '/api/manager/stripe-connect/sync';
-          
-          const response = await fetch(endpoint, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json',
-            },
-          });
-
-          if (response.ok) {
-            setSyncStatus('success');
-            
-            // Broadcast success to other tabs
-            try {
-              const channel = new BroadcastChannel('stripe_onboarding_channel');
-              channel.postMessage({ type: 'STRIPE_SETUP_COMPLETE' });
-              channel.close();
-            } catch (e) {
-              logger.info('BroadcastChannel not supported or failed:', e);
-            }
-
-            // Start auto-redirect countdown
-            startAutoRedirect();
-          } else {
-            // Sync failed but Stripe setup might still be complete
-            setSyncStatus('success');
-            logger.warn('Sync API call failed, but Stripe reported success');
-            startAutoRedirect();
-          }
-        } catch (error) {
-          logger.error('Error syncing Stripe status:', error);
-          // Still show success since Stripe redirected with success=true
-          setSyncStatus('success');
-          startAutoRedirect();
-        }
-      } else {
-        // Not authenticated - still show success message
-        setSyncStatus('success');
-        startAutoRedirect();
+    const role = params().get("role") || "manager";
+    const unsubscribe = onAuthStateChanged(auth, async user => {
+      if (!user) { setOutcome("unknown"); return; }
+      try {
+        const token = await user.getIdToken();
+        const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+        await fetch(`/api/${role === "chef" ? "chef" : "manager"}/stripe-connect/sync`, { method: "POST", headers });
+        // Tell any other open tab (an older setup tab) that Stripe's state moved.
+        try { const channel = new BroadcastChannel("stripe_onboarding_channel"); channel.postMessage({ type: "STRIPE_SETUP_COMPLETE" }); channel.close(); } catch { /* unsupported */ }
+        if (role === "chef") { setOutcome("connected"); return; }
+        const response = await fetch("/api/manager/stripe-connect/status", { headers });
+        if (!response.ok) { setOutcome("unknown"); return; }
+        const status = await response.json();
+        setOutcome(outcomeFor(status.verificationStage, status.detailsSubmitted === true));
+      } catch (error) {
+        logger.error("Error checking Stripe status after return:", error);
+        setOutcome("unknown");
       }
     });
-
-    // Cleanup
-    return () => {
-      unsubscribe();
-      if (redirectTimerRef.current) clearTimeout(redirectTimerRef.current);
-      if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
-    };
+    return () => { unsubscribe(); if (leaveTimer.current) clearTimeout(leaveTimer.current); };
   }, []);
 
-  const startAutoRedirect = () => {
-    // Start countdown
-    countdownTimerRef.current = setInterval(() => {
-      setCountdown(prev => {
-        if (prev <= 1) {
-          if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
+  // Nothing to decide on a good outcome: go back on our own, like the email-verification page.
+  useEffect(() => {
+    if (outcome === "connected" || outcome === "reviewing") leaveTimer.current = setTimeout(goBack, 3500);
+  }, [outcome]);
 
-    // Redirect after 5 seconds
-    redirectTimerRef.current = setTimeout(() => {
-      handleGoToDashboard();
-    }, 5000);
-  };
-
-  const cancelAutoRedirect = () => {
-    if (redirectTimerRef.current) {
-      clearTimeout(redirectTimerRef.current);
-      redirectTimerRef.current = null;
+  const continueWithStripe = async () => {
+    setContinuing(true);
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      const from = params().get("from") === "setup" ? "?from=setup" : "";
+      const response = await fetch(`/api/manager/stripe-connect/onboarding-link${from}`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!response.ok) throw new Error("link");
+      window.location.assign((await response.json()).url);
+    } catch {
+      setContinuing(false);
+      setOutcome("unknown");
     }
-    if (countdownTimerRef.current) {
-      clearInterval(countdownTimerRef.current);
-      countdownTimerRef.current = null;
-    }
-    setCountdown(0);
   };
 
-  const handleClose = () => {
-    cancelAutoRedirect();
-    window.close();
-  };
+  const view = {
+    loading: { icon: <Loader2 className="h-7 w-7 animate-spin text-[#E10939]" />, tone: "", title: mt("srChecking"), body: mt("srCheckingBody") },
+    connected: { icon: <CheckCircle2 className="h-6 w-6 text-emerald-600" />, tone: "bg-emerald-50", title: mt("srConnected"), body: mt("srConnectedBody") },
+    reviewing: { icon: <Clock className="h-6 w-6 text-sky-600" />, tone: "bg-sky-50", title: mt("srReviewing"), body: mt("srReviewingBody") },
+    needs_more: { icon: <AlertCircle className="h-6 w-6 text-amber-600" />, tone: "bg-amber-50", title: mt("srNeedsMore"), body: mt("srNeedsMoreBody") },
+    rejected: { icon: <XCircle className="h-6 w-6 text-red-600" />, tone: "bg-red-50", title: mt("srRejected"), body: mt("srRejectedBody") },
+    unknown: { icon: <AlertCircle className="h-6 w-6 text-stone-500" />, tone: "bg-stone-100", title: mt("srUnknown"), body: mt("srUnknownBody") },
+  }[outcome];
+  const backLabel = params().get("from") === "setup" ? mt("srBackToSetup") : mt("srBackToPayments");
 
-  const handleGoToDashboard = () => {
-    cancelAutoRedirect();
-    const { url } = getRedirectDestination();
-    window.location.href = url;
-  };
-
-  if (syncStatus === 'loading') {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <Card className="w-full max-w-md mx-4">
-          <CardContent className="pt-6">
-            <div className="flex flex-col items-center justify-center py-8">
-              <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-              <p className="text-muted-foreground">Verifying your Stripe setup...</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  if (syncStatus === 'error') {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <Card className="w-full max-w-md mx-4">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-red-600">
-              <AlertCircle className="h-6 w-6" />
-              Setup Issue
-            </CardTitle>
-            <CardDescription>
-              {errorMessage || 'There was an issue with your Stripe setup.'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Please return to your dashboard and try the setup again.
-              </p>
-              <div className="flex gap-2">
-                <Button onClick={handleGoToDashboard} className="flex-1">
-                  Go to Dashboard
-                </Button>
-                <Button variant="outline" onClick={handleClose}>
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  // Success state
-  const { label } = getRedirectDestination();
-  
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
-      <Card className="w-full max-w-md mx-4">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-green-600">
-            <CheckCircle2 className="h-6 w-6" />
-            Stripe Setup Complete!
-          </CardTitle>
-          <CardDescription>
-            Your Stripe account has been successfully connected.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div className="bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-lg p-4">
-              <p className="text-sm text-green-800 dark:text-green-200">
-                ✅ You can now receive payments directly to your bank account.
-                Payments will be transferred within 2-7 business days after each booking.
-              </p>
-            </div>
-            
-            {countdown > 0 ? (
-              <div className="text-center space-y-2">
-                <p className="text-sm text-muted-foreground">
-                  Redirecting to <span className="font-medium">{label}</span> in {countdown} seconds...
-                </p>
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  onClick={cancelAutoRedirect}
-                  className="text-xs"
-                >
-                  Cancel auto-redirect
-                </Button>
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground text-center">
-                You can safely close this tab or click below to continue.
-              </p>
-            )}
-            
-            <div className="flex gap-2">
-              <Button onClick={handleGoToDashboard} className="flex-1">
-                <ExternalLink className="h-4 w-4 mr-2" />
-                Go to {label}
-              </Button>
-              <Button variant="outline" onClick={handleClose}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
+    <main className="flex min-h-screen flex-col items-center bg-[#FAFAF9] px-4 py-12 sm:py-20">
+      <Logo className="h-10" />
+      <Card className="mt-10 w-full max-w-[440px] rounded-2xl border border-stone-200 bg-white shadow-sm">
+        <CardContent className="p-7 text-center sm:p-9" role={outcome === "loading" ? "status" : undefined}>
+          <span className={`mx-auto flex h-12 w-12 items-center justify-center rounded-full ${view.tone}`} aria-hidden>{view.icon}</span>
+          <h1 className="mt-5 text-xl font-semibold tracking-tight text-stone-950">{view.title}</h1>
+          <p className="mt-2 text-sm leading-relaxed text-stone-600">{view.body}</p>
+          {outcome === "needs_more" && <>
+            <Button onClick={() => void continueWithStripe()} disabled={continuing} className="mt-7 h-12 w-full rounded-lg bg-[#E10939] text-base font-semibold text-white hover:bg-[#C90832]">
+              {continuing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{mt("srContinueWithStripe")}
+            </Button>
+            <Button variant="ghost" onClick={goBack} className="mt-2 h-11 w-full rounded-lg text-stone-700">{backLabel}</Button>
+          </>}
+          {outcome === "rejected" && <>
+            <Button asChild className="mt-7 h-12 w-full rounded-lg bg-[#E10939] text-base font-semibold text-white hover:bg-[#C90832]">
+              <a href="mailto:support@localcooks.ca?subject=Stripe%20account%20rejected">{mt("srContactSupport")}</a>
+            </Button>
+            <Button variant="ghost" onClick={goBack} className="mt-2 h-11 w-full rounded-lg text-stone-700">{backLabel}</Button>
+          </>}
+          {(outcome === "connected" || outcome === "reviewing" || outcome === "unknown") && <>
+            <Button onClick={goBack} className="mt-7 h-12 w-full rounded-lg bg-[#E10939] text-base font-semibold text-white hover:bg-[#C90832]">{backLabel}</Button>
+            {outcome !== "unknown" && <p className="mt-3 text-xs text-stone-500" role="status">{mt("srTakingYouBack")}</p>}
+          </>}
         </CardContent>
       </Card>
-    </div>
+      <p className="mt-6 text-center text-xs text-stone-500">
+        {mt("srNeedHelp")} <a className="underline underline-offset-2 hover:text-stone-700" href="mailto:support@localcooks.ca">support@localcooks.ca</a>
+      </p>
+    </main>
   );
 }

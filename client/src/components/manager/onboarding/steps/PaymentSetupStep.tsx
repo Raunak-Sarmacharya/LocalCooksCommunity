@@ -16,6 +16,7 @@ export default function PaymentSetupStep() {
     isStripeOnboardingComplete,
     saveAndExit,
     isSubmitting,
+    trackStepCompletion,
   } = useManagerOnboarding();
   const { user: firebaseUser } = useFirebaseAuth();
 
@@ -68,6 +69,16 @@ export default function PaymentSetupStep() {
     }
   };
 
+  // Submitted isn't enough when Stripe has rejected the account or a deadline has passed: those need action first.
+  const blocked = stripeStatus?.verificationStage === 'rejected' || stripeStatus?.verificationStage === 'past_due';
+  const canContinue = isStripeOnboardingComplete && !blocked;
+  // Payouts can wait (owner, Oct 24): Stripe needs bank and ID details, and verification takes days. The kitchen
+  // can't be listed until payouts work, so "Get set up" and the dashboard banner keep this as the next step.
+  const setUpLater = async () => {
+    await trackStepCompletion('payment-setup');
+    handleNext();
+  };
+
   return (
     <div className="space-y-6">
       {/* Stripe Connect Setup */}
@@ -82,8 +93,11 @@ export default function PaymentSetupStep() {
         onBack={handleBack}
         onSaveAndExit={() => void saveAndExit()}
         showBack={!isFirstStep}
-        isNextDisabled={!isStripeOnboardingComplete}
-        nextLabel={isStripeOnboardingComplete ? tt("continue") : getDisabledLabel()}
+        isNextDisabled={!canContinue}
+        nextLabel={canContinue ? tt("continue") : getDisabledLabel()}
+        showSkip={!canContinue}
+        onSkip={() => void setUpLater()}
+        skipLabel={mt("payoutsSetUpLater")}
         isSavingAndExiting={isSubmitting}
       />
     </div>

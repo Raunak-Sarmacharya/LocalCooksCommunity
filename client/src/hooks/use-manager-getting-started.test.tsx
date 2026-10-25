@@ -174,7 +174,8 @@ describe("the readiness cache slot has ONE declared shape", () => {
    */
   const readers = [
     "client/src/hooks/use-manager-getting-started.ts",
-    "client/src/components/manager/settings/KitchenListingStatus.tsx",
+    // My Kitchens reads it directly now that the old status strip is gone (Oct 24 redesign).
+    "client/src/components/manager/settings/KitchensManagement.tsx",
     "client/src/components/manager/settings/KitchenListingReview.tsx",
   ];
 

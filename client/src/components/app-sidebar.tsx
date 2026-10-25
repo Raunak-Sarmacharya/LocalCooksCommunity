@@ -38,14 +38,8 @@ const navData: { navMain: NavGroup[] } = {
                 { labelKey: "navSpaces", url: "kitchens", icon: managerNavIcons.kitchens },
                 // Customer journey order (owner, Oct 24): tour, access request, customer, then their bookings.
                 { labelKey: "navViewings", url: "viewings", icon: managerNavIcons.viewings },
-                {
-                    labelKey: "navRequests",
-                    url: "applications",
-                    icon: managerNavIcons.applications,
-                    children: [
-                        { labelKey: "navApplicationRequirements", url: "application-requirements", icon: managerNavIcons["application-requirements"] },
-                    ],
-                },
+                // Booking requirements live in Location (owner, Oct 24), reachable before any kitchen is listed.
+                { labelKey: "navRequests", url: "applications", icon: managerNavIcons.applications },
                 { labelKey: "navCustomers", url: "customers", icon: managerNavIcons.customers },
                 {
                     labelKey: "navBookings",
@@ -62,7 +56,7 @@ const navData: { navMain: NavGroup[] } = {
                 },
                 { labelKey: "navRevenue", url: "revenue", icon: managerNavIcons.revenue },
                 { labelKey: "navMessages", url: "messages", icon: managerNavIcons.messages },
-                // Location: details, license, booking defaults, documents and payments in one page.
+                // Location: details, licence, booking defaults, booking requirements and documents in one page.
                 { labelKey: "navLocation", url: "location", icon: managerNavIcons.location },
             ],
         },

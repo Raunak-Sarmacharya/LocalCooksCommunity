@@ -32,6 +32,7 @@ function ManagerSetupPageContent() {
         currentStepData,
         currentStepIndex,
         hasUnsavedChanges,
+        guardLeave,
         pendingLeave,
         clearPendingLeave,
         saveAndLeave,
@@ -125,7 +126,7 @@ function ManagerSetupPageContent() {
                             <Tooltip>
                                 <TooltipTrigger asChild>
                                     <button 
-                                        onClick={() => setLocation('/manager/dashboard')}
+                                        onClick={() => guardLeave(() => setLocation('/manager/dashboard'))}
                                         aria-label={t("dashboard", { ns: "common" })}
                                         className="text-muted-foreground hover:text-foreground transition-colors"
                                     >
@@ -161,13 +162,16 @@ function ManagerSetupPageContent() {
                     <div className="flex items-center gap-3">
                         <Tooltip>
                             <TooltipTrigger asChild>
+                                {/* Support opens in a new tab so the setup in progress stays where it is. */}
                                 <Button
+                                    asChild
                                     variant="ghost"
                                     size="icon"
-                                    aria-label={t("managerSetupNeedHelp")}
                                     className="text-muted-foreground hover:text-foreground"
                                 >
-                                    <HelpCircle className="w-5 h-5" />
+                                    <a href="/manager/dashboard?view=support" target="_blank" rel="noopener noreferrer" aria-label={t("managerSetupNeedHelp")}>
+                                        <HelpCircle className="w-5 h-5" />
+                                    </a>
                                 </Button>
                             </TooltipTrigger>
                             <TooltipContent>{t("managerSetupNeedHelp")}</TooltipContent>

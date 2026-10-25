@@ -2,8 +2,10 @@ import { mt } from "@/i18n/manager";
 import {
   Briefcase,
   CalendarDays,
+  ClipboardCheck,
   Clock,
   CookingPot,
+  CreditCard,
 } from "@/components/ui/manager-icons";
 import { Button } from "@/components/ui/button";
 import { useManagerOnboarding } from "../ManagerOnboardingContext";
@@ -28,6 +30,8 @@ const PREVIEW_STEPS = [
   { Icon: Briefcase, titleKey: "welcomeStepBusinessTitle", descKey: "welcomeStepBusinessDesc" },
   { Icon: CookingPot, titleKey: "welcomeStepKitchenTitle", descKey: "welcomeStepKitchenDesc" },
   { Icon: CalendarDays, titleKey: "welcomeStepAvailabilityTitle", descKey: "welcomeStepAvailabilityDesc" },
+  { Icon: ClipboardCheck, titleKey: "welcomeStepRequirementsTitle", descKey: "welcomeStepRequirementsDesc" },
+  { Icon: CreditCard, titleKey: "welcomeStepPaymentsTitle", descKey: "welcomeStepPaymentsDesc" },
 ] as const;
 
 export default function WelcomeStep() {

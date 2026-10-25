@@ -27,6 +27,8 @@ function defaultChrome(navigate: (to: string) => void): ChefShellChrome {
 function journeyLoadingLabel(pathname: string) {
   if (pathname.startsWith("/request-tour/")) return "Loading your tour request…";
   if (pathname.startsWith("/apply-kitchen/")) return "Checking your kitchen application…";
+  // This loader also covers kitchen routes while their code loads; "dashboard" was wrong on setup.
+  if (pathname.startsWith("/manager/setup")) return "Loading your setup…";
   return "Loading your dashboard…";
 }
 

@@ -1,4 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Textarea } from "@/components/ui/textarea";
+import { SettingsRow } from "@/components/manager/settings/SettingsRow";
+import { apiGet, apiPut } from "@/lib/api";
 import { mt } from "@/i18n/manager";
 import { tt } from "@/i18n/common-ns";
 import i18n from "@/i18n";
@@ -15,15 +19,12 @@ import { OnboardingNavigationFooter } from "../OnboardingNavigationFooter";
 import { StepSummary } from "../StepSummary";
 import { useStepParts } from "../use-step-parts";
 
-const PART_COUNT = 2;
+// Hours, booking rules, then arrival & departure (owner, Oct 24: a kitchen needs those instructions to be listed).
+const PART_COUNT = 3;
 
 /**
- * The review, on its own after the two parts.
- *
- * Not a third PART — the work is two things, so the dots stay at two. A manager coming
- * back to a finished Availability step sees the week they set and the policies they chose
- * on one screen, each with an Edit that goes to the part that owns it, instead of being
- * walked through both forms again.
+ * The review, on its own after the three parts. A manager coming back to a finished step sees
+ * everything on one screen, each group with an Edit that goes to the part that owns it.
  */
 const SUMMARY_PART = PART_COUNT;
 
@@ -129,6 +130,34 @@ const AvailabilityStep = () => {
     }, [isSummary, trackStepCompletion]);
     const [isSaving, setIsSaving] = useState(false);
     const [bookingPoliciesDirty, setBookingPoliciesDirty] = useState(false);
+    const [stepError, setStepError] = useState("");
+    useEffect(() => setStepError(""), [activePart]);
+
+    /*
+     * Part 3: the location's arrival & departure instructions, the default every kitchen here uses until it sets
+     * its own in My Kitchens. Same endpoint as that editor; customer tasks stay a later, optional extra.
+     */
+    const queryClient = useQueryClient();
+    const arrivalKey = ["checkin-checkout-settings", selectedLocationId];
+    const { data: arrivalSaved } = useQuery<{ checkinInstructions: string | null; checkoutInstructions: string | null }>({
+        queryKey: arrivalKey,
+        queryFn: () => apiGet(`/manager/locations/${selectedLocationId}/checkin-checkout-settings`),
+        enabled: !!selectedLocationId,
+    });
+    const [arrivalDraft, setArrivalDraft] = useState<string | null>(null);
+    const [departureDraft, setDepartureDraft] = useState<string | null>(null);
+    const arrivalText = arrivalDraft ?? arrivalSaved?.checkinInstructions ?? "";
+    const departureText = departureDraft ?? arrivalSaved?.checkoutInstructions ?? "";
+    const arrivalDirty = arrivalText.trim() !== (arrivalSaved?.checkinInstructions ?? "").trim()
+        || departureText.trim() !== (arrivalSaved?.checkoutInstructions ?? "").trim();
+    const arrivalComplete = Boolean(arrivalText.trim() && departureText.trim());
+    const saveArrival = async () => {
+        const body = { checkinInstructions: arrivalText.trim(), checkoutInstructions: departureText.trim() };
+        await apiPut(`/manager/locations/${selectedLocationId}/checkin-checkout-settings`, body);
+        queryClient.setQueryData(arrivalKey, (current: object | undefined) => ({ ...current, ...body }));
+        setArrivalDraft(null);
+        setDepartureDraft(null);
+    };
     // Continuing to a shorter part used to leave you mid-page.
     const scrollRef = useScrollToTopOnChange(activePart);
 
@@ -191,8 +220,8 @@ const AvailabilityStep = () => {
 
     // The wizard's guard has to speak for both parts, not just the schedule.
     useEffect(() => {
-        setUnsavedChanges(hasUnsavedChanges || bookingPoliciesDirty);
-    }, [hasUnsavedChanges, bookingPoliciesDirty, setUnsavedChanges]);
+        setUnsavedChanges(hasUnsavedChanges || bookingPoliciesDirty || arrivalDirty);
+    }, [hasUnsavedChanges, bookingPoliciesDirty, arrivalDirty, setUnsavedChanges]);
 
     // "Save changes" from the leave dialog persists whichever part is dirty.
     useEffect(() => {
@@ -201,10 +230,13 @@ const AvailabilityStep = () => {
                 const savedPolicies = await bookingPoliciesRef.current?.saveAllChanges();
                 if (!savedPolicies) return false;
             }
+            if (arrivalDirty) {
+                try { await saveArrival(); } catch { return false; }
+            }
             return (await availabilityRef.current?.saveAllChanges()) ?? true;
         });
         return () => registerStepSave(null);
-    }, [registerStepSave, bookingPoliciesDirty]);
+    }, [registerStepSave, bookingPoliciesDirty, arrivalDirty, arrivalText, departureText]);
 
     /** Persist booking rules for this location — same endpoint the dashboard uses. */
     const saveBookingRules = async (updates: Record<string, unknown>) => {
@@ -243,7 +275,7 @@ const AvailabilityStep = () => {
         return response.json();
     };
 
-    const partIsDirty = activePart === 0 ? hasUnsavedChanges : bookingPoliciesDirty;
+    const partIsDirty = [hasUnsavedChanges, bookingPoliciesDirty, arrivalDirty][activePart] ?? false;
 
     /** Persist this part (only if it changed), then move on. */
     const handleContinue = async () => {
@@ -253,6 +285,15 @@ const AvailabilityStep = () => {
             return;
         }
 
+        // Required to list, so required here (owner, Oct 24): at least one open day, and both instructions.
+        if (activePart === 0 && availabilityRef.current && !availabilityRef.current.hasOpenDay()) {
+            setStepError(mt("availabilityNeedOneDay"));
+            return;
+        }
+        if (activePart === 2 && !arrivalComplete) {
+            setStepError(mt("setupUx.notesMissing"));
+            return;
+        }
         setIsSaving(true);
         try {
             if (activePart === 0 && hasUnsavedChanges) {
@@ -262,6 +303,14 @@ const AvailabilityStep = () => {
             if (activePart === 1 && bookingPoliciesDirty) {
                 const saved = await bookingPoliciesRef.current?.saveAllChanges();
                 if (!saved) return;
+            }
+            if (activePart === 2 && arrivalDirty) {
+                try {
+                    await saveArrival();
+                } catch (error) {
+                    setStepError(error instanceof Error ? error.message : mt("error"));
+                    return;
+                }
             }
         } finally {
             setIsSaving(false);
@@ -278,6 +327,7 @@ const AvailabilityStep = () => {
     const partHeading = [
         { title: mt("availabilityPartScheduleTitle"), description: mt("availabilityPartScheduleDesc") },
         { title: mt("availabilityPartPoliciesTitle"), description: mt("availabilityPartPoliciesDesc") },
+        { title: mt("availabilityPartArrivalTitle"), description: mt("availabilityPartArrivalDesc") },
         { title: mt("availabilitySummaryTitle"), description: mt("availabilitySummaryDesc") },
     ][activePart];
 
@@ -364,6 +414,15 @@ const AvailabilityStep = () => {
                 },
             ],
         },
+        {
+            key: "arrival",
+            title: mt("availabilityPartArrivalTitle"),
+            part: 2,
+            rows: [
+                { key: "arrival", label: mt("setupUx.arrivalInstructions"), value: arrivalText.trim() || mt("notSet") },
+                { key: "departure", label: mt("setupUx.departureInstructions"), value: departureText.trim() || mt("notSet") },
+            ],
+        },
     ];
 
     return (
@@ -429,8 +488,9 @@ const AvailabilityStep = () => {
                      * where they can act on it, rather than discovering it at the publish attempt.
                      * The same notice shape as the check-in/check-out note in part 2, and the same
                      * "My Kitchens > X on your dashboard" wording, so the two read as one voice.
+                     * Only before any hours are saved: it explains the pre-filled week.
                      */}
-                    <div className="flex items-start gap-3 rounded-xl border border-border bg-muted/40 px-4 py-3">
+                    {!hasAvailability && <div className="flex items-start gap-3 rounded-xl border border-border bg-muted/40 px-4 py-3">
                         <Calendar className="mt-px h-4 w-4 shrink-0 text-muted-foreground" />
                         <div className="min-w-0">
                             <p className="text-xs font-medium text-foreground">
@@ -440,7 +500,7 @@ const AvailabilityStep = () => {
                                 {mt("availabilityRequiredNoticeDesc", { spaces: mt("navSpaces") })}
                             </p>
                         </div>
-                    </div>
+                    </div>}
 
                     {/* Availability Management — brings its own cards */}
                     {selectedLocationId ? (
@@ -451,6 +511,7 @@ const AvailabilityStep = () => {
                             initialKitchenId={selectedKitchenId || undefined}
                             onSaveSuccess={refreshAvailability}
                             hideWeeklyScheduleSaveButton={true}
+                            prefillWhenEmpty
                             onDirtyChange={setUnsavedChanges}
                         />
                     ) : (
@@ -479,25 +540,6 @@ const AvailabilityStep = () => {
                                     spaces: mt("navSpaces"),
                                     policies: mt("navBookingRules"),
                                 })}
-                            </p>
-                        </div>
-                    </div>
-
-                    {/*
-                     * Awareness, not configuration. The arrival window and the
-                     * checklist itself are set on the check-in/check-out page;
-                     * duplicating those fields here would raise the question of
-                     * which one wins. What a manager needs mid-setup is to know
-                     * the option exists.
-                     */}
-                    <div className="flex items-start gap-3 rounded-xl border border-border bg-muted/40 px-4 py-3">
-                        <ClipboardCheck className="mt-px h-4 w-4 shrink-0 text-muted-foreground" />
-                        <div className="min-w-0">
-                            <p className="text-xs font-medium text-foreground">
-                                {mt("availabilityChecklistNoticeTitle")}
-                            </p>
-                            <p className="mt-0.5 text-xs text-muted-foreground">
-                                {mt("availabilityChecklistNoticeDesc")}
                             </p>
                         </div>
                     </div>
@@ -532,6 +574,21 @@ const AvailabilityStep = () => {
                     )}
                 </>
             )}
+
+            {activePart === 2 && (
+                <div className="divide-y divide-border rounded-xl border bg-card">
+                    <SettingsRow id="onboarding-arrival" layout="stacked" required label={mt("setupUx.arrivalInstructions")} hint={mt("setupUx.arrivalHelp")}>
+                        <Textarea id="onboarding-arrival" rows={4} maxLength={2000} className="max-w-2xl" value={arrivalText}
+                            placeholder={mt("setupUx.arrivalExample")} onChange={event => setArrivalDraft(event.target.value)} />
+                    </SettingsRow>
+                    <SettingsRow id="onboarding-departure" layout="stacked" required label={mt("setupUx.departureInstructions")} hint={mt("setupUx.departureHelp")}>
+                        <Textarea id="onboarding-departure" rows={4} maxLength={2000} className="max-w-2xl" value={departureText}
+                            placeholder={mt("setupUx.departureExample")} onChange={event => setDepartureDraft(event.target.value)} />
+                    </SettingsRow>
+                </div>
+            )}
+
+            {stepError && <p role="alert" className="text-sm text-destructive">{stepError}</p>}
 
             {/* ------------------------------------------------------------ Review */}
             {isSummary && (
@@ -572,6 +629,7 @@ const AvailabilityStep = () => {
                     // The wizard's job is to get them through; the publish check is where the
                     // hard requirement lives.
                     (!isSummary && activePart === 0 && !selectedKitchenId)
+                    || (activePart === 2 && !arrivalComplete)
                 }
                 isLoading={isSaving}
             />

@@ -171,7 +171,8 @@ export function SettingsRow({
     // `flex-1` matters: with `flex-wrap`, a long hint would otherwise give the
     // heading a max-content basis, push the control onto a second line, and
     // `justify-between` would then park that control on the *left*.
-    <div className="min-w-0 flex-1">
+    // The 12rem floor is for phones: without it the label shrank to one word per line beside a wide control.
+    <div className="min-w-[12rem] flex-1">
       <div className="flex items-center gap-1">
         <Label
           htmlFor={id}

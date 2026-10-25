@@ -84,6 +84,8 @@ interface ManagerOnboardingContextType {
    * "Save changes". Steps whose only save *is* navigating register nothing.
    */
   registerStepSave: (save: (() => Promise<boolean>) | null) => void;
+  /** Run a navigation now, or hold it behind the unsaved-changes dialog while the step has edits. */
+  guardLeave: (run: () => void) => void;
   /** Set when a navigation was intercepted; the shell renders the dialog for it. */
   pendingLeave: { run: () => void } | null;
   clearPendingLeave: () => void;
@@ -690,8 +692,8 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       result['availability'] = true;
     }
 
-    // Payment is complete if Stripe is connected
-    if (isStripeOnboardingComplete) {
+    // Payment is behind the manager once Stripe has their details, or they chose to set payouts up later.
+    if (isStripeOnboardingComplete || dbCompletedSteps['payment-setup']) {
       result['payment-setup'] = true;
     }
 
@@ -766,14 +768,17 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
    */
   const [requestedStep] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null;
+    const target = new URLSearchParams(window.location.search).get('step');
+    return target && steps.some((step: any) => step.id === target) ? target : null;
+  });
+  // Removed in an effect, not the initializer: StrictMode runs initializers twice, and the second run found no `step`.
+  useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const target = params.get('step');
-    if (!target) return null;
+    if (!params.has('step')) return;
     params.delete('step');
     const remaining = params.toString();
     window.history.replaceState(null, '', window.location.pathname + (remaining ? `?${remaining}` : ''));
-    return steps.some((step: any) => step.id === target) ? target : null;
-  });
+  }, []);
 
   // ENTERPRISE FIX: Auto-redirect logic moved to ManagerProtectedRoute.tsx
   // This prevents the "flash" of dashboard content before onboarding redirect
@@ -2138,6 +2143,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     hasUnsavedChanges,
     setUnsavedChanges: setHasUnsavedChanges,
     registerStepSave,
+    guardLeave,
     pendingLeave,
     clearPendingLeave,
     saveAndLeave,

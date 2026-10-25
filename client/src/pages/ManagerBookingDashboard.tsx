@@ -33,8 +33,6 @@ import { CustomersList } from "@/components/manager/customers/CustomersList";
 import { DamageClaimQueue } from "@/components/manager/damage-claims/DamageClaimQueue";
 import ManagerRevenueDashboard from "./ManagerRevenueDashboard";
 import UnifiedChatView from "@/components/chat/UnifiedChatView";
-import LocationRequirementsSettings from "@/components/manager/LocationRequirementsSettings";
-import type { ApplicationRequirementsWizardHandle } from "@/components/manager/requirements";
 import { LicenseSettings, BookingRulesSettings, LocationSettings, KitchensManagement, KitchenListingReview, FacilityDocsSettings, CheckinCheckoutSettings, StorageCheckinCheckoutSettings } from "@/components/manager/settings";
 import type { BookingPoliciesHandle, CheckinCheckoutHandle, KitchensHandle } from "@/components/manager/settings";
 // The one screen for "no location yet". Nine settings views used to carry their own version of it,
@@ -58,6 +56,7 @@ import { SettingsContentSkeleton } from "@/components/manager/SettingsContentSke
 import { ChefPageHeader } from "@/components/chef/ui";
 import { Tab, TabGroup, TabList, TabPanel, TabPanels } from "@tremor/react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import LocationRequirementsSettings from "@/components/manager/LocationRequirementsSettings";
 import { UnsavedChangesDialog } from "@/components/manager/UnsavedChangesDialog";
 import LocationWorkspace, { type LocationWorkspaceHandle } from "@/components/manager/settings/LocationWorkspace";
 import { legacyLocationSection } from "@/lib/manager-location-navigation";
@@ -172,6 +171,14 @@ type KitchenNavigationDestination = { view: ViewType; kitchenId?: number; sectio
 type ViewType = 'my-locations' | 'overview' | 'bookings' | 'storage-bookings' | 'viewings' | 'availability' | 'tour-availability' | 'settings' | 'applications' | 'customers' | 'pricing' | 'storage-listings' | 'equipment-listings' | 'payments' | 'security' | 'revenue' | 'messages' | 'profile' | 'kitchens' | 'listing-review' | 'settings-license' | 'settings-booking-rules' | 'settings-facility-docs' | 'settings-location' | 'settings-checkin-checkout' | 'settings-storage-checkin-checkout' | 'application-requirements' | 'notifications' | 'notification-settings' | 'damage-claims' | 'support' | 'location';
 
 
+/** Profile › Payments and the bare `payments` view were the payout account's old homes. */
+const isLegacyPayments = (view: string | null, tab: string | null) => view === 'payments' || (view === 'profile' && tab === 'payments');
+function replaceWithPayouts(params: URLSearchParams) {
+  params.set('view', 'revenue');
+  params.set('tab', 'payouts');
+  window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
+}
+
 export default function ManagerBookingDashboard() {
   const { t: st } = useTranslation("storage");
   
@@ -195,7 +202,7 @@ export default function ManagerBookingDashboard() {
     const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'storage-bookings', 'viewings', 'availability', 'tour-availability', 'settings', 'applications', 'customers', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile', 'kitchens', 'listing-review', 'settings-license', 'settings-booking-rules', 'settings-facility-docs', 'settings-location', 'settings-checkin-checkout', 'settings-storage-checkin-checkout', 'application-requirements', 'notifications', 'notification-settings', 'damage-claims', 'support', 'location'];
     // Older location views (Kitchen License, Facility documents, the old Settings page, Profile › Location) open Location.
     if (legacyLocationSection(view, params.get('tab'))) return 'location';
-    if (view === 'settings' && params.get('tab') === 'requirements') return 'application-requirements';
+    if (isLegacyPayments(view, params.get('tab'))) { replaceWithPayouts(params); return 'revenue'; }
     // Back-compat: redirect legacy 'settings-storage-checkout' URLs to the new combined page.
     if (view === 'my-locations') return 'profile';
     if (view === 'settings-storage-checkout') {
@@ -253,10 +260,6 @@ export default function ManagerBookingDashboard() {
   const bypassCheckinCheckoutGuard = useRef(false);
   const [checkinCheckoutDirty, setCheckinCheckoutDirty] = useState(false);
   const [pendingCheckinCheckoutView, setPendingCheckinCheckoutView] = useState<KitchenNavigationDestination | null>(null);
-  const requirementsRef = useRef<ApplicationRequirementsWizardHandle>(null);
-  const bypassRequirementsGuard = useRef(false);
-  const [requirementsDirty, setRequirementsDirty] = useState(false);
-  const [pendingRequirementsView, setPendingRequirementsView] = useState<ViewType | null>(null);
 
   // Handle locationId from URL for direct navigation (e.g., returning from setup, notification links)
   useEffect(() => {
@@ -419,11 +422,9 @@ export default function ManagerBookingDashboard() {
         setActiveView('location');
         return;
       }
-      if (view === 'settings' && params.get('tab') === 'requirements') {
-        params.set('view', 'application-requirements');
-        params.delete('tab');
-        window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
-        setActiveView('application-requirements');
+      if (isLegacyPayments(view, params.get('tab'))) {
+        replaceWithPayouts(params);
+        setActiveView('revenue');
         return;
       }
       // Back-compat: redirect legacy URL to the new combined page.
@@ -480,9 +481,10 @@ export default function ManagerBookingDashboard() {
      */
     const targetSection = resolveDestination(view, section).section;
     const locationSection = view === 'location' ? null : legacyLocationSection(view, null);
+    // The Stripe payout account lives on Revenue › Payouts (owner, Oct 24); 'payments' is its old name.
+    const revenueTab = view === 'payments' ? 'payouts' : null;
     const profileTab =
-      view === 'payments' ? 'payments'
-      : view === 'notification-settings' ? 'notifications'
+      view === 'notification-settings' ? 'notifications'
       // "Sign-in & security" — where Google, phone and password are rows, and the only page that
       // can complete the Getting Started backup-sign-in row.
       : view === 'security' ? 'account'
@@ -494,8 +496,10 @@ export default function ManagerBookingDashboard() {
         ? 'tour-availability'
         : profileTab
           ? 'profile'
-          : view;
-    const isSameDestination = nextView === activeView && !availabilityTab && !profileTab && !targetSection && !kitchenId
+          : revenueTab
+            ? 'revenue'
+            : view;
+    const isSameDestination = nextView === activeView && !availabilityTab && !profileTab && !revenueTab && !targetSection && !kitchenId
       && !(nextView === 'viewings' && detailTourId);
     if (isSameDestination) return;
     if ((activeView === 'availability' || activeView === 'tour-availability') && availabilityDirty && !bypassAvailabilityGuard.current) {
@@ -516,10 +520,6 @@ export default function ManagerBookingDashboard() {
     }
     if ((activeView === 'settings-checkin-checkout' || activeView === 'settings-storage-checkin-checkout') && checkinCheckoutDirty && !bypassCheckinCheckoutGuard.current) {
       setPendingCheckinCheckoutView({ view, kitchenId, section, focus, returnTourId });
-      return;
-    }
-    if (activeView === 'application-requirements' && requirementsDirty && !bypassRequirementsGuard.current) {
-      setPendingRequirementsView(view);
       return;
     }
     // After every guard: an older location view name opens its Location section.
@@ -572,6 +572,7 @@ export default function ManagerBookingDashboard() {
       url.searchParams.set('view', nextView);
       if (profileTab) url.searchParams.set('tab', profileTab);
       else if (availabilityTab) url.searchParams.set('tab', availabilityTab);
+      else if (revenueTab) url.searchParams.set('tab', revenueTab);
       else if (nextView !== 'profile') url.searchParams.delete('tab');
       if (nextView !== 'kitchens' && nextView !== 'location') url.searchParams.delete('section');
       // Opening Location from elsewhere starts on Details; a section only carries over within Location.
@@ -734,34 +735,6 @@ export default function ManagerBookingDashboard() {
     if (saved) continueFromCheckinCheckout(pendingCheckinCheckoutView);
   };
 
-  const continueFromRequirements = (view: ViewType) => {
-    bypassRequirementsGuard.current = true;
-    setRequirementsDirty(false);
-    setPendingRequirementsView(null);
-    handleViewChange(view);
-    bypassRequirementsGuard.current = false;
-  };
-
-  /**
-   * The requirements handle resolves `void` and *rejects* on failure, unlike the
-   * `saveAllChanges(): Promise<boolean>` handles the other pages expose. Bridge
-   * the two here rather than in the wizard, so the shared handle contract stays
-   * in one shape and each page keeps its own semantics.
-   */
-  const saveAndLeaveRequirements = async () => {
-    if (!pendingRequirementsView) return;
-    setIsSavingBeforeLeave(true);
-    let saved = false;
-    try {
-      await requirementsRef.current?.save();
-      saved = true;
-    } catch {
-      saved = false;
-    }
-    setIsSavingBeforeLeave(false);
-    if (saved) continueFromRequirements(pendingRequirementsView);
-  };
-
   /*
    * The kitchen the Customer tasks page was opened from. Only one of the selected location's
    * kitchens counts: a stale or foreign `kit` is reported on the page instead of quietly
@@ -900,11 +873,11 @@ export default function ManagerBookingDashboard() {
           await queryClient.invalidateQueries({ queryKey: ['/api/user/profile'] });
           await queryClient.invalidateQueries({ queryKey: ['/api/manager/stripe-connect/status'] });
 
-          // Return to the Payments tab inside the profile page.
-          setActiveView('profile');
+          // Return to Revenue › Payouts, the payout account's one home.
+          setActiveView('revenue');
 
           // Clean up URL
-          window.history.replaceState({}, '', '/manager/dashboard?view=profile&tab=payments');
+          window.history.replaceState({}, '', '/manager/dashboard?view=revenue&tab=payouts');
 
           // [NEW] Broadcast success to other tabs
           const channel = new BroadcastChannel('stripe_onboarding_channel');
@@ -1287,7 +1260,6 @@ export default function ManagerBookingDashboard() {
       toursNeedingAction={workspaceNavigation?.toursNeedingAction ?? 0}
       showStorageBookings={workspaceNavigationError || workspaceNavigation?.showStorageBookings === true || activeView === "storage-bookings"}
       showApplications={workspaceNavigationError || workspaceNavigation?.showApplications === true || managerKitchens.some((kitchen) => kitchen.listingStatus === 'active') || (workspaceNavigation?.showApplications === undefined && (legacyApplications.data?.length ?? 0) > 0) || legacyApplications.isError || activeView === "applications"}
-      showRevenue={workspaceNavigationError || workspaceNavigation?.showRevenue === true || managerKitchens.some((kitchen) => kitchen.listingStatus === 'active') || managerBookings.length > 0 || activeView === "revenue"}
       activeView={shellActiveView}
       onViewChange={(view) => handleViewChange(view as ViewType)}
       locations={locations}
@@ -1465,14 +1437,6 @@ export default function ManagerBookingDashboard() {
         )
       )}
 
-      {activeView === 'payments' && (
-        <ManagerProfileSettings
-          location={locationDetails || selectedLocation}
-          onSaveLocationSettings={(updates) => updateLocationSettings.mutateAsync(updates)}
-          notificationLocation={locationDetails || selectedLocation}
-          onSaveNotificationSettings={(updates) => updateLocationSettings.mutateAsync(updates)}
-        />
-      )}
 
 
       {activeView === 'damage-claims' && (
@@ -1542,28 +1506,12 @@ export default function ManagerBookingDashboard() {
             queryClient.invalidateQueries({ queryKey: ['locationDetails', selectedLocation.id] });
             queryClient.invalidateQueries({ queryKey: ['/api/manager/locations'] });
           }}
-          onOpenRequirements={() => handleViewChange('application-requirements')}
           onDirtyChange={setLocationDirty}
           saveRef={locationSaveRef}
         />
       )}
 
       {activeView === 'location' && !selectedLocation && (
-        needsLocation
-      )}
-
-      {activeView === 'application-requirements' && selectedLocation && (
-        <div className="space-y-6">
-          <ChefPageHeader title={mt("navApplicationRequirements")} description={mt("configureWhatInformationChefsNeedToProvideWhenApplyingToYour")} />
-          <LocationRequirementsSettings
-            ref={requirementsRef}
-            locationId={selectedLocation.id}
-            onDirtyChange={setRequirementsDirty}
-          />
-        </div>
-      )}
-
-      {activeView === 'application-requirements' && !selectedLocation && (
         needsLocation
       )}
 
@@ -1655,15 +1603,6 @@ export default function ManagerBookingDashboard() {
         isSaving={isSavingBeforeLeave}
         onDiscard={() => pendingCheckinCheckoutView && continueFromCheckinCheckout(pendingCheckinCheckoutView)}
         onSave={saveAndLeaveCheckinCheckout}
-      />
-
-      <UnsavedChangesDialog
-        open={pendingRequirementsView !== null}
-        onOpenChange={(open) => !open && setPendingRequirementsView(null)}
-        description={mt("applicationRequirementsUnsavedChangesDescription")}
-        isSaving={isSavingBeforeLeave}
-        onDiscard={() => pendingRequirementsView && continueFromRequirements(pendingRequirementsView)}
-        onSave={saveAndLeaveRequirements}
       />
 
     </DashboardLayout>

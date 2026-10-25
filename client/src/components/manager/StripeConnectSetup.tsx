@@ -237,8 +237,9 @@ export default function StripeConnectSetup() {
       return data.url;
     },
     onSuccess: (url: string) => {
-      // Open Stripe's onboarding page in a new tab to avoid logging out the user
-      window.open(url, '_blank');
+      // Same tab, as Stripe designs hosted onboarding: it returns to the step the manager left, and a phone's
+      // popup blocker can't swallow it. Progress is already saved; sign-in survives the round trip.
+      window.location.assign(url);
     },
     onError: (error: Error) => {
       toast({ title: mt("error"),
@@ -267,8 +268,10 @@ export default function StripeConnectSetup() {
       // Open Stripe Dashboard or Onboarding in a new tab
       // Note: window.open() may return null even when the tab opens successfully in some browsers,
       // so we don't check for popup blocking to avoid false positives
+      // Finishing Stripe's form happens in this tab (it comes back to the same step); the Stripe dashboard opens beside it.
+      if (data.requiresOnboarding) { window.location.assign(data.url); return; }
       window.open(data.url, '_blank', 'noopener,noreferrer');
-      
+
       if (data.requiresOnboarding) {
         toast({ title: mt("openingStripeSetup"),
           description: mt("completeYourStripeConnectSetupToStartReceivingPayments"),
@@ -540,7 +543,8 @@ export default function StripeConnectSetup() {
             <Button
               size="sm"
               className={CARD_ACTION}
-              onClick={handleAccessDashboard}
+              // A rejected account can't fix itself in Stripe; Local Cooks support has to look at it.
+              onClick={stage === 'rejected' ? () => { window.location.href = 'mailto:support@localcooks.ca?subject=Stripe%20account%20rejected'; } : handleAccessDashboard}
               variant={stage === 'past_due' || stage === 'rejected' ? 'destructive' : 'default'}
               disabled={getDashboardLinkMutation.isPending}
             >

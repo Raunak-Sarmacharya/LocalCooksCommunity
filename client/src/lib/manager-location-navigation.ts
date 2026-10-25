@@ -3,8 +3,10 @@
  * layout. Older views and links (Kitchen License, Facility documents, the hidden Settings page, Profile › Location)
  * open the matching section here.
  */
-export type LocationSection = "details" | "license" | "booking" | "documents" | "payments";
-export const LOCATION_SECTIONS: LocationSection[] = ["details", "license", "booking", "documents", "payments"];
+// Payments moved to Revenue › Payouts (owner, Oct 24): one Stripe account per manager, so one home for it.
+// Booking requirements moved in from Access requests (owner, Oct 24): a location-wide setting needed before listing.
+export type LocationSection = "details" | "license" | "booking" | "requirements" | "documents";
+export const LOCATION_SECTIONS: LocationSection[] = ["details", "license", "booking", "requirements", "documents"];
 
 export const isLocationSection = (value: string | null | undefined): value is LocationSection =>
   !!value && (LOCATION_SECTIONS as string[]).includes(value);
@@ -15,7 +17,8 @@ export function legacyLocationSection(view: string | null | undefined, tab?: str
   if (view === "settings-facility-docs") return "documents";
   if (view === "settings-location" || view === "my-locations") return "details";
   if (view === "profile" && tab === "location") return "details";
-  // The old Settings page's tabs; its "Requirements" tab is the Requests › Application requirements page.
-  if (view === "settings") return tab === "booking" ? "booking" : tab === "documents" ? "documents" : tab === "requirements" ? null : "details";
+  if (view === "application-requirements") return "requirements";
+  // The old Settings page's tabs.
+  if (view === "settings") return tab === "booking" ? "booking" : tab === "documents" ? "documents" : tab === "requirements" ? "requirements" : "details";
   return null;
 }

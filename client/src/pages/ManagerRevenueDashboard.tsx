@@ -1,5 +1,7 @@
 /**
- * Revenue & payouts for kitchens. Display only: one ledger read (shared with the dashboard card) drives the headline
+ * Revenue & payouts for kitchens, in two tabs. Payouts is the Stripe payout account's one home (owner, Oct 24): the
+ * manager has one Stripe account, so it is set up and managed here, next to the money, not per location or in Profile.
+ * Earnings is display only: one ledger read (shared with the dashboard card) drives the headline
  * numbers and the Upcoming / Paid / Reports tabs; Stripe bank deposits, payment details and invoices are the existing
  * reads, placed where a kitchen looks for them (deposits under Paid, documents under Reports).
  */
@@ -17,6 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ChefPageHeader } from "@/components/chef/ui"
 
 // Import from our revenue module
@@ -48,24 +51,75 @@ interface ManagerRevenueDashboardProps {
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════════════
 
+type RevenueTab = "earnings" | "payouts"
+const TAB_TRIGGER =
+  "group shrink-0 gap-2 rounded-none border-b-2 border-transparent px-0.5 py-2.5 font-normal text-muted-foreground transition-colors hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:font-medium data-[state=active]:text-foreground data-[state=active]:shadow-none"
+const urlTab = (): RevenueTab | null => new URLSearchParams(window.location.search).get("tab") === "payouts" ? "payouts" : null
+
 export default function ManagerRevenueDashboard(props: ManagerRevenueDashboardProps) {
   const { user } = useFirebaseAuth()
+  const { toast } = useToast()
   const { data: status, isLoading, isError, refetch } = useStripeConnectStatus(!!user)
   const ready = !!status?.accountId && status.hasAccount && status.status === "complete"
     && status.chargesEnabled === true && status.payoutsEnabled === true
-  if (!ready && props.isHistoryLoading) {
-    return <div className="space-y-6"><ChefPageHeader title={mt("navRevenue")} /><Skeleton className="h-40 w-full" /></div>
+  const stripeDashboard = useMutation({
+    mutationFn: () => getManagerStripeDashboardLink(),
+    onSuccess: ({ url }) => { window.open(url, "_blank", "noopener,noreferrer") },
+    onError: (error: Error) => { toast({ title: mt("error"), description: error.message, variant: "destructive" }) },
+  })
+  // `null` = no explicit choice: open on Payouts while there is nothing to earn yet and payouts aren't on.
+  const [chosen, setChosen] = useState<RevenueTab | null>(urlTab)
+  useEffect(() => {
+    const sync = () => setChosen(urlTab())
+    window.addEventListener("popstate", sync)
+    return () => window.removeEventListener("popstate", sync)
+  }, [])
+  const nothingYet = !ready && props.hasRevenueHistory === false
+  const tab: RevenueTab = chosen ?? (nothingYet ? "payouts" : "earnings")
+  const openTab = (next: RevenueTab) => {
+    setChosen(next)
+    const url = new URL(window.location.href)
+    if (next === "payouts") url.searchParams.set("tab", "payouts"); else url.searchParams.delete("tab")
+    window.history.replaceState(window.history.state, "", url.toString())
   }
-  if (!ready && props.hasRevenueHistory === false) {
-    return <div className="space-y-6">
-      <ChefPageHeader title={mt("navRevenue")} />
-      {!user || isLoading ? <Skeleton className="mx-auto h-40 w-full max-w-2xl" /> : isError ? <Alert variant="destructive" className="mx-auto max-w-2xl">
-        <AlertTitle>{mt("revenueConnectionUnavailable")}</AlertTitle>
-        <AlertDescription><Button variant="outline" size="sm" className="mt-2" onClick={() => void refetch()}>{mt("retry")}</Button></AlertDescription>
-      </Alert> : <Card className="mx-auto max-w-2xl"><CardContent className="p-6 md:p-8"><StripeConnectSetup /></CardContent></Card>}
-    </div>
-  }
-  return <RevenueAnalytics {...props} showReconnectNotice={!!user && !isLoading && !isError && !ready} hasPaymentAccount={!!status?.hasAccount} />
+  const statusKnown = !!user && !isLoading && !isError
+
+  return <div className="space-y-6">
+    <ChefPageHeader
+      title={mt("navRevenue")}
+      description={mt("r1bPageDescription")}
+      actions={status?.hasAccount && tab !== "payouts" && <Button variant="outline" size="sm" disabled={stripeDashboard.isPending} onClick={() => stripeDashboard.mutate()}>
+        {stripeDashboard.isPending
+          ? <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+          : <SiStripe className="size-4 text-stripe" aria-hidden="true" />}
+        {mt("viewStripeDashboard")}<ChevronRight className="size-4" aria-hidden="true" />
+      </Button>}
+    />
+    <Tabs value={tab} onValueChange={value => openTab(value as RevenueTab)}>
+      <TabsList className="h-auto w-full justify-start gap-6 rounded-none border-b border-border bg-transparent p-0 text-muted-foreground">
+        <TabsTrigger value="earnings" className={TAB_TRIGGER}>{mt("revenueTabEarnings")}</TabsTrigger>
+        <TabsTrigger value="payouts" className={TAB_TRIGGER}>
+          {mt("revenueTabPayouts")}
+          {statusKnown && !ready && <span className="h-2 w-2 rounded-full bg-amber-500" role="img" aria-label={mt("revenuePayoutsNeedAttention")} />}
+        </TabsTrigger>
+      </TabsList>
+      <TabsContent value="earnings" className="mt-6">
+        {props.isHistoryLoading && !ready ? <Skeleton className="h-40 w-full" />
+          : nothingYet ? <Card className="mx-auto max-w-2xl"><CardContent className="flex flex-col items-start gap-3 p-6 md:p-8">
+            <h2 className="text-base font-semibold">{mt("revenueNoEarningsTitle")}</h2>
+            <p className="text-sm text-muted-foreground">{mt("revenueNoEarningsBody")}</p>
+            <Button size="sm" onClick={() => openTab("payouts")}>{mt("revenueSetUpPayouts")}</Button>
+          </CardContent></Card>
+          : <RevenueAnalytics {...props} onOpenPayouts={() => openTab("payouts")} showReconnectNotice={statusKnown && !ready} hasPaymentAccount={!!status?.hasAccount} />}
+      </TabsContent>
+      <TabsContent value="payouts" className="mt-6">
+        {!user || isLoading ? <Skeleton className="mx-auto h-40 w-full max-w-2xl" /> : isError ? <Alert variant="destructive" className="mx-auto max-w-2xl">
+          <AlertTitle>{mt("revenueConnectionUnavailable")}</AlertTitle>
+          <AlertDescription><Button variant="outline" size="sm" className="mt-2" onClick={() => void refetch()}>{mt("retry")}</Button></AlertDescription>
+        </Alert> : <Card className="mx-auto max-w-2xl"><CardContent className="p-6 md:p-8"><StripeConnectSetup /></CardContent></Card>}
+      </TabsContent>
+    </Tabs>
+  </div>
 }
 
 function RevenueSectionError({ section, onRetry }: { section: string; onRetry: () => void }) {
@@ -78,18 +132,12 @@ function RevenueSectionError({ section, onRetry }: { section: string; onRetry: (
 function RevenueAnalytics({
   selectedLocation,
   locations,
-  onNavigate,
-  hasPublishedKitchen = false,
+  onOpenPayouts,
   showReconnectNotice = false,
   hasPaymentAccount = false,
-}: ManagerRevenueDashboardProps & { showReconnectNotice?: boolean; hasPaymentAccount?: boolean }) {
+}: ManagerRevenueDashboardProps & { onOpenPayouts: () => void; showReconnectNotice?: boolean; hasPaymentAccount?: boolean }) {
   const { user: firebaseUser } = useFirebaseAuth()
   const { toast } = useToast()
-  const stripeDashboard = useMutation({
-    mutationFn: () => getManagerStripeDashboardLink(),
-    onSuccess: ({ url }) => { window.open(url, "_blank", "noopener,noreferrer") },
-    onError: (error: Error) => { toast({ title: mt("error"), description: error.message, variant: "destructive" }) },
-  })
   const isEnabled = !!firebaseUser
 
   const [dateRange, setDateRange] = useState<DateRange>(() => ({ from: new Date(new Date().getFullYear(), new Date().getMonth(), 1), to: new Date() }))
@@ -149,12 +197,7 @@ function RevenueAnalytics({
     }
   }, [toast])
 
-  const handleNavigateToPayments = useCallback(() => {
-    if (onNavigate) {
-      onNavigate("payments")
-    }
-  }, [onNavigate])
-
+  const handleNavigateToPayments = onOpenPayouts
 
   const locationOptions = ledger.data?.filters.locations || locations
   const kitchenOptions = (ledger.data?.filters.kitchens || []).filter(k => !locationId || k.locationId === locationId)
@@ -195,17 +238,6 @@ function RevenueAnalytics({
 
   return (
     <div className="space-y-6">
-      <ChefPageHeader
-        title={mt("navRevenue")}
-        description={mt("r1bPageDescription")}
-        actions={hasPaymentAccount && <Button variant="outline" size="sm" disabled={stripeDashboard.isPending} onClick={() => stripeDashboard.mutate()}>
-          {stripeDashboard.isPending
-            ? <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-            : <SiStripe className="size-4 text-stripe" aria-hidden="true" />}
-          {mt("viewStripeDashboard")}<ChevronRight className="size-4" aria-hidden="true" />
-        </Button>}
-      />
-
       {/* One quiet filter row: location and kitchen only appear when there is more than one to choose from. */}
       <div role="group" aria-label={mt("r1bFiltersLabel")} className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center" data-testid="revenue-filters">
         {locationOptions.length > 1 && <Select value={locationId ? String(locationId) : 'all'} onValueChange={value => { setLocationId(value === 'all' ? undefined : Number(value)); setKitchenId(undefined) }}>
@@ -229,7 +261,7 @@ function RevenueAnalytics({
         <AlertTitle>{mt(hasPaymentAccount ? "revenueReconnectTitle" : "connectStripeAccount")}</AlertTitle>
         <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
           <span>{mt(hasPaymentAccount ? "revenueReconnectBody" : "connectStripeAccountDesc")}</span>
-          <Button variant="outline" size="sm" onClick={handleNavigateToPayments}>{mt(hasPaymentAccount ? "navPayments" : "setUpStripeConnect")}</Button>
+          <Button variant="outline" size="sm" onClick={handleNavigateToPayments}>{mt(hasPaymentAccount ? "revenueTabPayouts" : "setUpStripeConnect")}</Button>
         </AlertDescription>
       </Alert>}
 
@@ -237,7 +269,7 @@ function RevenueAnalytics({
         <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">{[0, 1, 2, 3].map(i => <Skeleton key={i} className="h-32 rounded-2xl" />)}</div>
         <Skeleton className="h-64 w-full rounded-2xl" />
       </div> : ledger.isError ? <RevenueSectionError section={mt('navRevenue')} onRetry={() => void ledger.refetch()} />
-        : ledger.data && <RevenueLedger data={ledger.data} dateRange={dateRange} onOpenPaymentSettings={onNavigate ? handleNavigateToPayments : undefined}
+        : ledger.data && <RevenueLedger data={ledger.data} dateRange={dateRange} onOpenPaymentSettings={handleNavigateToPayments}
           deposits={<BankDeposits payouts={payouts} isLoading={isLoadingPayouts} isError={isErrorPayouts} onRetry={() => void refetchPayouts()}
             onDownloadStatement={handleDownloadPayoutStatement} setupAlert={setupAlert} />}
           documents={<Accordion type="multiple" className="rounded-2xl border border-border/70 px-4 sm:px-5">

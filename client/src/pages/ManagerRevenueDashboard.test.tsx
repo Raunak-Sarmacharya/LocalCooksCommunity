@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
   status: {} as Record<string, unknown>,
@@ -13,46 +14,49 @@ vi.mock("@/components/chef/ui", () => ({ ChefPageHeader: () => <h1>Revenue</h1> 
 vi.mock("@/components/manager/StripeConnectSetup", () => ({ default: () => <div>Stripe setup</div> }));
 vi.mock("@/components/manager/revenue", () => ({
   useStripeConnectStatus: () => ({ data: state.status, isLoading: state.loading, isError: state.error, refetch: vi.fn() }),
+  useTransactions: () => ({ data: undefined, isLoading: true }),
+  useInvoices: () => ({ data: [], isLoading: true }),
+  usePayouts: () => ({ data: [], isLoading: true }),
 }));
+vi.mock("@/components/manager/revenue/hooks/use-manager-revenue", () => ({ useManagerRevenue: () => ({ isLoading: true }) }));
+vi.mock("@/components/manager/revenue/components/DateRangePicker", () => ({ DateRangePicker: () => null }));
 
 import ManagerRevenueDashboard from "./ManagerRevenueDashboard";
 
-describe("Revenue workspace visibility", () => {
-  const props = { selectedLocation: null, locations: [] };
+const props = { selectedLocation: null, locations: [] };
+const render = (extra: Record<string, unknown> = {}) => renderToStaticMarkup(
+  <QueryClientProvider client={new QueryClient()}><ManagerRevenueDashboard {...props} {...extra} /></QueryClientProvider>,
+);
+const connected = { accountId: "acct_1", hasAccount: true, status: "complete", chargesEnabled: true, payoutsEnabled: true };
 
-  it("keeps analytics mounted while Stripe is disconnected or its status is unavailable", () => {
-    for (const status of [
-      {},
-      { accountId: "acct_1", hasAccount: true, status: "pending", chargesEnabled: false, payoutsEnabled: false },
-    ]) {
-      state.status = status;
-      const page = ManagerRevenueDashboard(props);
-      expect(typeof page.type).toBe("function");
-      expect(page.props.showReconnectNotice).toBe(true);
-      expect(page.props.hasPaymentAccount).toBe(status.hasAccount === true);
-    }
+afterEach(() => window.history.replaceState(null, "", "/manager/dashboard?view=revenue"));
 
-    state.error = true;
-    const failed = ManagerRevenueDashboard(props);
-    expect(typeof failed.type).toBe("function");
-    expect(failed.props.showReconnectNotice).toBe(false);
-    state.error = false;
-  });
-
-  it("does not show a reconnect prompt for an account that can charge and pay out", () => {
-    state.status = { accountId: "acct_1", hasAccount: true, status: "complete", chargesEnabled: true, payoutsEnabled: true };
-    const page = ManagerRevenueDashboard(props);
-    expect(page.props.showReconnectNotice).toBe(false);
-  });
-
-  it("shows one setup path for a new account and keeps history visible for an established account", () => {
+describe("Revenue: Earnings and Payouts", () => {
+  it("opens a brand-new kitchen on Payouts, where Stripe is set up", () => {
     state.status = { hasAccount: false, status: "not_started" };
-    const newAccount = renderToStaticMarkup(ManagerRevenueDashboard({ ...props, hasRevenueHistory: false }));
-    expect(newAccount).toContain("Stripe setup");
-    expect(newAccount).not.toContain("revenueReconnectTitle");
+    const page = render({ hasRevenueHistory: false });
+    expect(page).toContain("Stripe setup");
+    expect(page).toContain("revenuePayoutsNeedAttention");
+  });
 
-    const established = ManagerRevenueDashboard({ ...props, hasRevenueHistory: true });
-    expect(typeof established.type).toBe("function");
-    expect(established.props.showReconnectNotice).toBe(true);
+  it("opens on Earnings once there is history, with a way to the payout account while it needs attention", () => {
+    state.status = { accountId: "acct_1", hasAccount: true, status: "pending", chargesEnabled: false, payoutsEnabled: false };
+    const page = render({ hasRevenueHistory: true });
+    expect(page).not.toContain("Stripe setup");
+    expect(page).toContain("revenueReconnectTitle");
+    expect(page).toContain("revenuePayoutsNeedAttention");
+  });
+
+  it("shows no prompt for an account that can charge and pay out", () => {
+    state.status = connected;
+    const page = render({ hasRevenueHistory: true });
+    expect(page).not.toContain("revenueReconnectTitle");
+    expect(page).not.toContain("revenuePayoutsNeedAttention");
+  });
+
+  it("follows ?tab=payouts, which every old Payments link now points at", () => {
+    state.status = connected;
+    window.history.replaceState(null, "", "/manager/dashboard?view=revenue&tab=payouts");
+    expect(render({ hasRevenueHistory: true })).toContain("Stripe setup");
   });
 });

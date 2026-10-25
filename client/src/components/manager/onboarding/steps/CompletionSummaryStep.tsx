@@ -122,14 +122,14 @@ export default function CompletionSummaryStep() {
             stepId: 'location'
         });
 
-        // 6. Payment Setup
+        // 6. Payment Setup. Can be left for later (owner, Oct 24); listing still needs it, so "fully ready" checks it below.
         items.push({
             id: "payment",
             label: mt("onboardingPayments"),
-            status: isStripeConnected ? 'complete' : isStripeOnboardingComplete ? 'pending' : 'incomplete',
-            isRequired: true,
+            status: isStripeConnected ? 'complete' : isStripeOnboardingComplete ? 'pending' : 'skipped',
+            isRequired: false,
             description: isStripeConnected ? mt("onboardingStripeConnected")
-                : isStripeOnboardingComplete ? mt("verificationPending") : mt("onboardingConnectStripe"),
+                : isStripeOnboardingComplete ? mt("verificationPending") : mt("onboardingPayoutsLater"),
             stepId: 'payment-setup'
         });
 
@@ -180,7 +180,7 @@ export default function CompletionSummaryStep() {
     const isOnboardingComplete = completedOrPendingRequired.length === requiredItems.length;
 
     // Ready for bookings when ALL items are fully complete (license must be approved)
-    const isFullyReady = fullyCompletedRequired.length === requiredItems.length;
+    const isFullyReady = fullyCompletedRequired.length === requiredItems.length && isStripeConnected;
 
     // Items that still need action (not complete AND not pending)
     const incompleteRequired = requiredItems.filter(item => item.status === 'incomplete');
@@ -258,6 +258,8 @@ export default function CompletionSummaryStep() {
                             ? mt("licenseUnderReviewBookWhenApproved")
                             : isOnboardingComplete && paymentItem.status === 'pending'
                                 ? mt("verificationPending")
+                            : isOnboardingComplete && paymentItem.status === 'skipped'
+                                ? mt("onboardingPayoutsLaterBody")
                             : mt("completeMoreSteps", { count: incompleteRequired.length })
                     }
                 </p>
@@ -279,7 +281,9 @@ export default function CompletionSummaryStep() {
                             { key: 'submitted', label: mt("stepBusinessSubmitted"), state: 'done' },
                             { key: 'kitchen', label: mt("stepKitchenReady"), state: 'done' },
                             { key: 'payment', label: paymentItem.description, state: isStripeConnected ? 'done' : 'current' },
-                            { key: 'review', label: mt("stepReviewingLicence"), state: 'current' },
+                            licenseItem?.status === 'complete'
+                                ? { key: 'review', label: mt("onboardingLicenseVerified"), state: 'done' }
+                                : { key: 'review', label: mt("stepReviewingLicence"), state: 'current' },
                         ].map((step, index) => (
                             <li key={step.key} className="flex items-center gap-3 px-4 py-3">
                                 <span

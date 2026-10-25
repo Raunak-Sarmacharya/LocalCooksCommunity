@@ -44,6 +44,8 @@ beforeEach(() => {
   // The completion state is remembered per session; without this the first test to finish would
   // suppress the celebration for every test after it.
   window.sessionStorage.clear();
+  // The one-time auto-open is its own test; everywhere else the list starts closed.
+  window.localStorage.setItem("localcooks.gettingStarted.introduced", "1");
 });
 
 afterEach(cleanup);
@@ -122,6 +124,15 @@ describe("ManagerGettingStarted", () => {
 
     const trigger = screen.getByRole("button", { name: /Verify Phone Number/ });
     expect(trigger).toHaveAccessibleName("Get set up. Verify Phone Number. 0 of 3 complete");
+  });
+
+  it("opens by itself once per device, the first time the dashboard shows it", () => {
+    window.localStorage.removeItem("localcooks.gettingStarted.introduced");
+    renderWidget(SET_UP);
+    expect(screen.getByRole("button", { name: /Get set up\. Verify Phone Number/ })).toHaveAttribute("aria-expanded", "true");
+    cleanup();
+    renderWidget(SET_UP);
+    expect(screen.getByRole("button", { name: /Get set up\. Verify Phone Number/ })).toHaveAttribute("aria-expanded", "false");
   });
 
   it("changes the launcher label as the host progresses", () => {
@@ -305,7 +316,7 @@ describe("the panel's copy fits the flyout, in every locale", () => {
   ) as Record<Locale, Record<string, string>>;
 
   /** Read the panel's real width rather than restating it — that is the whole point of the guard. */
-  const panelRem = Number(source.match(/w-\[(\d+(?:\.\d+)?)rem\]/)?.[1]);
+  const panelRem = Number(source.match(/w-\[min\((\d+(?:\.\d+)?)rem,/)?.[1]);
   /** panel p-1.5 + row px-1.5 + marker + gap + glyph + gap */
   const CHROME_PX = 68;
   const availablePx = panelRem * 16 - CHROME_PX;

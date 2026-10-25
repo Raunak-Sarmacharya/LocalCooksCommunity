@@ -2,7 +2,8 @@ import { logger } from "@/lib/logger";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { AlertCircle, ArrowDown, Check, Loader2, LogOut } from "@/components/ui/manager-icons";
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
+import { AlertCircle, ChevronRight, FileText, Loader2, LogOut, ShieldCheck } from "@/components/ui/manager-icons";
 import Logo from "@/components/ui/logo";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
@@ -11,95 +12,56 @@ import { getChefPostAuthPath } from "@/config/chef-onboarding-steps";
 import PrivacyContent from "@/components/legal/PrivacyContent";
 import TermsContent from "@/components/legal/TermsContent";
 import { postTermsRedirect } from "@/lib/post-terms-redirect";
-import { cn } from "@/lib/utils";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Redirect, useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 
 type DocumentKey = "terms" | "privacy";
 
-const DOCUMENT_ORDER: DocumentKey[] = ["terms", "privacy"];
-
-/**
- * Keeps the closing marker clear of the action bar before a document counts as
- * read. Generous on purpose: over-shooting only asks for a few extra pixels of
- * scroll, whereas under-shooting would mark a document read while its last
- * lines are still hidden behind the bar.
- */
-const END_OF_DOCUMENT_INSET = 96;
-
-/**
- * The reading column, shared by the header, the document and the action bar so
- * everything sits on one vertical axis. A legal document is read, not skimmed,
- * so the measure is deliberately narrow — the old layout let the text run the
- * full width of a `max-w-3xl` column, which is roughly 110 characters a line and
- * is most of why the page read as unconsidered.
- */
-const COLUMN = "mx-auto w-full max-w-[44rem]";
-
-interface DocumentMeta {
-  /** Tab label and the noun used in status copy. */
-  label: string;
-  title: string;
-  description: string;
-}
-
-const DOCUMENTS: Record<DocumentKey, DocumentMeta> = {
+const DOCUMENTS: Record<DocumentKey, { label: string; title: string; description: string; Icon: typeof FileText }> = {
   terms: {
     label: "Terms of Service",
     title: "Local Cooks Platform Terms of Service",
-    description:
-      "The agreement between you and Jawrophi Delivery Inc. covering bookings, payments, liability and conduct on the platform.",
+    description: "Bookings, payments, liability and conduct on the platform.",
+    Icon: FileText,
   },
   privacy: {
     label: "Privacy Policy",
     title: "Local Cooks Privacy Policy",
-    description:
-      "What we collect, why we collect it, who we share it with, and how long we keep it.",
+    description: "What we collect, why, who we share it with, and how long we keep it.",
+    Icon: ShieldCheck,
   },
 };
 
+type TermsUser = {
+  uid?: string;
+  role?: string | null;
+  isManager?: boolean | null;
+  managerOnboardingCompleted?: boolean | null;
+  managerOnboardingStepsCompleted?: Record<string, unknown> | null;
+};
+
 /** Component wrapper around the pure {@link postTermsRedirect} helper. */
-function resolvePostTermsRedirect(
-  user: { role?: string | null; isManager?: boolean | null } | null | undefined,
-): string {
+function resolvePostTermsRedirect(user: TermsUser | null | undefined): string {
   return postTermsRedirect({
     hostname: window.location.hostname,
     redirectParam: new URLSearchParams(window.location.search).get("redirect"),
     role: user?.role,
     isManager: user?.isManager,
-    chefFallback: getChefPostAuthPath(user),
+    chefFallback: getChefPostAuthPath(user as any),
   });
 }
 
 /**
- * Review & Agreement.
+ * Agree to the Terms of Service and Privacy Policy: one short screen.
  *
- * WHY THERE ARE NO BREADCRUMBS
- * This page used to carry a breadcrumb whose first crumb was a home icon wired to
- * `setLocation("/dashboard")` — a path that is not a manager route, so it dropped a
- * manager onto an unrelated page. More fundamentally, breadcrumbs describe a hierarchy
- * you can navigate back up. There is no parent here: this is a gate, and nothing below
- * it is reachable until the agreement is recorded. A trail that implies otherwise is
- * worse than no trail, so the header states where you are and offers the one action
- * that is actually available (sign out).
+ * Clickwrap, the pattern Airbnb and Uber use and courts enforce (Rudder v. Microsoft in Ontario; Meyer v. Uber,
+ * Selden v. Airbnb in the US): both documents named and one tap from being read, an unticked box whose label says
+ * what is being agreed to, and the button beside it. It replaced a scroll-to-the-end gate over the full text, which
+ * people missed the way past (owner, Oct 24). `POST /api/user/accept-terms` still records the acceptance, time and
+ * policy version.
  *
- * WHY ONE AGREEMENT, NOT TWO
- * `POST /api/user/accept-terms` records a single acceptance (`termsAccepted`,
- * `termsAcceptedAt`, `termsVersion`) and has no notion of per-document consent, so the
- * two separate checkboxes this page used to require were a client-side invention that
- * made a legal formality feel like a two-step wizard. There is now one checkbox, and its
- * label names BOTH documents so nobody can agree to one without being told about the
- * other. Both texts remain readable and switchable via the tabs, and the reading gate
- * still covers each of them.
- *
- * WHY THE SCROLL GATE STAYS
- * Requiring a scroll before the accept control unlocks is "scrollwrap", and the
- * enforceability cases (Good v. Uber, Berroa v. Nasimov) turn on the terms being
- * embedded in a box the reader must scroll through, with a separate accept control.
- * So the gate is a legal asset, not friction to remove — what changed is how it is
- * communicated: a progress rail on the document, and a plain sentence saying exactly
- * which document is still outstanding, instead of a floating pill bouncing over the text.
+ * The documents open in a side reader rather than a new page, so reading them never loses the place.
  */
 function TermsAcceptanceScreen() {
   const { user, refreshUserData, logout } = useFirebaseAuth();
@@ -108,48 +70,8 @@ function TermsAcceptanceScreen() {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
-
-  const [activeTab, setActiveTab] = useState<DocumentKey>("terms");
-  const [read, setRead] = useState<Record<DocumentKey, boolean>>({
-    terms: false,
-    privacy: false,
-  });
-  /** One acceptance for the whole agreement — see the note above. */
   const [agreed, setAgreed] = useState(false);
-
-  /** The scrolling viewport — the reading gate measures against it. */
-  const scrollRef = useRef<HTMLDivElement>(null);
-  /**
-   * Closing marker of whichever document is currently mounted.
-   *
-   * A CALLBACK ref held in state, not a plain `useRef`. The page renders `<Redirect>`
-   * while `user` is still resolving, so on the first render the whole tree — and this
-   * marker with it — does not exist. A `useRef` would stay null, and the effect below,
-   * whose dependencies (`activeTab`, `read`) never change on their own, would never run
-   * again: the IntersectionObserver would never be created and the reading gate would
-   * never open by scrolling. That was a real bug — the only way past the gate was the
-   * "scroll to bottom" pill, once per document, which is precisely the hassle this page
-   * was reported for. State makes the effect re-run the moment the marker exists.
-   */
-  const [endOfDocument, setEndOfDocument] = useState<HTMLDivElement | null>(null);
-  const isFirstRender = useRef(true);
-
-  /**
-   * How far through the current document the reader is, 0 to 1. This is the honest
-   * "there is more below" cue: it says how much more, which the old bottom fade could
-   * not, and it is what makes the scroll requirement feel like progress rather than an
-   * arbitrary lock.
-   */
-  const [progress, setProgress] = useState(0);
-
-  const updateScroll = useCallback(() => {
-    const scroller = scrollRef.current;
-    if (!scroller) return;
-    const max = scroller.scrollHeight - scroller.clientHeight;
-    // A document short enough to fit on screen is fully read on arrival.
-    setProgress(max > 2 ? Math.min(1, scroller.scrollTop / max) : 1);
-  }, []);
+  const [reading, setReading] = useState<DocumentKey | null>(null);
 
   useEffect(() => {
     if (user?.termsAccepted && user?.termsVersion === CURRENT_POLICY_VERSION) {
@@ -158,456 +80,188 @@ function TermsAcceptanceScreen() {
   }, [user, setLocation]);
 
   /**
-   * Reading gate.
+   * Where to go next, decided here rather than one redirect later.
    *
-   * The document counts as read once its closing marker scrolls into the viewport,
-   * clear of the action bar. A document short enough to fit on screen therefore passes
-   * on arrival.
+   * A brand-new manager was sent to the dashboard, whose guard then loaded their locations and redirected to setup:
+   * two loading screens back to back. Fetching the locations into the same cache entry the guard reads, and going
+   * straight to setup when there are none, makes it one step.
    */
-  useEffect(() => {
-    if (read[activeTab] || !endOfDocument) return;
-
-    const root = scrollRef.current;
-    if (!root) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          setRead((prev) => (prev[activeTab] ? prev : { ...prev, [activeTab]: true }));
-        }
-      },
-      { root, rootMargin: `0px 0px -${END_OF_DOCUMENT_INSET}px 0px`, threshold: 0 },
-    );
-    observer.observe(endOfDocument);
-    return () => observer.disconnect();
-  }, [activeTab, read, endOfDocument]);
-
-  /**
-   * Returning the reader to the top of the document they just switched to.
-   *
-   * Runs as a layout effect, so the scroll position is already reset before the
-   * observer above is created. Without that, switching from a long document to a
-   * shorter one would leave the viewport parked at the bottom, the shorter document's
-   * closing marker would land in view, and it would be marked read without ever being
-   * shown.
-   */
-  useLayoutEffect(() => {
-    if (isFirstRender.current) {
-      isFirstRender.current = false;
-      return;
+  const destinationAfterAgreeing = async (): Promise<string> => {
+    const target = resolvePostTermsRedirect(user);
+    const manager = user?.role === "manager" || user?.isManager === true;
+    const started = Object.keys((user as TermsUser | null)?.managerOnboardingStepsCompleted ?? {}).length > 0;
+    if (!manager || target !== "/manager/dashboard" || (user as TermsUser | null)?.managerOnboardingCompleted || started) return target;
+    try {
+      const locations = await queryClient.fetchQuery({
+        queryKey: ["/api/manager/locations", auth.currentUser?.uid],
+        queryFn: async () => {
+          const token = await auth.currentUser?.getIdToken();
+          const response = await fetch("/api/manager/locations", { headers: { Authorization: `Bearer ${token}` } });
+          return response.ok ? response.json() : [];
+        },
+        staleTime: 30_000,
+      });
+      return Array.isArray(locations) && locations.length === 0 ? "/manager/setup" : target;
+    } catch {
+      return target;
     }
-    scrollRef.current?.scrollTo({ top: 0, behavior: "auto" });
-    setProgress(0);
-  }, [activeTab]);
-
-  /**
-   * Keep the progress rail honest. A ResizeObserver catches both the tab switch (a new
-   * document of a different length) and late-loading content.
-   */
-  useEffect(() => {
-    updateScroll();
-
-    const scroller = scrollRef.current;
-    if (!scroller) return;
-
-    const observer = new ResizeObserver(() => updateScroll());
-    observer.observe(scroller);
-    if (scroller.firstElementChild) observer.observe(scroller.firstElementChild);
-
-    return () => observer.disconnect();
-  }, [updateScroll, activeTab]);
-
-  const changeTab = useCallback((next: DocumentKey) => setActiveTab(next), []);
+  };
 
   const handleSubmit = async () => {
     setIsSubmitting(true);
     setError(null);
-
     try {
       const firebaseUser = auth.currentUser;
       if (!firebaseUser) {
-        setError("Authentication session expired. Please sign in again.");
+        setError("Your session expired. Sign in again to continue.");
+        setIsSubmitting(false);
         return;
       }
-
       const token = await firebaseUser.getIdToken();
       const response = await fetch("/api/user/accept-terms", {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ accepted: true }),
       });
-
-      if (response.ok) {
-        logger.info("Terms accepted successfully");
-        await refreshUserData();
-        // ENTERPRISE FIX: Optimistically update ALL cached /api/user/profile queries
-        // with the fresh terms data. This prevents the race condition where
-        // ManagerProtectedRoute reads stale cached data (termsAccepted=false) and
-        // redirects back to /accept-terms, causing a redirect loop that triggers
-        // the Sentry ErrorBoundary ("Something went wrong. Please refresh the page.").
-        //
-        // queryClient.invalidateQueries only marks queries as stale and triggers a
-        // BACKGROUND refetch — it doesn't update the cached data synchronously.
-        // When ManagerProtectedRoute mounts, it sees the stale cached data first
-        // (with termsAccepted=false) and redirects back here before the refetch completes.
-        queryClient.setQueriesData(
-          { queryKey: ["/api/user/profile"] },
-          (oldData: any) => {
-            if (!oldData) return oldData;
-            return {
-              ...oldData,
-              termsAccepted: true,
-              terms_accepted: true,
-              termsAcceptedAt: new Date().toISOString(),
-              terms_accepted_at: new Date().toISOString(),
-              termsVersion: CURRENT_POLICY_VERSION,
-              terms_version: CURRENT_POLICY_VERSION,
-            };
-          }
-        );
-        // Also invalidate to ensure eventual consistency with the server
-        await queryClient.invalidateQueries({ queryKey: ["/api/user/profile"] });
-        setSuccess(true);
-        setTimeout(() => {
-          setLocation(resolvePostTermsRedirect(user), { replace: true });
-        }, 800);
-      } else {
-        const text = await response.text();
-        logger.error("Terms acceptance API failed:", response.status, text);
-        setError("Something went wrong while saving your acceptance. Please try again.");
+      if (!response.ok) {
+        logger.error("Terms acceptance API failed:", response.status, await response.text());
+        setError("We couldn't save your agreement. Try again.");
+        setIsSubmitting(false);
+        return;
       }
+      logger.info("Terms accepted successfully");
+      await refreshUserData();
+      // Write the acceptance into every cached profile now: the route guards read the cache first, and a stale
+      // `termsAccepted: false` bounced managers straight back here (the old redirect loop).
+      const acceptedAt = new Date().toISOString();
+      queryClient.setQueriesData({ queryKey: ["/api/user/profile"] }, (oldData: any) => oldData && ({
+        ...oldData,
+        termsAccepted: true, terms_accepted: true,
+        termsAcceptedAt: acceptedAt, terms_accepted_at: acceptedAt,
+        termsVersion: CURRENT_POLICY_VERSION, terms_version: CURRENT_POLICY_VERSION,
+      }));
+      void queryClient.invalidateQueries({ queryKey: ["/api/user/profile"] });
+      // The button stays in its loading state until the next screen replaces this one.
+      setLocation(await destinationAfterAgreeing(), { replace: true });
     } catch (err) {
       logger.error("Error submitting terms acceptance:", err);
-      setError("Network error. Please check your connection and try again.");
-    } finally {
+      setError("Network error. Check your connection and try again.");
       setIsSubmitting(false);
     }
   };
 
-  /**
-   * Clears the whole reading requirement in one action.
-   *
-   * The documents are long — the Terms alone is ~17 sections — and asking for a manual
-   * scroll through both, or a click per document, is exactly the hassle that makes a
-   * consent screen feel hostile. This reaches the same end state the old floating
-   * "scroll to bottom" pill reached, minus the second click, and it is a real button in
-   * the action bar rather than a link the reader has to notice.
-   *
-   * It deliberately does NOT move the reader to another document: parking the viewport
-   * at the end of the document they are already looking at keeps the action predictable.
-   */
-  const skipToEnd = useCallback(() => {
-    setRead({ terms: true, privacy: true });
-    const scroller = scrollRef.current;
-    if (scroller) scroller.scrollTo({ top: scroller.scrollHeight, behavior: "smooth" });
-  }, []);
-
   if (!user) {
     // Role-aware: managers on kitchen must not bounce to the chef /auth page.
-    const fallback =
-      typeof window !== "undefined" && window.location.hostname.includes("kitchen")
-        ? "/manager/login"
-        : window.location.pathname.startsWith("/manager")
-          ? "/manager/login"
-          : "/auth";
+    const fallback = window.location.hostname.includes("kitchen") || window.location.pathname.startsWith("/manager")
+      ? "/manager/login"
+      : "/auth";
     return <Redirect to={fallback} replace />;
   }
 
-  const unread = DOCUMENT_ORDER.filter((key) => !read[key]);
-  const allRead = unread.length === 0;
-  const canSubmit = allRead && agreed;
-  const actionEnabled = canSubmit && !isSubmitting && !success;
-
-  /**
-   * The one sentence that tells the reader what is left. It replaces a disabled button
-   * whose label narrated the requirement ("Read the Privacy Policy to continue"), which
-   * read as a broken control rather than an instruction.
-   */
-  const statusText = !allRead
-    ? unread.length === 2
-      ? "Read both documents to the end to continue."
-      : `Read the ${DOCUMENTS[unread[0]].label} to the end to continue.`
-    : !agreed
-      ? "Tick the box to confirm your agreement."
-      : null;
-
-  const renderDocument = (key: DocumentKey) => {
-    const meta = DOCUMENTS[key];
-
-    return (
-      <div
-        role="tabpanel"
-        id={`panel-${key}`}
-        aria-labelledby={`tab-${key}`}
-        tabIndex={-1}
-        className="outline-none"
-      >
-        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-          Review &amp; agreement
-        </p>
-        <h1 className="mt-2 text-2xl font-bold tracking-[-0.02em] text-foreground md:text-[28px]">
-          {meta.title}
-        </h1>
-        <p className="mt-2 max-w-[38rem] text-sm leading-relaxed text-muted-foreground">
-          {meta.description}
-        </p>
-
-        <div className="mt-8 border-t border-border pt-8">
-          <div className="terms-legal-content">
-            {key === "terms" ? <TermsContent /> : <PrivacyContent />}
-          </div>
-        </div>
-
-        {/* Closing marker for the reading gate — see the observer above. */}
-        <div ref={setEndOfDocument} aria-hidden className="h-px w-full" />
-      </div>
-    );
-  };
+  const open = reading ? DOCUMENTS[reading] : null;
 
   return (
-    <div className="flex h-screen w-full flex-col overflow-hidden bg-background">
-      <header className="z-20 shrink-0 border-b border-border bg-background/85 backdrop-blur-md">
-        {/* Full-bleed app bar. The lockup belongs to the PAGE, so it anchors to the page
-            edge; confining it to the reading column left the logo and Sign out floating in
-            the middle of a wide screen, which is what made the header look accidental. */}
-        <div className="flex h-16 items-center gap-4 px-4 md:px-8">
-          {/* Same lockup as the login and welcome screens — one brand lockup, one word. */}
-          <div className="flex min-w-0 items-center gap-2.5">
-            <Logo variant="brand" className="h-8 w-auto shrink-0" />
-            <span className="font-logo text-lg leading-none tracking-tight text-[#E10939]">
-              LocalCooks
-            </span>
-          </div>
+    <div className="relative min-h-screen overflow-hidden bg-[#FBFAF9]">
+      {/* The welcome screen's brand wash, so the two read as one sequence. */}
+      <div aria-hidden className="pointer-events-none absolute left-1/2 top-[-22rem] h-[34rem] w-[60rem] -translate-x-1/2 rounded-full bg-[#E10939]/[0.06] blur-3xl" />
 
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => void logout()}
-            disabled={isSubmitting}
-            className="ml-auto shrink-0 gap-2 text-muted-foreground hover:text-foreground"
-          >
-            <LogOut className="h-4 w-4" />
-            <span className="hidden sm:inline">Sign out</span>
-          </Button>
+      <header className="relative flex h-16 items-center px-5 sm:px-8">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <Logo variant="brand" className="h-8 w-auto shrink-0" />
+          <span className="font-logo text-lg leading-none tracking-tight text-[#E10939]">LocalCooks</span>
         </div>
-
-        {/* The tabs switch the document, so they belong on the reading axis rather than at
-            the page edge. The tick is the only read-state indicator on the page, so the
-            action bar never has to explain which document is outstanding twice. */}
-        <div className={cn(COLUMN, "px-4 md:px-6")}>
-          <div role="tablist" aria-label="Documents to review" className="flex items-stretch gap-6">
-            {DOCUMENT_ORDER.map((key) => {
-              const isActive = activeTab === key;
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  role="tab"
-                  id={`tab-${key}`}
-                  aria-selected={isActive}
-                  aria-controls={`panel-${key}`}
-                  tabIndex={isActive ? 0 : -1}
-                  onClick={() => changeTab(key)}
-                  className={cn(
-                    "-mb-px flex items-center gap-2 border-b-2 pb-3 text-sm transition-colors",
-                    isActive
-                      ? "border-primary font-semibold text-foreground"
-                      : "border-transparent font-medium text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {DOCUMENTS[key].label}
-                  {read[key] && (
-                    <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white">
-                      <Check className="h-2.5 w-2.5" />
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        <Button variant="ghost" size="sm" onClick={() => void logout()} disabled={isSubmitting}
+          className="ml-auto gap-2 text-slate-500 hover:text-slate-900">
+          <LogOut className="h-4 w-4" />
+          <span className="hidden sm:inline">Sign out</span>
+        </Button>
       </header>
 
-      {/* The reading viewport. `tabIndex` makes it keyboard-scrollable, which a
-          scroll-gated document must be. */}
-      <div className="relative flex-1 overflow-hidden">
-        <div
-          ref={scrollRef}
-          onScroll={updateScroll}
-          tabIndex={0}
-          aria-label={`${DOCUMENTS[activeTab].label} document`}
-          className="h-full overflow-y-auto outline-none"
-        >
-          <div className={cn(COLUMN, "px-4 pb-28 pt-8 md:px-6 md:pb-32 md:pt-10")}>
-            {renderDocument(activeTab)}
-          </div>
+      <main className="relative mx-auto w-full max-w-[34rem] px-5 pb-16 pt-8 sm:pt-16">
+        <h1 className="text-balance text-[28px] font-bold leading-tight tracking-[-0.025em] text-slate-950 sm:text-[32px]">
+          One last thing before you start
+        </h1>
+        <p className="mt-3 text-pretty text-[15px] leading-relaxed text-slate-600">
+          These two documents cover how Local Cooks works: bookings, payments and your data.
+        </p>
+
+        <ul className="mt-8 divide-y divide-slate-100 overflow-hidden rounded-2xl bg-white ring-1 ring-slate-200/80 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_12px_32px_-18px_rgba(15,23,42,0.18)]">
+          {(Object.keys(DOCUMENTS) as DocumentKey[]).map(key => {
+            const { label, description, Icon } = DOCUMENTS[key];
+            return (
+              <li key={key}>
+                <button type="button" onClick={() => setReading(key)}
+                  className="group flex w-full items-center gap-4 px-5 py-4 text-left transition-colors hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:outline-none">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#E10939]/[0.08] text-[#E10939]">
+                    <Icon className="h-5 w-5" aria-hidden />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[15px] font-semibold text-slate-900">{label}</span>
+                    <span className="mt-0.5 block text-[13px] leading-snug text-slate-500">{description}</span>
+                  </span>
+                  <span className="flex shrink-0 items-center gap-0.5 text-[13px] font-medium text-slate-500 group-hover:text-slate-900">
+                    Read<ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" aria-hidden />
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+
+        <div className="mt-7 flex items-start gap-3">
+          <Checkbox id="accept-agreement" checked={agreed} disabled={isSubmitting}
+            onCheckedChange={value => setAgreed(value === true)} className="mt-0.5 h-5 w-5" />
+          {/* One sentence naming both documents: this is the statement that records consent. */}
+          <Label htmlFor="accept-agreement" className="cursor-pointer text-[15px] font-normal leading-snug text-slate-700">
+            I agree to the Local Cooks <span className="font-semibold text-slate-900">Terms of Service</span> and{" "}
+            <span className="font-semibold text-slate-900">Privacy Policy</span>.
+          </Label>
         </div>
 
-        {/* Progress rail, pinned to the foot of the reading viewport. It reads as the
-            edge of the document rather than as a floating control, and it answers the
-            only question a scroll-gated reader has: how much is left. */}
-        <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0">
-          <div className="h-[3px] w-full bg-border/60">
-            <div
-              className="h-full bg-primary transition-[width] duration-150 ease-out"
-              style={{ width: `${Math.round(progress * 100)}%` }}
-            />
+        {error && (
+          <div role="alert" className="mt-5 flex items-start gap-2 rounded-xl bg-red-50 px-3.5 py-2.5 text-[13px] font-medium text-red-700 ring-1 ring-red-100">
+            <AlertCircle className="mt-px h-4 w-4 shrink-0" />
+            <span>{error}</span>
           </div>
-        </div>
-      </div>
+        )}
 
-      {/* Action bar.
-          On the reading axis, not edge-to-edge. The 44rem column cannot hold the consent
-          sentence and both buttons on one line — that is what squeezed the agreement into
-          226px and wrapped it — and stretching the bar to the full width instead just
-          moved the problem into a ~430px void between the checkbox and the button.
-          Two rows fixes both: the consent sits directly ABOVE the action it authorises,
-          and the reason the action is unavailable sits beside it. */}
-      <div className="z-20 shrink-0 border-t border-border bg-background/85 backdrop-blur-md">
-        <div className={cn(COLUMN, "flex flex-col gap-3 px-4 py-4 md:px-6")}>
-          {error && (
-            <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs font-medium text-destructive">
-              <AlertCircle className="mt-px h-4 w-4 shrink-0" />
-              <span>{error}</span>
-            </div>
+        <Button onClick={() => void handleSubmit()} disabled={!agreed || isSubmitting} size="lg"
+          className="mt-6 h-12 w-full rounded-xl bg-[#E10939] text-[15px] font-semibold text-white shadow-[0_2px_6px_-1px_rgba(15,23,42,0.1),0_10px_28px_-8px_rgba(245,16,66,0.38)] transition-colors hover:bg-[#C90832] disabled:bg-slate-200 disabled:text-slate-500 disabled:opacity-100 disabled:shadow-none">
+          {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />}
+          {isSubmitting ? "One moment…" : "Agree & continue"}
+        </Button>
+      </main>
+
+      {/* The reader: full height on the right on a computer, the whole screen on a phone. */}
+      <Sheet open={reading !== null} onOpenChange={value => !value && setReading(null)}>
+        <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-2xl">
+          {open && (
+            <>
+              <div className="shrink-0 border-b border-slate-100 px-6 pb-4 pt-6 pr-14">
+                <SheetTitle className="text-lg font-bold tracking-[-0.015em] text-slate-950">{open.title}</SheetTitle>
+                <SheetDescription className="mt-1 text-[13px] text-slate-500">{open.description}</SheetDescription>
+              </div>
+              <div className="terms-legal-content min-h-0 flex-1 overflow-y-auto px-6 pb-10 pt-2" tabIndex={0}>
+                {reading === "terms" ? <TermsContent /> : <PrivacyContent />}
+              </div>
+              <div className="shrink-0 border-t border-slate-100 px-6 py-4">
+                <Button variant="outline" className="h-11 w-full rounded-xl" onClick={() => setReading(null)}>Done reading</Button>
+              </div>
+            </>
           )}
+        </SheetContent>
+      </Sheet>
 
-          <div className="flex items-start gap-3">
-            <Checkbox
-              id="accept-agreement"
-              checked={agreed}
-              disabled={!allRead || success}
-              onCheckedChange={(value) => setAgreed(value === true)}
-              className="mt-0.5"
-            />
-            {/* Names BOTH documents. This is the single sentence that records consent, so
-                it has to be readable as one statement of what is being agreed to. */}
-            <Label
-              htmlFor="accept-agreement"
-              className={cn(
-                "block text-sm leading-snug",
-                allRead && !success ? "cursor-pointer" : "cursor-not-allowed",
-              )}
-            >
-              I have read and agree to the{" "}
-              <span className="font-semibold text-foreground">{DOCUMENTS.terms.label}</span> and
-              the{" "}
-              <span className="font-semibold text-foreground">{DOCUMENTS.privacy.label}</span>.
-            </Label>
-          </div>
-
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            {/* Sits with the button it explains, rather than doubling the height of the
-                consent sentence above it. */}
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              {statusText && !success ? statusText : ""}
-            </p>
-
-            <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center">
-              {/* A real button, not a link buried in a sentence. The documents are long,
-                  so the way past the scroll requirement has to be impossible to miss —
-                  it was the user's main complaint about this page. */}
-              {!allRead && !success && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={skipToEnd}
-                  disabled={isSubmitting}
-                  className="w-full sm:w-auto"
-                >
-                  <ArrowDown className="mr-2 h-4 w-4" />
-                  Skip to the end
-                </Button>
-              )}
-
-              {/* `disabled:opacity-50` on the shared Button washes brand red out to pink,
-                  which reads as broken rather than "not yet" — and this control starts
-                  disabled, so it is the state most readers see first. Neutral is honest. */}
-              <Button
-                onClick={() => void handleSubmit()}
-                disabled={!actionEnabled}
-                className="w-full disabled:bg-muted disabled:text-muted-foreground disabled:shadow-none sm:w-auto sm:min-w-[11rem]"
-              >
-                {isSubmitting || success ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <Check className="mr-2 h-4 w-4" />
-                )}
-                {isSubmitting ? "Saving…" : success ? "Redirecting…" : "Agree & continue"}
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <style
-        dangerouslySetInnerHTML={{
-          __html: `
-        .terms-legal-content {
-          font-family: inherit;
-        }
-
-        .terms-legal-content h1 {
-          display: none !important;
-        }
-
-        .terms-legal-content h2 {
-          font-size: 1.0625rem !important;
-          font-weight: 700 !important;
-          margin-top: 2.75rem !important;
-          margin-bottom: 1rem !important;
-          color: hsl(var(--foreground)) !important;
-          letter-spacing: -0.015em !important;
-        }
-
-        .terms-legal-content h3 {
-          font-size: 0.9375rem !important;
-          font-weight: 600 !important;
-          margin-top: 1.75rem !important;
-          margin-bottom: 0.625rem !important;
-          color: hsl(var(--foreground)) !important;
-        }
-
-        .terms-legal-content p,
-        .terms-legal-content li {
-          font-size: 0.9375rem !important;
-          line-height: 1.7 !important;
-          margin-bottom: 1rem !important;
-          color: hsl(var(--muted-foreground)) !important;
-        }
-
-        .terms-legal-content hr {
-          margin: 2.5rem 0 !important;
-          border: none;
-          height: 1px;
-          background: hsl(var(--border));
-        }
-
-        .terms-legal-content strong {
-          color: hsl(var(--foreground)) !important;
-          font-weight: 600 !important;
-        }
-
-        .terms-legal-content ul,
-        .terms-legal-content ol {
-          padding-left: 1.25rem !important;
-          margin-bottom: 1.25rem !important;
-        }
-
-        .terms-legal-content blockquote {
-          background: hsl(var(--muted));
-          border-radius: 0.75rem;
-          padding: 1.25rem;
-          font-style: italic;
-          border-left: 4px solid hsl(var(--border));
-          margin: 1.5rem 0;
-        }
-      `,
-        }}
-      />
+      <style dangerouslySetInnerHTML={{ __html: `
+        .terms-legal-content h1 { display: none !important; }
+        .terms-legal-content h2 { font-size: 1rem !important; font-weight: 700 !important; margin: 2rem 0 0.75rem !important; color: rgb(15 23 42) !important; letter-spacing: -0.01em !important; }
+        .terms-legal-content h3 { font-size: 0.9375rem !important; font-weight: 600 !important; margin: 1.5rem 0 0.5rem !important; color: rgb(15 23 42) !important; }
+        .terms-legal-content p, .terms-legal-content li { font-size: 0.9375rem !important; line-height: 1.7 !important; margin-bottom: 0.875rem !important; color: rgb(71 85 105) !important; max-width: 68ch; }
+        .terms-legal-content hr { margin: 2rem 0 !important; border: none; height: 1px; background: rgb(241 245 249); }
+        .terms-legal-content strong { color: rgb(15 23 42) !important; font-weight: 600 !important; }
+        .terms-legal-content ul, .terms-legal-content ol { padding-left: 1.25rem !important; margin-bottom: 1rem !important; }
+        .terms-legal-content a { color: #E10939; text-underline-offset: 3px; }
+      ` }} />
     </div>
   );
 }

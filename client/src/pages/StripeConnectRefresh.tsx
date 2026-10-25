@@ -108,7 +108,7 @@ export default function StripeConnectRefresh() {
     } else if (fromSetup) {
       window.location.href = '/manager/setup';
     } else {
-      window.location.href = '/manager/dashboard?view=profile&tab=payments';
+      window.location.href = '/manager/dashboard?view=revenue&tab=payouts';
     }
   };
 
