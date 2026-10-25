@@ -1843,5 +1843,14 @@
   "tourBookSending": "Envoi…",
   "tourBookViewMyTours": "Voir mes visites",
   "tourBookCancel": "Annuler",
-  "tourPendingResponseExpectation": "Nous visons une réponse dans les 24 heures. Votre visite n’est pas confirmée tant que vous n’avez pas reçu de confirmation; une demande expire lorsque l’heure de début demandée est passée."
+  "tourPendingResponseExpectation": "Nous visons une réponse dans les 24 heures. Votre visite n’est pas confirmée tant que vous n’avez pas reçu de confirmation; une demande expire lorsque l’heure de début demandée est passée.",
+  "tourSlotTakenPick": "Ce créneau vient d’être pris. Choisissez une autre heure.",
+  "tourSignInToSend": "Connectez-vous ci-dessus pour envoyer votre demande.",
+  "tourAgreeNeeded": "Acceptez les conditions pour envoyer votre demande.",
+  "tourConfirmTitle": "Confirmez votre courriel pour envoyer votre demande de visite",
+  "tourConfirmBody": "Nous avons envoyé un lien à {email}. Touchez-le sur n’importe quel appareil, puis envoyez votre demande ici.",
+  "tourReadyTitle": "Votre demande de visite est prête",
+  "tourReadyBody": "Votre courriel est confirmé. Vérifiez l’heure et envoyez la demande à la cuisine.",
+  "tourReadySend": "Envoyer la demande",
+  "tourReadyDiscard": "Supprimer"
 }

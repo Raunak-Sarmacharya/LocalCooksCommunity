@@ -3,11 +3,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ScheduleViewingWidget from './ScheduleViewingWidget';
 
-const session = vi.hoisted(() => ({ user: null as any, currentUser: null as any, loading: false }));
+const session = vi.hoisted(() => ({ user: null as any, currentUser: null as any, loading: false, signup: vi.fn(), lookup: { state: 'new', methods: [] as string[] }, sendVerification: vi.fn() }));
 vi.mock('@/lib/firebase', () => ({ auth: { get currentUser() { return session.currentUser; } } }));
-vi.mock('@/hooks/use-auth', () => ({ useFirebaseAuth: () => ({ user: session.user, loading: session.loading, refreshUserData: async () => {} }) }));
+vi.mock('@/hooks/use-auth', () => ({ useFirebaseAuth: () => ({ user: session.user, loading: session.loading, refreshUserData: async () => {}, updateUserVerification: async () => {},
+  signup: session.signup, logout: vi.fn(), sendSignInCode: vi.fn(async () => {}), signInWithEmailCode: vi.fn(), signInWithGoogle: vi.fn(), login: vi.fn() }) }));
 vi.mock('@/hooks/use-email-verification-guard', () => ({ useEmailVerificationGuard: () => ({ guard: (callback: () => void) => callback(), gate: null }) }));
-vi.mock('@/components/auth/KitchenJourneyAuth', () => ({ default: () => <p>Account authentication</p> }));
+vi.mock('@/lib/login-challenge', () => ({ resolveAuthIdentifier: async () => session.lookup }));
+vi.mock('@/lib/send-verification-email', () => ({ sendVerificationEmailWithFallback: session.sendVerification }));
 vi.mock('@/components/layout/Header', () => ({ default: () => null }));
 vi.mock('@/layouts/chef-shell-context', () => ({ useIsChefShell: () => true }));
 vi.mock('@/components/ui/calendar', () => ({ Calendar: ({ onSelect }: any) => <button onClick={() => onSelect(new Date(2099, 9, 7))}>Choose date</button> }));
@@ -61,7 +63,10 @@ function saveDraft(intakeData: any, step = 'confirm', ownerUid?: string) {
 beforeEach(() => {
   vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
   Element.prototype.scrollIntoView = vi.fn();
+  document.elementFromPoint = (() => null) as any; // input-otp (the sign-in code) measures the page
   localStorage.clear(); sessionStorage.clear(); session.user = null; session.currentUser = null; session.loading = false;
+  session.signup.mockReset(); session.sendVerification.mockReset().mockResolvedValue({ channel: 'server' }); session.lookup = { state: 'new', methods: [] };
+  window.history.replaceState({}, '', '/request-tour/2?kitchenId=4');
   vi.stubGlobal('fetch', vi.fn(async (url: string) => ({ ok: true, json: async () => url.includes('/book') ? {} : null })));
 });
 afterEach(() => { cleanup(); clients.forEach(client => client.clear()); clients.length = 0; vi.unstubAllGlobals(); });
@@ -95,7 +100,9 @@ describe('required tour intake', () => {
     expect(screen.getByRole('radio', { name: 'No' })).not.toBeChecked();
     choose('Do you have a food handler certificate?', 'No');
     expect(send()).toBeEnabled();
-    expect(send()).toHaveTextContent(actor === 'guest' ? 'Continue' : 'Request tour');
+    // Two screens for everyone: the second screen always ends in Request tour.
+    expect(send()).toHaveTextContent('Request tour');
+
   });
 
   it.each([false, true])('submits the four answers, including No and date undecided=%s, only on Request tour', async notDecided => {
@@ -121,8 +128,6 @@ describe('required tour intake', () => {
 
   it('retains guest answers through reload and verified auth handoff without automatically submitting', async () => {
     const view = mount(); await reachIntake(); fillIntake(true);
-    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
-    expect(screen.getByText('Account authentication')).toBeInTheDocument();
     await waitFor(() => expect(JSON.parse(localStorage.getItem('viewing_booking_4')!).intakeData.hasLicense).toBe(false));
     view.unmount(); signIn(); mount();
     expect(await screen.findByTestId('tour-request-submit')).toBeEnabled();
@@ -152,10 +157,10 @@ describe('required tour intake', () => {
     expect(sessionStorage.getItem('viewing_booking_4')).toBeNull();
   });
 
-  it('keeps required answers while waiting for verification and never submits on verification', async () => {
+  it('an older draft on the account step opens the second screen and never submits on verification', async () => {
     signIn('chef-a', false); saveDraft(answers, 'account', 'chef-a');
     const view = mount();
-    expect(await screen.findByText('Account authentication')).toBeInTheDocument();
+    expect(await screen.findByTestId('tour-request-submit')).toBeEnabled();
     signIn(); view.rerenderKitchen();
     expect(await screen.findByTestId('tour-request-submit')).toBeEnabled();
     expect(vi.mocked(fetch).mock.calls.some(([url]) => url === '/api/viewings/book')).toBe(false);
@@ -191,5 +196,99 @@ describe('required tour intake', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
     expect(screen.getByRole('radio', { name: 'No' })).toBeChecked();
     expect(screen.getByLabelText(START)).toHaveValue(answers.targetStartDate);
+  });
+});
+
+const held = { scheduledAt: slot.scheduledAt, chefNotes: 'See ovens', intakeData: answers };
+type Route = (url: string, init?: any) => { ok?: boolean; body: unknown } | undefined;
+function serve(route: Route) {
+  vi.mocked(fetch).mockImplementation(async (url: any, init?: any) => {
+    const hit = route(String(url), init);
+    return { ok: hit?.ok ?? true, json: async () => hit ? hit.body : String(url).includes('tour-draft') ? { draft: null } : null } as any;
+  });
+}
+const calls = (part: string, method?: string) => vi.mocked(fetch).mock.calls.filter(([url, init]) => String(url).includes(part) && (!method || (init as any)?.method === method));
+
+describe('signed-out tour request (one page, like Request to apply)', () => {
+  function typeEmail(email: string) {
+    const input = screen.getByLabelText('Email');
+    fireEvent.change(input, { target: { value: email } });
+    fireEvent.blur(input);
+  }
+  it('a new email asks name and mobile, one agreement, creates the account on send, holds the request, then sends it once verified', async () => {
+    let draft: unknown = null;
+    serve((url, init) => {
+      if (url === '/api/viewings/tour-draft' && init?.method === 'PUT') { draft = JSON.parse(String(init.body)); return { body: { saved: true } }; }
+      if (url.startsWith('/api/viewings/tour-draft/')) return { body: { draft: draft && held } };
+      if (url === '/api/viewings/book') return { body: { id: 91 } };
+    });
+    session.signup.mockImplementation(async () => { signIn('new-chef', false); session.user.email = 'sam@example.com'; });
+    const view = mount(); await reachIntake(); fillIntake();
+    typeEmail('sam@example.com');
+    expect(await screen.findByLabelText('Full name')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Full name'), { target: { value: 'Sam Rivera' } });
+    fireEvent.change(screen.getByLabelText('Mobile phone'), { target: { value: '709 555 0142' } });
+    fireEvent.click(screen.getByTestId('tour-request-submit'));
+    expect(await screen.findByText('Agree to the terms to send your request.')).toBeInTheDocument();
+    expect(session.signup).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('checkbox', { name: /I agree to Local Cooks/ }));
+    fireEvent.click(screen.getByTestId('tour-request-submit'));
+    await waitFor(() => expect(session.signup).toHaveBeenCalledWith('sam@example.com', expect.any(String), 'Sam Rivera', 'chef', true, expect.stringContaining('709')));
+    await waitFor(() => expect(draft).toMatchObject({ locationId: 2, targetedKitchenId: 4, scheduledAt: slot.scheduledAt, intakeData: answers }));
+    view.rerenderKitchen();
+    expect(await screen.findByText('Confirm your email to send your tour request')).toBeInTheDocument();
+    expect(calls('/api/viewings/book')).toHaveLength(0);
+    // The link is tapped (here or on another device): the saved copy waits for the chef to send it.
+    signIn('new-chef', true); view.rerenderKitchen();
+    expect(await screen.findByText('Your tour request is ready')).toBeInTheDocument();
+    expect(calls('/api/viewings/book')).toHaveLength(0);
+    fireEvent.click(screen.getByRole('button', { name: 'Send request' }));
+    await waitFor(() => expect(calls('/api/viewings/book')).toHaveLength(1));
+    expect(JSON.parse(String(calls('/api/viewings/book')[0][1]?.body))).toEqual({ fromDraft: true, locationId: 2, targetedKitchenId: 4 });
+    await waitFor(() => expect(window.location.search).toBe('?view=viewings&viewing=91'));
+  });
+
+  it('an existing email signs in inline, with no agreement and no account step', async () => {
+    session.lookup = { state: 'existing', methods: ['password'] };
+    mount(); await reachIntake(); fillIntake();
+    typeEmail('chef@example.com');
+    expect(await screen.findByText('Welcome back.')).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: /I agree to Local Cooks/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('tour-request-submit'));
+    expect(await screen.findByText('Sign in above to send your request.')).toBeInTheDocument();
+    expect(session.signup).not.toHaveBeenCalled();
+  });
+
+  it('a signed-in account without a verified email gets a held request and a new link', async () => {
+    serve((url, init) => url === '/api/viewings/tour-draft' && init?.method === 'PUT' ? { body: { saved: true } } : undefined);
+    signIn('chef-a', false); mount(); await reachIntake(); fillIntake();
+    fireEvent.click(screen.getByTestId('tour-request-submit'));
+    await waitFor(() => expect(calls('/api/viewings/tour-draft', 'PUT')).toHaveLength(1));
+    expect(session.sendVerification).toHaveBeenCalledWith(expect.objectContaining({ email: 'chef@example.com', returnUrl: '/request-tour/2?kitchenId=4' }));
+    expect(session.signup).not.toHaveBeenCalled();
+  });
+
+  it('a held request whose time was taken returns to day and time with the date and answers kept', async () => {
+    serve(url => url.startsWith('/api/viewings/tour-draft/') ? { body: { draft: held } }
+      : url === '/api/viewings/book' ? { ok: false, body: { code: 'SLOT_TAKEN' } } : undefined);
+    signIn(); mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Send request' }));
+    expect(await screen.findByText('That time was just taken. Pick another time.')).toBeInTheDocument();
+    await waitFor(() => expect(calls('/api/viewings/tour-draft/4', 'DELETE')).toHaveLength(1));
+    fireEvent.click(await screen.findByRole('button', { pressed: false }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(screen.getByRole('radio', { name: 'No' })).toBeChecked();
+    expect(screen.getByLabelText(START)).toHaveValue(answers.targetStartDate);
+    expect(screen.getByLabelText(/Anything you want to see or ask/)).toHaveValue('See ovens');
+  });
+
+  it('a held request at a kitchen already toured is dropped and opens that tour with a notice', async () => {
+    serve(url => url.startsWith('/api/viewings/tour-draft/') ? { body: { draft: held } }
+      : url === '/api/viewings/book' ? { ok: false, body: { code: 'TOUR_REQUEST_BLOCKED', tourId: 95 } } : undefined);
+    signIn(); saveDraft(answers, 'details', 'chef-a'); mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Send request' }));
+    await waitFor(() => expect(window.location.search).toBe('?view=viewings&viewing=95&notice=already'));
+    await waitFor(() => expect(calls('/api/viewings/tour-draft/4', 'DELETE')).toHaveLength(1));
+    expect(localStorage.getItem('viewing_booking_4')).toBeNull();
   });
 });

@@ -184,6 +184,6 @@ describe('chef tour cards', () => {
     expect(pick(chefTourCard(row({ status: 'pending', scheduledAt: '2026-10-20T13:45:00Z' }), now))).toEqual([true, 'grey', 'Request expired', 'open']);
     expect(chefTourCard(row({ status: 'cancelled', cancelledBy: 'chef' }), now).line[1]).toBe('You cancelled this tour.');
     expect(chefTourCard(row({ status: 'cancelled', cancelledBy: 'manager' }), now).line[1]).toBe('The kitchen cancelled this tour.');
-    expect(chefTourCard(row({ status: 'cancelled', cancelledBy: 'local_cooks', disruptionReason: 'outcome_unknown' }), now).status[1]).toBe('Closed');
+    expect(chefTourCard(row({ status: 'cancelled', cancelledBy: 'local_cooks', disruptionReason: 'outcome_unknown' }), now).status[1]).toBe('Tour ended');
   });
 });

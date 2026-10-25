@@ -10,6 +10,8 @@ vi.mock("@/components/chef/PendingOverstayPenalties", () => ({ PendingOverstayPe
 vi.mock("@/hooks/use-chef-kitchen-applications", () => ({ useChefKitchenApplications: () => ({ applications: [] }) }));
 vi.mock("@/lib/api", () => ({ getAuthHeaders: async () => ({}) }));
 vi.mock("@/lib/session-extensions", () => ({ completeCardAction: vi.fn() }));
+vi.mock("@/hooks/use-chef-sidebar-hidden-items", () => ({ useChefSidebarHiddenItems: () => [] }));
+vi.mock("@/components/chef/ChefSectionTabs", () => ({ ChefSectionTabs: () => null }));
 afterEach(cleanup);
 
 it("shows only View under removal review even if a cached DTO advertises Extend", () => {

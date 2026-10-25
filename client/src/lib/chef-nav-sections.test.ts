@@ -19,7 +19,7 @@ describe("chef-nav-sections", () => {
 
     {
       const kitchens = chefNavSections.flatMap((section) => section.items).find((item) => item.id === "discover-kitchens");
-      assert.deepEqual(kitchens?.children?.map((item) => item.id), ["kitchen-requests", "kitchen-applications", "viewings"]);
+      assert.deepEqual(kitchens?.members?.map((item) => item.id), ["kitchen-requests", "kitchen-applications", "viewings"]);
       assert.equal(kitchens?.icon, KITCHEN_ICON_NAME);
       assert.equal(findChefNavItem("kitchen-applications")?.icon, KITCHEN_ICON_NAME);
       assert.ok(getIcon(KITCHEN_ICON_NAME)?.body, "Kitchen glyph must be available offline");

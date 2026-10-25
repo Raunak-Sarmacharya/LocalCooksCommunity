@@ -9,6 +9,7 @@ import { useChefShellChrome } from "@/layouts/chef-shell-context";
 import { chefDashboardHref } from "@/lib/chef-dashboard-nav";
 import { Button } from "@/components/ui/button";
 import { useTourRequestAccess } from '@/hooks/use-tour-request-access';
+import { getAuthHeaders } from '@/lib/api';
 
 export default function RequestTourPage() {
   const { locationId: rawLocationId } = useParams<{ locationId: string }>();
@@ -27,8 +28,11 @@ export default function RequestTourPage() {
   // A link without ?kitchenId= (an old link, or typed by hand) uses the location's only kitchen, instead of waiting forever.
   const locationKitchens = kitchens.filter((item) => item.locationId === locationId);
   const kitchenId = requestedKitchenId > 0 ? requestedKitchenId : locationKitchens.length === 1 ? locationKitchens[0].id : NaN;
-  const tourAccess = useTourRequestAccess(kitchenId, user?.uid);
-  const { hasApplication, isLoading: applicationLoading, error: applicationError, refetch: refetchApplication } = useChefKitchenApplicationForLocation(user && locationId ? locationId : null);
+  // An unverified account (just created on the request screen) can't be checked yet; its request is held until the
+  // email is verified, then these checks run and the booking route enforces them again.
+  const checkedUser = user && (user.isVerified || user.is_verified) ? user : null;
+  const tourAccess = useTourRequestAccess(kitchenId, checkedUser?.uid);
+  const { hasApplication, isLoading: applicationLoading, error: applicationError, refetch: refetchApplication } = useChefKitchenApplicationForLocation(checkedUser && locationId ? locationId : null);
   const kitchen = kitchens.find((item) => item.id === kitchenId && item.locationId === locationId);
   const back = () => navigate(`/kitchen-preview/${locationId}`);
   const breadcrumbs = useMemo(() => [
@@ -40,13 +44,18 @@ export default function RequestTourPage() {
 
   const existingTour = tourAccess.data?.canRequest === false && tourAccess.data.tour?.kind !== 'failed' ? tourAccess.data.tour : null;
   useEffect(() => {
-    if (existingTour) navigate(`${chefDashboardHref('viewings')}&viewing=${existingTour.id}`, { replace: true });
+    if (!existingTour) return;
+    // Signed in mid-request at a kitchen they already toured (or have a tour at): drop the half-filled request.
+    localStorage.removeItem(`viewing_booking_${kitchenId}`);
+    sessionStorage.removeItem(`viewing_booking_${kitchenId}`);
+    void (async () => fetch(`/api/viewings/tour-draft/${kitchenId}`, { method: 'DELETE', headers: await getAuthHeaders(), credentials: 'include' }))().catch(() => undefined);
+    navigate(`${chefDashboardHref('viewings')}&viewing=${existingTour.id}&notice=already`, { replace: true });
   }, [existingTour?.id, navigate]);
-  const tourAccessLoading = !!user && kitchenId > 0 && !tourAccess.isFetched;
+  const tourAccessLoading = !!checkedUser && kitchenId > 0 && !tourAccess.isFetched;
   const accessError = applicationError || tourAccess.error;
 
   if (!authLoading && !kitchensLoading && !applicationLoading && !tourAccessLoading && !accessError
-    && kitchen && !hasApplication && (!user || tourAccess.data?.canRequest)) {
+    && kitchen && !hasApplication && (!checkedUser || tourAccess.data?.canRequest)) {
     return (
       <ScheduleViewingWidget
         presentation="page"

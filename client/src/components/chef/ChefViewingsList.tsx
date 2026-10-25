@@ -159,7 +159,7 @@ function TourDetailPanel({
           <dl className="grid min-w-0 gap-4 sm:grid-cols-2 text-sm pt-1">
             <div><dt className="text-xs text-muted-foreground">{t("tourDetailReference", "Tour reference")}</dt><dd>TOUR-{tour.id}</dd></div>
             <div><dt className="text-xs text-muted-foreground">{t("tourDetailSubmitted", "Request submitted")}</dt><dd>{tour.submittedAt ? chefTourWhen(tour.submittedAt, null, locale) : t("tourDetailDateUnavailable", "Date unavailable")}</dd></div>
-            {tour.cancelledAt && !expired && <div><dt className="text-xs text-muted-foreground">{declined ? t("tourDetailDeclined", "Declined") : t("tourDetailCancelled", "Cancelled")}</dt><dd>{chefTourWhen(tour.cancelledAt, null, locale)}</dd></div>}
+            {tour.cancelledAt && !expired && <div><dt className="text-xs text-muted-foreground">{declined ? t("tourDetailDeclined", "Declined") : tour.disruptionReason === "outcome_unknown" ? t("tourDetailEnded", "Ended") : t("tourDetailCancelled", "Cancelled")}</dt><dd>{chefTourWhen(tour.cancelledAt, null, locale)}</dd></div>}
             {tour.completedAt && <div><dt className="text-xs text-muted-foreground">{t("tourDetailCompleted", "Completed")}</dt><dd>{chefTourWhen(tour.completedAt, null, locale)}</dd></div>}
           </dl>
         </div>
@@ -321,6 +321,8 @@ export default function ChefViewingsList({ onExploreKitchens }: { onExploreKitch
   const linkParams = new URLSearchParams(search);
   const linkedTourId = Number(linkParams.get('viewing'));
   const linkedAction = linkParams.get('action');
+  // Sent here from a new tour request at a kitchen with a tour already (RequestTourPage): say why.
+  const alreadyNotice = linkParams.get('notice') === 'already';
   const handledActionLink = useRef<string | null>(null);
   const openTour = (id: number) => navigate(`/dashboard?view=viewings&viewing=${id}`);
   const [cancellingId, setCancellingId] = useState<number | null>(null);
@@ -545,8 +547,8 @@ export default function ChefViewingsList({ onExploreKitchens }: { onExploreKitch
           const declined = tour.status === "cancelled" && (tour.cancelledBy === "manager_declined" || tour.adminReviewDecision === "denied");
           const kitchenCancelled = tour.status === "cancelled" && tour.cancelledBy === "manager";
           const unverified = tour.disruptionReason === "outcome_unknown";
-          // After a decline, kitchen cancellation, expiry or an unverified close, the next step is another time at the same kitchen.
-          const offerRetry = !!tour.locationId && !!tour.targetedKitchenId && (expired || declined || kitchenCancelled || unverified);
+          // After a decline, kitchen cancellation or expiry, the next step is another time at the same kitchen. A tour that simply ended (no result) just moves on to applying (owner: tours stay one-time and simple).
+          const offerRetry = !!tour.locationId && !!tour.targetedKitchenId && (expired || declined || kitchenCancelled);
           const otherOpenTour = offerRetry ? data.find(other => other.id !== tour.id && other.targetedKitchenId === tour.targetedKitchenId && !chefTourCard(other, actionClock).past) : undefined;
 
           const hasProposal = tour.rescheduleProposedSlots.length > 0 && ["pending", "confirmed"].includes(tour.status) && !tour.checkedInAt && !tour.disruptionReason && Date.parse(tour.scheduledAt) > Date.now();
@@ -568,10 +570,17 @@ export default function ChefViewingsList({ onExploreKitchens }: { onExploreKitch
                   </div>
                   <span className="inline-flex items-center gap-1.5 pt-1 text-sm"><span aria-hidden="true" className={`size-1.5 rounded-full ${DOT[card.tone]}`} />{t(card.status[0], card.status[1])}</span>
                 </div>
+                {alreadyNotice && <div role="status" className="flex items-start justify-between gap-3 rounded-xl border bg-muted/40 px-4 py-3 text-sm" data-testid="tour-already-notice">
+                  <p className="min-w-0 pt-0.5">{hasApplicationNextStep
+                    ? t("tourNoticeToured", { defaultValue: "You already toured {kitchen}. Request to apply when you’re ready.", kitchen: tour.kitchenName || tour.locationName })
+                    : t("tourNoticeAlready", { defaultValue: "You already have a tour here on {when}.", when: chefTourWhen(tour.scheduledAt, tour.durationMinutes, locale) })}</p>
+                  <button type="button" aria-label={t("tourNoticeDismiss", "Dismiss")} onClick={() => navigate(`/dashboard?view=viewings&viewing=${tour.id}`, { replace: true })}
+                    className="-m-1 inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><X className="h-4 w-4" aria-hidden="true" /></button>
+                </div>}
               </div>
               <section aria-label={t("tourNextStep", "What to do next")} className="space-y-3 rounded-xl border border-primary/20 bg-primary/5 p-5">
                 <h2 className={showAttendanceReply ? 'flex items-center gap-2 text-base font-semibold' : 'text-sm font-semibold'}>{showAttendanceReply ? <><CalendarCheck className="h-5 w-5 shrink-0" aria-hidden="true" />{tour.reconfirmation?.reply === 'still_coming' ? t('tourAttendanceConfirmed', 'Thanks for confirming') : t('tourReconfirmTitle', 'Are you still coming to your tour?')}</> : t("tourNextStep", "What to do next")}</h2>
-                {!showAttendanceReply && <p className="text-sm">{unverified ? t("tourNextUnverified", "This tour closed without a recorded outcome. If you came, you can request to apply. You can also ask for another time.")
+                {!showAttendanceReply && <p className="text-sm">{unverified ? t("tourNextUnverified", "Your tour has ended. Request to apply when you’re ready to cook here.")
                   : declined ? t("tourNextDeclined", "The kitchen declined this request. You can ask for another time or find other kitchens.")
                   : kitchenCancelled ? t("tourNextKitchenCancelled", "The kitchen cancelled this tour. You can ask for another time or find other kitchens.")
                   : tour.status === "cancelled" && !expired ? tour.cancelledBy === "chef" ? t("tourNextYouCancelled", "You cancelled this tour.") : t("tourNextLcClosed", "Local Cooks closed this tour. Contact Support if something looks wrong.")

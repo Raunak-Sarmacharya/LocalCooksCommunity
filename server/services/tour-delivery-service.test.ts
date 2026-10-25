@@ -1260,7 +1260,7 @@ describe('private tour feedback notices', () => {
     const event = payload('status', 'cancelled'); event.after.disruptionReason = 'outcome_unknown'; event.after.visitResult = 'unrecorded';
     event.after.sharedManagerNotes = 'Neither participant could verify what happened.'; event.actorRole = 'admin'; // Local Cooks' shared explanation
     const chef = tourEventMessages(event).find(message => message.key === 'chef-email')!.email!;
-    expect(chef.subject).toContain('Your tour is closed'); expect(chef.text).toContain(event.after.sharedManagerNotes);
+    expect(chef.subject).toContain('has ended'); expect(chef.text).toContain(event.after.sharedManagerNotes);
     expect(chef.text).not.toMatch(/was cancelled|tour disrupted|visitor no-show|check out when/i);
     expect(chef.text).toContain('Request to apply: https://chef.localcooks.ca/apply-kitchen/33'); // auto-closed visitors can still apply
   });

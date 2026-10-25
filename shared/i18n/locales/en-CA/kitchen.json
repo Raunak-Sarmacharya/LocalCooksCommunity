@@ -1844,5 +1844,14 @@
   "tourBookSending": "Sending…",
   "tourBookViewMyTours": "View my tours",
   "tourBookCancel": "Cancel",
-  "tourPendingResponseExpectation": "We aim to respond within 24 hours. Your tour is not confirmed until you receive confirmation; a request expires when its requested start time passes."
+  "tourPendingResponseExpectation": "We aim to respond within 24 hours. Your tour is not confirmed until you receive confirmation; a request expires when its requested start time passes.",
+  "tourSlotTakenPick": "That time was just taken. Pick another time.",
+  "tourSignInToSend": "Sign in above to send your request.",
+  "tourAgreeNeeded": "Agree to the terms to send your request.",
+  "tourConfirmTitle": "Confirm your email to send your tour request",
+  "tourConfirmBody": "We sent a link to {email}. Tap it on any device, then send your request from here.",
+  "tourReadyTitle": "Your tour request is ready",
+  "tourReadyBody": "Your email is confirmed. Check the time and send it to the kitchen.",
+  "tourReadySend": "Send request",
+  "tourReadyDiscard": "Discard"
 }

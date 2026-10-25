@@ -2,6 +2,7 @@ import PDFDocument from "pdfkit";
 import path from "node:path";
 import { DEFAULT_TIMEZONE } from '@shared/timezone-utils';
 import { formatTourSlotRange } from '@shared/tour-time';
+import { formatPhoneForDisplay } from '@shared/phone-validation';
 
 export type TourConfirmationDetails = {
   id: number;
@@ -32,10 +33,10 @@ export function tourReference(id: number): string {
 
 export function buildTourConfirmationPdf(tour: TourConfirmationDetails): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    const notes = [tour.chefNotes?.trim() ? ["Your note to the kitchen", tour.chefNotes.trim()] : null,
-      tour.arrivalNotes?.trim() ? ["Arrival instructions", tour.arrivalNotes.trim()] : null,
-      tour.departureNotes?.trim() ? ["Departure instructions", tour.departureNotes.trim()] : null,
-      tour.sharedManagerNotes?.trim() ? ["Manager notes", tour.sharedManagerNotes.trim()] : null,
+    // Tours carry arrival instructions only (owner, Oct 25); they sit right under the address.
+    const notes = [tour.arrivalNotes?.trim() ? ["How to get in", tour.arrivalNotes.trim()] : null,
+      tour.chefNotes?.trim() ? ["Your note to the kitchen", tour.chefNotes.trim()] : null,
+      tour.sharedManagerNotes?.trim() ? ["Notes from the kitchen", tour.sharedManagerNotes.trim()] : null,
       ["Confirmed at", tour.confirmedAt ? new Intl.DateTimeFormat("en-CA", { timeZone: tour.timezone, dateStyle: "long", timeStyle: "short" }).format(tour.confirmedAt) : "Confirmation time not recorded"]].filter((item): item is string[] => item !== null);
     const contactHeight = 126;
     const noteHeights = notes.map(([, value]) => Math.max(82, 48 + Math.ceil(value.length / 95) * 14));
@@ -52,7 +53,7 @@ export function buildTourConfirmationPdf(tour: TourConfirmationDetails): Promise
     const ink = "#172033";
     const muted = "#64748b";
     const line = "#e2e8f0";
-    const red = "#e51636";
+    const red = "#E10939";
     const formatDate = (date: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: DEFAULT_TIMEZONE, weekday: "long", month: "long", day: "numeric", year: "numeric" }).format(date);
     const label = (value: string, x: number, y: number) => doc.font("Helvetica-Bold").fontSize(8).fillColor(muted).text(value.toUpperCase(), x, y, { characterSpacing: 1.1 });
 
@@ -74,24 +75,24 @@ export function buildTourConfirmationPdf(tour: TourConfirmationDetails): Promise
     label("Date", 73, cardY + 24);
     doc.font("Helvetica-Bold").fontSize(15).fillColor(ink).text(formatDate(tour.scheduledAt), 73, cardY + 41, { width: 460 });
     label("Time", 73, cardY + 77);
-    doc.font("Helvetica-Bold").fontSize(10).fillColor(ink).text(formatTourSlotRange(tour.scheduledAt, tour.durationMinutes, true), 73, cardY + 94, { width: 320 });
-    doc.font("Body").fontSize(9).fillColor(muted).text(`${tour.durationMinutes} minute visit`, 400, cardY + 97, { width: 135, align: "right" });
+    doc.font("Helvetica-Bold").fontSize(10).fillColor(ink).text(formatTourSlotRange(tour.scheduledAt, tour.durationMinutes, true).replace(/\s?(AM|PM)\b/g,(_, p: string) => p === "AM" ? " a.m." : " p.m."), 73, cardY + 94, { width: 320 });
+    doc.font("Body").fontSize(9).fillColor(muted).text(`${tour.durationMinutes}-minute tour · free`, 400, cardY + 97, { width: 135, align: "right" });
     doc.moveTo(73, cardY + 123).lineTo(539, cardY + 123).strokeColor(line).stroke();
     doc.font("Helvetica-Bold").fontSize(12).fillColor(ink).text(tour.kitchenName || tour.locationName, 73, cardY + 137, { width: 465 });
     if (tour.kitchenName && tour.kitchenName !== tour.locationName) doc.font("Body").fontSize(9).fillColor(muted).text(tour.locationName, 73, cardY + 155, { width: 465 });
     label("Address", 73, cardY + 178);
-    doc.font("Body").fontSize(10).fillColor(ink).text(tour.locationAddress || "Address from kitchen manager", 73, cardY + 194, { width: 465, height: 26, ellipsis: true });
+    doc.font("Body").fontSize(10).fillColor(ink).text(tour.locationAddress || "Address shared by the kitchen", 73, cardY + 194, { width: 330, height: 26, ellipsis: true });
+    if (tour.locationAddress) doc.font("Helvetica-Bold").fontSize(9).fillColor(red).text("Get directions", 430, cardY + 195, { width: 109, align: "right", link: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(tour.locationAddress)}`, underline: true });
 
-    label("Visiting chef", 52, 511);
+    label("Visitor", 52, 511);
     doc.font("Body").fontSize(10).fillColor(ink).text(tour.chefName, 52, 528, { width: 240 });
-    doc.font("Body").fontSize(9).fillColor(muted).text(tour.chefEmail, 52, 546, { width: 240 });
 
     doc.moveTo(52, 579).lineTo(560, 579).strokeColor(line).stroke();
+    // No raw emails on booking documents (owner, Oct 21); the phone shows on confirmed tours only, which is all this document covers.
     label("Kitchen contact", 52, 594);
-    doc.font("Helvetica-Bold").fontSize(10).fillColor(ink).text(tour.managerName || "Kitchen manager", 52, 612, { width: 245 });
-    if (tour.managerPhone) doc.font("Body").fontSize(9).fillColor(ink).text(tour.managerPhone, 52, 632, { width: 245 });
-    if (tour.managerEmail) doc.font("Body").fontSize(9).fillColor(ink).text(tour.managerEmail, 52, tour.managerPhone ? 648 : 632, { width: 245 });
-    if (!tour.managerPhone && !tour.managerEmail) doc.font("Body").fontSize(9).fillColor(muted).text("Contact the kitchen through Local Cooks", 52, 632, { width: 245 });
+    doc.font("Helvetica-Bold").fontSize(10).fillColor(ink).text(tour.kitchenName || tour.locationName, 52, 612, { width: 245 });
+    if (tour.managerPhone) doc.font("Body").fontSize(9).fillColor(ink).text(formatPhoneForDisplay(tour.managerPhone), 52, 632, { width: 245 });
+    doc.font("Body").fontSize(9).fillColor(muted).text("Message the kitchen in Local Cooks", 52, tour.managerPhone ? 648 : 632, { width: 245 });
     label("Local Cooks support", 320, 594);
     doc.font("Body").fontSize(9).fillColor(ink).text("support@localcooks.ca", 320, 613, { width: 240 });
     doc.font("Body").fontSize(9).fillColor(ink).text("709-631-8480", 320, 632, { width: 240 });
@@ -107,7 +108,7 @@ export function buildTourConfirmationPdf(tour: TourConfirmationDetails): Promise
     }
 
     doc.moveTo(52, footerY).lineTo(560, footerY).strokeColor(line).stroke();
-    doc.font("Body").fontSize(8).fillColor(muted).text("Need to change your tour? Manage it in My Tours in your Local Cooks account.", 52, footerY + 13, { width: 508 });
+    doc.font("Body").fontSize(8).fillColor(muted).text("Need to change or cancel? Open Kitchens › Tours in your Local Cooks account.", 52, footerY + 13, { width: 508 });
     doc.font("Helvetica").fontSize(8).fillColor(muted).text("chef.localcooks.ca", 52, footerY + 31);
     doc.font("Helvetica").fontSize(8).fillColor(muted).text(tourReference(tour.id), 455, footerY + 31, { width: 105, align: "right" });
     doc.end();

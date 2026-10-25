@@ -391,8 +391,8 @@
   "tourVisitAbsentChefBody": "{kitchen} повідомила, що ви не прийшли на огляд. Якщо це помилка, зверніться до підтримки. Новий огляд можна запросити на сторінці кухні.",
   "tourVisitAbsentKitchenTitle": "Неявку записано",
   "tourVisitAbsentKitchenBody": "Ви повідомили, що {visitor} не прийшов на огляд {kitchen}.",
-  "tourVisitUnknownChefTitle": "Ваш огляд закрито",
-  "tourVisitUnknownChefBody": "Огляд {kitchen} закрито без результату. Якщо ви були там, ви все одно можете подати запит.",
-  "tourVisitUnknownKitchenTitle": "Огляд закрито без результату",
-  "tourVisitUnknownKitchenBody": "Протягом 24 годин ніхто не вказав, чи прийшов {visitor}, тому огляд {kitchen} закрився автоматично."
+  "tourVisitUnknownChefTitle": "Ваш огляд завершено",
+  "tourVisitUnknownChefBody": "Ваш огляд {kitchen} завершено. Подайте запит на заявку, коли будете готові готувати тут.",
+  "tourVisitUnknownKitchenTitle": "Огляд завершено",
+  "tourVisitUnknownKitchenBody": "Час огляду з {visitor} у {kitchen} минув. Ви можете додати цю людину як клієнта зі сторінки огляду."
 }

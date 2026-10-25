@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ rows: [] as unknown[][], transaction: vi.fn() }));
+const mocks = vi.hoisted(() => ({ rows: [] as unknown[][], transaction: vi.fn(), poolQuery: vi.fn() }));
 vi.mock('../services/tour-delivery-service', () => ({ queueTourEvent: vi.fn(), deliverTourAfterResponse: vi.fn(() => ({ failed: false })), attemptTourDelivery: vi.fn(async () => ({ failed: false })), deliverTourEvents: vi.fn(async () => ({ delivered: 1, errors: 0 })) }));
 vi.mock('../services/kitchen-checkout-service', () => ({ getCheckinSettings: vi.fn(async () => ({ checkinWindowMinutesBefore: 20 })) }));
 vi.mock("../db", () => ({
@@ -10,6 +10,7 @@ vi.mock("../db", () => ({
       then: (resolve: (value: unknown) => void) => resolve(mocks.rows.shift() ?? []) };
     return chain;
   }, transaction: mocks.transaction },
+  pool: { query: mocks.poolQuery },
 }));
 vi.mock("../firebase-auth-middleware", () => ({ requireFirebaseAuthWithUser: vi.fn(), requireManager: vi.fn(), requireAdmin: vi.fn() }));
 vi.mock("./middleware", () => ({ requireChef: vi.fn() }));
@@ -205,6 +206,22 @@ describe('kitchen tour request eligibility routes', () => {
     expect(res.status).toHaveBeenCalledWith(409);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ code: 'TOUR_REQUEST_BLOCKED', tourId: 77, reason }));
     expect(mocks.transaction).not.toHaveBeenCalled();
+  });
+  it('sends a held tour from the saved draft only, never the client body', async () => {
+    mocks.poolQuery.mockResolvedValueOnce({ rows: [] });
+    const missing = response();
+    await handler('/book', 'post')({ neonUser: { id: 8 }, firebaseUser: { email_verified: true }, body: { fromDraft: true, targetedKitchenId: 40 } }, missing);
+    expect(missing.status).toHaveBeenCalledWith(404);
+    expect(missing.json).toHaveBeenCalledWith(expect.objectContaining({ code: 'DRAFT_NOT_FOUND' }));
+
+    mocks.poolQuery.mockResolvedValueOnce({ rows: [{ location_id: 33, scheduled_at: new Date(Date.now() + 86400000), chef_notes: null, created_at: new Date(),
+      intake: { intendedUse: 'catering', estimatedWeeklyHours: '6-10', hasLicense: true, targetStartDate: 'not_decided' } }] });
+    mocks.rows.push([{ managerId: 1 }], [{ id: 77, chefId: 8, targetedKitchenId: 40, status: 'completed', scheduledAt: new Date('2020-01-01'), durationMinutes: 45 }], [], []);
+    const res = response();
+    await handler('/book', 'post')({ neonUser: { id: 8 }, firebaseUser: { email_verified: true }, body: { fromDraft: true, targetedKitchenId: 40, scheduledAt: 'nonsense', intakeData: {} } }, res);
+    expect(mocks.poolQuery.mock.calls[1][1]).toEqual([8, 40]);
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ code: 'TOUR_REQUEST_BLOCKED', tourId: 77 }));
   });
   it('rechecks history inside the transaction after acquiring chef and kitchen locks', async () => {
     vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-01T12:00:00Z'));
@@ -408,7 +425,7 @@ describe("tour availability enforcement", () => {
     const res = response();
     await handler("/book", "post")(chefRequest(new Date(Date.now() + 86400000)), res);
     expect(res.status).toHaveBeenCalledWith(409);
-    expect(res.json).toHaveBeenCalledWith({ error: "That tour time is no longer available" });
+    expect(res.json).toHaveBeenCalledWith({ error: "That tour time is no longer available", code: "SLOT_TAKEN" });
     expect(mocks.transaction).not.toHaveBeenCalled();
     expect(mocks.rows).toHaveLength(0);
   });

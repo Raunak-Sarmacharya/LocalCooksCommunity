@@ -12,6 +12,22 @@ vi.mock('react-i18next', async importOriginal => ({
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); window.history.replaceState({}, '', '/'); });
 describe('chef tour notification links', () => {
+  it.each([
+    ['completed', /^You already toured .+ Request to apply when you’re ready\.$/],
+    ['pending', /^You already have a tour here on .+\.$/],
+  ])('says why a %s tour opened instead of a new request, and the notice can be dismissed', async (status, text) => {
+    const rows = [{ viewing: { id: 95, status, scheduledAt: '2099-10-05T12:30:00Z', updatedAt: '2026-10-04T12:00:00Z', durationMinutes: 30, locationId: 3 }, locationName: 'Fixture kitchen' }];
+    vi.stubGlobal('fetch', vi.fn(async (path: string) => ({ ok: true, json: async () => path === '/api/viewings/chef' ? rows : { events: [], problems: [] } })));
+    window.history.replaceState({}, '', '/dashboard?view=viewings&viewing=95&notice=already');
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><ChefViewingsList /></QueryClientProvider>);
+    const notice = await screen.findByTestId('tour-already-notice');
+    expect(within(notice).getByText(text)).toBeInTheDocument();
+    fireEvent.click(within(notice).getByRole('button', { name: 'Dismiss' }));
+    await waitFor(() => expect(screen.queryByTestId('tour-already-notice')).not.toBeInTheDocument());
+    expect(window.location.search).toBe('?view=viewings&viewing=95');
+    client.clear();
+  });
   it('guides an email visitor, shows saving feedback, and confirms the persisted attendance reply', async () => {
     const tour = { id: 77, status: 'confirmed', scheduledAt: '2099-10-05T12:30:00Z', updatedAt: '2026-10-04T12:00:00Z', durationMinutes: 30 };
     let saved = false;
@@ -177,7 +193,7 @@ describe('chef tour notification links', () => {
     expect(document.body).not.toHaveTextContent(/chef@example\.test|manager@example\.test|Rejected|Kitchen manager|Departure notes|Return the badge/);
     client.clear();
   });
-  it('points a closed tour to the open one at the same kitchen and offers apply after an unverified close', async () => {
+  it('offers only apply after a tour ended without a result (no retry)', async () => {
     const rows = [
       { viewing: { id: 77, locationId: 4, targetedKitchenId: 40, status: 'cancelled', cancelledBy: 'local_cooks', disruptionReason: 'outcome_unknown', scheduledAt: '2026-10-05T12:30:00Z', updatedAt: '2026-10-05T12:30:00Z', durationMinutes: 30 }, locationName: 'Fixture kitchen' },
       { viewing: { id: 78, locationId: 4, targetedKitchenId: 40, status: 'pending', scheduledAt: '2099-10-05T12:30:00Z', updatedAt: '2026-10-05T12:30:00Z', durationMinutes: 30 }, locationName: 'Fixture kitchen' },
@@ -189,8 +205,6 @@ describe('chef tour notification links', () => {
     const next = await screen.findByRole('region', { name: 'What to do next' });
     expect(within(next).queryByRole('link', { name: 'Request another time' })).not.toBeInTheDocument();
     expect(within(next).getByRole('link', { name: 'Request to apply' })).toHaveAttribute('href', '/apply-kitchen/4?tourId=77');
-    fireEvent.click(within(next).getByRole('button', { name: 'Open your tour' }));
-    expect(window.location.search).toBe('?view=viewings&viewing=78');
     client.clear();
   });
   it('displays an explicitly recorded confirmation timestamp', async () => {

@@ -391,8 +391,8 @@
   "tourVisitAbsentChefBody": "{kitchen} a indiqué que vous n’êtes pas venu à votre visite. Si c’est une erreur, contactez le soutien. Vous pouvez demander une nouvelle visite depuis la page de la cuisine.",
   "tourVisitAbsentKitchenTitle": "Absence enregistrée",
   "tourVisitAbsentKitchenBody": "Vous avez indiqué que {visitor} n’est pas venu visiter {kitchen}.",
-  "tourVisitUnknownChefTitle": "Votre visite est fermée",
-  "tourVisitUnknownChefBody": "Votre visite de {kitchen} s’est terminée sans résultat. Si vous l’avez faite, vous pouvez quand même faire une demande.",
-  "tourVisitUnknownKitchenTitle": "Visite fermée sans résultat",
-  "tourVisitUnknownKitchenBody": "Personne n’a indiqué dans les 24 heures si {visitor} était venu, donc la visite de {kitchen} s’est fermée d’elle-même."
+  "tourVisitUnknownChefTitle": "Votre visite est terminée",
+  "tourVisitUnknownChefBody": "Votre visite de {kitchen} est terminée. Faites une demande d’accès quand vous serez prêt à cuisiner ici.",
+  "tourVisitUnknownKitchenTitle": "Visite terminée",
+  "tourVisitUnknownKitchenBody": "L’heure de la visite avec {visitor} chez {kitchen} est passée. Vous pouvez l’ajouter comme client depuis la visite."
 }

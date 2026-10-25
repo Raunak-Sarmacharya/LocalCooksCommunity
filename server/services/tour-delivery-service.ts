@@ -554,9 +554,9 @@ export function tourEventMessages(saved: Payload, calendarSequence = 0): Message
           organizerEmail: manager?.email || undefined, attendeeEmails: [chef.email, manager?.email].filter((email): email is string => !!email) }));
       }
     } else if (after.status === 'cancelled' && after.disruptionReason === 'outcome_unknown') {
-      notify('chef', chef, 'chef', 'Your tour is closed', 'This tour closed without a recorded result. If you visited, you can still request to apply.');
-      receipt('chef-email', chef, 'Your tour is closed', 'This tour closed without a recorded result. If you visited, you can still request to apply.', 'chef');
-      if (manager) notify('manager', manager, 'manager', 'Tour closed without a result', 'Nobody recorded whether the customer came within 24 hours, so the tour closed on its own. Local Cooks can correct it if needed.');
+      notify('chef', chef, 'chef', `Your tour at ${kitchenName} has ended`, 'Request to apply when you’re ready to cook here.');
+      receipt('chef-email', chef, `Your tour at ${kitchenName} has ended`, 'Request to apply when you’re ready to cook here.', 'chef');
+      if (manager) notify('manager', manager, 'manager', 'Tour ended', `The tour time with ${chef.name} has passed. You can add them as a customer from the tour.`);
     } else if (after.status === 'cancelled') {
       const disruption = after.disruptionReason && tourDisruptionReasons[after.disruptionReason as keyof typeof tourDisruptionReasons];
       const byChef = payload.actorRole === 'chef';

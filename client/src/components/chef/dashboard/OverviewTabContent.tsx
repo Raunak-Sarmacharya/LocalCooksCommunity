@@ -122,7 +122,11 @@ export default function OverviewTabContent({
       if (tour.status === 'pending' && tour.rescheduleProposedSlots?.length) items.push({ id: `tour-offer-${tour.id}`, title: t('homeTodoTourOffer', { kitchen: tour.kitchenName || tour.locationName }), description: `TOUR-${tour.id}`, cta: t('homeReview'), onClick: () => navigate(`/dashboard?view=viewings&viewing=${tour.id}`) });
       if (tour.reconfirmation?.canReply && !tour.reconfirmation.reply) items.push({ id: `tour-reconfirm-${tour.id}`, title: t('homeTodoTourReconfirm', { kitchen: tour.kitchenName || tour.locationName }), description: `TOUR-${tour.id}`, cta: t('homeReview'), onClick: () => navigate(`/dashboard?view=viewings&viewing=${tour.id}`) });
     }
-    for (const tour of tourRows.filter(tour => tour.status === 'no_show' || tour.disruptionReason)) {
+    // Closed on its own with no result: invite the next step instead of asking them to "review" an outcome nobody reported.
+    for (const tour of tourRows.filter(tour => tour.disruptionReason === 'outcome_unknown' && tour.locationId && !kitchenApplications.some((app) => app.locationId === tour.locationId))) {
+      items.push({ id: `tour-closed-${tour.id}`, title: t('homeTodoTourClosed', { kitchen: tour.kitchenName || tour.locationName }), description: t('homeTodoApplyAfterTourHint'), cta: t('homeRequestToApply'), onClick: () => navigate(`/apply-kitchen/${tour.locationId}?tourId=${tour.id}`) });
+    }
+    for (const tour of tourRows.filter(tour => tour.status === 'no_show' || (tour.disruptionReason && tour.disruptionReason !== 'outcome_unknown'))) {
       items.push({ id: `tour-${tour.id}`, title: t('ovTourOutcomeReview'),
         description: `${tour.kitchenName || tour.locationName} · ${tr(viewingStatusBadge(tour.status, tour.adminReviewDecision, tour.cancelledBy, tour.disruptionReason).labelKey, { ns: 'chef' })}`,
         cta: t('ovReviewTour'), onClick: () => navigate(`/dashboard?view=viewings&viewing=${tour.id}`) });

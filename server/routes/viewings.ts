@@ -14,7 +14,7 @@
 import { Router, Request, Response } from "express";
 import { initializeSharedConversation } from '../chat-service';
 import { eq, and, sql, desc, gte, lte, or, ne, inArray } from "drizzle-orm";
-import { db } from "../db";
+import { db, pool } from "../db";
 import { requireFirebaseAuthWithUser, requireManager, requireAdmin } from "../firebase-auth-middleware";
 import { requireChef } from "./middleware";
 import { logger } from "../logger";
@@ -45,6 +45,7 @@ import { resolveTourApplicationNextStep } from '../services/tour-application-ser
 import { getTourFunnel } from '../services/tour-funnel-service';
 import { scheduleTourTimerById } from '../services/deadline-timer';
 import { getTourFeedback, submitTourFeedback, readTourFeedbackStatus } from '../services/tour-feedback-service';
+import { deleteTourDraft, readTourDraft, saveTourDraft, tourDraftFromBody } from '../services/kitchen-tour-drafts';
 import { readTourRequestAccess, requireTourRequestAccess, useRepeatTourPermission, grantRepeatTourPermission, revokeRepeatTourPermission } from '../services/tour-request-access-service';
 
 import {
@@ -1329,6 +1330,45 @@ router.get(
   }
 );
 
+const tourDraftQuery = (text: string, params: unknown[]) => pool.query(text, params as any[]);
+
+/**
+ * A new account's tour request, held until its email is verified (owner, Oct 25); allowed for an unverified email.
+ * Sent by POST /book with fromDraft once verified, which reads this copy and deletes it in the same transaction.
+ */
+router.put("/tour-draft", requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
+  try {
+    const draft = tourDraftFromBody(req.body);
+    if (!draft) return res.status(400).json({ error: "Invalid tour request" });
+    await saveTourDraft(tourDraftQuery, req.neonUser!.id, draft);
+    res.json({ saved: true });
+  } catch (error) {
+    logger.error("Error saving tour draft:", error);
+    return errorResponse(res, error);
+  }
+});
+
+router.get("/tour-draft/:kitchenId", requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
+  try {
+    const kitchenId = Number(req.params.kitchenId);
+    if (!Number.isSafeInteger(kitchenId) || kitchenId <= 0) return res.status(400).json({ error: "Invalid kitchen" });
+    res.set("Cache-Control", "no-store").json({ draft: await readTourDraft(tourDraftQuery, req.neonUser!.id, kitchenId) });
+  } catch (error) {
+    return errorResponse(res, error);
+  }
+});
+
+router.delete("/tour-draft/:kitchenId", requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
+  try {
+    const kitchenId = Number(req.params.kitchenId);
+    if (!Number.isSafeInteger(kitchenId) || kitchenId <= 0) return res.status(400).json({ error: "Invalid kitchen" });
+    await deleteTourDraft(tourDraftQuery, req.neonUser!.id, kitchenId);
+    res.json({ deleted: true });
+  } catch (error) {
+    return errorResponse(res, error);
+  }
+});
+
 /**
  * POST /api/viewings/book
  * Book a kitchen viewing (concurrency-safe with SELECT FOR UPDATE)
@@ -1347,6 +1387,15 @@ router.post(
           error: "Please verify your email before requesting a kitchen tour.",
           code: "EMAIL_NOT_VERIFIED",
         });
+      }
+
+      // Sending a held request: the body is the saved draft, never the client's (only the kitchen id is read).
+      const fromDraft = req.body?.fromDraft === true;
+      if (fromDraft) {
+        const draftKitchenId = Number(req.body.targetedKitchenId);
+        const draft = Number.isSafeInteger(draftKitchenId) ? await readTourDraft(tourDraftQuery, chefId, draftKitchenId) : null;
+        if (!draft) return res.status(404).json({ error: "No saved tour request to send.", code: "DRAFT_NOT_FOUND" });
+        req.body = { locationId: draft.locationId, targetedKitchenId: draft.targetedKitchenId, scheduledAt: draft.scheduledAt, chefNotes: draft.chefNotes, intakeData: draft.intakeData };
       }
 
       const parsed = requestKitchenViewingSchema.safeParse({
@@ -1416,7 +1465,7 @@ router.post(
       const date = tourDateKey(scheduledDate);
       const availableSlots = await calculateAvailableSlots(targetedKitchenId, date, timezone);
       if (!availableSlots.some(slot => new Date(slot.scheduledAt).getTime() === scheduledDate.getTime())) {
-        return res.status(409).json({ error: "That tour time is no longer available" });
+        return res.status(409).json({ error: "That tour time is no longer available", code: "SLOT_TAKEN" });
       }
 
       // CONCURRENCY-SAFE BOOKING: Use a transaction with conflict detection
@@ -1477,6 +1526,7 @@ router.post(
           })
           .returning();
         await useRepeatTourPermission(tx, requestAccess, newViewing.id);
+        if (fromDraft) await tx.execute(sql`DELETE FROM kitchen_tour_drafts WHERE user_id = ${chefId} AND kitchen_id = ${targetedKitchenId}`);
         await queueTourEvent(tx, { kind: 'requested', before: newViewing, after: newViewing, actorId: chefId, actorRole: 'chef' });
       });
 
@@ -1486,7 +1536,7 @@ router.post(
       res.status(201).json({ ...chefTourResponse(publicTour(newViewing)), notificationDeliveryFailed: delivery.failed });
     } catch (error: any) {
       if (error.message === "ACTIVE_TOUR_EXISTS") return res.status(409).json({ error: "You already have an active tour request for this kitchen.", code: "ACTIVE_TOUR_EXISTS" });
-      if (error.message === "SLOT_TAKEN") {
+      if (error.message === "SLOT_TAKEN" || error.code === "SLOT_TAKEN") {
         return res.status(409).json({
           error: "This time slot was just taken by another chef. Please select a different time.",
           code: "SLOT_TAKEN",

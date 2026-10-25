@@ -76,7 +76,7 @@ export function showTourVisitPanel(tour: { checkedInAt?: string | null; visitEvi
 }
 
 export function viewingStatusBadge(status: string, adminReviewDecision?: string | null, cancelledBy?: string | null, disruptionReason?: string | null): ViewingStatusBadge {
-  if (disruptionReason === 'outcome_unknown') return { variant: 'outline', labelKey: 'tourStatusUnverified', defaultLabel: 'Tour closed — outcome not verified' };
+  if (disruptionReason === 'outcome_unknown') return { variant: 'outline', labelKey: 'tourStatusUnverified', defaultLabel: 'Tour ended' };
   if (disruptionReason) return { variant: "destructive", labelKey: "tourStatusDisrupted", defaultLabel: "Couldn’t take place" };
   if (status === "cancelled" && (adminReviewDecision === "denied" || cancelledBy === "manager_declined")) {
     return { variant: "destructive", labelKey: "tourStatusDeclined", defaultLabel: "Declined" };
@@ -148,7 +148,7 @@ export function chefTourCard(tour: ChefTourRow, now = Date.now()): ChefTourCard 
   const requested = ['pending_local_cooks', 'pending'].includes(tour.status);
   const card = (past: boolean, tone: ChefTourCard['tone'], status: Copy, line: Copy, action: ChefTourCard['action'] = 'open'): ChefTourCard => ({ past, tone, status, line, action });
   const apply = tour.locationId ? 'apply' : 'open';
-  if (tour.disruptionReason === 'outcome_unknown') return card(true, 'grey', ['tourStatusClosed', 'Closed'], ['tourLineUnverified', 'Closed without a recorded outcome. If you came, you can request to apply.']);
+  if (tour.disruptionReason === 'outcome_unknown') return card(true, 'grey', ['tourStatusEnded', 'Tour ended'], ['tourLineUnverified', 'Request to apply when you’re ready to cook here.']);
   if (tour.disruptionReason) return card(true, 'grey', ['tourStatusDisrupted', 'Couldn’t take place'], ['tourLineDisrupted', 'The tour couldn’t take place.']);
   if (tour.status === 'completed') return card(true, 'green', ['tourStatusToured', 'Toured'], ['tourLineToured', 'You toured this kitchen. Request to apply when you’re ready.'], apply);
   if (tour.status === 'no_show') return card(true, 'grey', ['tourStatusNoShow', 'No-show'], ['tourLineNoShow', 'The kitchen recorded that you didn’t come.']);

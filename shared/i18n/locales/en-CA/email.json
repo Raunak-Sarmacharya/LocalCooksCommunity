@@ -391,8 +391,8 @@
   "tourVisitAbsentChefBody": "{kitchen} reported that you didn’t come to your tour. If that’s wrong, contact Support. You can request a new tour from the kitchen page.",
   "tourVisitAbsentKitchenTitle": "No-show recorded",
   "tourVisitAbsentKitchenBody": "You reported that {visitor} didn’t come to the tour of {kitchen}.",
-  "tourVisitUnknownChefTitle": "Your tour is closed",
-  "tourVisitUnknownChefBody": "Your tour of {kitchen} closed without a result. If you visited, you can still request to apply.",
-  "tourVisitUnknownKitchenTitle": "Tour closed without a result",
-  "tourVisitUnknownKitchenBody": "Nobody recorded whether {visitor} came within 24 hours, so the tour of {kitchen} closed on its own."
+  "tourVisitUnknownChefTitle": "Your tour has ended",
+  "tourVisitUnknownChefBody": "Your tour of {kitchen} has ended. Request to apply when you’re ready to cook here.",
+  "tourVisitUnknownKitchenTitle": "Tour ended",
+  "tourVisitUnknownKitchenBody": "The tour time with {visitor} at {kitchen} has passed. You can add them as a customer from the tour."
 }
