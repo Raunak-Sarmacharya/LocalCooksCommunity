@@ -18,6 +18,7 @@ import { DamageClaimSheet } from './DamageClaimSheet';
 import { ClaimEvidence, DamageClaimCard, DamageClaimBookingHoldBanner } from './DamageClaimCards';
 import DamageClaimPayment from './DamageClaimPayment';
 import { DamageClaimPanel } from '@/components/admin/booking-support/DamageClaimPanel';
+import { DamageClaimQueue } from '@/components/manager/damage-claims/DamageClaimQueue';
 import type { DamageClaimCardData } from '@/lib/damage-claims';
 const claim = (extra: Partial<DamageClaimCardData> = {}): DamageClaimCardData => ({ id: 1, referenceCode: 'DC-ONE', bookingId: 7, visitId: 9, chefId: 5, managerId: 2,
   status: 'submitted', claimVersion: 2, description: 'Tray broken during the visit.', amountCents: 2000, claimedAmountCents: 2000, lines: [],
@@ -179,7 +180,6 @@ describe('tracking claims', () => {
     expect(screen.getByRole('link', { name: 'KB-7DWHMT' })).toHaveAttribute('href', '/manager/booking/7');
   });
   it('the kitchen claims page lists open claims first, then closed ones', async () => {
-    const { DamageClaimQueue } = await import('@/components/manager/damage-claims/DamageClaimQueue');
     state.claims = [claim({ id: 1, status: 'resolved' }), claim({ id: 2, status: 'submitted' }), claim({ id: 3, status: 'in_review' })];
     mount(<DamageClaimQueue />);
     expect(await screen.findByTestId('claims-open')).toHaveTextContent('Open (2)');

@@ -181,7 +181,7 @@ describe('deadline-timer Inngest function', () => {
     const { deadlineTimer } = await load();
     expect(deadlineTimer).toBeDefined();
     const source = (await import('node:fs')).readFileSync(new URL('../lifecycle-inngest.ts', import.meta.url), 'utf8');
-    expect(source).toContain('functions: [lifecycleTick, startingChatEmail, bookingNoticeDelivery, invitationNoticeDelivery, deadlineTimer]');
+    expect(source).toContain('functions: [lifecycleTick, startingChatEmail, bookingNoticeDelivery, invitationNoticeDelivery, deadlineTimer, payoutReconciliationDaily]');
     expect(source).toContain('triggers: [{ event: deadlineScheduledEvent }]');
   });
 });

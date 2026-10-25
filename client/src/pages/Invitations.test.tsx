@@ -122,11 +122,12 @@ describe('kitchen: invite to book', () => {
     // twMerge let a 'block' class beat the trigger's 'flex' (value centred, chevron wrapped below it; live, Oct 21).
     expect(screen.getByLabelText('Customer').className).toMatch(/\bflex\b/);
     expect(screen.getByLabelText('Customer').className).not.toMatch(/\bblock\b/);
-    fireEvent.click(await screen.findByRole('gridcell', { name: /Tuesday, October 27, 2026/ }));
+    // Day and option queries are scoped to the calendar grid and the open list: page-wide role queries name every element.
+    fireEvent.click(within(await screen.findByRole('grid', { name: /October 2026/ })).getByRole('gridcell', { name: /Tuesday, October 27, 2026/ }));
     // One day: only its own row, not a duplicate "Same hours every day" row.
     await screen.findByTestId('invitation-day-2026-10-27');
     expect(screen.queryByText('Same hours every day')).not.toBeInTheDocument();
-    fireEvent.click(await screen.findByRole('gridcell', { name: /Thursday, October 29, 2026/ }));
+    fireEvent.click(within(screen.getByRole('grid', { name: /October 2026/ })).getByRole('gridcell', { name: /Thursday, October 29, 2026/ }));
     expect(await screen.findByText('Same hours every day')).toBeInTheDocument();
     const first = await screen.findByTestId('invitation-day-2026-10-27');
     const second = screen.getByTestId('invitation-day-2026-10-29');
@@ -150,8 +151,9 @@ describe('kitchen: invite to book', () => {
     expect(drafted).not.toHaveProperty('date');
     // 12 p.m. is booked on both days, so the shared length stops at 2 hours from 10 a.m.
     fireEvent.click(screen.getAllByLabelText('Length')[0]);
-    expect(await screen.findByRole('option', { name: '2 hours' })).toBeInTheDocument();
-    expect(screen.queryByRole('option', { name: '3 hours' })).not.toBeInTheDocument();
+    const lengths = within(await screen.findByRole('listbox'));
+    expect(lengths.getByText('2 hours')).toBeInTheDocument();
+    expect(lengths.queryByText('3 hours')).not.toBeInTheDocument();
     fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
     fireEvent.click(screen.getByRole('button', { name: 'Send invitation' }));
     const sent = await screen.findByTestId('invitation-sent');

@@ -15,7 +15,8 @@ function enterEvidence(value = '2026-10-02T17:00') {
   const group = within(screen.getByRole('group', { name: /Departure time/ }));
   fireEvent.change(group.getByRole('textbox'), { target: { value: date } });
   fireEvent.click(group.getByRole('combobox'));
-  fireEvent.click(screen.getByRole('option', { name: formatTime(time) }));
+  // By text inside the open list: a role query computes a name for every time option.
+  fireEvent.click(within(screen.getByRole('listbox')).getByText(formatTime(time)));
   fireEvent.change(screen.getByLabelText(/Note to/), { target: { value: 'Customer reported leaving after upload failed' } });
 }
 describe('manager assistance consumer', () => {
@@ -53,7 +54,7 @@ describe('manager assistance consumer', () => {
     enterEvidence('2026-11-01T01:30');
     expect(screen.getByRole('button', { name: 'Save departure time' })).toBeDisabled();
     fireEvent.click(screen.getByLabelText(/This time occurs twice/));
-    fireEvent.click(screen.getByRole('option', { name: /Second occurrence/ }));
+    fireEvent.click(within(screen.getByRole('listbox')).getByText(/Second occurrence/));
     expect(screen.getByRole('button', { name: 'Save departure time' })).toBeEnabled();
     enterEvidence('2026-03-08T02:30');
     expect(screen.getByRole('button', { name: 'Save departure time' })).toBeDisabled();
@@ -76,7 +77,7 @@ describe('manager assistance consumer', () => {
     enterEvidence('2026-11-01T01:30');
     expect(screen.getByRole('button', { name: 'Save departure time' })).toBeDisabled();
     fireEvent.click(screen.getByLabelText(/This time occurs twice/));
-    fireEvent.click(screen.getByRole('option', { name: /Second occurrence/ }));
+    fireEvent.click(within(screen.getByRole('listbox')).getByText(/Second occurrence/));
     fetchMock.mockResolvedValue({ ok: true, json: async () => ({ success: true }) });
     fireEvent.click(screen.getByRole('button', { name: 'Save departure time' }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());

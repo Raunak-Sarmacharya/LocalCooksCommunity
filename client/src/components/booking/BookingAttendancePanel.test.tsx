@@ -31,7 +31,8 @@ function setWhen(name: RegExp, value: string) {
   const [date, time] = value.split('T'), group = within(screen.getByRole('group', { name }));
   fireEvent.change(group.getByRole('textbox'), { target: { value: date } });
   fireEvent.click(group.getByRole('combobox'));
-  fireEvent.click(screen.getByRole('option', { name: formatTime(time) }));
+  // By text inside the open list: a role query computes a name for every time option.
+  fireEvent.click(within(screen.getByRole('listbox')).getByText(formatTime(time)));
 }
 
 it('has one quiet entry and named choices with consequences, no duplicate inspection link', async () => {

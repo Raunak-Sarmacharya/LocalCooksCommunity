@@ -52,30 +52,29 @@ describe("Kitchen earning and control", () => {
 });
 
 describe("Kitchen host next steps", () => {
-  it("uses real destinations and the same translated questions as SEO, with honest answers in every locale", async () => {
-    for (const [locale, copy] of Object.entries({ "en-CA": english, "fr-CA": french, uk: ukrainian })) {
-      const i18n = createInstance();
-      await i18n.use(initReactI18next).init({ lng: locale, fallbackLng: false, resources: { [locale]: { kitchen: copy } } });
-      const onStart = vi.fn();
-      const { container } = render(<I18nextProvider i18n={i18n}><KitchenHostNextSteps onStart={onStart} /></I18nextProvider>);
-      expect(screen.getAllByRole("heading", { level: 2 })).toHaveLength(4);
-      expect(screen.queryByText(copy.hostGuideNote)).not.toBeInTheDocument();
-      for (const link of screen.getAllByRole("link")) expect(link).toHaveAttribute("href", "/resources");
-      for (const faq of kitchenHostFaqs) {
-        const button = screen.getByRole("button", { name: copy[faq.question] });
-        fireEvent.click(button);
-        expect(button).toHaveAttribute("aria-expanded", "true");
-        expect(screen.getByText(copy[faq.answer])).toBeVisible();
-        fireEvent.click(button);
-        expect(button).toHaveAttribute("aria-expanded", "false");
-      }
-      expect(container.textContent).not.toMatch(/host(?:Guide|Support|Faq|Closing)[A-Z]\w+|0%|100%|guaranteed income|full insurance coverage|weekly payout|—/i);
-      expect(screen.getByText(copy.hostSupportReviewNote)).toBeVisible();
-      fireEvent.click(screen.getByRole("button", { name: copy.hostSupportCta }));
-      fireEvent.click(screen.getByRole("button", { name: copy.heroHostStart }));
-      expect(onStart).toHaveBeenCalledTimes(2);
-      cleanup();
+  // One case per locale: each renders and opens every question, so each gets its own time budget.
+  it.each(Object.entries({ "en-CA": english, "fr-CA": french, uk: ukrainian }))("uses real destinations and the same translated questions as SEO, with honest answers in %s", async (locale, copy) => {
+    const i18n = createInstance();
+    await i18n.use(initReactI18next).init({ lng: locale, fallbackLng: false, resources: { [locale]: { kitchen: copy } } });
+    const onStart = vi.fn();
+    const { container } = render(<I18nextProvider i18n={i18n}><KitchenHostNextSteps onStart={onStart} /></I18nextProvider>);
+    expect(screen.getAllByRole("heading", { level: 2 })).toHaveLength(4);
+    expect(screen.queryByText(copy.hostGuideNote)).not.toBeInTheDocument();
+    for (const link of screen.getAllByRole("link")) expect(link).toHaveAttribute("href", "/resources");
+    for (const faq of kitchenHostFaqs) {
+      const button = screen.getByRole("button", { name: copy[faq.question] });
+      fireEvent.click(button);
+      expect(button).toHaveAttribute("aria-expanded", "true");
+      expect(screen.getByText(copy[faq.answer])).toBeVisible();
+      fireEvent.click(button);
+      expect(button).toHaveAttribute("aria-expanded", "false");
     }
+    expect(container.textContent).not.toMatch(/host(?:Guide|Support|Faq|Closing)[A-Z]\w+|0%|100%|guaranteed income|full insurance coverage|weekly payout|—/i);
+    expect(screen.getByText(copy.hostSupportReviewNote)).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: copy.hostSupportCta }));
+    fireEvent.click(screen.getByRole("button", { name: copy.heroHostStart }));
+    expect(onStart).toHaveBeenCalledTimes(2);
+    cleanup();
   });
 });
 
