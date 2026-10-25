@@ -4092,5 +4092,6 @@
   "tourDetailEnded": "Ended",
   "tourNoticeToured": "You already toured {kitchen}. Request to apply when you’re ready.",
   "tourNoticeAlready": "You already have a tour here on {when}.",
-  "tourNoticeDismiss": "Dismiss"
+  "tourNoticeDismiss": "Dismiss",
+  "applicationNoticeTour": "You’ve already applied to {kitchen}, so there’s no tour to request. Your application is below."
 }

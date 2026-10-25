@@ -4092,5 +4092,6 @@
   "tourDetailEnded": "Terminée",
   "tourNoticeToured": "Vous avez déjà visité {kitchen}. Demandez à postuler quand vous serez prêt.",
   "tourNoticeAlready": "Vous avez déjà une visite ici le {when}.",
-  "tourNoticeDismiss": "Fermer"
+  "tourNoticeDismiss": "Fermer",
+  "applicationNoticeTour": "Vous avez déjà fait une demande auprès de {kitchen}, il n’y a donc pas de visite à demander. Votre demande se trouve ci-dessous."
 }

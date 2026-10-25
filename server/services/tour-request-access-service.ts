@@ -1,6 +1,6 @@
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../db';
-import { chefKitchenApplications, kitchenViewings, tourRepeatAuthorizations } from '@shared/schema';
+import { chefKitchenApplications, chefLocationAccess, kitchenViewings, tourRepeatAuthorizations } from '@shared/schema';
 import { kitchenTourRequestBlock, tourRequestBlock, type TourRequestAccess } from '@shared/tour-request-access';
 import { DomainError } from '../shared/errors/domain-error';
 
@@ -21,6 +21,10 @@ export async function readTourRequestAccess(connection: Connection, chefId: numb
   const [application] = await connection.select({ id: chefKitchenApplications.id }).from(chefKitchenApplications)
     .where(and(eq(chefKitchenApplications.chefId, chefId), eq(chefKitchenApplications.locationId, locationId))).limit(1);
   if (application) return { canRequest: false, reason: 'application', tour, authorization: null };
+  // Access granted without an application (admin grant) still means the chef is already in; no tour.
+  const [access] = await connection.select({ chefId: chefLocationAccess.chefId }).from(chefLocationAccess)
+    .where(and(eq(chefLocationAccess.chefId, chefId), eq(chefLocationAccess.locationId, locationId))).limit(1);
+  if (access) return { canRequest: false, reason: 'application', tour, authorization: null };
   if (!block) return { canRequest: true, reason: null, tour, authorization: null };
   if (!['completed', 'unverified'].includes(block.kind)) return { canRequest: false, reason: block.kind, tour, authorization: null };
   const grants = await connection.select().from(tourRepeatAuthorizations)

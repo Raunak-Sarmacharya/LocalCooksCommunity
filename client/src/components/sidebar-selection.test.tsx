@@ -15,11 +15,11 @@ import { ChefSidebar } from "./chef/ChefSidebar";
 import { SidebarProvider } from "./ui/sidebar";
 
 describe("sidebar destination selection", () => {
-  it("selects a chef child without also selecting its parent", () => {
+  it("lights the chef owner item once for a page that shows as its tab", () => {
     const { container } = render(<SidebarProvider><ChefSidebar activeView="kitchen-requests" onViewChange={vi.fn()} /></SidebarProvider>);
     const selected = container.querySelectorAll('[data-sidebar][data-active="true"]');
     expect(selected).toHaveLength(1);
-    expect(selected[0]).toHaveAttribute("data-sidebar", "menu-sub-button");
+    expect(selected[0]).toHaveAttribute("data-sidebar", "menu-button");
   });
 
   it("selects a manager child without requiring breadcrumbs", () => {

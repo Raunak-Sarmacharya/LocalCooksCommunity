@@ -31,6 +31,7 @@ import { useTourClock } from "@/hooks/use-tour-clock";
 import { TourSupportCard } from '@/components/tour/TourSupportCard';
 import { canChefRequestReschedule } from '@shared/tour-reschedule';
 import { TourApplicationButton } from '@/components/tour/TourApplicationButton';
+import { useTourRequestAccess } from '@/hooks/use-tour-request-access';
 import { KitchenInventoryModals, type EquipmentListing, type StorageListing } from "@/components/kitchen-application/KitchenInventory";
 
 function TourDownloadButton({ tour, t }: { tour: ChefTourRow; t: (key: string, defaultValue?: string | Record<string, unknown>) => string }) {
@@ -426,6 +427,9 @@ export default function ChefViewingsList({ onExploreKitchens }: { onExploreKitch
         .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime() || b.id - a.id),
     [rawViewings]
   );
+  // A chef who applied here since the tour gets no "Request another time" (owner: no tours once applied).
+  const linkedKitchenId = data.find(tour => tour.id === linkedTourId)?.targetedKitchenId ?? undefined;
+  const appliedAtLinked = useTourRequestAccess(linkedKitchenId, user?.uid).data?.reason === 'application';
 
   useEffect(() => {
     if (!user?.uid || isLoading || isFetching || error || location !== '/dashboard' || new URLSearchParams(search).get('view') !== 'viewings' || !Number.isSafeInteger(linkedTourId) || linkedTourId <= 0) return;
@@ -548,7 +552,7 @@ export default function ChefViewingsList({ onExploreKitchens }: { onExploreKitch
           const kitchenCancelled = tour.status === "cancelled" && tour.cancelledBy === "manager";
           const unverified = tour.disruptionReason === "outcome_unknown";
           // After a decline, kitchen cancellation or expiry, the next step is another time at the same kitchen. A tour that simply ended (no result) just moves on to applying (owner: tours stay one-time and simple).
-          const offerRetry = !!tour.locationId && !!tour.targetedKitchenId && (expired || declined || kitchenCancelled);
+          const offerRetry = !!tour.locationId && !!tour.targetedKitchenId && !appliedAtLinked && (expired || declined || kitchenCancelled);
           const otherOpenTour = offerRetry ? data.find(other => other.id !== tour.id && other.targetedKitchenId === tour.targetedKitchenId && !chefTourCard(other, actionClock).past) : undefined;
 
           const hasProposal = tour.rescheduleProposedSlots.length > 0 && ["pending", "confirmed"].includes(tour.status) && !tour.checkedInAt && !tour.disruptionReason && Date.parse(tour.scheduledAt) > Date.now();

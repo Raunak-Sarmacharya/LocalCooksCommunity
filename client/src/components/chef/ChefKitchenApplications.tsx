@@ -6,7 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Link, useLocation, useSearch } from "wouter";
 import { useTranslation } from "react-i18next";
-import { ArrowUpDown, FileText, MessageCircle } from "lucide-react";
+import { ArrowUpDown, FileText, MessageCircle, X } from "lucide-react";
 import { useChefKitchenApplications, type KitchenApplicationWithLocation } from "@/hooks/use-chef-kitchen-applications";
 import { DataTable } from "@/components/ui/data-table";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,8 @@ export default function ChefKitchenApplications({ onOpenChat }: { onOpenChat?: (
   const [query, setQuery] = useState("");
   const [group, setGroup] = useState("all");
   const renewLocation = Number(new URLSearchParams(search).get('renewLocation'));
+  // Arrived from a tour link at a kitchen already applied to (owner: no tours once applied).
+  const tourNotice = new URLSearchParams(search).get('notice') === 'tour';
   // The renewal form opens from a Renew link, or by itself when something needs renewing.
   const renewRequested = !!renewLocation || new URLSearchParams(search).get('renew') === '1';
   const selected = applications.find(app => app.id === applicationId || app.locationId === renewLocation);
@@ -73,6 +75,11 @@ export default function ChefKitchenApplications({ onOpenChat }: { onOpenChat?: (
       : t("applicationReviewHelp", "Your application is in review. We’ll email you when there’s an update. Nothing else is needed from you right now.");
     return <section className="min-w-0 space-y-6 [overflow-wrap:anywhere]" aria-label={t("applicationPageTitle", "Kitchen application")}>
       <header className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><p className="mb-1 text-xs font-medium text-muted-foreground">APPLICATION-{selected.id}</p><h1 className="text-2xl font-semibold tracking-tight">{t("applicationPageTitle", "Kitchen application")}</h1><p className="mt-1 text-sm text-muted-foreground">{selected.location?.name || t("apptabKitchenFallback", "Kitchen")}</p></div><KitchenStatusChip display={display} /></header>
+      {tourNotice && <div role="status" data-testid="application-tour-notice" className="flex items-start justify-between gap-3 rounded-xl border bg-muted/40 px-4 py-3 text-sm">
+        <p className="min-w-0 pt-0.5">{t("applicationNoticeTour", { defaultValue: "You’ve already applied to {kitchen}, so there’s no tour to request. Your application is below.", kitchen: selected.location?.name || t("apptabKitchenFallback", "Kitchen") })}</p>
+        <button type="button" aria-label={t("tourNoticeDismiss", "Dismiss")} onClick={() => open(selected.id)}
+          className="-m-1 inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><X className="h-4 w-4" aria-hidden="true" /></button>
+      </div>}
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="min-w-0 space-y-6">
           <section className="space-y-3 rounded-xl border border-primary/20 bg-primary/5 p-5"><h2 className="text-sm font-semibold">{t("applicationWhatNext", "What to do next")}</h2><p className="text-sm leading-6">{nextCopy}</p><div className="flex flex-wrap gap-2">{display.actionKind === "book" && <Button size="sm" onClick={book}>{t("apptabBookKitchen", "Book kitchen")}</Button>}{display.actionKind === "complete-step" && (display.bookingBlocked ? <Button size="sm" onClick={renew}>{t("renewDocumentsTitle", "Renew documents")}</Button> : <Button size="sm" asChild><Link href={`/apply-kitchen/${selected.locationId}`}>{t("continueKitchenApplication", "Continue application")}</Link></Button>)}{display.actionKind === "discover" && <Button variant="outline" size="sm" asChild><Link href={`/apply-kitchen/${selected.locationId}`}>{t("kdApplyAgain", "Apply again")}</Link></Button>}{selected.chat_conversation_id && onOpenChat && <Button variant="outline" size="sm" onClick={() => onOpenChat(selected)}><MessageCircle className="mr-1.5 size-4" />{t("openChat", "Open chat")}</Button>}</div></section>

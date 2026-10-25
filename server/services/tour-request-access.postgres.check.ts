@@ -54,7 +54,7 @@ async function request(tour: any, failDelivery = false, chefLocked?: () => void)
 beforeAll(async () => {
   await admin.connect(); await admin.query(`CREATE SCHEMA "${namespace}"`); created = true;
   await admin.query(`SET search_path TO "${namespace}"`);
-  await admin.query('CREATE TABLE users(id integer PRIMARY KEY); CREATE TABLE chef_kitchen_applications(id serial PRIMARY KEY,chef_id integer,location_id integer); CREATE TABLE fixture_notifications(chef_id integer REFERENCES users(id))');
+  await admin.query('CREATE TABLE users(id integer PRIMARY KEY); CREATE TABLE chef_kitchen_applications(id serial PRIMARY KEY,chef_id integer,location_id integer); CREATE TABLE chef_location_access(id serial PRIMARY KEY,chef_id integer,location_id integer,granted_by integer,granted_at timestamp DEFAULT now()); CREATE TABLE fixture_notifications(chef_id integer REFERENCES users(id))');
   const columns = getTableConfig(kitchenViewings).columns.filter(column => column.name !== 'repeat_authorization_id').map(column => {
     const type = column.getSQLType();
     return `"${column.name}" ${column.name === 'id' ? 'serial PRIMARY KEY' : /^(serial|integer|text|boolean|date|jsonb|numeric|timestamp|varchar)/.test(type) ? type : 'text'}`;
@@ -126,6 +126,12 @@ it('application restrictions prevent both granting and using permission', async 
   await connection.execute(sql`INSERT INTO chef_kitchen_applications(chef_id,location_id) VALUES(${tour.chefId},${tour.locationId})`);
   expect(await access(tour)).toMatchObject({ canRequest: false, reason: 'application', authorization: null });
   await expect(grant(tour)).rejects.toMatchObject({ statusCode: 409 });
+  await expect(request(tour)).rejects.toMatchObject({ statusCode: 409 });
+});
+it('kitchen access granted without an application also blocks a new tour', async () => {
+  const tour = await fixture();
+  await connection.execute(sql`INSERT INTO chef_location_access(chef_id,location_id) VALUES(${tour.chefId},${tour.locationId})`);
+  expect(await access(tour)).toMatchObject({ canRequest: false, reason: 'application' });
   await expect(request(tour)).rejects.toMatchObject({ statusCode: 409 });
 });
 it('rolls back the request and permission usage together when delivery intent cannot be saved', async () => {

@@ -3342,6 +3342,8 @@ export default function KitchenPreviewPage() {
       if (kitchenTour && kitchenTour.kind !== 'failed') return { kind: "history" as const };
       if (alreadyApplied && kitchenTour) return { kind: "history" as const };
       if (alreadyApplied) return null;
+      // Kitchen access granted without an application: they book, no tour.
+      if (tourRequestAccess?.reason === 'application') return null;
       // Wait for availability + existing tours so we don't flash "Request a tour"
       // over a review-in-progress or confirmed visit. This state keeps the slot
       // occupied with a pending button rather than removing it: the button used

@@ -5,7 +5,7 @@ import RequestTourPage from './RequestTourPage';
 const state = vi.hoisted(() => ({ navigate: vi.fn(), hasApplication: false, verified: true }));
 vi.mock('wouter', () => ({ useParams: () => ({ locationId: '2' }), useLocation: () => ['/', state.navigate] }));
 vi.mock('@/hooks/use-auth', () => ({ useFirebaseAuth: () => ({ user: { uid: 'chef-1', isVerified: state.verified }, loading: false }) }));
-vi.mock('@/hooks/use-chef-kitchen-applications', () => ({ useChefKitchenApplicationForLocation: () => ({ hasApplication: state.hasApplication, isLoading: false }) }));
+vi.mock('@/hooks/use-chef-kitchen-applications', () => ({ useChefKitchenApplicationForLocation: () => ({ hasApplication: state.hasApplication, application: state.hasApplication ? { id: 12 } : null, isLoading: false }) }));
 vi.mock('@/layouts/chef-shell-context', () => ({ useChefShellChrome: () => {} }));
 vi.mock('@/lib/api', () => ({ getAuthHeaders: async () => ({ Authorization: 'Bearer fixture' }) }));
 vi.mock('@/components/chef/ScheduleViewingWidget', () => ({ default: () => <p>Choose a new tour</p> }));
@@ -42,10 +42,24 @@ it('allows recovery or an admin-authorized repeat through the usual request form
     authorization: { id: 5, expiresAt: '2099-01-01', recovery: false } });
   expect(await screen.findByText('Choose a new tour')).toBeInTheDocument(); expect(state.navigate).not.toHaveBeenCalled();
 });
-it('application access still prevents the form even when an old permission is cached', async () => {
+it('an application here opens it with a notice, even when an old permission is cached, and drops the half-filled request', async () => {
   state.hasApplication = true;
+  localStorage.setItem('viewing_booking_4', JSON.stringify({ step: 'details' }));
   mount({ canRequest: true, reason: null, tour: null, authorization: { id: 5, expiresAt: '2099-01-01', recovery: false } });
-  expect(await screen.findByText('Your access request is underway')).toBeInTheDocument();
+  await waitFor(() => expect(state.navigate).toHaveBeenCalledWith('/dashboard?view=kitchen-requests&application=12&notice=tour', { replace: true }));
+  expect(screen.queryByText('Choose a new tour')).not.toBeInTheDocument();
+  expect(localStorage.getItem('viewing_booking_4')).toBeNull();
+  await waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalledWith('/api/viewings/tour-draft/4', expect.objectContaining({ method: 'DELETE' })));
+});
+it('an application wins over an older tour at the same kitchen', async () => {
+  state.hasApplication = true;
+  mount({ canRequest: false, reason: 'application', authorization: null, tour: { id: 77, kind: 'completed', scheduledAt: '2020-01-01', durationMinutes: 30 } });
+  await waitFor(() => expect(state.navigate).toHaveBeenCalledWith('/dashboard?view=kitchen-requests&application=12&notice=tour', { replace: true }));
+  expect(state.navigate).not.toHaveBeenCalledWith(expect.stringContaining('viewing=77'), expect.anything());
+});
+it('kitchen access without an application goes to the kitchen page to book', async () => {
+  mount({ canRequest: false, reason: 'application', authorization: null, tour: null });
+  await waitFor(() => expect(state.navigate).toHaveBeenCalledWith('/kitchen-preview/2', { replace: true }));
   expect(screen.queryByText('Choose a new tour')).not.toBeInTheDocument();
 });
 it('keeps the form closed when history cannot be checked', async () => {

@@ -186,7 +186,7 @@ function chefRequest(date: Date, durationMinutes = 30) {
       intakeData: { intendedUse: 'Catering', estimatedWeeklyHours: '5-10', hasLicense: false, targetStartDate: 'not_decided' } } };
 }
 function primeKitchen() {
-  mocks.rows.push([{ name: "Kitchen", managerId: 1, timezone: "UTC" }], [], [], [settings]);
+  mocks.rows.push([{ name: "Kitchen", managerId: 1, timezone: "UTC" }], [], [], [], [settings]);
 }
 
 describe('kitchen tour request eligibility routes', () => {
@@ -228,7 +228,7 @@ describe('kitchen tour request eligibility routes', () => {
     primeKitchen();
     mocks.rows.push([settings], [{ dayOfWeek: 6, startTime: '10:00', endTime: '11:00', isAvailable: true }], [], []);
     const txRows: any[][] = [[{ id: 8 }], [{ id: 77, chefId: 8, targetedKitchenId: 40, status: 'confirmed',
-      scheduledAt: new Date('2026-10-01T10:00:00Z'), durationMinutes: 30 }], []];
+      scheduledAt: new Date('2026-10-01T10:00:00Z'), durationMinutes: 30 }], [], []];
     const locks: string[] = [];
     const insert = vi.fn();
     const tx: any = { execute: vi.fn(async () => { locks.push('kitchen'); }), insert,
