@@ -1,9 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { ChevronRight } from "@/components/ui/manager-icons"
-import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarMenuBadge, SidebarMenuSub, SidebarMenuSubButton, SidebarMenuSubItem, SidebarRail, useSidebar } from "@/components/ui/sidebar"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarMenuBadge, SidebarMenuSub, SidebarMenuSubItem, SidebarRail, useSidebar } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
 import Logo from "@/components/ui/logo"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -41,13 +39,6 @@ export function ChefSidebar({
     const { t } = useTranslation("chef")
     const tr = t as unknown as TFunction
     const { isMobile, setOpenMobile, state } = useSidebar()
-    const kitchenChildActive = ["discover-kitchens", "kitchen-requests", "kitchen-applications", "viewings"].includes(activeView)
-    const [kitchensOpen, setKitchensOpen] = React.useState(kitchenChildActive)
-
-    React.useEffect(() => {
-        if (kitchenChildActive) setKitchensOpen(true)
-    }, [kitchenChildActive])
-
     const branch = React.useMemo(
         () => sidebarBranchForView(breadcrumbs, activeView),
         [breadcrumbs, activeView]
@@ -76,10 +67,7 @@ export function ChefSidebar({
         chefNavSections
             .map((section) => ({
                 ...section,
-                visibleItems: section.items.filter((item) => !hiddenItems.includes(item.id)).map((item) => ({
-                    ...item,
-                    children: item.children?.filter((child) => !hiddenItems.includes(child.id)),
-                })),
+                visibleItems: section.items.filter((item) => !hiddenItems.includes(item.id)),
             }))
             .filter((section) => section.visibleItems.length > 0)
     , [hiddenItems])
@@ -143,39 +131,9 @@ export function ChefSidebar({
     }
 
     const renderNavItem = (item: ChefNavItem) => {
-        if (item.children?.length) {
-            const label = tr(item.labelKey as never)
-            return (
-                <Collapsible key={item.id} asChild open={kitchensOpen} onOpenChange={setKitchensOpen} className="group/collapsible">
-                    <SidebarMenuItem>
-                        <CollapsibleTrigger asChild>
-                            <SidebarMenuButton isActive={activeView === item.id} tooltip={label} onClick={() => handleViewChange(item.id)}>
-                                <Icon icon={item.icon} width={16} height={16} aria-hidden />
-                                <span>{label}</span>
-                                <ChevronRight className="ml-auto size-4 transition-transform group-data-[state=open]/collapsible:rotate-90" aria-hidden />
-                            </SidebarMenuButton>
-                        </CollapsibleTrigger>
-                        <CollapsibleContent>
-                            <SidebarMenuSub className="mx-2 mb-1 mt-1 translate-x-0 gap-1 border-l border-sidebar-border/80 px-2 py-1">
-                                {item.children.map((child) => (
-                                    <SidebarMenuSubItem key={child.id}>
-                                        <SidebarMenuSubButton asChild isActive={activeView === child.id} size="md" className="h-auto min-h-11 px-1.5 py-1 text-sm md:min-h-9">
-                                            <button type="button" className="w-full cursor-pointer text-left" onClick={() => handleViewChange(child.id)}>
-                                                <Icon icon={child.icon} className="size-4" aria-hidden />
-                                                <span>{tr(child.labelKey as never)}</span>
-                                            </button>
-                                        </SidebarMenuSubButton>
-                                        {activeView === child.id && branch.length > 0 && <SidebarMenuSub>{renderBranchTrail(branch)}</SidebarMenuSub>}
-                                    </SidebarMenuSubItem>
-                                ))}
-                            </SidebarMenuSub>
-                        </CollapsibleContent>
-                    </SidebarMenuItem>
-                </Collapsible>
-            )
-        }
-        const showBranch = activeView === item.id && branch.length > 0
-        const isActive = activeView === item.id
+        // A page without its own row (Storage, Training, Tours…) lights up the item that owns it.
+        const isActive = activeView === item.id || Boolean(item.members?.some((member) => member.id === activeView))
+        const showBranch = isActive && branch.length > 0
         const badge = item.id === "messages" ? messageBadgeCount : undefined
         const label = tr(item.labelKey as never)
 
@@ -194,7 +152,7 @@ export function ChefSidebar({
                     ) : null}
                     <span>{label}</span>
                     {badge !== undefined && badge > 0 && (
-                        <SidebarMenuBadge className="bg-destructive text-destructive-foreground">
+                        <SidebarMenuBadge className="bg-sidebar-accent text-sidebar-accent-foreground">
                             {badge}
                         </SidebarMenuBadge>
                     )}

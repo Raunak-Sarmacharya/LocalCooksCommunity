@@ -19,14 +19,18 @@ export type ChefNavItemId =
   | "storage"
   | "messages"
   | "notifications"
-  | "issues-refunds";
+  | "issues-refunds"
+  | "transactions";
 
 export type ChefNavItem = {
   id: ChefNavItemId;
   labelKey: string;
   /** Iconify id, e.g. mdi:view-dashboard-outline */
   icon: string;
-  children?: ChefNavItem[];
+  /** Pages that belong to this item: they light it up and show as tabs on its pages, never as sidebar rows. */
+  members?: ChefNavItem[];
+  /** The item's own page as the first tab (e.g. Kitchens › "Find"). */
+  tabLabelKey?: string;
 };
 
 export type ChefNavSection = {
@@ -43,58 +47,59 @@ export type ChefBreadcrumb = {
   navId?: string;
 };
 
-/** Same hierarchy as ChefSidebar — single source for sidebar + breadcrumbs. */
+/** Same hierarchy as ChefSidebar — single source for sidebar + breadcrumbs. Each item appears only once it is relevant (see use-chef-sidebar-hidden-items). */
 export const chefNavSections: ChefNavSection[] = [
   {
-    id: "section-home",
+    id: "section-main",
     items: [
-      { id: "overview", labelKey: "shellOverview", icon: "mdi:view-dashboard-outline" },
-      { id: "applications", labelKey: "shellMyApplication", icon: CHEF_APPLICATION_ICON },
-      { id: "training", labelKey: "shellTraining", icon: "mdi:school-outline" },
-      { id: "bookings", labelKey: "shellMyBookings", icon: "mdi:calendar-month-outline" },
-      { id: "storage", labelKey: "shellMyStorage", icon: "mdi:warehouse" },
-    ],
-  },
-  {
-    id: "section-selling",
-    titleKey: "shellSelling",
-    items: [
-      { id: "seller-revenue", labelKey: "shellMyEarnings", icon: "mdi:cash-multiple" },
-      { id: "my-account", labelKey: "shellLinkedAccounts", icon: "fluent:person-link-16-filled" },
-    ],
-  },
-  {
-    id: "section-kitchens",
-    items: [
+      { id: "overview", labelKey: "shellHome", icon: "mdi:home-outline" },
       {
-        id: "discover-kitchens", labelKey: "shellKitchens", icon: KITCHEN_ICON_NAME,
-        children: [
-          { id: "kitchen-requests", labelKey: "shellMyKitchenApplications", icon: CHEF_APPLICATION_ICON },
+        id: "discover-kitchens", labelKey: "shellKitchens", icon: KITCHEN_ICON_NAME, tabLabelKey: "tabFind",
+        members: [
+          { id: "kitchen-requests", labelKey: "shellMyKitchens", icon: CHEF_APPLICATION_ICON },
           { id: "kitchen-applications", labelKey: "shellApprovedKitchens", icon: KITCHEN_ICON_NAME },
           { id: "viewings", labelKey: "shellKitchenTours", icon: KITCHEN_TOUR_ICON_NAME },
         ],
       },
-    ],
-  },
-  {
-    id: "section-inbox",
-    titleKey: "shellInbox",
-    items: [
+      {
+        id: "bookings", labelKey: "shellBookings", icon: "mdi:calendar-month-outline", tabLabelKey: "tabUpcoming",
+        members: [{ id: "storage", labelKey: "shellStorage", icon: "mdi:warehouse" }],
+      },
+      {
+        id: "applications", labelKey: "shellSelling", icon: "mdi:storefront-outline", tabLabelKey: "tabApplication",
+        members: [
+          { id: "training", labelKey: "shellTraining", icon: "mdi:school-outline" },
+          { id: "seller-revenue", labelKey: "shellMyEarnings", icon: "mdi:cash-multiple" },
+          { id: "my-account", labelKey: "shellLinkedAccounts", icon: "fluent:person-link-16-filled" },
+        ],
+      },
       { id: "messages", labelKey: "shellMessages", icon: "mdi:message-outline" },
-      { id: "issues-refunds", labelKey: "shellResolutionCenter", icon: "mdi:alert-outline" },
+      {
+        id: "transactions", labelKey: "shellPayments", icon: "mdi:credit-card-outline", tabLabelKey: "tabReceipts",
+        members: [{ id: "issues-refunds", labelKey: "shellResolutionCenter", icon: "mdi:alert-outline" }],
+      },
     ],
   },
 ];
 
+/** The sidebar item a view belongs to: itself, or the item that owns it. */
+export function chefNavOwner(view: string): ChefNavItem | undefined {
+  for (const section of chefNavSections) {
+    const item = section.items.find((i) => i.id === view || i.members?.some((m) => m.id === view));
+    if (item) return item;
+  }
+  return undefined;
+}
+
 export function findChefNavSectionForView(view: string): ChefNavSection | undefined {
-  return chefNavSections.find((section) => section.items.some((item) => item.id === view || item.children?.some((child) => child.id === view)));
+  return chefNavSections.find((section) => section.items.some((item) => item.id === view || item.members?.some((member) => member.id === view)));
 }
 export function findChefNavItem(view: string): ChefNavItem | undefined {
   for (const section of chefNavSections) {
     const item = section.items.find((i) => i.id === view);
     if (item) return item;
-    const child = section.items.flatMap((i) => i.children || []).find((i) => i.id === view);
-    if (child) return child;
+    const member = section.items.flatMap((i) => i.members || []).find((i) => i.id === view);
+    if (member) return member;
   }
   return undefined;
 }

@@ -9,7 +9,7 @@ vi.mock("@/i18n/common-ns", () => ({ tt: (key: string) => key }));
 vi.mock("wouter", () => ({ useLocation: () => ["/", vi.fn()] }));
 vi.mock("@tanstack/react-query", () => ({ useQuery: () => ({ data: [], isError: false, isLoading: false }) }));
 vi.mock("@/components/chef/seller-revenue/hooks/useSellerRevenue", () => ({
-  useShopStatus: () => ({ data: undefined }), useStripeDashboardLink: () => ({ mutateAsync: vi.fn() }), openChefShopHome: vi.fn(),
+  useShopStatus: () => ({ data: undefined }), useEarningsSummary: () => ({ data: undefined }), useStripeDashboardLink: () => ({ mutateAsync: vi.fn() }), openChefShopHome: vi.fn(),
 }));
 vi.mock("./GetStartedPathCards", () => ({ KitchenPathEmptyCard: () => null, SellerPathEmptyCard: () => null }));
 vi.mock("react-i18next", async importOriginal => ({ ...(await importOriginal<object>()), useTranslation: (await import("@/test/booking-i18n")).useBookingTranslation }));
@@ -30,35 +30,32 @@ const props = (enrichedBookings: unknown[]) => ({
   getMostRecentApplication: () => null, getApplicationStatus: () => null, getDocumentStatus: () => "",
   onSetActiveTab: vi.fn(), onSetApplicationViewMode: vi.fn(),
 });
-const tile = () => screen.getByText("Bookings", { selector: "p" }).closest("button")!;
+const upNext = () => screen.getByRole("heading", { name: /^(homeUpNext|Up next)$/ }).closest("section")!;
 
 beforeEach(() => { vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(NOW); });
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
-describe("chef overview bookings tile", () => {
-  it("shows the next visit, not the pending request, and counts requests separately", () => {
+describe("chef home: up next", () => {
+  it("leads with the next confirmed visit, not a pending request", () => {
     render(<OverviewTabContent {...props([
       booking({ id: 9, kitchenName: "Night Kitchen", status: "pending", paymentStatus: "authorized", bookingDate: "2026-10-17T00:00:00Z", startTime: "01:05", endTime: "02:05" }),
       booking({ id: 10 }),
       booking({ id: 11, bookingDate: "2026-10-20T00:00:00Z" }),
     ])} />);
-    expect(within(tile()).getByText("Next: Today 2:00 p.m.")).toBeInTheDocument();
-    expect(within(tile()).getByText("PHASE0 Main Kitchen · 1 request pending")).toBeInTheDocument();
-    expect(within(tile()).queryByText(/1:05/)).not.toBeInTheDocument();
+    expect(within(upNext()).getByText("PHASE0 Main Kitchen", { selector: "p.text-xl" })).toBeInTheDocument();
+    expect(within(upNext()).getByText(/^Today · 2:00–4:00\s*p\.m\.$/)).toBeInTheDocument();
+    // The request two days out is listed under "Later this week" with its own status, never as the headline.
+    expect(within(upNext()).queryByText("Night Kitchen", { selector: "p.text-xl" })).not.toBeInTheDocument();
   });
 
-  it("falls back to the request count when nothing is confirmed yet", () => {
+  it("shows a request waiting on the kitchen when nothing is confirmed yet", () => {
     render(<OverviewTabContent {...props([booking({ status: "pending", paymentStatus: "authorized" })])} />);
-    expect(within(tile()).getByText("1 request pending")).toBeInTheDocument();
+    expect(within(upNext()).getByText(/homeWaitingForKitchen|Waiting for the kitchen/)).toBeInTheDocument();
+    expect(within(upNext()).queryByText(/homeCheckInOpens|Check-in opens/)).not.toBeInTheDocument();
   });
 
-  it("lists bookings with the booking page pill, in My bookings order", () => {
-    render(<OverviewTabContent {...props([
-      booking({ id: 20, kitchenName: "Later Kitchen", bookingDate: "2026-10-20T00:00:00Z" }),
-      booking({ id: 21, kitchenName: "Live Kitchen", startTime: "10:00", endTime: "12:00", checkinStatus: "checked_in" }),
-    ])} />);
-    const pills = screen.getAllByTestId("booking-status-pill").map(element => element.textContent);
-    expect(pills).toEqual(["In session", "Confirmed"]);
-    expect(screen.getByText("Today · 10:00 a.m.–12:00 p.m.")).toBeInTheDocument();
+  it("has no Up next panel without bookings", () => {
+    render(<OverviewTabContent {...props([])} />);
+    expect(screen.queryByRole("heading", { name: /^(homeUpNext|Up next)$/ })).not.toBeInTheDocument();
   });
 });

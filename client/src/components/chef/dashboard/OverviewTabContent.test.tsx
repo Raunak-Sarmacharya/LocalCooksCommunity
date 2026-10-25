@@ -10,7 +10,7 @@ vi.mock("@/i18n/common-ns", () => ({ tt: (key: string) => key }));
 vi.mock("wouter", () => ({ useLocation: () => ["/", vi.fn()] }));
 vi.mock("@tanstack/react-query", () => ({ useQuery: () => ({ data: [], isError: false, isLoading: h.toursLoading }) }));
 vi.mock("@/components/chef/seller-revenue/hooks/useSellerRevenue", () => ({
-  useShopStatus: () => ({ data: undefined }), useStripeDashboardLink: () => ({ mutateAsync: vi.fn() }), openChefShopHome: vi.fn(),
+  useShopStatus: () => ({ data: undefined }), useEarningsSummary: () => ({ data: undefined }), useStripeDashboardLink: () => ({ mutateAsync: vi.fn() }), openChefShopHome: vi.fn(),
 }));
 vi.mock("./GetStartedPathCards", () => ({ KitchenPathEmptyCard: () => null, SellerPathEmptyCard: () => null }));
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ i18n: { language: "en-CA" }, t: (key: string, options?: any) => (typeof options === "string" ? options : options?.defaultValue) ?? key }) }));
@@ -40,10 +40,11 @@ describe("chef dashboard overview loading", () => {
     expect(screen.getByTestId("overview-skeleton")).toBeInTheDocument();
     h.toursLoading = false;
   });
-  it("shows the real cards once loaded", () => {
+  it("shows the setup checklist once loaded for a chef with nothing started", () => {
     render(<OverviewTabContent {...props()} />);
     expect(screen.queryByTestId("overview-skeleton")).not.toBeInTheDocument();
-    expect(screen.getByText("ovNotStarted")).toBeInTheDocument();
+    expect(screen.getByText("homeSetupKitchens")).toBeInTheDocument();
+    expect(screen.getByText("homeStepFind")).toBeInTheDocument();
   });
 });
 

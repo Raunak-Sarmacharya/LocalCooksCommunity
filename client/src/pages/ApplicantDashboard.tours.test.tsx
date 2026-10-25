@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { within, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import ApplicantDashboard from './ApplicantDashboard';
 vi.mock('@/hooks/use-auth', () => ({ useFirebaseAuth: () => ({ user: { uid: 'fixture-chef', role: 'chef', isChef: true } }) }));
@@ -7,7 +7,6 @@ vi.mock('@/lib/queryClient', () => ({ queryClient: { invalidateQueries: vi.fn() 
 vi.mock('@tanstack/react-query', () => ({ useQuery: () => ({ data: [], isLoading: false, refetch: vi.fn() }) }));
 vi.mock('@/hooks/use-chef-kitchen-applications', () => ({ useChefKitchenApplications: () => ({ applications: [] }) }));
 vi.mock('@/hooks/use-kitchen-bookings', () => ({ useKitchenBookings: () => ({ bookings: [], kitchens: [], cancelBooking: { mutate: vi.fn() } }) }));
-vi.mock('@/hooks/use-chef-onboarding-status', () => ({ useChefOnboardingStatus: () => ({ showSetupBanner: false }) }));
 vi.mock('@/hooks/use-chef-resolution-center', () => ({ useChefResolutionCenter: () => ({ hasAnyItems: false, pendingDamageClaims: [], pendingPenalties: [] }) }));
 vi.mock('@/hooks/use-chef-sidebar-hidden-items', () => ({ useChefSidebarHiddenItems: () => [] }));
 vi.mock('@/hooks/use-subdomain', () => ({ useSubdomain: () => null }));
@@ -40,18 +39,19 @@ afterEach(() => { cleanup(); window.history.replaceState({}, '', '/'); });
 it('places a directly linked chef tour beneath Kitchen tours and clears detail and email action through its parent breadcrumb', async () => {
   window.history.replaceState({}, '', '/dashboard?view=viewings&viewing=77&action=cancel');
   render(<ApplicantDashboard />);
-  const parent = await screen.findByRole('button', { name: 'Kitchen tours' });
+  const crumbs = await screen.findByRole('navigation', { name: 'Breadcrumb' });
+  const parent = await within(crumbs).findByRole('button', { name: 'Kitchen tours' });
   expect(screen.getByRole('navigation', { name: 'Breadcrumb' })).toHaveTextContent('Kitchen toursTOUR-77');
   fireEvent.click(parent);
   await waitFor(() => expect(window.location.search).toBe('?view=viewings'));
   expect(screen.queryByText('TOUR-77')).not.toBeInTheDocument();
-  expect(screen.getByText('Kitchen tours')).toBeInTheDocument();
+  expect(within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getByText('Kitchen tours')).toBeInTheDocument();
 });
 
-it('links a full-page application under My Kitchen Applications and returns to the table from its breadcrumb', async () => {
+it('links a full-page application under My kitchens and returns to the table from its breadcrumb', async () => {
   window.history.replaceState({}, '', '/dashboard?view=kitchen-requests&application=57');
   render(<ApplicantDashboard />);
-  const parent = await screen.findByRole('button', { name: 'shellMyKitchenApplications' });
+  const parent = await within(await screen.findByRole('navigation', { name: 'Breadcrumb' })).findByRole('button', { name: 'shellMyKitchens' });
   expect(screen.getByRole('navigation', { name: 'Breadcrumb' })).toHaveTextContent('APPLICATION-57');
   fireEvent.click(parent);
   await waitFor(() => expect(window.location.search).toBe('?view=kitchen-requests'));

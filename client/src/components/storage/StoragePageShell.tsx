@@ -15,7 +15,7 @@ export function StoragePageShell({ crumb, parent, children }: { crumb?: string; 
   const { t } = useTranslation("chef")
   const onViewChange = useCallback((view: string) =>
     navigate(view === "storage" ? "/storage" : view === "overview" ? "/dashboard" : `/dashboard?view=${view}`), [navigate])
-  const breadcrumbs = useMemo(() => [...(parent?.trail ?? [{ label: t("shellMyStorage" as never), navId: "storage", onClick: () => navigate("/storage") }]),
+  const breadcrumbs = useMemo(() => [...(parent?.trail ?? [{ label: t("shellStorage" as never), navId: "storage", onClick: () => navigate("/storage") }]),
     ...(crumb ? [{ label: crumb }] : [])], [crumb, parent, t, navigate])
   const activeView = parent?.activeView ?? "storage"
   const inShell = useChefShellChrome({ activeView, onViewChange, breadcrumbs })

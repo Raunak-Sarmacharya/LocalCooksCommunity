@@ -31,15 +31,15 @@ interface ChefDashboardLayoutProps {
 }
 
 const viewLabelKeys: Record<string, string> = {
-    overview: "shellOverview",
-    applications: "shellMyApplication",
+    overview: "shellHome",
+    applications: "shellSelling",
     "kitchen-applications": "shellMyKitchens",
-    "kitchen-requests": "shellMyKitchenApplications",
-    bookings: "shellMyBookings",
+    "kitchen-requests": "shellMyKitchens",
+    bookings: "shellBookings",
     training: "shellTraining",
     messages: "shellMessages",
     discover: "shellDiscoverKitchens",
-    "discover-kitchens": "shellDiscoverKitchens",
+    "discover-kitchens": "shellKitchens",
     viewings: "shellKitchenTours",
     profile: "shellProfile",
     support: "shellSupport",
@@ -47,7 +47,7 @@ const viewLabelKeys: Record<string, string> = {
     "damage-claims": "shellDamageClaims",
     "seller-revenue": "shellMyEarnings",
     "my-account": "shellLinkedAccounts",
-    transactions: "shellTransactions",
+    transactions: "shellPayments",
     "issues-refunds": "shellResolutionCenter",
     notifications: "notifPanelHeading",
 }
@@ -110,7 +110,7 @@ export default function ChefDashboardLayout({
                     <div className="flex items-center gap-2 min-w-0">
                         <SidebarTrigger className="-ml-1 shrink-0" />
                         <Separator orientation="vertical" className="mr-2 h-4 shrink-0 hidden sm:block" />
-                        {!isDetail && <span className="min-w-0 truncate text-sm font-semibold md:hidden">{displayBreadcrumbs.at(-1)?.label || t("shellOverview")}</span>}
+                        {!isDetail && <span className="min-w-0 truncate text-sm font-semibold md:hidden">{displayBreadcrumbs.at(-1)?.label || t("shellHome")}</span>}
                         <Breadcrumb className="min-w-0">
                             <BreadcrumbList className="flex-wrap">
                                 {displayBreadcrumbs.map((crumb, index) => (

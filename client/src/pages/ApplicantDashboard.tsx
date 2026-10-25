@@ -21,13 +21,12 @@ import { formatApplicationStatus } from "@/lib/applicationSchema";
 import { queryClient } from "@/lib/queryClient";
 import { Application, UserWithFlags } from "@shared/schema";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronRight, CheckCircle, Calendar, Shield, AlertCircle, MessageCircle, Loader2 } from "lucide-react";
+import { CheckCircle, Calendar, Shield, AlertCircle, MessageCircle, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
-import { Link, useLocation, useSearch } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { useCustomAlerts } from "@/components/ui/custom-alerts";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { useChefOnboardingStatus } from "@/hooks/use-chef-onboarding-status";
 import KitchenDiscovery from "@/components/kitchen-application/KitchenDiscovery";
 import TrainingOverviewPanel from "@/components/training/TrainingOverviewPanel";
 import ApplicationFormPanel from "@/components/application/ApplicationFormPanel";
@@ -38,6 +37,7 @@ import { IssuesAndRefunds } from "@/components/chef/IssuesAndRefunds";
 import { TransactionHistory } from "@/components/chef/TransactionHistory";
 import { useChefResolutionCenter } from "@/hooks/use-chef-resolution-center";
 import { useChefSidebarHiddenItems } from "@/hooks/use-chef-sidebar-hidden-items";
+import { ChefSectionTabs } from "@/components/chef/ChefSectionTabs";
 import TidioController from "@/components/chat/TidioController";
 import OutstandingDuesBanner from "@/components/chef/OutstandingDuesBanner";
 import ChefProfileSettings from "@/components/chef/ChefProfileSettings";
@@ -81,8 +81,6 @@ export default function ApplicantDashboard() {
     window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
   }, []);
 
-  // Chef onboarding status for "Continue Setup" banner
-  const { showSetupBanner } = useChefOnboardingStatus();
   const { hasAnyItems: hasResolutionItems, pendingDamageClaims, pendingPenalties } = useChefResolutionCenter();
   const sidebarHiddenItems = useChefSidebarHiddenItems();
   const hasKitchenMessages = !sidebarHiddenItems.includes("messages");
@@ -876,7 +874,7 @@ export default function ApplicantDashboard() {
       return [
         ...baseBreadcrumbs,
         {
-          label: t("shellMyApplication"),
+          label: t("shellSelling"),
           onClick: () => guardedApplicationNavigate(() => setApplicationViewMode('list')),
           navId: "applications" as const,
         },
@@ -899,7 +897,7 @@ export default function ApplicantDashboard() {
     if (activeTab === 'bookings') {
       return [
         ...baseBreadcrumbs,
-        { label: t("shellMyBookings"), navId: "bookings" as const },
+        { label: t("shellBookings"), navId: "bookings" as const },
       ];
     }
 
@@ -925,7 +923,7 @@ export default function ApplicantDashboard() {
       return [
         ...baseBreadcrumbs,
         { label: t("shellKitchens"), onClick: () => navigate('/dashboard?view=discover-kitchens') },
-        { label: t("shellMyKitchenApplications"), navId: activeTab, ...(applicationId ? { onClick: () => navigate('/dashboard?view=kitchen-requests') } : {}) },
+        { label: t("shellMyKitchens"), navId: activeTab, ...(applicationId ? { onClick: () => navigate('/dashboard?view=kitchen-requests') } : {}) },
         ...(applicationId ? [{ label: /^\d+$/.test(applicationId) ? `APPLICATION-${applicationId}` : t("applicationPageTitle", "Kitchen application") }] : []),
       ];
     }
@@ -933,19 +931,14 @@ export default function ApplicantDashboard() {
     if (activeTab === 'transactions') {
       return [
         ...baseBreadcrumbs,
-        {
-          label: t("shellMyBookings"),
-          onClick: () => setActiveTab("bookings"),
-          navId: "bookings" as const,
-        },
-        { label: t("shellTransactions") },
+        { label: t("shellPayments"), navId: "transactions" as const },
       ];
     }
 
     if (activeTab === 'issues-refunds') {
       return [
         ...baseBreadcrumbs,
-        { label: t("shellSupport"), onClick: () => setActiveTab("support") },
+        { label: t("shellPayments"), onClick: () => setActiveTab("transactions") },
         { label: t("shellResolutionCenter"), navId: "issues-refunds" as const },
       ];
     }
@@ -953,10 +946,7 @@ export default function ApplicantDashboard() {
     return undefined;
   }, [activeTab, applicationViewMode, trainingViewMode, t, guardedApplicationNavigate, dashboardSearch, navigate]);
 
-  const shellActiveView =
-    activeTab === "transactions"
-        ? "bookings"
-        : activeTab;
+  const shellActiveView = activeTab;
 
   const onShellViewChange = useCallback((view: string) => {
     guardedApplicationNavigate(() => {
@@ -1003,26 +993,14 @@ export default function ApplicantDashboard() {
         userId={authUser?.uid}
       />
 
-      {/* Continue Setup Banner - Like managers have */}
-      {showSetupBanner && (
-        <div className="mb-6 flex flex-col gap-3 rounded-[1.35rem] border bg-card px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-sm font-medium">{t("shellFinishChefSetup")}</p>
-            <p className="text-sm text-muted-foreground">
-              {t("shellFinishChefSetupDesc")}
-            </p>
-          </div>
-          <Button asChild variant="outline" size="sm">
-            <Link href="/chef-setup">
-              {t("shellContinue")}
-              <ChevronRight />
-            </Link>
-          </Button>
-        </div>
-      )}
-
       {/* Outstanding Dues Banner — blocks bookings until resolved */}
       <OutstandingDuesBanner />
+
+      <ChefSectionTabs
+        activeView={shellActiveView}
+        hiddenItems={[...sidebarHiddenItems, ...shellHiddenItems]}
+        onSelect={(view) => (view === "storage" ? navigate("/storage") : onShellViewChange(view))}
+      />
 
       <AnimatePresence mode="wait">
         <motion.div

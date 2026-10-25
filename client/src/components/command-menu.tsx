@@ -330,12 +330,12 @@ export function CommandMenu({ open, onOpenChange, onViewChange, onLogout, portal
                             <CommandGroup heading={t("shellNavigation")}>
                                 <CommandItem onSelect={() => runCommand(() => onViewChange?.("overview"))}>
                                     <Icon icon={findChefNavItem("overview")!.icon} className="mr-2 h-4 w-4" aria-hidden />
-                                    <span>{t("shellOverview")}</span>
+                                    <span>{t("shellHome")}</span>
                                 </CommandItem>
                                 {!hiddenItems.includes("bookings") && (
                                 <CommandItem onSelect={() => runCommand(() => onViewChange?.("bookings"))}>
                                     <Icon icon={findChefNavItem("bookings")!.icon} className="mr-2 h-4 w-4" aria-hidden />
-                                    <span>{t("shellMyBookings")}</span>
+                                    <span>{t("shellBookings")}</span>
                                 </CommandItem>
                                 )}
                                 {!hiddenItems.includes("kitchen-applications") && (
@@ -360,7 +360,7 @@ export function CommandMenu({ open, onOpenChange, onViewChange, onLogout, portal
                                 {!hiddenItems.includes("applications") && (
                                 <CommandItem onSelect={() => runCommand(() => onViewChange?.("applications"))}>
                                     <Icon icon={findChefNavItem("applications")!.icon} className="mr-2 h-4 w-4" aria-hidden />
-                                    <span>{t("shellMyApplication")}</span>
+                                    <span>{t("shellSelling")}</span>
                                 </CommandItem>
                                 )}
                                 {!hiddenItems.includes("my-account") && (

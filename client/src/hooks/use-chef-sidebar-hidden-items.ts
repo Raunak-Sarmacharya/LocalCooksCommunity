@@ -8,9 +8,13 @@ import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
 import { getAllConversations } from "@/services/chat-service";
 import { tt } from "@/i18n/common-ns";
+import { listRentals } from "@/lib/storage-rentals";
 
 /**
- * Same visibility rules as the chef dashboard sidebar:
+ * Each sidebar item (and each tab inside it) appears only once it is relevant to this chef (owner, Oct 25):
+ * Kitchens always (it is where every chef browses); Bookings once a kitchen approved them or they booked or rent storage;
+ * Selling once they chose it or applied; Payments once there is something paid; Messages once a thread exists.
+ * Older rules kept below for the tabs:
  * hide Application / My Kitchens until those processes are started,
  * hide Bookings until there is a kitchen application or a booking,
  * hide Earnings and Linked Accounts until a shop is linked,
@@ -71,6 +75,18 @@ export function useChefSidebarHiddenItems(): string[] {
 
   const chefId = chefInfo?.id;
 
+  const { data: profile } = useQuery<{ chefOnboardingPaths?: string[] }>({
+    queryKey: ["/api/user/profile", user?.uid],
+    queryFn: async () => {
+      const token = await auth.currentUser?.getIdToken();
+      const res = await fetch("/api/user/profile", { headers: { Authorization: `Bearer ${token}` } });
+      return res.ok ? res.json() : {};
+    },
+    enabled: Boolean(user),
+    staleTime: 30_000,
+  });
+  const { data: rentals = [] } = useQuery({ queryKey: ["/api/chef/storage-rentals"], queryFn: listRentals, enabled: Boolean(user), staleTime: 30_000, retry: false });
+
   const { data: conversations = [], isLoading: isLoadingConversations } = useQuery({
     queryKey: ["chef-conversations", chefId],
     queryFn: async () => {
@@ -87,40 +103,40 @@ export function useChefSidebarHiddenItems(): string[] {
   const hasSellerApplication = (sellerApplications?.length ?? 0) > 0;
   const hasKitchenApplication = kitchenApplications.length > 0;
   const hasApprovedKitchen = kitchenApplications.some((app) => app.status === "approved" && (app.current_tier ?? 1) >= 3);
-  const hasAnyApplication = hasSellerApplication || hasKitchenApplication;
   const hasBookings = bookings.length > 0;
   const hasKitchenMessages = conversations.length > 0;
   const isLoadingMessages = isLoadingChefInfo || (!!chefId && isLoadingConversations);
 
+  const paths = profile?.chefOnboardingPaths ?? [];
+  const hasRentals = rentals.length > 0;
+
   return useMemo(() => {
     const hidden: string[] = [];
-    // "My Applications" shows BOTH seller and kitchen applications in a
-    // unified view. Hide only when: data has finished loading AND there
-    // are NO applications of either type (no seller app AND no kitchen app).
-    // During loading → keep visible so the user doesn't see the item flash
-    // in/out after submission.
-    if (!isLoadingSellerApps && !isLoadingKitchens && !hasAnyApplication) {
-      hidden.push("applications");
-    }
+    // Sidebar items
+    if (!hasApprovedKitchen && !hasBookings && !hasRentals) hidden.push("bookings");
+    if (isLoadingSellerApps || !(paths.includes("localcooks") || hasSellerApplication || hasShop)) hidden.push("applications");
+    // Hidden while loading: it needs a chefId lookup that can race with the first render.
+    if (isLoadingMessages || !hasKitchenMessages) hidden.push("messages");
+    if (!hasBookings && !hasRentals && !hasResolutionItems) hidden.push("transactions");
+    // Tabs inside an item
     if (isLoadingKitchens || !hasKitchenApplication) hidden.push("kitchen-requests");
-    if (isLoadingKitchens || !hasApprovedKitchen) hidden.push("kitchen-applications");
+    // One "My kitchens" list holds approved kitchens too; the old Approved view stays reachable by link only.
+    hidden.push("kitchen-applications");
     if (isLoadingTours || tours.length === 0) hidden.push("viewings");
-    if (!hasKitchenApplication && !hasBookings) hidden.push("bookings");
+    // shortcut: storage shows once approved anywhere, not only at a kitchen that lists storage; upgrade when the kitchens API says which offer it.
+    if (!hasRentals && !hasApprovedKitchen) hidden.push("storage");
     if (!hasShop) {
       hidden.push("seller-revenue");
       hidden.push("my-account");
     }
-    // Hide Messages and Resolution Center while loading because they require
-    // a chefId lookup that can race with the first render; these aren't
-    // items users just created an application to see.
-    if (isLoadingMessages || !hasKitchenMessages) hidden.push("messages");
     if (!hasResolutionItems) hidden.push("issues-refunds");
     return hidden;
   }, [
+    paths,
+    hasRentals,
     isLoadingSellerApps,
     isLoadingKitchens,
     hasSellerApplication,
-    hasAnyApplication,
     hasKitchenApplication,
     hasApprovedKitchen,
     isLoadingTours,
@@ -130,5 +146,5 @@ export function useChefSidebarHiddenItems(): string[] {
     isLoadingMessages,
     hasKitchenMessages,
     hasResolutionItems,
-  ]);
+]);
 }

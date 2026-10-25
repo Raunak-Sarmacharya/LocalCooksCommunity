@@ -1,6 +1,8 @@
+import { useChefSidebarHiddenItems } from "@/hooks/use-chef-sidebar-hidden-items"
+import { ChefSectionTabs } from "@/components/chef/ChefSectionTabs"
 /** "My storage" (WP-ST10): one card per rental — kitchen, shelf, one plain status sentence, at most one primary action. */
 import { useState } from "react"
-import { Link } from "wouter"
+import { Link, useLocation } from "wouter"
 import { useQuery } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { Button } from "@/components/ui/button"
@@ -36,6 +38,8 @@ export function RentalCard({ rental }: { rental: StorageRental }) {
 }
 
 export default function ChefStoragePage() {
+  const [, goTo] = useLocation()
+  const shellHidden = useChefSidebarHiddenItems()
   const { t: tt } = useTranslation("storage")
   const t = tt as unknown as (key: string, options?: Record<string, unknown>) => string
   // Back from Stripe: the request lands with the webhook, a moment later — keep looking briefly.
@@ -49,6 +53,7 @@ export default function ChefStoragePage() {
   const approved = applications.filter(app => app.status === "approved" && app.location)
 
   return <StoragePageShell>
+    <ChefSectionTabs activeView="storage" hiddenItems={shellHidden} onSelect={view => view !== "storage" && goTo(view === "overview" ? "/dashboard" : `/dashboard?view=${view}`)} />
     <header className="space-y-1">
       <h1 className="text-2xl font-semibold tracking-tight">{t("stcTitle")}</h1>
       <p className="text-sm text-muted-foreground">{t("stcIntro")}</p>

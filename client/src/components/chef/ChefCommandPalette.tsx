@@ -14,10 +14,10 @@ interface ChefCommandPaletteProps {
 }
 
 const navigationItems = [
-  { labelKey: "shellOverview", value: "overview", icon: LayoutDashboard, group: "shellNavigation" },
-  { labelKey: "shellMyApplication", value: "applications", icon: ChefApplicationIcon, group: "shellNavigation" },
+  { labelKey: "shellHome", value: "overview", icon: LayoutDashboard, group: "shellNavigation" },
+  { labelKey: "shellSelling", value: "applications", icon: ChefApplicationIcon, group: "shellNavigation" },
   { labelKey: "shellMyKitchens", value: "kitchen-applications", icon: KitchenIcon, group: "shellNavigation" },
-  { labelKey: "shellMyBookings", value: "bookings", icon: Calendar, group: "shellNavigation" },
+  { labelKey: "shellBookings", value: "bookings", icon: Calendar, group: "shellNavigation" },
   { labelKey: "shellMyEarnings", value: "seller-revenue", icon: DollarSign, group: "shellNavigation" },
   { labelKey: "shellLinkedAccounts", value: "my-account", icon: Store, group: "shellNavigation" },
   { labelKey: "shellTraining", value: "training", icon: BookOpen, group: "shellNavigation" },
