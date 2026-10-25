@@ -19,9 +19,11 @@ vi.mock('@/components/auth/AuthLoadingScreen', () => ({ default: () => <p>Contro
 vi.mock('@/i18n/manager', () => ({ mt: (key: string) => key }));
 vi.mock('@/components/manager/tours/ManagerToursAgenda', () => ({ ManagerToursAgenda: () => <p>Controlled tour table</p> }));
 vi.mock('@/services/chat-service', () => ({ resolveTourConversation: vi.fn() }));
-vi.mock('@/hooks/use-manager-dashboard', () => ({ useManagerDashboard: () => ({ locations: [
+// Stable references, like react-query data: the dashboard re-syncs from the URL whenever `locations` changes identity.
+const dashboard = vi.hoisted(() => ({ locations: [
   { id: 11, name: 'First', address: 'First address' }, { id: 22, name: 'Exact', address: 'Exact address' }],
-  kitchens: [{ id: 1, locationId: 11 }], bookings: [], isLoadingLocations: false, isLoadingKitchens: false }) }));
+  kitchens: [{ id: 1, locationId: 11 }], bookings: [] as never[], isLoadingLocations: false, isLoadingKitchens: false }));
+vi.mock('@/hooks/use-manager-dashboard', () => ({ useManagerDashboard: () => dashboard }));
 vi.mock('@/hooks/use-onboarding-status', () => ({ useOnboardingStatus: () => ({ setupSteps: [], missingSteps: [], improvementSteps: [], hasKitchens: true }), SETUP_STEP_WIZARD_STEP: {}, invalidateOnboardingStatus: vi.fn() }));
 vi.mock('@/hooks/use-manager-getting-started', () => ({ useManagerGettingStarted: () => ({ items: [] }), invalidateGettingStarted: vi.fn() }));
 vi.mock('@/components/manager/onboarding/ManagerOnboardingContext', () => ({ useManagerOnboarding: () => ({ startNewLocation: vi.fn() }) }));
