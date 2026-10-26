@@ -388,8 +388,7 @@ export function SessionExtensionsCard({ bookingId, manager, chefName, onChanged,
           <Button type="button" variant="outline" className={cn(tap, "w-full sm:w-auto")} disabled={!!busy} onClick={() => { setCharging(true); setAmount((maxCharge / 100).toFixed(2)); setNote("") }}>
             {t("sxbChargeExtra", { defaultValue: "Charge for extra time" })}</Button>
           <Button type="button" variant="outline" className={cn(tap, "w-full sm:w-auto")} disabled={!!busy} onClick={() => void act("waive", () => createExtension(bookingId, { kind: "extra_time", free: true, requestKey,
-              expectedEndAt: state.endAt, expectedAmountCents: 0, ...(state.visitId ? { visitId: state.visitId } : {}) }),
-            t("sxbNoChargeDone", { defaultValue: "No charge. Nothing is sent to {chef}.", chef: chefName }))}>
+              expectedEndAt: state.endAt, expectedAmountCents: 0, ...(state.visitId ? { visitId: state.visitId } : {}) }))}>
             {t("sxbNoCharge", { defaultValue: "No charge" })}</Button>
         </div>
       </NowAttentionRow>)

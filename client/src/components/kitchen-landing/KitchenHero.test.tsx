@@ -180,8 +180,9 @@ describe("Kitchen hero", () => {
 });
 
 describe("Kitchen opportunity", () => {
-  it("shows the right story for every kitchen type and sends each CTA to the shared start action", async () => {
-    for (const [locale, copy] of Object.entries({ "en-CA": english, "fr-CA": french, uk: ukrainian })) {
+  // One test per locale: three full tab walks in one test ran past the 5 s budget under full-suite load.
+  it.each(Object.entries({ "en-CA": english, "fr-CA": french, uk: ukrainian }))("shows the right story for every kitchen type and sends each CTA to the shared start action (%s)", async (locale, copy) => {
+    {
       const i18n = createInstance();
       await i18n.use(initReactI18next).init({ lng: locale, fallbackLng: false, resources: { [locale]: { kitchen: copy } } });
       const onStart = vi.fn();
@@ -212,7 +213,6 @@ describe("Kitchen opportunity", () => {
       }
       expect(onStart).toHaveBeenCalledTimes(5);
       expect(container.textContent).not.toMatch(/opportunity[A-Z]\w+|40%|85%|\$500|0%|insurance|guaranteed|—/i);
-      cleanup();
     }
   });
 
