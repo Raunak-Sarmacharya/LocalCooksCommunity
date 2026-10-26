@@ -46,7 +46,10 @@ export function AddCustomer({ locations, defaultLocationId, onDone }: { location
   // From a finished tour (owner, Oct 24): ?name=&email=&location= fill the form in.
   const prefill = useMemo(() => new URLSearchParams(window.location.search), []);
   const prefillLocation = Number(prefill.get('location')) || null;
-  const [locationId, setLocationId] = useState<number | null>(prefillLocation && locations.some(location => location.id === prefillLocation) ? prefillLocation : defaultLocationId ?? (locations.length === 1 ? locations[0].id : null));
+  const [pickedLocationId, setLocationId] = useState<number | null>(null);
+  // Worked out each render: the locations list can arrive after the form opens (a refresh on ?add=1).
+  const locationId = pickedLocationId ?? (prefillLocation && locations.some(location => location.id === prefillLocation) ? prefillLocation
+    : defaultLocationId ?? (locations.length === 1 ? locations[0].id : null));
   const [fullName, setFullName] = useState(prefill.get('name') || '');
   const [email, setEmail] = useState(prefill.get('email') || '');
   const [phone, setPhone] = useState('');
@@ -125,7 +128,7 @@ export function AddCustomer({ locations, defaultLocationId, onDone }: { location
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5 sm:col-span-2">
             <Label htmlFor="ac-name">{mt('acName')}</Label>
-            <Input id="ac-name" value={fullName} onChange={event => setFullName(event.target.value)} autoComplete="off" maxLength={120} />
+            <Input id="ac-name" type="text" value={fullName} onChange={event => setFullName(event.target.value)} autoComplete="off" maxLength={120} />
           </div>
           <div className="space-y-1.5 sm:col-span-2">
             <Label htmlFor="ac-email">{mt('acEmail')}</Label>
@@ -143,7 +146,7 @@ export function AddCustomer({ locations, defaultLocationId, onDone }: { location
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="ac-business">{mt('acBusiness')} <span className="font-normal text-muted-foreground">{mt('qbOptionalTag')}</span></Label>
-            <Input id="ac-business" value={businessName} onChange={event => setBusinessName(event.target.value)} autoComplete="off" />
+            <Input id="ac-business" type="text" value={businessName} onChange={event => setBusinessName(event.target.value)} autoComplete="off" />
           </div>
           {locations.length > 1 && (
             <div className="space-y-1.5 sm:col-span-2">

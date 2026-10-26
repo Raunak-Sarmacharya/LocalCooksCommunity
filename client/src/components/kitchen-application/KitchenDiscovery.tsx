@@ -256,7 +256,7 @@ export default function KitchenDiscovery({
   return (
     <div className="space-y-6">
       {!tourDetailsOpen && <ChefPageHeader
-        title={activeTab === "tours" ? tChef("tourListTitle", "Your kitchen tours") : activeTab === "applications" ? tChef("shellMyKitchenApplications", "My Kitchen Applications") : t("applyFlowDiscoverKitchensTitle", "Discover kitchens")}
+        title={activeTab === "tours" ? tChef("tourListTitle", "Your kitchen tours") : activeTab === "applications" ? tChef("shellMyKitchenApplications", "My Kitchen Applications") : t("applyFlowDiscoverKitchensTitle", "Find kitchens")}
         description={activeTab === "tours" ? tChef("tourListIntroBody", "Review your tours, visit details and requests in one place.") : activeTab === "applications" ? t("applyFlowMyApplicationsDesc", "Track your kitchen applications.") : t("applyFlowDiscoverKitchensDesc", "Apply first. Booking opens after approval.")}
       />}
 

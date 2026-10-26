@@ -497,7 +497,7 @@ export default function ChefViewingsList({ onExploreKitchens }: { onExploreKitch
           {onExploreKitchens && (
             <Button className="mt-4" onClick={onExploreKitchens}>
               <Icon icon="mdi:magnify" className="size-4" aria-hidden />
-              {t("tourListExploreCta", "Discover Kitchens")}
+              {t("tourListExploreCta", "Find kitchens")}
             </Button>
           )}
         </CardContent>

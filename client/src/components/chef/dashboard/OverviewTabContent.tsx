@@ -284,8 +284,8 @@ export default function OverviewTabContent({
     // Storage that needs the chef now: items under removal review, or past the paid days.
     ...rentals.filter((r) => r.state === "removal_review" || r.phase === "grace" || r.phase === "holdover").map((r) => ({
       id: `storage-${r.id}`,
-      title: t(r.state === "removal_review" ? "homeTodoStorageRemoval" : "homeTodoStorageOverdue", { unit: `${r.listing.name} · ${r.unitLabel}` }),
-      description: r.kitchen.name,
+      title: t(r.state === "removal_review" ? "homeTodoStorageRemoval" : "homeTodoStorageOverdue", { unit: r.listing.name }),
+      description: `${t("stUnitLabel", { ns: "storage", index: r.unitLabel })} · ${r.kitchen.name}`,
       cta: t("homeReview"),
       onClick: () => navigate(`/storage/${r.id}`),
     })),
@@ -364,11 +364,8 @@ export default function OverviewTabContent({
             <p className="mt-0.5 text-sm text-muted-foreground">
               {[nextBooking.locationName !== nextBooking.kitchenName ? nextBooking.locationName : null, nextIsRequest ? t("homeWaitingForKitchen") : opensAt ? t("homeCheckInOpens", { time: opensAt }) : null].filter(Boolean).join(" · ")}
             </p>
-            <div className="mt-4 flex flex-wrap gap-2">
+            <div className="mt-4">
               <Button size="sm" className="rounded-full px-4" onClick={() => navigate(`/booking/${nextBooking.id}`)}>{t("homeOpenBooking")}</Button>
-              {bookingSummary.upcoming > 1 && (
-                <Button size="sm" variant="outline" className="rounded-full px-4" onClick={() => onSetActiveTab("bookings")}>{t("homeAllBookings")}</Button>
-              )}
             </div>
             {laterThisWeek.length > 0 && (
               <div className="mt-5 border-t pt-3">

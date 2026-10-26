@@ -30,6 +30,7 @@ export type RawApplication = {
   id: number; chefId: number; locationId: number; fullName: string; shopName: string; email: string;
   status: 'inReview' | 'approved' | 'rejected' | 'cancelled'; currentTier: number; tier2CompletedAt: Date | null; accessEnded: boolean;
   createdAt: Date; updatedAt: Date; documents: { key: string; label: string; expiry: string | null }[];
+  /** The kitchen added this customer (Add customer); they never sent a request. */ addedByKitchen?: boolean;
 };
 export type RawAccess = { chefId: number; locationId: number; grantedAt: Date };
 export type RawTour = {
@@ -73,6 +74,7 @@ export type CustomerNextBooking = { bookingId: number; locationId: number; kitch
 export type CustomerListRow = {
   chefId: number; name: string; businessName: string | null;
   status: CustomerStatus; next: CustomerNextAction; needsAction: boolean;
+  /** Primary relationship: the kitchen added them, so 'applied' reads as 'Added'. */ addedByKitchen?: boolean;
   /** The location the primary status and action belong to. */
   locationId: number; timezone: string;
   locations: CustomerLocationChip[];
@@ -224,6 +226,7 @@ export function buildCustomerRows(input: CustomerReadInput, now: Date): Customer
       chefId, name,
       businessName: withApplication?.shopName && withApplication.shopName !== 'Shop Not Named' ? withApplication.shopName : null,
       status: primary.status, next: primary.next, needsAction: views.some(view => view.next.needsAction),
+      addedByKitchen: !!primary.relationship.application?.addedByKitchen,
       locationId: primary.relationship.location.id, timezone: primary.relationship.location.timezone || DEFAULT_TIMEZONE,
       locations: views.map(view => ({ locationId: view.relationship.location.id, locationName: view.relationship.location.name,
         timezone: view.relationship.location.timezone || DEFAULT_TIMEZONE, status: view.status, next: view.next })),
@@ -357,6 +360,7 @@ export async function loadCustomerReadInput(managerId: number, locationId: numbe
   const applicationsRaw: RawApplication[] = appRows.map(row => ({
     id: row.id, chefId: row.chefId, locationId: row.locationId, fullName: row.fullName, shopName: row.shopName, email: row.email, status: row.status,
     currentTier: row.currentTier, tier2CompletedAt: row.tier2CompletedAt, accessEnded: !!row.accessEnded, createdAt: row.createdAt, updatedAt: row.updatedAt,
+    addedByKitchen: !!(row.tier_data as { addedByKitchen?: boolean } | null)?.addedByKitchen,
     documents: row.status === 'approved' && row.currentTier >= 3 ? requiredAccessDocuments({ status: row.status, currentTier: row.currentTier,
       foodSafetyLicenseUrl: row.foodSafetyLicenseUrl, foodSafetyLicenseStatus: row.foodSafetyLicenseStatus, foodSafetyLicenseExpiry: row.foodSafetyLicenseExpiry,
       foodEstablishmentCertUrl: row.foodEstablishmentCertUrl, foodEstablishmentCertStatus: row.foodEstablishmentCertStatus, foodEstablishmentCertExpiry: row.foodEstablishmentCertExpiry,

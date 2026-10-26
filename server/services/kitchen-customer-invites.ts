@@ -13,7 +13,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { and, desc, eq, gte, inArray, sql } from 'drizzle-orm';
 import { getAuth } from 'firebase-admin/auth';
 import { db } from '../db';
-import { chefKitchenApplications, kitchenCustomerInvites, locations, users } from '@shared/schema';
+import { chefKitchenApplications, kitchenCustomerInvites, kitchens, locations, users } from '@shared/schema';
 import { customDocumentId, DOCUMENT_KEYS, documentLabel, isCustomDocumentKey, kitchenDocumentFields, type BuiltInDocumentKey } from '@shared/location-booking-eligibility';
 import { DomainError } from '../shared/errors/domain-error';
 import { logger } from '../logger';
@@ -154,7 +154,10 @@ export async function readInvite(token: string) {
     .innerJoin(locations, eq(locations.id, kitchenCustomerInvites.locationId))
     .where(eq(kitchenCustomerInvites.tokenHash, hashToken(String(token || '')))).limit(1);
   if (!row) return null;
-  return { status: statusOf(row.invite), email: row.invite.email, fullName: row.invite.fullName, locationId: row.location.id, locationName: row.location.name,
+  // The kitchen's own photo for the invitation page (the first active kitchen that has one).
+  const [photo] = await db.select({ imageUrl: kitchens.imageUrl }).from(kitchens)
+    .where(and(eq(kitchens.locationId, row.location.id), eq(kitchens.isActive, true), sql`${kitchens.imageUrl} IS NOT NULL`)).orderBy(kitchens.id).limit(1);
+  return { status: statusOf(row.invite), imageUrl: photo?.imageUrl ?? null, email: row.invite.email, fullName: row.invite.fullName, locationId: row.location.id, locationName: row.location.name,
     address: row.location.address, termsUrl: (row.location as any).kitchenTermsUrl ?? null, requirementsChoice: row.invite.requirementsChoice };
 }
 

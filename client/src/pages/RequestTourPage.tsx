@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { useLocation, useParams } from "wouter";
 import ScheduleViewingWidget from "@/components/chef/ScheduleViewingWidget";
 import { useFirebaseAuth } from "@/hooks/use-auth";
@@ -15,6 +16,7 @@ export default function RequestTourPage() {
   const locationId = Number(rawLocationId);
   const requestedKitchenId = Number(new URLSearchParams(window.location.search).get("kitchenId"));
   const [, navigate] = useLocation();
+  const { t } = useTranslation("chef");
   const { user, loading: authLoading } = useFirebaseAuth();
   const { data: kitchens = [], isLoading: kitchensLoading } = useQuery<Array<{ id: number; locationId: number; name: string; imageUrl?: string | null }>>({
     queryKey: ["/api/public/kitchens"],
@@ -35,10 +37,10 @@ export default function RequestTourPage() {
   const kitchen = kitchens.find((item) => item.id === kitchenId && item.locationId === locationId);
   const back = () => navigate(`/kitchen-preview/${locationId}`);
   const breadcrumbs = useMemo(() => [
-    { label: "Discover kitchens", onClick: () => navigate(chefDashboardHref("discover-kitchens")), navId: "discover-kitchens" as const },
-    { label: kitchen?.name || "Kitchen", onClick: back },
-    { label: "Request a tour" },
-  ], [navigate, locationId, kitchen?.name]);
+    { label: t("shellDiscoverKitchens"), onClick: () => navigate(chefDashboardHref("discover-kitchens")), navId: "discover-kitchens" as const },
+    { label: kitchen?.name || t("apptabKitchenFallback"), onClick: back },
+    { label: t("requestATour", { ns: "kitchen" }) },
+  ], [navigate, locationId, kitchen?.name, t]);
   useChefShellChrome({ activeView: "viewings", breadcrumbs });
 
   // Applied (or given access) here: no tour; the application is the next step, even when an older tour exists.

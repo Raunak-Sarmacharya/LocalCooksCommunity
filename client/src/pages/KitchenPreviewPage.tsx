@@ -3295,7 +3295,7 @@ export default function KitchenPreviewPage() {
         onClick={() => isAuthenticated ? navigate('/dashboard?view=discover-kitchens') : navigate('/')}
         variant="default"
       >
-        {isAuthenticated ? t("backToDiscoverKitchens", "Back to Discover Kitchens") : t("backToHome", "Back to Home")}
+        {isAuthenticated ? t("backToDiscoverKitchens", "Back to kitchens") : t("backToHome", "Back to Home")}
       </Button>
     </div>
   );

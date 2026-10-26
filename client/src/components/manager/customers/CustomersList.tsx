@@ -224,7 +224,7 @@ function CustomerRow({ row, locale, showLocations, unread }: { row: CustomerList
         <div className="flex w-28 flex-wrap gap-1 md:flex-col">
           {showLocations && row.locations.length > 0
             ? row.locations.map(chip => <Badge key={chip.locationId} variant={statusVariant[chip.status]} className="max-w-full whitespace-normal">{mt('cuAccessChip', { status: mt(statusLabelKey[chip.status]), location: chip.locationName })}</Badge>)
-            : <Badge variant={statusVariant[row.status]}>{mt(statusLabelKey[row.status])}</Badge>}
+            : <Badge variant={statusVariant[row.status]}>{mt(row.status === 'applied' && row.addedByKitchen ? 'cuStatusAdded' : statusLabelKey[row.status])}</Badge>}
         </div>
         <p className={cn('text-sm', row.next.owner === 'nobody' && 'text-muted-foreground')}>{nextActionLine(mt, row.next, row.name, row.timezone, locale)}</p>
         <p className="text-sm text-muted-foreground">

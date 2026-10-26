@@ -57,6 +57,8 @@ export interface AuthFlowProps {
    * failure land on the register step with the address still filled in.
    */
   initialIdentifier?: string;
+  /** Keep the identifier fixed to `initialIdentifier` (a kitchen invitation). */
+  lockIdentifier?: boolean;
   /**
    * The account this browser last signed in with. Supplying it enables the
    * `welcome-back` step; omit it and the flow is byte-for-byte what it was, so
@@ -116,6 +118,7 @@ export default function AuthFlow({
   onPortalRejected,
   onDiscardPendingGoogleRegistration,
   initialIdentifier = "",
+  lockIdentifier = false,
 }: AuthFlowProps) {
   const { t } = useTranslation("auth");
   const [ownStep, setOwnStep] = useState<AuthFlowStep>(initialStep);
@@ -293,6 +296,7 @@ export default function AuthFlow({
       // correct an address is an edit rather than a retype. Empty on a cold start
       // and after "Not you?", where the visitor wants a different account.
       initialIdentifier={email}
+      locked={lockIdentifier}
       onEmailKnown={async (knownEmail) => {
         setEmail(knownEmail);
         setPhone("");

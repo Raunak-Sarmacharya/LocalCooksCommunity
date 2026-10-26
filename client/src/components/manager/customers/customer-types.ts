@@ -9,6 +9,7 @@ export type CustomerNextBooking = { bookingId: number; locationId: number; kitch
 export type CustomerListRow = {
   chefId: number; name: string; businessName: string | null;
   status: CustomerStatus; next: CustomerNextAction; needsAction: boolean;
+  /** Primary relationship: the kitchen added them, so 'applied' reads as 'Added'. */ addedByKitchen?: boolean;
   locationId: number; timezone: string;
   locations: CustomerLocationChip[];
   nextBooking: CustomerNextBooking | null;

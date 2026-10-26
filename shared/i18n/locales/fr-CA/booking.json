@@ -1568,5 +1568,7 @@
   "historyExt_gave_offer_chef": "La cuisine vous a offert {minutes} minutes de plus, gratuitement",
   "historyExt_gave_offer_manager": "Vous avez offert {minutes} minutes de plus à {chef}, gratuitement",
   "historyExt_gave_early_chef": "La cuisine vous a permis de commencer {minutes} minutes plus tôt, gratuitement",
-  "historyExt_gave_early_manager": "Vous avez permis à {chef} de commencer {minutes} minutes plus tôt, gratuitement"
+  "historyExt_gave_early_manager": "Vous avez permis à {chef} de commencer {minutes} minutes plus tôt, gratuitement",
+  "historyExt_paid_early_chef": "Vous avez payé {amount} pour le début plus tôt",
+  "historyExt_paid_early_manager": "{chef} a payé {amount} pour le début plus tôt"
 }

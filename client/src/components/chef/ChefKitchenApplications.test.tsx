@@ -97,6 +97,7 @@ it("a customer the kitchen added sees who added them, not a request they never s
   render(page());
   expect(screen.getByTestId("kitchen-access-tracker")).toHaveTextContent("Added by the kitchen");
   expect(screen.getByTestId("kitchen-access-next")).toHaveTextContent("Kitchen 8 added you as a customer.");
+  expect(screen.queryByRole("heading", { name: "Your request" })).not.toBeInTheDocument();
 });
 
 it("keeps approved access visible when the kitchen is paused without offering booking", () => {

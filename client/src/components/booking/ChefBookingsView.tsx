@@ -117,7 +117,7 @@ type CardAction = { label: string; href: string } | null
 
 /** At most one action, only when it is the obvious next step. */
 export function chefListAction(booking: ChefListBooking, item: ListedBooking<ChefListBooking>, t: T, locale: string): CardAction {
-  if (["today", "checkin_open", "in_session", "time_ended_in_session"].includes(item.phase)) return { label: t("bdhOpenVisit"), href: `/booking/${booking.id}/visit` }
+  if (["today", "checkin_open", "in_session", "time_ended_in_session"].includes(item.phase)) return { label: t(item.phase === "today" ? "bdhArrivalDetails" : item.phase === "checkin_open" ? "bdhOpenVisit" : "bdhCheckOut"), href: `/booking/${booking.id}/visit` }
   if (booking.chefDue && booking.chefDue.amountCents > 0 && item.phase !== "cancelled")
     return { label: bt("dcV2Pay", { amount: money(booking.chefDue.amountCents, locale) }), href: `/booking/${booking.id}` }
   return null

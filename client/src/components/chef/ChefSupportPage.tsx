@@ -54,7 +54,7 @@ export default function ChefSupportPage({
       questions: [
         {
           q: t("supportFaqKitchenBookingsQ1", "How do I book a commercial kitchen?"),
-          a: t("supportFaqKitchenBookingsA1", "Browse Discover Kitchens, apply, and book time slots after you\u2019re approved."),
+          a: t("supportFaqKitchenBookingsA1", "Find a kitchen under Kitchens, send a request to apply, and book time once you\u2019re approved."),
         },
         {
           q: t("supportFaqKitchenBookingsQ2", "Can I cancel or reschedule?"),

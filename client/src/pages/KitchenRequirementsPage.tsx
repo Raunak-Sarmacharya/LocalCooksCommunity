@@ -157,7 +157,7 @@ export default function KitchenRequirementsPage() {
   ].filter(Boolean) as string[] : [];
 
   const breadcrumbs = useMemo(() => [
-    { label: t("shellDiscoverKitchens", "Discover Kitchens"), href: chefDashboardHref("discover-kitchens"), onClick: () => navigate(chefDashboardHref("discover-kitchens")), navId: "discover-kitchens" as const },
+    { label: t("shellDiscoverKitchens", "Find kitchens"), href: chefDashboardHref("discover-kitchens"), onClick: () => navigate(chefDashboardHref("discover-kitchens")), navId: "discover-kitchens" as const },
     ...(location?.name && location.name !== name ? [{ label: location.name, href: `/kitchen-preview/${locationId}`, onClick: () => navigate(`/kitchen-preview/${locationId}`) }] : []),
     { label: name, href: previewHref, onClick: () => navigate(previewHref) },
     { label: t("requirementsBreadcrumb", "Kitchen access") },

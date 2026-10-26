@@ -4,6 +4,7 @@ import { requireFirebaseAuthWithUser, requireManager } from '../firebase-auth-mi
 import { upload, uploadToBlob } from '../fileUpload';
 import { DomainError } from '../shared/errors/domain-error';
 import { logger } from '../logger';
+import { normalizeImageUrl } from './utils';
 import { acceptInvite, createInvite, inviteEmailMatch, listInvites, readInvite, resendInvite, withdrawInvite, type InviteDocuments, type RequirementsChoice } from '../services/kitchen-customer-invites';
 
 const router = Router();
@@ -56,7 +57,7 @@ router.post('/public/customer-invites/read', async (req: Request, res: Response)
   try {
     const invite = await readInvite(String(req.body?.token || ''));
     if (!invite) return res.status(404).json({ error: 'This invitation link isn’t valid. Ask the kitchen to send it again.' });
-    res.json(invite);
+    res.json({ ...invite, imageUrl: normalizeImageUrl(invite.imageUrl, req) });
   } catch (error) { fail(res, error, 'Could not open the invitation'); }
 });
 

@@ -289,7 +289,8 @@ export function SessionExtensionsCard({ bookingId, manager, chefName, onChanged,
         const all = offering === "early_start"
           ? (state.earlyOptions || []).map(option => ({ minutes: option.minutes, at: option.startAt, amountCents: option.amountCents, startNow: !!option.startNow }))
           : state.options.map(option => ({ minutes: option.minutes, at: option.endAt, amountCents: option.amountCents, startNow: false }))
-        const chips = all.filter(option => option.startNow || isQuickPick(option.minutes))
+        // Three times or fewer: show them all as buttons, no list to open.
+        const chips = all.length <= 3 ? all : all.filter(option => option.startNow || isQuickPick(option.minutes))
         const choose = (option: typeof all[number]) => setPick({ kind: offering, minutes: option.minutes, at: option.at, amountCents: option.amountCents, free: defaultFreeChoice(option.minutes) })
         const label = (option: typeof all[number]) => offering === "early_start"
           ? option.startNow ? t("sxbStartNowOption", { defaultValue: "Start now (from {time})", time: clock(option.at) })
@@ -304,8 +305,8 @@ export function SessionExtensionsCard({ bookingId, manager, chefName, onChanged,
                 {offering === "early_start" && option.startNow ? t("sxbStartNow", { defaultValue: "Start now" }) : label(option)}
               </Button>
             ))}
-            <Button type="button" size="sm" variant={choosing ? "default" : "outline"} className={tap} disabled={!!busy} aria-expanded={choosing}
-              onClick={() => setChoosing(open => !open)}>{t("sxbChooseTime", { defaultValue: "Choose a time…" })}</Button>
+            {chips.length < all.length && <Button type="button" size="sm" variant={choosing ? "default" : "outline"} className={tap} disabled={!!busy} aria-expanded={choosing}
+              onClick={() => setChoosing(open => !open)}>{t("sxbChooseTime", { defaultValue: "Choose a time…" })}</Button>}
           </div>
           {choosing && <div className="space-y-1">
             <label htmlFor={`extra-time-choice-${bookingId}`} className="block text-sm font-medium">{fieldLabel}</label>

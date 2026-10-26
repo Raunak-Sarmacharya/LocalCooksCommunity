@@ -18,7 +18,7 @@ export function useKitchenJourneyEmailVerified() {
   );
 }
 
-export default function KitchenJourneyAuth({ title, description = "Use your Local Cooks account or create one here. ", initialEmail = "", initialTermsAccepted = false, subject = "request" }: { title: string; description?: string; initialEmail?: string; initialTermsAccepted?: boolean; subject?: string }) {
+export default function KitchenJourneyAuth({ title, description = "Use your Local Cooks account or create one here. ", initialEmail = "", initialName, lockEmail = false, initialTermsAccepted = false, subject = "request" }: { title: string; description?: string; initialEmail?: string; initialName?: string; lockEmail?: boolean; initialTermsAccepted?: boolean; subject?: string }) {
   const { user, loading, authenticateWithGoogle, updateUserVerification, refreshUserData, discardPendingGoogleRegistration } = useFirebaseAuth();
   const [step, setStep] = useState<AuthFlowStep>(() =>
     isPendingGoogleRegistration(auth.currentUser?.uid) ? "register" : "identifier"
@@ -104,10 +104,9 @@ export default function KitchenJourneyAuth({ title, description = "Use your Loca
 
   return (
     <section className="w-full min-w-0">
-      <p className="text-xs font-semibold uppercase tracking-widest text-primary">Your account</p>
-      <h2 className="mt-2 text-2xl font-semibold tracking-tight">{title}</h2>
+      <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">{title}</h2>
       <p className="mt-2 text-sm text-muted-foreground">{description}</p>
-      <div className="mt-8 max-w-xl [&_.max-w-md]:max-w-xl [&_.mx-auto]:mx-0">
+      <div className="mt-6 max-w-xl [&_.max-w-md]:max-w-xl [&_.mx-auto]:mx-0">
         {loading && step !== "register" && !googleRegistrationStarted && !registrationInProgress ? (
           <p className="text-sm text-muted-foreground" role="status">Restoring your account…</p>
         ) : awaitingVerification && !signInAfterVerification ? (
@@ -130,7 +129,8 @@ export default function KitchenJourneyAuth({ title, description = "Use your Loca
           <AuthFlow
             key={signInAfterVerification ? "resume-after-verification" : "account"}
             step={step}
-            initialIdentifier={unverifiedEmail || initialEmail}
+            initialIdentifier={lockEmail ? initialEmail : unverifiedEmail || initialEmail}
+            lockIdentifier={lockEmail}
             onStepChange={(nextStep) => {
               setStep(nextStep);
               if (nextStep !== "register") setGoogleRegistrationStarted(false);
@@ -140,6 +140,8 @@ export default function KitchenJourneyAuth({ title, description = "Use your Loca
             registerProps={{
               showTermsInline: !initialTermsAccepted,
               initialTermsAccepted,
+              initialName,
+              lockEmail,
               hideApplyingToggle: true,
               animateEntrance: false,
               onRegistrationStart: () => setRegistrationInProgress(true),

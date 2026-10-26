@@ -29,7 +29,7 @@ type PublicKitchen = { id: number; locationId: number; name: string; imageUrl?: 
 export function KitchenAccessPage({ app, sent, notice, renewRequested, onOpenChat, onChanged, onDismissNotice }: {
   app: KitchenApplicationWithLocation;
   /** Just sent (the request, or the booking requirements): show the one-time banner. */
-  sent: "request" | "requirements" | null;
+  sent: "request" | "requirements" | "joined" | null;
   /** Arrived from a tour link or a Request to apply link after already applying. */
   notice: "tour" | "applied" | null;
   renewRequested: boolean;
@@ -105,7 +105,7 @@ export function KitchenAccessPage({ app, sent, notice, renewRequested, onOpenCha
 
   return <section className="min-w-0 space-y-6 [overflow-wrap:anywhere]" aria-labelledby="kitchen-access-title" data-testid="kitchen-access-page">
     {sent && <div role="status" className="flex items-start gap-3 rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-900" data-testid="request-sent-banner">
-      <Check className="mt-0.5 size-4 shrink-0" aria-hidden /><p className="min-w-0 flex-1"><span className="font-semibold">{sent === "requirements" ? t("kaSentReqBanner", { defaultValue: "Booking requirements sent to {kitchen}.", kitchen: kitchenName }) : t("kaSentBanner", { defaultValue: "Request sent to {kitchen}.", kitchen: kitchenName })}</span> {t("kaSentCopy", "We emailed you a copy.")}</p>
+      <Check className="mt-0.5 size-4 shrink-0" aria-hidden /><p className="min-w-0 flex-1"><span className="font-semibold">{sent === "joined" ? t("kaJoinedBanner", { defaultValue: "You joined {kitchen}.", kitchen: kitchenName }) : sent === "requirements" ? t("kaSentReqBanner", { defaultValue: "Booking requirements sent to {kitchen}.", kitchen: kitchenName }) : t("kaSentBanner", { defaultValue: "Request sent to {kitchen}.", kitchen: kitchenName })}</span>{sent !== "joined" && <> {t("kaSentCopy", "We emailed you a copy.")}</>}</p>
       <button type="button" aria-label={t("tourNoticeDismiss", "Dismiss")} onClick={onDismissNotice} className="-m-1 inline-flex size-8 shrink-0 items-center justify-center rounded-md hover:bg-emerald-100"><X className="size-4" aria-hidden /></button></div>}
     {notice && <div role="status" data-testid="application-tour-notice" className="flex items-start justify-between gap-3 rounded-xl bg-muted/60 px-4 py-3 text-sm">
       <p className="min-w-0 pt-0.5">{notice === "tour" ? t("applicationNoticeTour", { defaultValue: "You’ve already applied to {kitchen}, so there’s no tour to request. Your application is below.", kitchen: kitchenName })
@@ -135,10 +135,11 @@ export function KitchenAccessPage({ app, sent, notice, renewRequested, onOpenCha
           <div className="mt-4"><ApplicationDocumentRows app={{ ...app, documents }} viewLink={viewLink} actions={tier >= 3} /></div>
           {adding && <div className="mt-5"><RenewAccessDocuments applicationId={app.id} documents={neededDocs} adding early onRenewed={() => { setAdding(false); onChanged(); }} /></div>}
         </section>}
-        <section aria-labelledby="kitchen-access-request">
+        {/* Added by the kitchen: there was no request, so only show this when the kitchen left feedback. */}
+        {(!(app.tier_data as Record<string, unknown> | null)?.addedByKitchen || app.feedback) && <section aria-labelledby="kitchen-access-request">
           <h2 id="kitchen-access-request" className="mb-3 text-base font-semibold">{t("kaYourRequest", "Your request")}</h2>
           {definitions.isLoading ? <Skeleton className="h-64 rounded-xl" /> : <KitchenApplicationDetails app={app} display={display} onBookKitchen={book} compact requirements={definitions.data} showActions={false} hideDocuments={(app.documents || []).length > 0} hideFeedback={display.actionKind === "discover"} />}
-        </section>
+        </section>}
       </div>
       <aside className="space-y-4 lg:sticky lg:top-4">
         <section className="overflow-hidden rounded-xl border bg-card">

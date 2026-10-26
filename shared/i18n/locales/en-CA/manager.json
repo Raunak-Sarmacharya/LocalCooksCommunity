@@ -5184,5 +5184,6 @@
   "ovrWaitingForAnswer": "Waiting for your answer",
   "tourHistoryActorYou": "You",
   "arNotNeededFor": "Not needed for {name}",
-  "arQuestionsNotAsked": "{count, plural, one {# question} other {# questions}} · not asked of {name}"
+  "arQuestionsNotAsked": "{count, plural, one {# question} other {# questions}} · not asked of {name}",
+  "cuStatusAdded": "Added"
 }

@@ -188,7 +188,7 @@ export function KitchenPathEmptyCard({
       title={t("kitchenAccessTitle", "Kitchen access")}
       description={t("kitchenAccessDesc", "Apply to a partner kitchen, get approved, then book time to cook.")}
       steps={KITCHEN_STEPS}
-      ctaLabel={t("exploreKitchens", "Discover Kitchens")}
+      ctaLabel={t("exploreKitchens", "Find kitchens")}
       ctaIcon="mdi:magnify"
       onCta={onExplore}
       loading={loading}

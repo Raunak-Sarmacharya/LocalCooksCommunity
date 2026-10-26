@@ -1485,7 +1485,7 @@ export default function BookingDetailsPage() {
   const claimTakesPrimary = !primary && !!payableClaim;
 
   const primaryLabel = primary === 'review_request' ? t('bdTakeAction') : primary === 'review_cancellation' ? t('bdhReviewCancellation')
-    : primary === 'review_checkout' ? t('bdhReviewCheckout') : primary === 'inspect_visit' ? t('fixInspection') : primary === 'open_visit' ? (phase === 'in_session' || phase === 'time_ended_in_session' ? t('bdhCheckOut') : t('bdhOpenVisit'))
+    : primary === 'review_checkout' ? t('bdhReviewCheckout') : primary === 'inspect_visit' ? t('fixInspection') : primary === 'open_visit' ? (phase === 'in_session' || phase === 'time_ended_in_session' ? t('bdhCheckOut') : phase === 'today' ? t('bdhArrivalDetails') : t('bdhOpenVisit'))
     : primary === 'answer_attendance' ? t('bnTheyCame') : '';
   const runPrimary = () => {
     if (!booking) return;

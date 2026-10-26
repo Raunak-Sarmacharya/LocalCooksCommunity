@@ -5184,5 +5184,6 @@
   "ovrWaitingForAnswer": "Очікує вашої відповіді",
   "tourHistoryActorYou": "Ви",
   "arNotNeededFor": "Не потрібно для {name}",
-  "arQuestionsNotAsked": "{count, plural, one {# запитання} few {# запитання} many {# запитань} other {# запитання}} · не ставилися {name}"
+  "arQuestionsNotAsked": "{count, plural, one {# запитання} few {# запитання} many {# запитань} other {# запитання}} · не ставилися {name}",
+  "cuStatusAdded": "Додано"
 }

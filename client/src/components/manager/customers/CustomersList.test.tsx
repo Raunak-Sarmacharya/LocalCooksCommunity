@@ -153,3 +153,11 @@ it('with several locations, offers All locations and shows a status chip per loc
   expect(screen.getByLabelText('Location')).toBeInTheDocument();
   expect(calls[0]).not.toContain('locationId');
 });
+
+it("a customer the kitchen added reads 'Added', not 'Applied'", async () => {
+  respond = () => ({ ...pageTwo, customers: [row({ ...pageTwo.customers[0], locations: [pageTwo.customers[0].locations[0]], addedByKitchen: true })] });
+  mount();
+  const sam = (await screen.findByText('Sam Chen')).closest('a')!;
+  expect(within(sam).getByText('Added')).toBeInTheDocument();
+  expect(within(sam).queryByText('Applied')).not.toBeInTheDocument();
+});

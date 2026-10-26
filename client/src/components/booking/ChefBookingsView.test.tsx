@@ -67,7 +67,7 @@ describe('chef My bookings', () => {
     mount();
     const live = card('Main Kitchen');
     expect(within(live).getByText('You’re checked in until 4:00 p.m.')).toBeInTheDocument();
-    expect(within(live).getByRole('link', { name: 'Check in' })).toHaveAttribute('href', '/booking/164/visit');
+    expect(within(live).getByRole('link', { name: 'Check out' })).toHaveAttribute('href', '/booking/164/visit');
     expect(within(card('Request Kitchen')).getByText('The kitchen replies by Oct 15, 9:30 a.m.')).toBeInTheDocument();
     // A partial refund on a booking that still goes ahead says what it is (no bare "Refund: $26.00 —").
     expect(within(card('Soon Kitchen')).getByText('$26.00 refunded to you')).toBeInTheDocument();

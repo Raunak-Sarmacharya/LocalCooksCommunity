@@ -389,7 +389,8 @@ describe("booking page: extra time", () => {
     responses.push({ match: /\/extensions$/, method: "GET", body: state({ inSession: false, beforeStart: true, earlyOptions: [
       { minutes: 60, startTime: "13:00", startAt: "2026-10-14T15:30:00.000Z", defaultFree: false, billedMinutes: 60, amountCents: 3000, kitchenGrossCents: 0, startNow: true },
       { minutes: 15, startTime: "13:45", startAt: "2026-10-14T16:15:00.000Z", defaultFree: true, billedMinutes: 30, amountCents: 1501, kitchenGrossCents: 0, startNow: false },
-      { minutes: 45, startTime: "13:15", startAt: "2026-10-14T15:45:00.000Z", defaultFree: false, billedMinutes: 60, amountCents: 3000, kitchenGrossCents: 0, startNow: false }] }) },
+      { minutes: 45, startTime: "13:15", startAt: "2026-10-14T15:45:00.000Z", defaultFree: false, billedMinutes: 60, amountCents: 3000, kitchenGrossCents: 0, startNow: false },
+      { minutes: 30, startTime: "13:30", startAt: "2026-10-14T16:00:00.000Z", defaultFree: true, billedMinutes: 30, amountCents: 1501, kitchenGrossCents: 0, startNow: false }] }) },
       { match: /\/extensions$/, method: "POST", body: { extension: item({ kind: "early_start", status: "approved", free: true, confirmed: true }) } })
     render(<SessionExtensionsCard bookingId={10} manager chefName="Maya Chen" />)
     fireEvent.click(await screen.findByRole("button", { name: "Let them start early" }))
@@ -404,6 +405,15 @@ describe("booking page: extra time", () => {
     expect(screen.getByTestId("extension-pick-summary")).toHaveTextContent(/^Starts at 1:00\s?p\.m\. · \$30\.00$/)
     fireEvent.click(screen.getByRole("button", { name: "Send offer · $30.00" }))
     await waitFor(() => expect(posts()[0].body).toMatchObject({ kind: "early_start", minutes: 60, free: false, expectedAmountCents: 3000 }))
+  });
+  it("Let them start early: a single free time is a button, with no list to open", async () => {
+    responses.push({ match: /\/extensions$/, method: "GET", body: state({ inSession: false, beforeStart: true, earlyOptions: [
+      { minutes: 15, startTime: "13:45", startAt: "2026-10-14T16:15:00.000Z", defaultFree: true, billedMinutes: 30, amountCents: 1501, kitchenGrossCents: 0, startNow: false }] }) })
+    render(<SessionExtensionsCard bookingId={10} manager chefName="Maya Chen" />)
+    fireEvent.click(await screen.findByRole("button", { name: "Let them start early" }))
+    expect(screen.queryByRole("button", { name: "Choose a time…" })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: /^Start at 1:45\s?p\.m\./ }))
+    expect(screen.getByTestId("extension-pick-summary")).toHaveTextContent(/^Starts at 1:45\s?p\.m\. · Free$/)
   });
   it("renders nothing when extra time can't be loaded", async () => {
     responses.push({ match: /\/extensions$/, method: "GET", body: { error: "nope" }, status: 500 });

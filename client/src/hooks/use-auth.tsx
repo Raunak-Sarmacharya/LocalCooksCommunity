@@ -693,7 +693,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // CRITICAL: Send Custom Backend email verification
       logger.info('📧 Sending Custom email verification...');
       let emailSent = false;
-      try {
+      // A kitchen invitation link already proves the inbox (accepting it verifies the email), so no second email.
+      if (window.location.pathname === '/join') emailSent = true;
+      else try {
         await sendVerificationEmailWithFallback({
           email: updatedUser.email!,
           role: accountType,

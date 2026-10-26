@@ -294,7 +294,7 @@ export function ChefOverview({
                 className="w-full"
                 onClick={() => (window.location.href = "/compare-kitchens")}
               >
-                {t("overviewExploreKitchens", "Discover Kitchens")}
+                {t("overviewExploreKitchens", "Find kitchens")}
                 <ChevronRight className="ml-2 h-4 w-4" />
               </Button>
             )}

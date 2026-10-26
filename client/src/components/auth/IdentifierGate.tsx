@@ -19,6 +19,8 @@ interface IdentifierGateProps {
    * it from nothing. Empty on a cold start.
    */
   initialIdentifier?: string;
+  /** The address can't be changed (a kitchen invitation is for one inbox). */
+  locked?: boolean;
 }
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -28,6 +30,7 @@ export default function IdentifierGate({
   onPhoneKnown,
   onGoogleSignIn,
   initialIdentifier = "",
+  locked = false,
 }: IdentifierGateProps) {
   const { t } = useTranslation("auth");
   const [identifier, setIdentifier] = useState(initialIdentifier);
@@ -102,7 +105,8 @@ export default function IdentifierGate({
                 setError(null);
               }}
               disabled={busy}
-              className={`h-12 rounded-xl text-base ${showCallingCode ? "pl-16" : ""}`}
+              readOnly={locked}
+              className={`h-12 rounded-xl text-base ${showCallingCode ? "pl-16" : ""} ${locked ? "bg-muted text-muted-foreground" : ""}`}
               autoComplete="username"
               aria-invalid={error ? true : undefined}
               aria-describedby={error ? "identifier-error" : undefined}

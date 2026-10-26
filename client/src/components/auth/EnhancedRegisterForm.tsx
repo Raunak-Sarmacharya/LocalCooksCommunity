@@ -96,6 +96,9 @@ interface EnhancedRegisterFormProps {
   initialTermsAccepted?: boolean;
   animateEntrance?: boolean;
   initialEmail?: string;
+  initialName?: string;
+  /** The email can't be changed (a kitchen invitation is for one inbox). */
+  lockEmail?: boolean;
 }
 
 type AuthState = 'idle' | 'loading' | 'success' | 'error' | 'email-verification';
@@ -125,7 +128,7 @@ const itemVariants = {
   }
 };
 
-export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, onRegistrationStart, onRegistrationComplete, onRegistrationError, onSwitchToLogin, forceApplying, hideApplyingToggle, reviewAfterRegistration, onPreviousStep, accountType = 'chef', showTermsInline = false, initialTermsAccepted = false, animateEntrance = true, initialEmail }: EnhancedRegisterFormProps) {
+export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, onRegistrationStart, onRegistrationComplete, onRegistrationError, onSwitchToLogin, forceApplying, hideApplyingToggle, reviewAfterRegistration, onPreviousStep, accountType = 'chef', showTermsInline = false, initialTermsAccepted = false, animateEntrance = true, initialEmail, initialName, lockEmail = false }: EnhancedRegisterFormProps) {
   const { t } = useTranslation("auth");
   const registerSchema = useRegisterSchema();
   const { user: authUser, signup, authenticateWithGoogle, syncUserWithBackend, loading, error, updateUserVerification, refreshUserData, logout } = useFirebaseAuth();
@@ -234,7 +237,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
   const form = useForm<RegisterFormData>({
     resolver: zodResolver(registerSchema),
     defaultValues: { 
-      displayName: journeyDraft?.fullName || "",
+      displayName: initialName || journeyDraft?.fullName || "",
       email: initialEmail || journeyDraft?.email || "",
       phone: journeyDraft?.phone || "",
       shopName: "", 
@@ -846,6 +849,8 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
                 key={googleProfile ? "google-email" : "manual-email"}
                 {...(googleProfile ? { value: googleProfile.email } : {})}
                 disabled={!!googleProfile}
+                readOnly={lockEmail}
+                className={lockEmail ? "bg-muted text-muted-foreground" : undefined}
               />
               {googleProfile && (
                 <p className="-mt-2 text-xs leading-relaxed text-muted-foreground">

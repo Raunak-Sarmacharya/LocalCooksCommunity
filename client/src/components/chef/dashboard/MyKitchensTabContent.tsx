@@ -321,7 +321,7 @@ export default function MyKitchensTabContent({
                 onSetActiveTab("discover-kitchens");
               }}
             >
-              {t("apptabExploreKitchens", "Discover Kitchens")}
+              {t("apptabExploreKitchens", "Find kitchens")}
               <ChevronRight />
             </Button>
           </CardContent>

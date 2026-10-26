@@ -1568,5 +1568,7 @@
   "historyExt_gave_offer_chef": "Кухня надала вам ще {minutes} хв безкоштовно",
   "historyExt_gave_offer_manager": "Ви надали {chef} ще {minutes} хв безкоштовно",
   "historyExt_gave_early_chef": "Кухня дозволила вам почати на {minutes} хв раніше безкоштовно",
-  "historyExt_gave_early_manager": "Ви дозволили {chef} почати на {minutes} хв раніше безкоштовно"
+  "historyExt_gave_early_manager": "Ви дозволили {chef} почати на {minutes} хв раніше безкоштовно",
+  "historyExt_paid_early_chef": "Ви сплатили {amount} за ранній початок",
+  "historyExt_paid_early_manager": "{chef} сплатив(-ла) {amount} за ранній початок"
 }

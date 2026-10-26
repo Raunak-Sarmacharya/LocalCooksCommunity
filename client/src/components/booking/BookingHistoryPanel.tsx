@@ -43,7 +43,7 @@ export function BookingHistoryPanel({ id, version, reference, role, timezone, ca
     const name = event.kind === 'ext_requested' ? `requested_${flow === 'charge' ? 'charge' : 'ask'}_${role}`
       : event.kind === 'ext_offered' ? `${event.free ? 'gave' : 'offered'}_${flow === 'early' ? 'early' : 'offer'}_${role}`
       : event.kind === 'ext_approved' ? `approved_ask_${role}` : event.kind === 'ext_accepted' ? `accepted_offer_${role}`
-      : event.kind === 'ext_paid' ? `paid_${role}` : event.kind === 'ext_declined' ? `declined_${flowKey}_${role}`
+      : event.kind === 'ext_paid' ? `paid_${flow === 'early' ? 'early_' : ''}${role}` : event.kind === 'ext_declined' ? `declined_${flowKey}_${role}`
       : event.kind === 'ext_expired' ? `expired_${flowKey}` : event.kind === 'ext_withdrawn' ? `withdrawn_${flowKey}`
       : event.kind === 'ext_waived' ? `waived_${role}` : event.kind === 'ext_disputed' ? `disputed_${role}`
       : event.kind === 'ext_lc_decided' ? 'lc_decided' : event.kind === 'ext_lc_waived' ? 'lc_waived' : 'refunded';

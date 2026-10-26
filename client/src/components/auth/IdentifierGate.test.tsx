@@ -5,6 +5,15 @@ import IdentifierGate from "./IdentifierGate";
 afterEach(cleanup);
 
 describe("IdentifierGate", () => {
+  it("a locked address (kitchen invitation) is read-only and continues with that address", async () => {
+    const onEmailKnown = vi.fn();
+    render(<IdentifierGate onEmailKnown={onEmailKnown} onPhoneKnown={vi.fn()} onGoogleSignIn={vi.fn()} initialIdentifier="jo@example.com" locked />);
+    const input = screen.getByRole("textbox");
+    expect(input).toHaveAttribute("readonly");
+    fireEvent.submit(input.closest("form")!);
+    await waitFor(() => expect(onEmailKnown).toHaveBeenCalledWith("jo@example.com"));
+  });
+
   it("continues email through authentication without an existence lookup", async () => {
     const onEmailKnown = vi.fn();
     render(

@@ -102,7 +102,7 @@ it('does not start requests when the kitchen is paused', () => {
 
 it('uses a complete breadcrumb trail for the selected kitchen without a standalone back button', () => {
   render(<KitchenRequirementsPage />);
-  expect(state.crumbs.map(crumb => crumb.label)).toEqual(['Discover Kitchens', 'Moonlight Kitchens', 'Kitchen North', 'Kitchen access']);
+  expect(state.crumbs.map(crumb => crumb.label)).toEqual(['Find kitchens', 'Moonlight Kitchens', 'Kitchen North', 'Kitchen access']);
   expect(state.crumbs[2].href).toBe('/kitchen/46/kitchen-north');
   state.crumbs[2].onClick();
   expect(state.navigate).toHaveBeenCalledWith('/kitchen/46/kitchen-north');
