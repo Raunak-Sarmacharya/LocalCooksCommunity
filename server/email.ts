@@ -8,7 +8,7 @@ import { escapeHtml } from './security';
 import { isE2eOutboundSuppressed } from "./e2e-outbound-guard.js";
 import { stripCountryCode } from "./phone-utils";
 import nodemailer from 'nodemailer';
-import { isPlatformEmailRecipientBlocked } from './email-recipient-policy';
+import { isPlatformEmailRecipientBlocked, isReservedTestRecipient } from './email-recipient-policy';
 import { createHash } from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, join } from 'path';
@@ -199,6 +199,11 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
     if (isPlatformEmailRecipientBlocked(content.to)) {
       await persistEmailLog({ ...content, ...options, status: 'skipped_policy',
         errorMessage: 'The support contact inbox cannot receive platform-generated email.' });
+      return false;
+    }
+    if (isReservedTestRecipient(content.to)) {
+      await persistEmailLog({ ...content, ...options, status: 'skipped_policy',
+        errorMessage: 'Reserved test domain (RFC 2606): never handed to SMTP.' });
       return false;
     }
     if (isE2eOutboundSuppressed()) {
@@ -1950,22 +1955,36 @@ The Local Cooks Team
 };
 
 // Sign-in code email (replaces the sign-in link): the code is in the subject so it can be read from a phone notification.
-export const generateSignInCodeEmail = (userData: { fullName: string; email: string; code: string; locale?: string | null }): EmailContent => {
-  const firstName = userData.fullName.split(' ')[0];
+/** `signUp`: the address has no account yet, so the greeting carries no name (nothing typed by a visitor goes into the email). */
+export const generateSignInCodeEmail = (userData: { fullName: string; email: string; code: string; locale?: string | null; signUp?: boolean }): EmailContent => {
+  const firstName = userData.signUp ? '' : userData.fullName.split(' ')[0];
   const fr = userData.locale?.startsWith('fr'), uk = userData.locale?.startsWith('uk');
-  const subject = fr ? `${userData.code} est votre code de connexion Local Cooks`
-    : uk ? `${userData.code} — ваш код для входу в Local Cooks`
-      : `${userData.code} is your Local Cooks sign-in code`;
-  const lead = fr ? 'Entrez ce code sur l’écran de connexion pour continuer.'
-    : uk ? 'Введіть цей код на екрані входу, щоб продовжити.'
-      : 'Enter this code on the sign-in screen to continue.';
+  const subject = userData.signUp
+    ? fr ? `${userData.code} est votre code de confirmation Local Cooks`
+      : uk ? `${userData.code} — ваш код підтвердження Local Cooks`
+        : `${userData.code} is your Local Cooks confirmation code`
+    : fr ? `${userData.code} est votre code de connexion Local Cooks`
+      : uk ? `${userData.code} — ваш код для входу в Local Cooks`
+        : `${userData.code} is your Local Cooks sign-in code`;
+  const lead = userData.signUp
+    ? fr ? 'Entrez ce code pour confirmer votre courriel et créer votre compte.'
+      : uk ? 'Введіть цей код, щоб підтвердити пошту й створити обліковий запис.'
+        : 'Enter this code to confirm your email and create your account.'
+    : fr ? 'Entrez ce code sur l’écran de connexion pour continuer.'
+      : uk ? 'Введіть цей код на екрані входу, щоб продовжити.'
+        : 'Enter this code on the sign-in screen to continue.';
   const expiry = fr ? 'Il expire dans 10 minutes et ne peut servir qu’une fois.'
     : uk ? 'Він діє 10 хвилин і лише один раз.'
       : 'It expires in 10 minutes and can be used once.';
-  const ignore = fr ? 'Vous n’avez pas demandé ce code ? Ignorez ce courriel ; personne ne peut se connecter sans lui.'
-    : uk ? 'Не запитували цей код? Просто проігноруйте лист: без коду ніхто не увійде.'
-      : 'Didn’t ask for this code? You can ignore this email; no one can sign in without it.';
+  const ignore = userData.signUp
+    ? fr ? 'Vous n’avez pas demandé ce code ? Ignorez ce courriel ; aucun compte n’est créé sans lui.'
+      : uk ? 'Не запитували цей код? Просто проігноруйте лист: без коду обліковий запис не створюється.'
+        : 'Didn’t ask for this code? You can ignore this email; no account is created without it.'
+    : fr ? 'Vous n’avez pas demandé ce code ? Ignorez ce courriel ; personne ne peut se connecter sans lui.'
+      : uk ? 'Не запитували цей код? Просто проігноруйте лист: без коду ніхто не увійде.'
+        : 'Didn’t ask for this code? You can ignore this email; no one can sign in without it.';
   const hi = fr ? 'Bonjour' : uk ? 'Вітаємо' : 'Hi';
+  const greeting = firstName ? `${hi} ${firstName},` : `${hi},`;
   const html = `
 <!DOCTYPE html>
 <html>
@@ -1981,7 +2000,7 @@ export const generateSignInCodeEmail = (userData: { fullName: string; email: str
       <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
-      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">${hi} ${firstName},</h2>
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">${greeting}</h2>
       <p class="message" style="margin-bottom: 20px;">${lead}</p>
       <div style="margin: 8px 0 20px 0; text-align: center;">
         <span style="display: inline-block; padding: 14px 24px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; font-family: 'SFMono-Regular', Menlo, Consolas, monospace; font-size: 32px; font-weight: 700; letter-spacing: 0.3em; color: #0f172a;">${userData.code}</span>
@@ -1999,7 +2018,7 @@ export const generateSignInCodeEmail = (userData: { fullName: string; email: str
   </div>
 </body>
 </html>`;
-  const text = `${hi} ${firstName},
+  const text = `${greeting}
 
 ${lead}
 

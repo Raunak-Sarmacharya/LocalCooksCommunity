@@ -207,22 +207,6 @@ describe('kitchen tour request eligibility routes', () => {
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ code: 'TOUR_REQUEST_BLOCKED', tourId: 77, reason }));
     expect(mocks.transaction).not.toHaveBeenCalled();
   });
-  it('sends a held tour from the saved draft only, never the client body', async () => {
-    mocks.poolQuery.mockResolvedValueOnce({ rows: [] });
-    const missing = response();
-    await handler('/book', 'post')({ neonUser: { id: 8 }, firebaseUser: { email_verified: true }, body: { fromDraft: true, targetedKitchenId: 40 } }, missing);
-    expect(missing.status).toHaveBeenCalledWith(404);
-    expect(missing.json).toHaveBeenCalledWith(expect.objectContaining({ code: 'DRAFT_NOT_FOUND' }));
-
-    mocks.poolQuery.mockResolvedValueOnce({ rows: [{ location_id: 33, scheduled_at: new Date(Date.now() + 86400000), chef_notes: null, created_at: new Date(),
-      intake: { intendedUse: 'catering', estimatedWeeklyHours: '6-10', hasLicense: true, targetStartDate: 'not_decided' } }] });
-    mocks.rows.push([{ managerId: 1 }], [{ id: 77, chefId: 8, targetedKitchenId: 40, status: 'completed', scheduledAt: new Date('2020-01-01'), durationMinutes: 45 }], [], []);
-    const res = response();
-    await handler('/book', 'post')({ neonUser: { id: 8 }, firebaseUser: { email_verified: true }, body: { fromDraft: true, targetedKitchenId: 40, scheduledAt: 'nonsense', intakeData: {} } }, res);
-    expect(mocks.poolQuery.mock.calls[1][1]).toEqual([8, 40]);
-    expect(res.status).toHaveBeenCalledWith(409);
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ code: 'TOUR_REQUEST_BLOCKED', tourId: 77 }));
-  });
   it('rechecks history inside the transaction after acquiring chef and kitchen locks', async () => {
     vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-01T12:00:00Z'));
     primeKitchen();

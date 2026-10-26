@@ -4,12 +4,11 @@ import ScheduleViewingWidget from "@/components/chef/ScheduleViewingWidget";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useChefKitchenApplicationForLocation } from "@/hooks/use-chef-kitchen-applications";
 import KitchenJourneyLayout from "@/components/kitchen-application/KitchenJourneyLayout";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useChefShellChrome } from "@/layouts/chef-shell-context";
 import { chefDashboardHref } from "@/lib/chef-dashboard-nav";
 import { Button } from "@/components/ui/button";
 import { useTourRequestAccess } from '@/hooks/use-tour-request-access';
-import { getAuthHeaders } from '@/lib/api';
 
 export default function RequestTourPage() {
   const { locationId: rawLocationId } = useParams<{ locationId: string }>();
@@ -28,8 +27,8 @@ export default function RequestTourPage() {
   // A link without ?kitchenId= (an old link, or typed by hand) uses the location's only kitchen, instead of waiting forever.
   const locationKitchens = kitchens.filter((item) => item.locationId === locationId);
   const kitchenId = requestedKitchenId > 0 ? requestedKitchenId : locationKitchens.length === 1 ? locationKitchens[0].id : NaN;
-  // An unverified account (just created on the request screen) can't be checked yet; its request is held until the
-  // email is verified, then these checks run and the booking route enforces them again.
+  // An account without a confirmed email can't be checked yet; the request page confirms it with a code, then these
+  // checks run and the booking route enforces them again.
   const checkedUser = user && (user.isVerified || user.is_verified) ? user : null;
   const tourAccess = useTourRequestAccess(kitchenId, checkedUser?.uid);
   const { application, hasApplication, isLoading: applicationLoading, error: applicationError, refetch: refetchApplication } = useChefKitchenApplicationForLocation(checkedUser && locationId ? locationId : null);
@@ -48,7 +47,6 @@ export default function RequestTourPage() {
   const dropHalfFilledRequest = () => {
     localStorage.removeItem(`viewing_booking_${kitchenId}`);
     sessionStorage.removeItem(`viewing_booking_${kitchenId}`);
-    void (async () => fetch(`/api/viewings/tour-draft/${kitchenId}`, { method: 'DELETE', headers: await getAuthHeaders(), credentials: 'include' }))().catch(() => undefined);
   };
   useEffect(() => {
     if (!existingTour) return;
@@ -65,8 +63,13 @@ export default function RequestTourPage() {
   const tourAccessLoading = !!checkedUser && kitchenId > 0 && !tourAccess.isFetched;
   const accessError = applicationError || tourAccess.error;
 
-  if (!authLoading && !kitchensLoading && !applicationLoading && !tourAccessLoading && !accessError
-    && kitchen && !applied && !hasApplication && (!checkedUser || tourAccess.data?.canRequest)) {
+  const ready = !authLoading && !kitchensLoading && !applicationLoading && !tourAccessLoading && !accessError
+    && kitchen && !applied && !hasApplication && (!checkedUser || tourAccess.data?.canRequest);
+  // Once shown, the request stays mounted while the checks re-run for a chef who just confirmed their email (code sign-up
+  // or sign-in): unmounting it there dropped the send in progress (Oct 26). A block found then still redirects above.
+  const shown = useRef(false);
+  if (ready) shown.current = true;
+  if (kitchen && (ready || (shown.current && !applied && !existingTour && !accessError))) {
     return (
       <ScheduleViewingWidget
         presentation="page"

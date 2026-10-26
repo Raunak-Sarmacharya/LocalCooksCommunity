@@ -1,21 +1,20 @@
 /**
  * ScheduleViewingWidget — request an in-person kitchen tour (visit only, not an application).
  * Two screens for everyone, like Request to apply (owner, Oct 25): Day and time → Almost done (your details, answers, send).
- * A signed-out visitor's existing account signs in inline; a new email creates the account on send, and the request is
- * held as a server draft until the email is verified on any device, then sent through the normal booking route.
+ * A signed-out visitor's existing account signs in inline. A new email gets a 6-digit code on send; the account is created
+ * once the code proves the inbox, and the request goes at once (owner, Oct 26). Nothing is held on the server.
  */
 
 import { useState, useCallback, useEffect, useRef, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle, Loader2, Mail } from "lucide-react";
+import { CheckCircle, Loader2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { auth } from "@/lib/firebase";
 import { useFirebaseAuth } from "@/hooks/use-auth";
-import { RequestDetails, type DetailsMode, type RequestIdentity } from "@/components/kitchen-application/RequestDetails";
-import { useEmailVerifiedWatch } from "@/hooks/use-email-verified-watch";
-import { sendVerificationEmailWithFallback } from "@/lib/send-verification-email";
+import { EmailCodeStep, RequestDetails, useConfirmByCode, type DetailsMode, type RequestIdentity } from "@/components/kitchen-application/RequestDetails";
+import { FormLegend } from "@/components/ui/form-legend";
 import { useEmailVerificationGuard } from "@/hooks/use-email-verification-guard";
 import { useLocation } from "wouter";
 import { chefDashboardHref } from "@/lib/chef-dashboard-nav";
@@ -72,7 +71,6 @@ interface AvailabilityResponse {
 }
 
 type TourStep = "schedule" | "details" | "success";
-type HeldTour = { scheduledAt: string; chefNotes?: string; intakeData: ViewingIntakeData };
 
 interface ScheduleViewingWidgetProps {
   locationId: number;
@@ -98,8 +96,6 @@ function isUserVerified(
     { is_verified: user?.is_verified, isVerified: user?.isVerified }
   );
 }
-
-const mask = (email: string) => { const [name = "", domain = ""] = email.split("@"); return domain ? `${name.slice(0, 2)}***@${domain}` : email; };
 
 const calendarClassNames = {
   months: "w-full",
@@ -136,12 +132,12 @@ export function ScheduleViewingWidget({
   const { t: common } = useTranslation("common");
   const locale = i18n?.language || "en-CA";
   const inChefShell = useIsChefShell();
-  const { user, loading: authLoading, signup, refreshUserData, updateUserVerification } = useFirebaseAuth();
+  const { user, loading: authLoading } = useFirebaseAuth();
   const { guard, gate } = useEmailVerificationGuard();
   const [, setLocation] = useLocation();
   const isAuthenticated = !!user && !isPendingGoogleRegistration(auth.currentUser?.uid);
   const emailVerified = isUserVerified(user);
-  // Signed in with a verified email: Request tour sends. Otherwise it is held until the email is verified.
+  // Signed in with a verified email: Request tour sends. Otherwise a code confirms the email first.
   const readyToSend = isAuthenticated && emailVerified;
 
   const [step, setStep] = useState<TourStep>("schedule");
@@ -157,11 +153,8 @@ export function ScheduleViewingWidget({
   const [details, setDetails] = useState<{ mode: DetailsMode; identity: RequestIdentity | null; ready: boolean }>({ mode: "email", identity: null, ready: false });
   const [agreed, setAgreed] = useState(false);
   const [showErrors, setShowErrors] = useState(false);
-  const [holding, setHolding] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [slotNotice, setSlotNotice] = useState(false);
-  const [resent, setResent] = useState(false);
-  const sendingHeld = useRef(false);
 
   const hasProgress =
     step !== "schedule" || !!selectedDate || !!selectedSlot || chefNotes.trim().length > 0 || Object.keys(intakeData).length > 0;
@@ -239,24 +232,6 @@ export function ScheduleViewingWidget({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storageKey, isAuthenticated, authLoading, user?.uid]);
 
-  // A held tour request (new account, or an account whose email isn't verified yet), saved on the server.
-  const draftKey = ["/api/viewings/tour-draft", targetedKitchenId, user?.uid];
-  const { data: draftState } = useQuery<{ draft: HeldTour | null }>({
-    queryKey: draftKey,
-    enabled: isAuthenticated,
-    queryFn: async () => {
-      const response = await fetch(`/api/viewings/tour-draft/${targetedKitchenId}`, { headers: await getAuthHeaders(), credentials: "include" });
-      if (!response.ok) throw new Error("draft");
-      return response.json();
-    },
-  });
-  const heldTour = draftState?.draft ?? null;
-  const waiting = isAuthenticated && !emailVerified && !!heldTour;
-  const dropHeldTour = async () => {
-    queryClient.setQueryData(draftKey, { draft: null });
-    await fetch(`/api/viewings/tour-draft/${targetedKitchenId}`, { method: "DELETE", headers: await getAuthHeaders(), credentials: "include" }).catch(() => undefined);
-  };
-
   const dateStr = selectedDate ? format(selectedDate, "yyyy-MM-dd") : "";
   const {
     data: availability,
@@ -286,15 +261,11 @@ export function ScheduleViewingWidget({
   });
 
   const bookMutation = useMutation({
-    // With a held tour, the server sends its own saved copy; only the kitchen is named here.
-    mutationFn: async (held?: HeldTour) => {
-      let body: object = { fromDraft: true, locationId, targetedKitchenId };
-      if (!held) {
-        if (!selectedSlot) throw new Error(ct("noTimeSlotSelected"));
-        const intake = requiredViewingIntakeDataSchema.safeParse(intakeData);
-        if (!intake.success) throw new Error(t("tourIntakeRequired", "Answer all four questions to continue."));
-        body = { locationId, targetedKitchenId, scheduledAt: selectedSlot.scheduledAt, chefNotes: chefNotes || undefined, intakeData: intake.data };
-      }
+    mutationFn: async () => {
+      if (!selectedSlot) throw new Error(ct("noTimeSlotSelected"));
+      const intake = requiredViewingIntakeDataSchema.safeParse(intakeData);
+      if (!intake.success) throw new Error(t("tourIntakeRequired", "Answer all four questions to continue."));
+      const body = { locationId, targetedKitchenId, scheduledAt: selectedSlot.scheduledAt, chefNotes: chefNotes || undefined, intakeData: intake.data };
       const headers = await getAuthHeaders(true);
       const response = await fetch("/api/viewings/book", {
         method: "POST",
@@ -321,12 +292,11 @@ export function ScheduleViewingWidget({
             )
           );
         }
-        throw new Error(err.error || t("failedToBookViewing", "Failed to book Kitchen Tour"));
+        throw new Error(err.error || t("failedToBookViewing", "Failed to book tour"));
       }
       return response.json();
     },
-    onSuccess: (data, held) => {
-      if (held) queryClient.setQueryData(draftKey, { draft: null });
+    onSuccess: (data) => {
       setStep("success");
       localStorage.removeItem(storageKey);
       sessionStorage.removeItem(storageKey);
@@ -338,64 +308,27 @@ export function ScheduleViewingWidget({
       // The sent request opens on its tour page.
       if (data?.id) setLocation(`${chefDashboardHref("viewings")}&viewing=${data.id}`);
     },
-    onError: (error: Error & { code?: string; tourId?: number }, held) => {
+    onError: (error: Error & { code?: string; tourId?: number }) => {
       void queryClient.invalidateQueries({ queryKey: ['/api/viewings/request-access'] });
       if (error.code === 'TOUR_REQUEST_BLOCKED' && error.tourId) {
         // Already toured or a tour is open here: the half-filled request goes, and the tour page says why.
-        if (held) void dropHeldTour();
         resetForm();
         setLocation(`${chefDashboardHref('viewings')}&viewing=${error.tourId}&notice=already`);
         return;
       }
       if (error.code === "SLOT_TAKEN") {
-        if (held) {
-          void dropHeldTour();
-          setSelectedDate(new Date(held.scheduledAt));
-          setIntakeData(held.intakeData || {});
-          setChefNotes(held.chefNotes || "");
-        }
         setSelectedSlot(null);
         setSlotNotice(true);
         setStep("schedule");
         void refetchSlots();
         return;
       }
-      if (held) { sendingHeld.current = false; setSendError(error.message); return; }
-      toast.error(error.message);
+      setSendError(error.message);
     },
   });
 
-  // The link tapped here or on a phone continues this page by itself. The held request then waits for the chef to send it:
-  // never sent on their behalf, since whoever verifies may not be who typed the request (owner, Oct 25; Airbnb returns you to checkout).
-  useEmailVerifiedWatch(waiting, async () => { await updateUserVerification(); await refreshUserData({ forceToken: true }); });
-  const sendHeld = () => {
-    if (!heldTour || sendingHeld.current) return;
-    sendingHeld.current = true;
-    setSendError(null);
-    bookMutation.mutate(heldTour);
-  };
-
-  // Not verified yet: create the account if needed, then hold the request on the server until the email is verified.
-  const holdRequest = async () => {
-    if (!selectedSlot || !intakeResult.success) return;
-    if (!isAuthenticated) {
-      const identity = details.identity!;
-      const generated = `A1!${crypto.getRandomValues(new Uint32Array(3)).join("")}`.slice(0, 16);
-      await signup(identity.email, generated, identity.fullName, "chef", true, identity.phone);
-    } else {
-      await sendVerificationEmailWithFallback({ email: user!.email!, role: "chef", returnUrl: `${window.location.pathname}${window.location.search}` });
-    }
-    const held: HeldTour = { scheduledAt: selectedSlot.scheduledAt, chefNotes: chefNotes || undefined, intakeData: intakeResult.data };
-    const response = await fetch("/api/viewings/tour-draft", {
-      method: "PUT", headers: await getAuthHeaders(true), credentials: "include",
-      body: JSON.stringify({ locationId, targetedKitchenId, ...held }),
-    });
-    if (!response.ok) throw new Error((await response.json().catch(() => null))?.error || t("rtcSendFailed", "We couldn’t send your request. Try again."));
-    // The account may be minutes old: a draft read started before the save must not overwrite it with "none".
-    const key = ["/api/viewings/tour-draft", targetedKitchenId, auth.currentUser?.uid];
-    await queryClient.cancelQueries({ queryKey: key });
-    queryClient.setQueryData(key, { draft: held });
-  };
+  // Not signed in, or signed in without a confirmed email: a code confirms it, then the request goes at once.
+  const codeFlow = useConfirmByCode(() => bookMutation.mutate());
 
   const today = tourToday();
 
@@ -567,132 +500,129 @@ export function ScheduleViewingWidget({
     </>
   );
 
+  // Every required answer, in page order: pressing send with gaps names each one and moves to the first (owner, Oct 26).
+  // The server's own schema decides each answer, so the page and the API never disagree.
+  const answered = (key: "intendedUse" | "estimatedWeeklyHours" | "hasLicense" | "targetStartDate") =>
+    requiredViewingIntakeDataSchema.shape[key].safeParse(intakeData[key]).success;
+  const missing = {
+    details: !isAuthenticated && !details.ready,
+    use: !answered("intendedUse"),
+    hours: !answered("estimatedWeeklyHours"),
+    license: !answered("hasLicense"),
+    start: !answered("targetStartDate"),
+    agree: !isAuthenticated && details.mode === "new" && !agreed,
+  };
   const submitDetails = () => {
-    if (!intakeComplete) return;
-    if (readyToSend) {
-      guard(() => bookMutation.mutate(undefined));
+    setSendError(null);
+    const first = (Object.keys(missing) as (keyof typeof missing)[]).find(key => missing[key]);
+    if (first) {
+      setShowErrors(true);
+      const target = document.getElementById(`tour-q-${first}`);
+      target?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+      target?.querySelector<HTMLElement>("input, button, textarea")?.focus({ preventScroll: true });
       return;
     }
-    if (!isAuthenticated && (!details.ready || !agreed)) { setShowErrors(true); return; }
-    setHolding(true); setSendError(null);
-    holdRequest().catch((error: Error) => setSendError(error.message || t("rtcSendFailed", "We couldn’t send your request. Try again.")))
-      .finally(() => setHolding(false));
+    if (readyToSend) { guard(() => bookMutation.mutate()); return; }
+    void codeFlow.start(isAuthenticated ? null : details.identity);
   };
+  const missingNote = (key: keyof typeof missing, text: string) => showErrors && missing[key]
+    ? <p id={`tour-q-${key}-error`} role="alert" className="mt-1.5 text-sm text-destructive">{text}</p> : null;
+  const req = <span aria-hidden className="ml-0.5 text-destructive">*</span>;
+  const codeOut = !!codeFlow.target;
 
-  // Not a <form>: Your details has its own sign-in form, and forms can't nest.
+  // Not a <form>: Your details has its own sign-in step, and forms can't nest.
   const renderDetailsStep = () => (
     <div>
       <div className="max-w-2xl space-y-6 p-4 sm:p-5">
         {summaryRow}
-        {/* Inside the chef dashboard the account is known: no "Sending as / Not you?" (owner, Oct 25). It stays mounted so the send logic still reads its state. */}
-        <section aria-label={t("yourDetails", "Your details")} className={cn("space-y-3", inChefShell && isAuthenticated && "hidden")}>
-          <RequestDetails showErrors={showErrors} onChange={setDetails} />
-          {showErrors && !isAuthenticated && details.mode === "existing" && <p role="alert" className="text-sm text-destructive">{t("tourSignInToSend", "Sign in above to send your request.")}</p>}
-        </section>
-        <TourIntakeChoice key={`use-${targetedKitchenId}`} id="tour-intended-use"
-          label={t("tourBookUse", "What will you use the kitchen for?")}
-          value={intakeData.intendedUse}
-          choices={[
-            { value: "catering", label: common("tourIntakeUse_catering", "Catering") },
-            { value: "meal_prep", label: common("tourIntakeUse_meal_prep", "Meal preparation") },
-            { value: "food_truck", label: common("tourIntakeUse_food_truck", "Food truck") },
-            { value: "baking", label: common("tourIntakeUse_baking", "Baking") },
-          ]}
-          onChange={intendedUse => setIntakeData({ ...intakeData, intendedUse })} />
-        <TourIntakeChoice key={`hours-${targetedKitchenId}`} id="tour-weekly-hours"
-          label={t("tourBookHours", "About how many hours a week?")}
-          value={intakeData.estimatedWeeklyHours}
-          choices={["1-5", "6-10", "11-20", "21-30", "31-40", "40+"].map(hours => ({ value: hours, label: hours.replace("-", "–") }))}
-          onChange={estimatedWeeklyHours => setIntakeData({ ...intakeData, estimatedWeeklyHours })} />
-        <fieldset className="min-w-0">
-          <legend className="mb-2 text-sm font-medium text-foreground">{t("tourBookCertificate", "Do you have a food handler certificate?")}</legend>
-          <div className="flex flex-wrap gap-2">
-            {[true, false].map(answer => <TourChip key={String(answer)} name="tour-license" value={String(answer)}
-              checked={intakeData.hasLicense === answer} onSelect={() => setIntakeData({ ...intakeData, hasLicense: answer })}>
-              {answer ? t("tourIntakeYes", "Yes") : t("tourIntakeNo", "No")}
-            </TourChip>)}
+        {/* While the code is out only the code step shows; the answers stay mounted so "Change details" loses nothing. */}
+        {codeOut && <EmailCodeStep flow={codeFlow} newAccount={!isAuthenticated} />}
+        <div className={cn("space-y-6", codeOut && "hidden")}>
+          <FormLegend className="mb-0" />
+          {/* Inside the chef dashboard the account is known: no "Sending as / Not you?" (owner, Oct 25). It stays mounted so the send logic still reads its state. */}
+          <section id="tour-q-details" aria-label={t("yourDetails", "Your details")} className={cn("space-y-3", inChefShell && isAuthenticated && "hidden")}>
+            <RequestDetails showErrors={showErrors} onChange={setDetails} />
+            {showErrors && !isAuthenticated && details.mode === "existing" && <p role="alert" className="text-sm text-destructive">{t("tourSignInToSend", "Sign in above to send your request.")}</p>}
+          </section>
+          <div id="tour-q-use">
+            <TourIntakeChoice key={`use-${targetedKitchenId}`} id="tour-intended-use"
+              label={<>{t("tourBookUse", "What will you use the kitchen for?")}{req}</>}
+              value={intakeData.intendedUse}
+              choices={[
+                { value: "catering", label: common("tourIntakeUse_catering", "Catering") },
+                { value: "meal_prep", label: common("tourIntakeUse_meal_prep", "Meal preparation") },
+                { value: "food_truck", label: common("tourIntakeUse_food_truck", "Food truck") },
+                { value: "baking", label: common("tourIntakeUse_baking", "Baking") },
+              ]}
+              onChange={intendedUse => setIntakeData({ ...intakeData, intendedUse })} />
+            {missingNote("use", t("tourMissingUse", "Choose what you’ll use the kitchen for."))}
           </div>
-        </fieldset>
-        <div className="space-y-2.5">
-          <Label htmlFor="tour-start-date" className="text-sm font-medium">{t("tourBookStart", "When would you like to start?")}</Label>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
-            <DateField id="tour-start-date" minToday={false}
-              placeholder={t("tourBookStartPlaceholder", "Pick a date")}
-              disabled={intakeData.targetStartDate === "not_decided"}
-              value={intakeData.targetStartDate === "not_decided" ? "" : intakeData.targetStartDate || ""}
-              onChange={targetStartDate => setIntakeData({ ...intakeData, targetStartDate })}
-              className="min-h-10 rounded-lg sm:w-56" />
-            <Label htmlFor="tour-start-undecided" className="flex min-h-10 cursor-pointer items-center gap-2.5 font-normal">
-              <Checkbox id="tour-start-undecided" checked={intakeData.targetStartDate === "not_decided"}
-                onCheckedChange={checked => setIntakeData({ ...intakeData, targetStartDate: checked === true ? "not_decided" : "" })} />
-              {t("tourIntakeNotDecided", "Not decided yet")}
+          <div id="tour-q-hours">
+            <TourIntakeChoice key={`hours-${targetedKitchenId}`} id="tour-weekly-hours"
+              label={<>{t("tourBookHours", "About how many hours a week?")}{req}</>}
+              value={intakeData.estimatedWeeklyHours}
+              choices={["1-5", "6-10", "11-20", "21-30", "31-40", "40+"].map(hours => ({ value: hours, label: hours.replace("-", "–") }))}
+              onChange={estimatedWeeklyHours => setIntakeData({ ...intakeData, estimatedWeeklyHours })} />
+            {missingNote("hours", t("tourMissingHours", "Choose about how many hours a week."))}
+          </div>
+          <fieldset id="tour-q-license" className="min-w-0">
+            <legend className="mb-2 text-sm font-medium text-foreground">{t("tourBookCertificate", "Do you have a food handler certificate?")}{req}</legend>
+            <div className="flex flex-wrap gap-2">
+              {[true, false].map(answer => <TourChip key={String(answer)} name="tour-license" value={String(answer)}
+                checked={intakeData.hasLicense === answer} onSelect={() => setIntakeData({ ...intakeData, hasLicense: answer })}>
+                {answer ? t("tourIntakeYes", "Yes") : t("tourIntakeNo", "No")}
+              </TourChip>)}
+            </div>
+            {missingNote("license", t("tourMissingLicense", "Choose Yes or No."))}
+          </fieldset>
+          <div id="tour-q-start" className="space-y-2.5">
+            <Label htmlFor="tour-start-date" className="text-sm font-medium">{t("tourBookStart", "When would you like to start?")}{req}</Label>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+              <DateField id="tour-start-date" minToday={false}
+                placeholder={t("tourBookStartPlaceholder", "Pick a date")}
+                disabled={intakeData.targetStartDate === "not_decided"}
+                value={intakeData.targetStartDate === "not_decided" ? "" : intakeData.targetStartDate || ""}
+                onChange={targetStartDate => setIntakeData({ ...intakeData, targetStartDate })}
+                className="min-h-10 rounded-lg sm:w-56" />
+              <Label htmlFor="tour-start-undecided" className="flex min-h-10 cursor-pointer items-center gap-2.5 font-normal">
+                <Checkbox id="tour-start-undecided" checked={intakeData.targetStartDate === "not_decided"}
+                  onCheckedChange={checked => setIntakeData({ ...intakeData, targetStartDate: checked === true ? "not_decided" : "" })} />
+                {t("tourIntakeNotDecided", "Not decided yet")}
+              </Label>
+            </div>
+            {missingNote("start", t("tourMissingStart", "Pick a start date, or tick Not decided yet."))}
+          </div>
+          <div className="space-y-2.5">
+            <Label htmlFor="tour-notes" className="text-sm font-medium">{t("tourBookNotes", "Anything you want to see or ask?")} {optional}</Label>
+            <Textarea id="tour-notes" value={chefNotes} onChange={(e) => setChefNotes(e.target.value)}
+              placeholder={t("tourBookNotesPlaceholder", "Equipment you need, storage, parking…")} maxLength={500} rows={3} />
+            <p className="text-right text-xs text-muted-foreground">{chefNotes.length}/500</p>
+          </div>
+          {/* A new account agrees once, as on Request to apply; signing in to an existing one needs nothing more. */}
+          {!isAuthenticated && details.mode === "new" && <div id="tour-q-agree">
+            <Label htmlFor="tour-agree" className="flex cursor-pointer items-start gap-3 text-sm font-normal leading-6 text-muted-foreground">
+              <Checkbox id="tour-agree" className="mt-1" checked={agreed} onCheckedChange={checked => setAgreed(checked === true)} aria-required="true"
+                aria-invalid={showErrors && !agreed} aria-describedby={showErrors && !agreed ? "tour-agree-error" : undefined} />
+              <span>
+                {t("onePageAgreePrefix", "I agree to Local Cooks’")}{" "}
+                <a href="/terms" target="_blank" rel="noopener noreferrer" className="font-medium text-primary underline underline-offset-2 hover:text-primary/80">{t("onePageAgreeTerms", "Terms and kitchen usage policies")}</a>
+                {t("onePageAgreeAnd", " and")}{" "}
+                <a href="/privacy" target="_blank" rel="noopener noreferrer" className="font-medium text-primary underline underline-offset-2 hover:text-primary/80">{common("privacyPolicy", "Privacy Policy")}</a>
+                {t("onePageAgreeAccurate", ", and confirm my answers are accurate.")}{req}
+              </span>
             </Label>
-          </div>
+            {showErrors && !agreed && <p id="tour-agree-error" role="alert" className="mt-1.5 text-sm text-destructive">{t("tourAgreeNeeded", "Agree to the terms to send your request.")}</p>}
+          </div>}
+          {sendError && <p role="alert" className="text-sm text-destructive">{sendError}</p>}
         </div>
-        <div className="space-y-2.5">
-          <Label htmlFor="tour-notes" className="text-sm font-medium">{t("tourBookNotes", "Anything you want to see or ask?")} {optional}</Label>
-          <Textarea id="tour-notes" value={chefNotes} onChange={(e) => setChefNotes(e.target.value)}
-            placeholder={t("tourBookNotesPlaceholder", "Equipment you need, storage, parking…")} maxLength={500} rows={3} />
-          <p className="text-right text-xs text-muted-foreground">{chefNotes.length}/500</p>
-        </div>
-        {/* A new account agrees once, as on Request to apply; signing in to an existing one needs nothing more. */}
-        {!isAuthenticated && details.mode === "new" && <div>
-          <Label htmlFor="tour-agree" className="flex cursor-pointer items-start gap-3 text-sm font-normal leading-6 text-muted-foreground">
-            <Checkbox id="tour-agree" className="mt-1" checked={agreed} onCheckedChange={checked => setAgreed(checked === true)}
-              aria-invalid={showErrors && !agreed} aria-describedby={showErrors && !agreed ? "tour-agree-error" : undefined} />
-            <span>
-              {t("onePageAgreePrefix", "I agree to Local Cooks’")}{" "}
-              <a href="/terms" target="_blank" rel="noopener noreferrer" className="font-medium text-primary underline underline-offset-2 hover:text-primary/80">{t("onePageAgreeTerms", "Terms and kitchen usage policies")}</a>
-              {t("onePageAgreeAnd", " and")}{" "}
-              <a href="/privacy" target="_blank" rel="noopener noreferrer" className="font-medium text-primary underline underline-offset-2 hover:text-primary/80">{common("privacyPolicy", "Privacy Policy")}</a>
-              {t("onePageAgreeAccurate", ", and confirm my answers are accurate.")}
-            </span>
-          </Label>
-          {showErrors && !agreed && <p id="tour-agree-error" role="alert" className="mt-1.5 text-sm text-destructive">{t("tourAgreeNeeded", "Agree to the terms to send your request.")}</p>}
-        </div>}
-        {sendError && <p role="alert" className="text-sm text-destructive">{sendError}</p>}
       </div>
-      {footer(
+      {!codeOut && footer(
         <span className="hidden text-muted-foreground sm:inline">{t("tourBookFooterNote", "The kitchen confirms within 24 hours. Cancel any time.")}</span>,
-        <Button type="button" onClick={submitDetails} className="shrink-0" data-testid="tour-request-submit" disabled={bookMutation.isPending || holding || !intakeComplete}>
-          {bookMutation.isPending || holding ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{t("tourBookSending", "Sending…")}</> : t("tourBookRequest", "Request tour")}
+        <Button type="button" onClick={submitDetails} className="shrink-0" data-testid="tour-request-submit" disabled={bookMutation.isPending || codeFlow.busy}>
+          {bookMutation.isPending || codeFlow.busy ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{t("tourBookSending", "Sending…")}</> : t("tourBookRequest", "Request tour")}
         </Button>
       )}
-    </div>
-  );
-
-  // The held request: waiting for the email link, then sending by itself (same panel as Request to apply).
-  const heldSummary = heldTour && (() => {
-    const start = new Date(heldTour.scheduledAt);
-    const day = new Intl.DateTimeFormat(locale, { timeZone: timezone, weekday: "short", month: "short", day: "numeric" }).format(start).replace(/\s/g, " ");
-    return <div className="rounded-lg border bg-muted/40 px-4 py-3 text-sm"><span className="font-medium text-foreground">{`${day} · ${clock.formatRange(start, new Date(start.getTime() + minutes * 60_000)).replace(/\s/g, " ")}`}</span>
-      <span className="block text-muted-foreground sm:ml-2 sm:inline">{zoneName}</span></div>;
-  })();
-  const renderHeldStep = () => (
-    <div className="max-w-2xl space-y-5 p-4 sm:p-5" data-testid="tour-waiting">
-      {heldSummary}
-      {readyToSend ? <div className="space-y-4" data-testid="tour-ready">
-        <div><h2 className="text-xl font-semibold">{t("tourReadyTitle", "Your tour request is ready")}</h2>
-          <p className="mt-1 text-sm text-muted-foreground">{t("tourReadyBody", "Your email is confirmed. Check the time and send it to the kitchen.")}</p></div>
-        <div className="flex flex-wrap gap-2">
-          <Button onClick={sendHeld} disabled={bookMutation.isPending}>{bookMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />}{t("tourReadySend", "Send request")}</Button>
-          <Button variant="outline" disabled={bookMutation.isPending} onClick={async () => { await dropHeldTour(); resetForm(); }}>{t("tourReadyDiscard", "Discard")}</Button>
-        </div>
-      </div> : <div>
-        <span aria-hidden className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-[#FCE3E9]"><Mail className="h-6 w-6 text-[#E10939]" /></span>
-        <h2 className="text-xl font-semibold">{t("tourConfirmTitle", "Confirm your email to send your tour request")}</h2>
-        <p className="mt-2 text-sm leading-6 text-muted-foreground">{t("tourConfirmBody", { defaultValue: "We sent a link to {email}. Tap it on any device, then send your request from here.", email: mask(user?.email || "") })}</p>
-        <p className="mt-4 flex items-center gap-2 text-sm" role="status"><Loader2 className="h-4 w-4 animate-spin text-primary" aria-hidden />{t("rtcWaiting", "Waiting for you to tap the link…")}</p>
-        <ul className="mt-4 list-disc space-y-1.5 pl-5 text-sm text-muted-foreground">
-          <li>{t("rtcSaved", "Your answers are saved with your new account, so nothing is lost if you close this page.")}</li>
-          <li>{t("rtcNothingYet", "Nothing yet? Check spam, or")}{" "}
-            <button type="button" disabled={resent} className="!min-h-0 font-medium text-primary underline-offset-4 hover:underline disabled:text-muted-foreground disabled:no-underline"
-              onClick={async () => { setResent(true); await sendVerificationEmailWithFallback({ email: user!.email!, role: "chef", returnUrl: `${window.location.pathname}${window.location.search}` }).catch(() => setResent(false)); }}>
-              {resent ? t("rtcLinkSent", "link sent again") : t("rtcSendAgain", "send the link again")}</button>.</li>
-        </ul>
-      </div>}
-      {sendError && <div className="space-y-3"><p role="alert" className="text-sm text-destructive">{sendError}</p>
-        <Button variant="outline" size="sm" onClick={() => { sendingHeld.current = false; sendHeld(); }}>{t("tourBookTryAgain", "Try again")}</Button></div>}
+      {codeFlow.error && !codeOut && <p role="alert" className="px-4 pb-4 text-sm text-destructive sm:px-5">{codeFlow.error}</p>}
     </div>
   );
 
@@ -737,11 +667,9 @@ export function ScheduleViewingWidget({
           </div>
           <div className="rounded-lg border bg-card">
             {kitchenHeader}
-            {heldTour && step !== "success" ? renderHeldStep() : <>
-              {step === "schedule" && renderScheduleStep()}
-              {step === "details" && renderDetailsStep()}
-              {step === "success" && renderSuccessStep()}
-            </>}
+            {step === "schedule" && renderScheduleStep()}
+            {step === "details" && renderDetailsStep()}
+            {step === "success" && renderSuccessStep()}
           </div>
         </div>
       </div>

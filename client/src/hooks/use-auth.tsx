@@ -9,7 +9,7 @@ import { doc, serverTimestamp, setDoc } from "firebase/firestore";
 import { createContext, ReactNode, useContext, useEffect, useState, useRef, useCallback } from "react";
 import { getSubdomainFromHostname, getRoleLoginOrigin } from "@shared/subdomain-utils";
 import { User, UserWithFlags } from "@shared/schema";
-import { duplicateAccountErrorFromResponse, isDuplicateAccountError } from "@/lib/registration-error";
+import { createDuplicateAccountError, duplicateAccountErrorFromResponse, isDuplicateAccountError } from "@/lib/registration-error";
 import { isPhoneAuthInProgress } from "@/lib/phone-registration";
 import { createMissingProfileError, rememberAuthMethod } from "@/lib/login-challenge";
 import {
@@ -99,6 +99,8 @@ interface AuthContextType {
   discardPendingGoogleRegistration: () => Promise<void>;
   sendSignInCode: (email: string) => Promise<void>;
   signInWithEmailCode: (email: string, code: string) => Promise<void>;
+  sendSignUpCode: (email: string, locale: string | undefined, profile: { fullName: string; phone: string }) => Promise<void>;
+  signUpWithEmailCode: (details: { email: string; code: string; fullName: string; phone: string; termsAccepted: boolean }) => Promise<void>;
   handleEmailLinkSignIn: () => Promise<void>;
   isUserVerified: (user: AuthUser | null) => boolean;
   updateUserVerification: () => Promise<AuthUser | null>;
@@ -1134,6 +1136,61 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  /** Sign-up by code (owner, Oct 26): checks name and phone like registration, then emails a code to an address with no
+   * account. Throws a duplicate-phone error, or 'account-exists' | 'profile-invalid' | 'too-many-requests' | 'code-send-failed'. */
+  const sendSignUpCode = async (email: string, locale: string | undefined, profile: { fullName: string; phone: string }) => {
+    setError(null);
+    const res = await fetch('/api/auth/email-code/signup-send', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, locale, ...profile }),
+    });
+    if (res.ok) return;
+    const body = await res.json().catch(() => null);
+    if (body?.code === 'PHONE_EXISTS') throw createDuplicateAccountError(undefined, 'phone');
+    throw new Error(res.status === 429 ? 'too-many-requests' : body?.error === 'account-exists' ? 'account-exists'
+      : body?.code === 'PROFILE_DETAILS_REQUIRED' ? 'profile-invalid' : 'code-send-failed');
+  };
+
+  /** The code proves the inbox; only then is the account created, already verified. Throws like signInWithEmailCode. */
+  const signUpWithEmailCode = async (details: { email: string; code: string; fullName: string; phone: string; termsAccepted: boolean }) => {
+    setError(null);
+    const res = await fetch('/api/auth/email-code/signup-verify', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: details.email, code: details.code, displayName: details.fullName }),
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok || !body?.customToken) throw new Error(res.status === 429 ? 'too-many-requests' : body?.error || 'code-failed');
+    setLoading(true);
+    setAuthPhase('authenticating');
+    setPendingSync(true);
+    setPendingRegistration(true);
+    pendingSyncRef.current = true;
+    pendingRegistrationRef.current = true;
+    try {
+      const { signInWithCustomToken } = await import('firebase/auth');
+      const cred = await signInWithCustomToken(auth, body.customToken);
+      if (details.fullName) await updateProfile(cred.user, { displayName: details.fullName });
+      await cred.user.reload();
+      try {
+        if (!await syncUserWithBackend(auth.currentUser || cred.user, 'chef', true, details.termsAccepted, details.phone))
+          throw new Error('Failed to create account in the database. Please try again.');
+      } catch (syncError) {
+        // No login without its account: a leftover login would read as "existing" and its sign-in code never arrives.
+        await cred.user.delete().catch(deleteError => logger.error('❌ Failed to roll back the code sign-up login:', deleteError));
+        throw syncError;
+      }
+      await rememberAuthMethod(details.email, 'email-link');
+      setAuthPhase('ready');
+      await refreshUserData();
+    } catch (e: any) {
+      setPendingSync(false);
+      setPendingRegistration(false);
+      setAuthPhase(auth.currentUser ? 'ready' : 'idle');
+      throw e;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleEmailLinkSignIn = async () => {
     setError(null);
     setLoading(true);
@@ -1493,6 +1550,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         discardPendingGoogleRegistration,
         sendSignInCode,
         signInWithEmailCode,
+        sendSignUpCode,
+        signUpWithEmailCode,
         handleEmailLinkSignIn,
         isUserVerified,
         updateUserVerification,

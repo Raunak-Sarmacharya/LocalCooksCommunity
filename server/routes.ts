@@ -622,6 +622,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
 
+  // Sign-up by code (owner, Oct 26): see server/sign-up-codes.ts.
+  {
+    const { signUpCodeHandlers } = await import('./sign-up-codes');
+    const signUp = signUpCodeHandlers({
+      query: (text, params) => pool.query(text, params as any[]),
+      accountByEmail: email => userService.getUserByUsername(email),
+      accountByFirebaseUid: uid => userService.getUserByFirebaseUid(uid),
+      checkProfile: async (fullName, phone) => {
+        const profile = validateNewRegistrationProfile({ displayName: fullName.slice(0, 120), provider: 'email', tokenPhone: null, submittedPhone: normalizePhoneNumber(phone) });
+        if (!profile.ok) return { ok: false, status: 400, body: { error: profile.error, code: 'PROFILE_DETAILS_REQUIRED' } };
+        if (await userService.getUserByPhoneNumber(profile.phoneNumber)) return { ok: false, status: 409, body: { error: 'Phone number already registered', code: 'PHONE_EXISTS' } };
+        return { ok: true };
+      },
+      sendCode: async (email, code, locale) => {
+        const { sendEmail, generateSignInCodeEmail } = await import('./email');
+        return sendEmail(generateSignInCodeEmail({ fullName: '', email, code, locale, signUp: true }), { trackingId: `sign_up_code_${Date.now()}` });
+      },
+      firebase: async () => {
+        const { getAuth } = await import('firebase-admin/auth');
+        const { initializeFirebaseAdmin } = await import('./firebase-setup');
+        const firebaseApp = initializeFirebaseAdmin();
+        if (!firebaseApp) throw new Error('Firebase Admin not initialized');
+        return getAuth(firebaseApp);
+      },
+      logError: (message, error) => logger.error(message, error),
+    });
+    app.post("/api/auth/email-code/signup-send", signUp.send);
+    app.post("/api/auth/email-code/signup-verify", signUp.verify);
+  }
+
   // Manager Forgot Password (backward-compatible alias — both endpoints now use the same role-aware logic)
   app.post("/api/manager/forgot-password", async (req, res) => {
     try {

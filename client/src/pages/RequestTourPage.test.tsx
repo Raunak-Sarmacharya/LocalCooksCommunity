@@ -27,9 +27,8 @@ it.each(['pending', 'confirmed', 'ended', 'completed', 'unverified'])('opens the
   localStorage.setItem('viewing_booking_4', JSON.stringify({ step: 'details' }));
   await waitFor(() => expect(state.navigate).toHaveBeenCalledWith('/dashboard?view=viewings&viewing=77&notice=already', { replace: true }));
   expect(screen.queryByText('Choose a new tour')).not.toBeInTheDocument();
-  // The half-filled request is dropped, here and on the server.
+  // The half-filled request (kept only on this device) is dropped.
   expect(localStorage.getItem('viewing_booking_4')).toBeNull();
-  await waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalledWith('/api/viewings/tour-draft/4', expect.objectContaining({ method: 'DELETE' })));
 });
 it('shows the request screen to an account created on it, before its email is verified, without checking access', async () => {
   state.verified = false;
@@ -49,7 +48,6 @@ it('an application here opens it with a notice, even when an old permission is c
   await waitFor(() => expect(state.navigate).toHaveBeenCalledWith('/dashboard?view=kitchen-requests&application=12&notice=tour', { replace: true }));
   expect(screen.queryByText('Choose a new tour')).not.toBeInTheDocument();
   expect(localStorage.getItem('viewing_booking_4')).toBeNull();
-  await waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalledWith('/api/viewings/tour-draft/4', expect.objectContaining({ method: 'DELETE' })));
 });
 it('an application wins over an older tour at the same kitchen', async () => {
   state.hasApplication = true;

@@ -288,7 +288,7 @@ interface KitchenApplicationFormProps {
   /**
    * The one-page request to cook (owner, Oct 23): the page supplies "Your details" (in place of About You), the
    * calendar above the form and the kitchen summary for the rail; `submit`, when given, receives the same FormData
-   * this form would POST (a brand-new account saves it as a draft until its email is verified).
+   * this form would POST (without a confirmed email the page sends it once the emailed code is entered).
    */
   onePage?: {
     details: ReactNode;
@@ -300,6 +300,8 @@ interface KitchenApplicationFormProps {
     summaryCompact?: ReactNode;
     preferredDaysChosen?: boolean;
     submit?: (formData: FormData) => Promise<void>;
+    /** Every press of Send, valid or not, so "Your details" can name what's missing. */
+    onAttempt?: () => void;
   };
 }
 
@@ -1877,7 +1879,7 @@ export default function KitchenApplicationForm({
         className="mb-0"
       />}
 
-      {!onePage && <FormLegend />}
+      <FormLegend />
 
       {/*
        * Below `lg` there is no rail, and a form this long cannot lose its progress readout
@@ -1907,8 +1909,9 @@ export default function KitchenApplicationForm({
         <form
           id={FORM_ID}
           ref={formRef}
+          onSubmitCapture={() => onePage?.onAttempt?.()}
           onSubmit={form.handleSubmit(async (data) => {
-            // The one-page request handles a new account's verification itself (it holds the request).
+            // The one-page request confirms the email itself (a code), so no verification guard here.
             if (onePage?.submit) await onSubmit(data);
             else await guard(() => onSubmit(data));
           }, handleInvalidSubmit)}
