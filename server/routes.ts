@@ -863,7 +863,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         termsVersion: termsAccepted === true ? CURRENT_POLICY_VERSION : null,
       });
 
-      res.status(201).json(newUser);
+      // Same as /api/user/profile: the row carries secrets (password placeholder, email token hash) that never reach a client.
+      const { password: _password, pendingEmailTokenHash: _pendingEmailTokenHash, ...safeUser } = newUser as typeof newUser & { pendingEmailTokenHash?: unknown };
+      res.status(201).json(safeUser);
 
       // Registration emails go after the response (a slow or blocked mail server held sign-up for seconds).
       const { waitUntil } = await import('@vercel/functions');
