@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Search, X, MessageCircle, ArrowRight } from "@/components/ui/manager-icons";
 import type { Application } from "./types";
 
-import { accessRequestTab } from "./access-request-tab";
+import { accessRequestTab, type AccessRequestTab } from "./access-request-tab";
 export { accessRequestTab, type AccessRequestTab } from "./access-request-tab";
 
 const day = (value?: string | null) => value ? new Date(value).toLocaleDateString(i18n.language, { month: "short", day: "numeric" }) : "";
