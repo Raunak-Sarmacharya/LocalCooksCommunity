@@ -3381,9 +3381,10 @@ export default function KitchenPreviewPage() {
       tourCta?.kind === "confirmed" || tourCta?.kind === "pending" || tourCta?.kind === "history" ? goToMyTours : handleScheduleTour;
     const tourIcon = KITCHEN_TOUR_ICON_NAME;
 
+    // Request to apply is the page's one red action; the tour is the secondary choice (owner, Oct 26).
     const tourSurfaceClass =
       tourCta?.kind === "request"
-        ? cn("bg-[#E10939] text-white hover:bg-[#C90832]", PREMIUM_PRIMARY_SHADOW)
+        ? cn("border border-gray-200/90 bg-white text-gray-900 hover:bg-gray-50", PREMIUM_CTA_SHADOW)
         : tourCta?.kind === "confirmed"
           ? cn(
               "border border-gray-200/90 bg-white text-gray-900 hover:bg-gray-50",
@@ -3404,7 +3405,7 @@ export default function KitchenPreviewPage() {
               : "";
     const tourTitleClass =
       tourCta?.kind === "request"
-        ? "text-white"
+        ? "text-gray-900"
         : tourCta?.kind === "confirmed"
           ? "text-gray-900"
           : tourCta?.kind === "history"
@@ -3414,7 +3415,7 @@ export default function KitchenPreviewPage() {
             : "text-amber-900";
     const tourHintClass =
       tourCta?.kind === "request"
-        ? "text-white/85"
+        ? "text-gray-600"
         : tourCta?.kind === "confirmed"
           ? "text-gray-600"
           : tourCta?.kind === "history"
@@ -3424,7 +3425,7 @@ export default function KitchenPreviewPage() {
             : "text-amber-800/80";
     const tourIconWrapClass =
       tourCta?.kind === "request"
-        ? "bg-white/20 text-white"
+        ? "bg-[#FFF1F3] text-[#E10939]"
         : tourCta?.kind === "confirmed"
           ? "bg-[#FFF1F3] text-[#E10939]"
           : tourCta?.kind === "history"
@@ -3434,7 +3435,7 @@ export default function KitchenPreviewPage() {
             : "bg-amber-500 text-white";
     const tourChevronClass =
       tourCta?.kind === "request"
-        ? "text-white"
+        ? "text-gray-500"
         : tourCta?.kind === "confirmed"
           ? "text-gray-500"
           : tourCta?.kind === "history"
@@ -3447,7 +3448,7 @@ export default function KitchenPreviewPage() {
     // turned the skeleton into a brand-colored bar. Fall back to the solid tone
     // for any unresolved kind rather than inheriting the button's foreground.
     const tourSkeletonTone: CtaSkeletonTone =
-      tourCta?.kind === "request" ? "solid" : "outline";
+      "outline";
     const tourButton = !tourCta ? null : (
       <button
         type="button"
@@ -3855,7 +3856,6 @@ export default function KitchenPreviewPage() {
             )}
           >
             <div className="w-full min-w-0 space-y-3">
-              {tourButton ? <div id="preview-tour-sticky">{tourButton}</div> : null}
               <GuestHoursCard
                 key={selectedKitchen?.id ?? "no-kitchen"}
                 availability={selectedKitchen?.availability}
@@ -3891,6 +3891,7 @@ export default function KitchenPreviewPage() {
                 // panel would be explaining the wrong thing entirely.
                 noKitchen={kitchens.length === 0}
               />
+              {tourButton ? <div id="preview-tour-sticky">{tourButton}</div> : null}
             </div>
           </aside>
 
