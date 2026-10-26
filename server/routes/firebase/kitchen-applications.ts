@@ -713,6 +713,16 @@ router.post('/firebase/chef/kitchen-applications',
                 logger.error('Error creating kitchen application receipt notification:', notificationError);
             }
 
+            res.status(201).json({
+                success: true,
+                application,
+                message: "Kitchen application submitted successfully. We'll notify you when there's an update.",
+                isResubmission: application.createdAt < application.updatedAt,
+            });
+
+            // Admin/manager notices and every email go after the reply: awaited, they held Send for ~9 s.
+            const { waitUntil } = await import('@vercel/functions');
+            waitUntil((async () => {
             // Step 1 is reviewed by LocalCooks admins (not the kitchen manager). Notify
             // every admin in-app and by email, matching the seller-application fan-out
             // while keeping the two application workflows fully independent.
@@ -885,13 +895,7 @@ router.post('/firebase/chef/kitchen-applications',
                     logger.error("Error sending Step 2 received email to chef:", emailError);
                 }
             }
-
-            res.status(201).json({
-                success: true,
-                application,
-                message: "Kitchen application submitted successfully. We'll notify you when there's an update.",
-                isResubmission: application.createdAt < application.updatedAt,
-            });
+            })());
         } catch (error) {
             logger.error('Error creating kitchen application:', error);
             if (error instanceof DomainError) {
