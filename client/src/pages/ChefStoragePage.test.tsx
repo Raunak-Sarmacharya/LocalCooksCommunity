@@ -14,10 +14,10 @@ vi.mock("@/hooks/use-chef-sidebar-hidden-items", () => ({ useChefSidebarHiddenIt
 vi.mock("@/components/chef/ChefSectionTabs", () => ({ ChefSectionTabs: () => null }));
 afterEach(cleanup);
 
-it("shows only View under removal review even if a cached DTO advertises Extend", () => {
+it("under removal review the card only opens the rental, even if a cached DTO advertises Extend", () => {
   const rental = { id: 3, kitchen: { name: "Harbour" }, listing: { name: "Shelf" }, unitLabel: "2", state: "removal_review", phase: "holdover",
     startOn: "2026-09-01", paidThrough: "2026-09-30", terms: [], actions: ["extend"] } as unknown as StorageRental;
   render(<RentalCard rental={rental} />);
-  expect(screen.getByRole("link", { name: "stcView" })).toHaveAttribute("href", "/storage/3");
+  expect(screen.getByRole("link", { name: "stcListingUnit" })).toHaveAttribute("href", "/storage/3");
   expect(screen.queryByRole("link", { name: "stcExtend" })).toBeNull();
 });

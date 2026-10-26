@@ -144,6 +144,18 @@ it("labels each term by its own charge status, including a pending extension", a
   expect(screen.getAllByText("stTermPayout")).toHaveLength(2);
 });
 
+it('a unit you took back says so, with Release as the next step, never "held for them"', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-10-26T12:00:00Z'));
+  try {
+    renderDetail({ state: 'reserved', phase: 'grace', startOn: '2026-10-17', paidThrough: '2026-10-30', moveOutBy: '2026-10-24', actions: ['release'] });
+    const banner = await screen.findByTestId('storage-situation');
+    expect(within(banner).getByText(/^You took this unit back from Oct 24\. Unused days were refunded to Morgan Lee\./)).toBeInTheDocument();
+    expect(within(banner).queryByText(/held for them/)).toBeNull();
+    expect(within(banner).getByRole('button', { name: 'stActionReleaseUnit' })).toBeInTheDocument();
+  } finally { vi.useRealTimers(); }
+});
+
 it.each([false, true])('explains overdue move-in and respects release permission (%s)', async release => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date('2026-10-19T12:00:00Z'));

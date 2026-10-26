@@ -225,7 +225,7 @@
   "bdBookingCancelledTitle": "Booking Cancelled",
   "bdBookingCancelledToast": "Booking Cancelled",
   "bdBookingConfirmedDesc": "Booking confirmed!",
-  "bdBookingDetails": "Booking Details",
+  "bdBookingDetails": "Booking details",
   "bdBookingRef": "Booking #{id}",
   "bdBookingRejectedDesc": "Booking rejected.",
   "bdBookingRejectedRefundedTitle": "Request declined and refunded",
@@ -4169,5 +4169,6 @@
   "kaJoinedBanner": "You joined {kitchen}.",
   "bdhArrivalDetails": "Arrival details",
   "joinWithEmailTitle": "Join with your email",
-  "joinAgreeTitle": "Agree to the kitchen’s terms"
+  "joinAgreeTitle": "Agree to the kitchen’s terms",
+  "homeTodoStorageReclaim": "{unit}: the kitchen needs it back"
 }

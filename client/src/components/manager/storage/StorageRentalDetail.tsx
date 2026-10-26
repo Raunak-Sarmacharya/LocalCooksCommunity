@@ -114,11 +114,13 @@ export function StorageRentalDetail({ rentalId }: { rentalId: number }) {
   const date = (value: string) => formatStorageDate(value, i18n.language, rental.timezone);
   const chef = rental.chef?.name || t('stTheChef');
   const chip = chipForRental(rental);
-  const situation = rental.cancellation ? 'cancelled' : rental.state === 'reserved' ? chip === 'moveInOverdue' ? 'overdue' : 'reserved'
-    : rental.state === 'active' ? rental.phase === 'holdover' ? 'holdover' : rental.phase === 'grace' ? 'grace' : 'active'
+  // You took the unit back before the paid end (unused days refunded): say so instead of "held for them".
+  const takenBack = !!rental.moveOutBy && rental.moveOutBy < rental.paidThrough
+  const situation = rental.cancellation ? 'cancelled' : rental.state === 'reserved' ? takenBack ? 'taken_back_reserved' : chip === 'moveInOverdue' ? 'overdue' : 'reserved'
+    : rental.state === 'active' ? rental.phase === 'holdover' ? 'holdover' : rental.phase === 'grace' ? 'grace' : takenBack ? 'taken_back_active' : 'active'
     : rental.state;
   const prominentActions: Record<string, string[]> = {
-    overdue: ['handover', 'release'], reserved: [], active: ['offer-extension'], grace: ['offer-extension'],
+    overdue: ['handover', 'release'], reserved: [], active: ['offer-extension'], grace: ['offer-extension'], taken_back_reserved: ['release'], taken_back_active: [],
     holdover: ['holdover-charge'], move_out_requested: ['clear-move-out', 'items-still-here', 'release'],
     removal_review: ['removal/record'], ended: ['mark-ready', 'items-still-here'],
   };

@@ -42,6 +42,9 @@ export default function ChefStorageRentalPage() {
   const withdraw = useMutation({ mutationFn: () => withdrawRental(id), onSuccess: next => { refresh(next); setDialog(null); setNotice(t("stcWithdrawDone")) } })
   const rental = query.data
   const status = rental && rentalStatus(rental, t, locale)
+  const takenBack = !!rental?.moveOutBy && rental.moveOutBy < rental.paidThrough
+  // A cancellation shows its own refund line; otherwise one line for what went back to the card.
+  const refundedCents = rental && !rental.cancellation ? rental.terms.reduce((sum, term) => sum + (term.refundedCents ?? 0), 0) : 0
 
   return <StoragePageShell crumb={rental ? rental.listing.name : t("stcDetail")}>
     {query.isPending ? <div className="space-y-3" role="status" aria-label={t("stcLoading")}><Skeleton className="h-28 w-full rounded-2xl" /><Skeleton className="h-48 w-full rounded-2xl" /></div>
@@ -74,10 +77,11 @@ export default function ChefStorageRentalPage() {
           <dl className="grid grid-cols-[auto,1fr] gap-x-4 gap-y-2 text-sm">
             <dt className="text-muted-foreground">{t("stcStarts")}</dt><dd>{storageDay(rental.startOn, locale, true)}</dd>
             <dt className="text-muted-foreground">{t("stcPaidThroughLabel")}</dt><dd>{storageDay(rental.paidThrough, locale, true)}</dd>
-            {["reserved", "active"].includes(rental.state) && <><dt className="text-muted-foreground">{t("stcExtendBy")}</dt><dd>{storageDay(rental.graceEndsOn, locale, true)}</dd></>}
+            {takenBack ? <><dt className="text-muted-foreground">{t("stcNeededBackBy")}</dt><dd>{storageDay(rental.moveOutBy!, locale, true)}</dd></>
+              : ["reserved", "active"].includes(rental.state) && <><dt className="text-muted-foreground">{t("stcExtendBy")}</dt><dd>{storageDay(rental.graceEndsOn, locale, true)}</dd></>}
             {rental.rentalTerms && <><dt className="text-muted-foreground">{t("stcDailyPrice")}</dt><dd>{t("stcPerDay", { amount: cad(rental.rentalTerms.dailyPriceCents, locale) })}</dd></>}
           </dl>
-          {["reserved", "active"].includes(rental.state) && !["grace", "holdover"].includes(rental.phase ?? "") && rental.rentalTerms && <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+          {["reserved", "active"].includes(rental.state) && !takenBack && !["grace", "holdover"].includes(rental.phase ?? "") && rental.rentalTerms && <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
             {t("stcDiscExtend", { end: storageDay(rental.paidThrough, locale), kitchen: rental.kitchen.name, daily: cad(rental.rentalTerms.dailyPriceCents, locale) })}</p>}
           {rental.declineReason && <p className="mt-3 text-sm">{t("stcDeclineReason", { reason: rental.declineReason })}</p>}
         </section>
@@ -103,6 +107,13 @@ export default function ChefStorageRentalPage() {
                 <p className="text-muted-foreground">{t("stcRefundLineDate", { date: storageDay(localToday(new Date(rental.cancellation.cancelledAt), rentalTimezone(rental)), locale) })}</p>
               </div>
               <p className="shrink-0 font-medium tabular-nums">−{cad(rental.cancellation.refundCents, locale)}</p>
+            </li>}
+            {refundedCents > 0 && <li className="flex items-start justify-between gap-3 py-2.5 text-sm" data-testid="rental-refunded">
+              <div className="min-w-0">
+                <p className="font-medium">{t("stcRefundLine")}</p>
+                <p className="text-muted-foreground">{t(takenBack ? "stcRefundTakenBack" : "stcRefundToCard", { kitchen: rental.kitchen.name })}</p>
+              </div>
+              <p className="shrink-0 font-medium tabular-nums">−{cad(refundedCents, locale)}</p>
             </li>}
           </ul>
         </section>

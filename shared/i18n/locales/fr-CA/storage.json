@@ -662,5 +662,17 @@
   "stSituation_cancelled": "{chef} a annulé avant le début. L’unité est libre pour d’autres locations.",
   "stCancelledMoney": "Remboursement : {refund} · votre versement : {payout}",
   "stCancelReason": "Raison donnée : {reason}",
-  "stPayoutNoneOwed": "Aucun versement : la personne cliente a été remboursée"
+  "stPayoutNoneOwed": "Aucun versement : la personne cliente a été remboursée",
+  "stcPillReclaimed": "Reprise",
+  "stcPillMoveOutBy": "Libérez d’ici le {date}",
+  "stcStatusReclaimReserved": "{kitchen} a repris l’unité {unit} à partir du {date}. Les jours non utilisés vous sont remboursés.",
+  "stcStatusReclaimActive": "{kitchen} a besoin de l’unité {unit}. Libérez-la d’ici le {date}; les jours non utilisés vous sont remboursés.",
+  "stcStatusReclaimLate": "{kitchen} avait besoin de l’unité {unit} d’ici le {date}. Veuillez retirer vos articles aujourd’hui.",
+  "stcNeededBackBy": "Requise d’ici le",
+  "stcRefundTakenBack": "Jours non utilisés, puisque {kitchen} avait besoin de l’unité",
+  "stcRefundToCard": "Remboursé sur votre carte",
+  "stSituation_taken_back_reserved": "Vous avez repris cette unité à partir du {moveOut}. Les jours non utilisés ont été remboursés à {chef}. Libérez l’unité pour fermer la location.",
+  "stSituation_taken_back_active": "{chef} doit libérer l’unité d’ici le {moveOut}. Les jours non utilisés lui sont remboursés.",
+  "stNextStep_taken_back_reserved": "La libérer rend l’unité de nouveau disponible.",
+  "stNextStep_taken_back_active": "Enregistrez le départ quand {chef} part."
 }

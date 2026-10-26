@@ -73,3 +73,13 @@ describe("storage rental page", () => {
     expect(screen.queryByText(/To keep your space longer, extend before/)).not.toBeInTheDocument()
   })
 })
+
+describe("a unit the kitchen took back", () => {
+  it("shows when it was needed back and the refund, never 'Extend by'", async () => {
+    show({ state: "reserved", moveOutBy: "2026-10-12", terms: [{ ...base.terms[0], refundedCents: 1098 }] })
+    expect(await screen.findByText("Needed back by")).toBeInTheDocument()
+    expect(screen.queryByText("Extend by")).not.toBeInTheDocument()
+    expect(screen.getByTestId("rental-refunded")).toHaveTextContent("Unused days, since Harbour Kitchen needed the unit back")
+    expect(screen.getByTestId("rental-refunded")).toHaveTextContent("−$10.98")
+  })
+})

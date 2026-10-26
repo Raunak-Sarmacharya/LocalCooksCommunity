@@ -662,5 +662,17 @@
   "stSituation_cancelled": "{chef} скасував(-ла) до початку. Місце вільне для інших оренд.",
   "stCancelledMoney": "Повернуто {refund} · ваша виплата: {payout}",
   "stCancelReason": "Причина: {reason}",
-  "stPayoutNoneOwed": "Виплати немає: клієнту повернуто кошти"
+  "stPayoutNoneOwed": "Виплати немає: клієнту повернуто кошти",
+  "stcPillReclaimed": "Повернуто кухні",
+  "stcPillMoveOutBy": "Звільніть до {date}",
+  "stcStatusReclaimReserved": "{kitchen} забрала місце {unit} з {date}. Невикористані дні вам повернуть.",
+  "stcStatusReclaimActive": "{kitchen} потребує місце {unit}. Звільніть його до {date}; невикористані дні вам повернуть.",
+  "stcStatusReclaimLate": "{kitchen} потребувала місце {unit} до {date}. Будь ласка, заберіть свої речі сьогодні.",
+  "stcNeededBackBy": "Потрібно повернути до",
+  "stcRefundTakenBack": "Невикористані дні, бо {kitchen} потребувала місце назад",
+  "stcRefundToCard": "Повернуто на вашу картку",
+  "stSituation_taken_back_reserved": "Ви забрали це місце з {moveOut}. Невикористані дні повернуто {chef}. Звільніть місце, щоб закрити оренду.",
+  "stSituation_taken_back_active": "{chef} має звільнити місце до {moveOut}. Невикористані дні їм повернуть.",
+  "stNextStep_taken_back_reserved": "Звільнення робить місце знову доступним для оренди.",
+  "stNextStep_taken_back_active": "Зафіксуйте виїзд, коли {chef} піде."
 }

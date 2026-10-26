@@ -83,6 +83,16 @@ describe("chef status sentences", () => {
     expect(rentalStatus({ ...base, startOn: "2026-10-20" }, t, "en-CA", now).sentence).toContain("stcStatusReserved:");
     expect(rentalStatus({ ...base, paidThrough: "2026-10-18" }, t, "en-CA", now).sentence).toContain("stcStatusReservedPast:");
   });
+  it("a unit the kitchen took back reads as taken back, never 'ready' or 'extend'", () => {
+    const reserved = rentalStatus({ ...base, moveOutBy: "2026-10-18" }, t, "en-CA", now);
+    expect(reserved.pill).toContain("stcPillReclaimed");
+    expect(reserved.sentence).toContain("stcStatusReclaimReserved");
+    expect(reserved.sentence).toContain("Sun, Oct 18");
+    expect(rentalStatus({ ...base, state: "active", phase: "current", moveOutBy: "2026-10-21" }, t, "en-CA", now).sentence).toContain("stcStatusReclaimActive");
+    expect(rentalStatus({ ...base, state: "active", phase: "grace", moveOutBy: "2026-10-18" }, t, "en-CA", now).sentence).toContain("stcStatusReclaimLate");
+    // A move-out date on or after the paid end is only a nudge: the usual wording stays.
+    expect(rentalStatus({ ...base, moveOutBy: "2026-10-25" }, t, "en-CA", now).sentence).toContain("stcStatusReservedReady");
+  });
   it("uses the actual release date for ended rentals and refuses a stale removal-review extension", () => {
     expect(rentalStatus({ ...base, state: "ended", releasedOn: "2026-10-18" }, t, "en-CA", now).sentence).toContain("Sun, Oct 18");
     expect(can({ state: "removal_review", actions: ["extend"] }, "extend")).toBe(false);

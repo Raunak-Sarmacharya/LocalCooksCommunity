@@ -45,6 +45,8 @@ interface OverviewTabContentProps {
   isLoading?: boolean;
 }
 
+// The kitchen asked for the unit back before the paid end (unused days refunded).
+const reclaimed = (r: { moveOutBy?: string | null; paidThrough: string }) => !!r.moveOutBy && r.moveOutBy < r.paidThrough;
 export default function OverviewTabContent({
   user,
   applications,
@@ -282,9 +284,9 @@ export default function OverviewTabContent({
       };
     }),
     // Storage that needs the chef now: items under removal review, or past the paid days.
-    ...rentals.filter((r) => r.state === "removal_review" || r.phase === "grace" || r.phase === "holdover").map((r) => ({
+    ...rentals.filter((r) => r.state === "removal_review" || ((r.phase === "grace" || r.phase === "holdover") && !(r.state === "reserved" && reclaimed(r)))).map((r) => ({
       id: `storage-${r.id}`,
-      title: t(r.state === "removal_review" ? "homeTodoStorageRemoval" : "homeTodoStorageOverdue", { unit: r.listing.name }),
+      title: t(r.state === "removal_review" ? "homeTodoStorageRemoval" : reclaimed(r) ? "homeTodoStorageReclaim" : "homeTodoStorageOverdue", { unit: r.listing.name }),
       description: `${t("stUnitLabel", { ns: "storage", index: r.unitLabel })} · ${r.kitchen.name}`,
       cta: t("homeReview"),
       onClick: () => navigate(`/storage/${r.id}`),

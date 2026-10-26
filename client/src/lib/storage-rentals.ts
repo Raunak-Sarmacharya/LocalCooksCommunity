@@ -12,13 +12,15 @@ export type StorageQuote = { listingId: number; startOn: string; days: number; e
   taxCents: number; serviceFeeCents: number; totalCents: number; maxTermDays: number; taxRatePercent: number; quotedAt: string
   acceptedTermsVersion: string; disclosureVersion: string; cancellationPolicy: { version: number; noticeHours: number; lateChargePercent: number } }
 export type RentalTerm = { id: number; seq: number; kind: string; startsOn: string; endsOn: string; days: number; dailyPriceCents: number
-  subtotalCents: number; taxCents: number; serviceFeeCents: number; totalCents: number; status: string; paidAt: string | null }
+  subtotalCents: number; taxCents: number; serviceFeeCents: number; totalCents: number; status: string; paidAt: string | null
+  /** Already refunded on this payment (a kitchen take-back or a kitchen refund). */ refundedCents?: number }
 /** Only these are wired on the chef side; any other server action is ignored, never guessed. */
 export type RentalAction = "withdraw" | "cancel" | "extend" | "move_in" | "move_out" | "report_problem"
-export type StorageRental = { id: number; ref: string | null; kitchen: { id: number; name: string }; listing: { id: number; name: string }
+export type StorageRental = { id: number; ref: string | null; kitchen: { id: number; name: string }; listing: { id: number; name: string; photos?: string[] }
   timezone?: string | null; releasedOn?: string | null;
   unitLabel: string; state: "requested" | "declined" | "expired" | "withdrawn" | "reserved" | "active" | "move_out_requested" | "removal_review" | "ended"
   phase: "current" | "ending_soon" | "grace" | "holdover" | null; startOn: string; paidThrough: string; graceEndsOn: string; holdoverDays: number
+  /** The kitchen asked for the unit back by this day (last day the chef keeps it). */ moveOutBy?: string | null
   accruedCents: number; responseDeadline: string | null; declineReason: string | null; actions: string[]; terms: RentalTerm[]
   /** The chef cancelled before the start; `kitchenPayoutCents` is on the kitchen's copy only. */
   cancellation?: { cancelledAt: string; refundCents: number; reason: string | null; kitchenPayoutCents?: number } | null
@@ -102,6 +104,13 @@ export function rentalStatus(rental: StorageRental, t: T, locale: string, now = 
   if (rental.state === "requested") return { pill: t("stcPillRequested"), tone: "neutral", sentence: rental.responseDeadline
     ? t("stcStatusRequested", { kitchen, deadline: kitchenMoment(rental.responseDeadline, rentalTimezone(rental), locale), amount: cad(first?.totalCents ?? 0, locale) })
     : t("stcStatusRequestedSoon", { kitchen, amount: cad(first?.totalCents ?? 0, locale) }) }
+  // The kitchen took the unit back before the paid end: unused days are refunded, and it can’t be extended.
+  if (rental.moveOutBy && rental.moveOutBy < rental.paidThrough && (rental.state === "reserved" || rental.state === "active")) {
+    const by = storageDay(rental.moveOutBy, locale)
+    if (rental.state === "reserved") return { pill: t("stcPillReclaimed"), tone: "muted", sentence: t("stcStatusReclaimReserved", { kitchen, unit: rental.unitLabel, date: by }) }
+    return today <= rental.moveOutBy ? { pill: t("stcPillMoveOutBy", { date: by }), tone: "warn", sentence: t("stcStatusReclaimActive", { kitchen, unit: rental.unitLabel, date: by }) }
+      : { pill: t("stcPillHoldover"), tone: "bad", sentence: t("stcStatusReclaimLate", { kitchen, unit: rental.unitLabel, date: by }) }
+  }
   if (rental.state === "reserved") return { pill: t("stcPillReserved"), tone: "good", sentence: rental.startOn > today ? t("stcStatusReserved", { unit: rental.unitLabel, start })
     : rental.paidThrough >= today ? t("stcStatusReservedReady", { unit: rental.unitLabel, end }) : t("stcStatusReservedPast", { unit: rental.unitLabel, end }) }
   if (rental.state === "move_out_requested") return { pill: t("stcPillMoveOut"), tone: "neutral", sentence: t("stcStatusMoveOut", { kitchen }) }

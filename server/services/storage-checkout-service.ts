@@ -42,12 +42,14 @@ export async function storageRentalRelet(rental: Rental, reader: Pick<typeof db,
 }
 export function storageRentalVisitActions(rental: Rental, role: 'chef' | 'manager', now = new Date(), relet = false): string[] {
   const started = !!rental.termStart && !!rental.timezone && rental.termStart <= localToday(now, rental.timezone);
+  // Past the day the kitchen took the unit back (before the paid end), a chef who never moved in can't move in.
+  const takenBack = !!rental.reclaimEndOn && !!rental.paidThrough && rental.reclaimEndOn < rental.paidThrough && !!rental.timezone && localToday(now, rental.timezone) > rental.reclaimEndOn;
   if (role === 'chef') return started ? [
-    ...(rental.rentalState === 'reserved' ? ['move-in', 'move_in'] : []),
+    ...(rental.rentalState === 'reserved' && !takenBack ? ['move-in', 'move_in'] : []),
     ...(['reserved', 'active', 'removal_review'].includes(rental.rentalState!) ? ['move-out', 'move_out'] : []),
   ] : []; // Underscore aliases keep the WP-ST10 photo dialogs usable during cutover.
   return [
-    ...(started && ['reserved', 'active'].includes(rental.rentalState!) && !rental.handoverAt ? ['handover'] : []),
+    ...(started && ['reserved', 'active'].includes(rental.rentalState!) && !rental.handoverAt && !(takenBack && rental.rentalState === 'reserved') ? ['handover'] : []),
     ...(rental.rentalState === 'move_out_requested' ? ['clear-move-out'] : []),
     ...(rental.rentalState === 'ended' && ['cleared', 'auto_cleared'].includes(rental.endReason!) && rental.checkoutApprovedAt
       && now >= rental.checkoutApprovedAt && now.getTime() - rental.checkoutApprovedAt.getTime() <= 7 * 86400000 && !relet ? ['items-still-here'] : []),

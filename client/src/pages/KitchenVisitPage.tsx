@@ -29,7 +29,7 @@ export default function KitchenVisitPage() {
   const onViewChange = useCallback((view: string) => navigate(`/dashboard?view=${view}`), [navigate]);
   const breadcrumbs = useMemo(() => [
     { label: t("shellMyBookings"), onClick: () => navigate("/dashboard?view=bookings"), navId: "bookings" as const },
-    { label: t("bdBookingDetails"), onClick: () => navigate(`/booking/${bookingId}`) },
+    { label: t("bdBookingRef", { id: bookingId }), onClick: () => navigate(`/booking/${bookingId}`) },
     { label: t("kciVisitActions", "Visit actions") },
   ], [t, navigate, bookingId]);
   const inShell = useChefShellChrome({ activeView: "bookings", onViewChange, breadcrumbs });

@@ -4169,5 +4169,6 @@
   "kaJoinedBanner": "Vous avez rejoint {kitchen}.",
   "bdhArrivalDetails": "Détails d’arrivée",
   "joinWithEmailTitle": "Rejoindre avec votre courriel",
-  "joinAgreeTitle": "Acceptez les conditions de la cuisine"
+  "joinAgreeTitle": "Acceptez les conditions de la cuisine",
+  "homeTodoStorageReclaim": "{unit} : la cuisine en a besoin"
 }

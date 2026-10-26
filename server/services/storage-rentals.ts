@@ -423,7 +423,8 @@ export async function readRental(id: number, actor: RentalActor, now = new Date(
   if (actor.role === 'chef' && rental.termStart! <= localToday(now, rental.timezone!) && !['requested', 'declined', 'expired', 'withdrawn'].includes(rental.rentalState!)) actions.push('report_problem');
   if (actor.role === 'chef' && !pending && rental.rentalState === 'reserved' && !rental.checkinCompletedAt && now < localDayStart(rental.termStart!, rental.timezone!)) actions.push('cancel');
   // The extend sheet quotes the exact limit (max term, reclaim, next renter); this only gates the button.
-  if (actor.role === 'chef' && !pending && ['reserved', 'active'].includes(rental.rentalState!)
+  // Not after the kitchen asked for the unit back before the paid end (nothing left to extend into).
+  if (actor.role === 'chef' && !pending && ['reserved', 'active'].includes(rental.rentalState!) && !(rental.reclaimEndOn && rental.reclaimEndOn < rental.paidThrough!)
     && daysBetween(localToday(now, rental.timezone!), rental.paidThrough!) <= EXTEND_WINDOW_DAYS) actions.push('extend');
   let estimatedPayoutCents: number | null = null;
   if (rental.rentalState === 'requested') {
@@ -455,6 +456,7 @@ export async function readRental(id: number, actor: RentalActor, now = new Date(
     terms: terms.map(({ id, seq, kind, startsOn, endsOn, days, dailyPriceCents, subtotalCents, taxCents, serviceFeeCents, totalCents, status, paidAt, paymentTransactionId }) => {
       const payout = paymentTransactionId ? payoutById.get(paymentTransactionId) : undefined;
       return { id, seq, kind, startsOn, endsOn, days, dailyPriceCents, subtotalCents, taxCents, serviceFeeCents, totalCents, status, paidAt,
+        refundedCents: payout ? Math.round(Number(payout.refundAmount || 0)) : 0,
         payoutEligibleAt: payout?.payoutEligibleAt ?? null, payoutReleasedAt: payout?.payoutReleasedAt ?? null, payoutHoldReason: payout?.payoutHoldReason ?? null,
         // Same net the transfer uses: kitchen-funded refunds (reclaim, kitchen refund) come out of the payout; after a chef's
         // cancellation the card fee does too, since most of the share went back and the fee is all that's left to net out.

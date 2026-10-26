@@ -255,6 +255,10 @@ describe('storage decisions and exact expiry', () => {
     await h.db.update(storageBookings).set({ rentalState: 'active', termStart: '2026-10-16', paidThrough: '2026-10-22' }).where(eq(storageBookings.id, id));
     expect((await readRental(id, { id: 3, role: 'chef' }, now)).actions).toContain('extend');
     expect((await readRental(id, approveActor, now)).actions).not.toContain('extend');
+    // The kitchen asked for the unit back before the paid end: nothing to extend into.
+    await h.db.update(storageBookings).set({ reclaimEndOn: '2026-10-20' }).where(eq(storageBookings.id, id));
+    expect((await readRental(id, { id: 3, role: 'chef' }, now)).actions).not.toContain('extend');
+    await h.db.update(storageBookings).set({ reclaimEndOn: null }).where(eq(storageBookings.id, id));
     await h.db.update(storageBookings).set({ paidThrough: '2026-11-05' }).where(eq(storageBookings.id, id));
     expect((await readRental(id, { id: 3, role: 'chef' }, now)).actions).not.toContain('extend');
     // Cancel: the chef only, an approved rental only, until its first day starts in the kitchen's zone.
