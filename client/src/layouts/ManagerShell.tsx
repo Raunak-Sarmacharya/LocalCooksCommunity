@@ -148,12 +148,14 @@ export function ManagerShell({
     // is never second-guessed by the shell.
     React.useEffect(() => {
         if (!showScopePicker) return
-        if (urlLocationId !== scopeLocationId) setScopeLocationId(urlLocationId)
+        // Only a value in the URL wins: links without ?loc= (and our own replaceState, which the router doesn't see)
+        // used to reset the auto-picked location to none, leaving "Select location" showing.
+        if (urlLocationId && urlLocationId !== scopeLocationId) setScopeLocationId(urlLocationId)
     }, [showScopePicker, urlLocationId, scopeLocationId])
 
     React.useEffect(() => {
         if (!showScopePicker) return
-        if (urlKitchenId !== scopeKitchenId) setScopeKitchenId(urlKitchenId)
+        if (urlKitchenId && urlKitchenId !== scopeKitchenId) setScopeKitchenId(urlKitchenId)
     }, [showScopePicker, urlKitchenId, scopeKitchenId])
 
     /**
