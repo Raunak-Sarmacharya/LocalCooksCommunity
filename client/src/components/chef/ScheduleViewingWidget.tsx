@@ -541,7 +541,7 @@ export function ScheduleViewingWidget({
           <FormLegend className="mb-0" />
           {/* Inside the chef dashboard the account is known: no "Sending as / Not you?" (owner, Oct 25). It stays mounted so the send logic still reads its state. */}
           <section id="tour-q-details" aria-label={t("yourDetails", "Your details")} className={cn("space-y-3", inChefShell && isAuthenticated && "hidden")}>
-            <RequestDetails showErrors={showErrors} onChange={setDetails} />
+            <RequestDetails showErrors={showErrors} onChange={setDetails} phoneError={codeFlow.errorField === "phone" ? codeFlow.error : null} />
             {showErrors && !isAuthenticated && details.mode === "existing" && <p role="alert" className="text-sm text-destructive">{t("tourSignInToSend", "Sign in above to send your request.")}</p>}
           </section>
           <div id="tour-q-use">
@@ -622,7 +622,7 @@ export function ScheduleViewingWidget({
           {bookMutation.isPending || codeFlow.busy ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{t("tourBookSending", "Sending…")}</> : t("tourBookRequest", "Request tour")}
         </Button>
       )}
-      {codeFlow.error && !codeOut && <p role="alert" className="px-4 pb-4 text-sm text-destructive sm:px-5">{codeFlow.error}</p>}
+      {codeFlow.error && !codeOut && codeFlow.errorField !== "phone" && <p role="alert" className="px-4 pb-4 text-sm text-destructive sm:px-5">{codeFlow.error}</p>}
     </div>
   );
 

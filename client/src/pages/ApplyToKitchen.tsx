@@ -94,9 +94,12 @@ export default function ApplyToKitchen() {
       if (!response.ok) throw new Error("Could not load the kitchen");
       return response.json();
     },
-    enabled: !!kitchenId,
+    enabled: !!locationId,
   });
-  const selectedKitchen = publicKitchens.find((item) => item.id === Number(kitchenId) && item.locationId === locationId);
+  // Links without ?kitchenId (tours, Compare, My kitchens) still get the days-and-price picker: the toured kitchen, else a location's only kitchen.
+  const locationKitchens = publicKitchens.filter((item) => item.locationId === locationId);
+  const pickedKitchenId = kitchenId ? Number(kitchenId) : tourNextStep?.kitchenId ?? (locationKitchens.length === 1 ? locationKitchens[0].id : null);
+  const selectedKitchen = locationKitchens.find((item) => item.id === pickedKitchenId);
 
   const { applications: globalApplications } = useGlobalMyApplications();
   const globalApp = globalApplications?.[0] || null;
@@ -287,7 +290,7 @@ export default function ApplyToKitchen() {
     && (onePageMounted.current || (!authLoading && !locationLoading && !kitchensLoading && !(user && emailVerified && (locationAppLoading || tourLoading))));
   onePageMounted.current = showOnePage;
   if (showOnePage) {
-    return <RequestToCookPage location={location as any} kitchen={selectedKitchen} kitchenId={kitchenId} emailVerified={emailVerified}
+    return <RequestToCookPage location={location as any} kitchen={selectedKitchen} kitchenId={selectedKitchen ? String(selectedKitchen.id) : kitchenId} emailVerified={emailVerified}
       globalApp={globalApp} tourReference={tourNextStep?.prefill}
       sourceTourId={tourNextStep?.action === 'apply' ? tourNextStep.sourceTourId : undefined}
       onCancel={() => navigate(`/kitchen-preview/${locationId}`)}

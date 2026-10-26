@@ -99,7 +99,8 @@ export function DataTable<TData>({
     // A filter box that cannot filter is worse than no box. `filterColumn`
     // defaults to "name", which most tables do not have, so the input silently
     // swallowed keystrokes and looked like a second, broken search field.
-    const filterableColumn = table.getColumn(filterColumn)
+    // getColumn logs an error for a missing id; look it up quietly instead.
+    const filterableColumn = table.getAllLeafColumns().find(column => column.id === filterColumn)
 
     return (
         <div className="w-full space-y-4">

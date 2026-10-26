@@ -4,7 +4,7 @@
  * summary and progress in the rail. Without a confirmed email, Send emails a 6-digit code; a new account is created once
  * the code proves the inbox, and the request goes at once (owner, Oct 26; Baymard: account creation after the task).
  */
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { X } from "lucide-react";
@@ -60,6 +60,8 @@ export function RequestToCookPage({ location, kitchen, kitchenId, emailVerified,
     await queryClient.invalidateQueries({ queryKey: ["/api/firebase/chef/kitchen-applications"] });
     onSent();
   });
+  // Send is pressed at the foot of a long form; the code step replaces it at the top, so bring the top into view.
+  useEffect(() => { if (codeFlow.target) window.scrollTo({ top: 0, behavior: "smooth" }); }, [!!codeFlow.target]);
   const submit = user && emailVerified ? undefined : async (formData: FormData) => {
     setSendError(null);
     pending.current = formData;
@@ -100,11 +102,11 @@ export function RequestToCookPage({ location, kitchen, kitchenId, emailVerified,
       <div className="max-w-xl"><EmailCodeStep flow={codeFlow} newAccount={!user} /></div>
       {summary}
     </div>}
-    {(sendError || codeFlow.error && !codeFlow.target) && <p role="alert" className="mb-4 text-sm text-destructive">{sendError || codeFlow.error}</p>}
+    {(sendError || codeFlow.error && !codeFlow.target && codeFlow.errorField !== "phone") && <p role="alert" className="mb-4 text-sm text-destructive">{sendError || codeFlow.error}</p>}
     <div className={codeFlow.target ? "hidden" : undefined}>
       <KitchenApplicationForm location={location as any} globalApp={globalApp} tourReference={tourReference} sourceTourId={sourceTourId}
         onSuccess={() => onSent()} onCancel={onCancel}
-        onePage={{ details: <RequestDetails profilePhone={profile?.phone} showErrors={tried} onChange={setDetails} />, detailsReady: details.ready, identity: details.identity,
+        onePage={{ details: <RequestDetails profilePhone={profile?.phone} showErrors={tried} onChange={setDetails} phoneError={codeFlow.errorField === "phone" ? codeFlow.error : null} />, detailsReady: details.ready, identity: details.identity,
           before, summary, summaryCompact, preferredDaysChosen: !!schedule?.days.length, submit, onAttempt: () => setTried(true) }} />
     </div>
   </>;

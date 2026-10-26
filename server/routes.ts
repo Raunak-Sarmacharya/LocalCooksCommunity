@@ -863,8 +863,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         termsVersion: termsAccepted === true ? CURRENT_POLICY_VERSION : null,
       });
 
-      // Send registration emails
-      try {
+      res.status(201).json(newUser);
+
+      // Registration emails go after the response (a slow or blocked mail server held sign-up for seconds).
+      const { waitUntil } = await import('@vercel/functions');
+      waitUntil((async () => { try {
         const { sendEmail, generateWelcomeEmail, generateNewUserRegistrationAdminEmail } = await import('./email');
         const { db } = await import('./db');
         const { users } = await import('@shared/schema');
@@ -922,9 +925,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (emailError) {
         logger.error('❌ Error sending registration emails:', emailError);
         // Don't fail registration if email fails
-      }
-
-      res.status(201).json(newUser);
+      } })());
     } catch (error: any) {
       logger.error("Error registering user:", error);
 

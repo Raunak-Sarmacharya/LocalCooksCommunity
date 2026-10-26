@@ -1744,7 +1744,6 @@
   "rdEmailNeeded": "Entrez votre courriel pour envoyer la demande.",
   "rdWelcomeBack": "Bon retour.",
   "rdPasswordLead": "Entrez votre mot de passe pour envoyer cette demande depuis votre compte.",
-  "rdCodeLead": "Vous avez déjà un compte. Entrez le code à 6 chiffres que nous venons d’envoyer à {email} pour envoyer cette demande depuis votre compte.",
   "rdPassword": "Mot de passe",
   "rdSignIn": "Se connecter",
   "rdCodeLabel": "Code de connexion",
@@ -1753,7 +1752,6 @@
   "rdResendIn": "Nouveau code dans {seconds} s",
   "rdResend": "Envoyer un nouveau code",
   "rdUseGoogle": "Utiliser Google",
-  "rdUseCode": "Utiliser un code",
   "rdUsePassword": "Utiliser le mot de passe",
   "rdFromAccount": "Votre nom et votre téléphone viennent de votre compte une fois connecté.",
   "rdFullName": "Nom complet",
@@ -1853,6 +1851,13 @@
   "tourMissingStart": "Choisissez une date de début ou cochez Pas encore décidé.",
   "fullDay": "Journée complète",
   "tourSavedDeliveryFailed": "Votre demande de visite est enregistrée, mais certaines notifications n’ont pas pu être envoyées.",
-  "rdPhoneTaken": "Ce numéro de cellulaire est déjà associé à un autre compte Local Cooks. Modifiez les renseignements pour utiliser un autre numéro, ou connectez-vous à ce compte.",
-  "rdProfileInvalid": "Vérifiez votre nom complet et votre numéro de cellulaire, puis renvoyez."
+  "rdPhoneTaken": "Ce numéro est déjà associé à un autre compte Local Cooks. Utilisez un autre numéro, ou connectez-vous avec le courriel de ce compte.",
+  "rdProfileInvalid": "Vérifiez votre nom complet et votre numéro de cellulaire, puis renvoyez.",
+  "rdSignInLead": "Vous avez déjà un compte Local Cooks. Connectez-vous pour envoyer cette demande depuis ce compte.",
+  "rdCodeSentLead": "Entrez le code à 6 chiffres envoyé à {email}.",
+  "rdEmailMeCode": "M’envoyer un code",
+  "rdContinueGoogle": "Continuer avec Google",
+  "rdEmailCodeInstead": "M’envoyer plutôt un code",
+  "rdKitchenAccount": "Ce courriel sert à un compte de cuisine. Utilisez un autre courriel pour demander du temps en cuisine.",
+  "gridCardStorageCount": "{count, plural, one {# espace d’entreposage} other {# espaces d’entreposage}}"
 }

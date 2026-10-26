@@ -16,8 +16,9 @@ import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { resolveAuthIdentifier } from "@/lib/login-challenge";
 import { cn } from "@/lib/utils";
-import { normalizePhoneNumber, isValidNorthAmericanPhone } from "@shared/phone-validation";
+import { normalizePhoneNumber, isValidNorthAmericanPhone, formatPhoneForDisplay } from "@shared/phone-validation";
 import { duplicateAccountKind } from "@/lib/registration-error";
+import GoogleIcon from "@/components/auth/GoogleIcon";
 
 export type RequestIdentity = { fullName: string; email: string; phone: string };
 export type DetailsMode = "signed-in" | "email" | "existing" | "new";
@@ -40,8 +41,10 @@ function CodeInput({ value, onChange, onComplete, disabled, invalid, label }: {
 }
 const mask = (email: string) => { const [name = "", domain = ""] = email.split("@"); return domain ? `${name.slice(0, 2)}***@${domain}` : email; };
 
-export function RequestDetails({ profilePhone, showErrors, onChange }: {
+export function RequestDetails({ profilePhone, showErrors, onChange, phoneError }: {
   profilePhone?: string | null;
+  /** A refusal for the typed number (already on another account); shown under the field until the number changes. */
+  phoneError?: string | null;
   /** True once Send was pressed, so missing details are named then and not before. */
   showErrors: boolean;
   onChange: (state: { mode: DetailsMode; identity: RequestIdentity | null; ready: boolean }) => void;
@@ -51,17 +54,19 @@ export function RequestDetails({ profilePhone, showErrors, onChange }: {
   const [email, setEmail] = useState("");
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
-  const [lookup, setLookup] = useState<{ email: string; state: "checking" | "existing" | "new"; methods: string[]; name?: string } | null>(null);
+  const [lookup, setLookup] = useState<{ email: string; state: "checking" | "existing" | "new" | "kitchen"; methods: string[]; name?: string } | null>(null);
   const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
   const [usePassword, setUsePassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cooldown, setCooldown] = useState(0);
-  const sentFor = useRef<string | null>(null);
+  // The address a sign-in code went to. Nothing is emailed until the visitor asks (owner, Oct 26).
+  const [sentTo, setSentTo] = useState<string | null>(null);
   // A field is marked wrong only after the visitor has left it (or pressed Send), never while they type.
   const [left, setLeft] = useState<Record<string, boolean>>({});
   const shown = (key: string) => showErrors || !!left[key];
+  const [refusedPhone, setRefusedPhone] = useState<string | null>(null);
 
   useEffect(() => { if (cooldown <= 0) return; const id = window.setTimeout(() => setCooldown(c => c - 1), 1000); return () => window.clearTimeout(id); }, [cooldown]);
 
@@ -77,19 +82,29 @@ export function RequestDetails({ profilePhone, showErrors, onChange }: {
 
   useEffect(() => { onChange({ mode, identity, ready }); }, [mode, identity?.fullName, identity?.email, identity?.phone, ready]);
 
+  // A refused number: remember which one, bring the field into view and put the cursor in it.
+  useEffect(() => {
+    if (!phoneError) return;
+    setRefusedPhone(normalizePhoneNumber(phone) || phone);
+    const field = root.current?.querySelector<HTMLInputElement>("#rd-phone");
+    field?.scrollIntoView({ behavior: "smooth", block: "center" }); field?.focus({ preventScroll: true });
+  }, [phoneError]);
+  const phoneRefused = !!phoneError && refusedPhone === (normalizePhoneNumber(phone) || phone);
+
   // When the email check opens the next fields, the cursor goes there (Tab had already moved past them).
   const root = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
-    if (mode !== "new" && mode !== "existing") return;
-    if (root.current?.contains(document.activeElement) && document.activeElement?.id !== "rd-email") return;
-    const target = root.current?.querySelector<HTMLInputElement>(mode === "new" ? "#rd-name" : "input[autocomplete='one-time-code']");
+    if (mode === "new" && root.current?.contains(document.activeElement) && document.activeElement?.id !== "rd-email") return;
+    const target = mode === "new" ? root.current?.querySelector<HTMLInputElement>("#rd-name")
+      : mode === "existing" && sentTo ? root.current?.querySelector<HTMLInputElement>("input[autocomplete='one-time-code']") : null;
     window.setTimeout(() => target?.focus(), 0);
-  }, [mode]);
+  }, [mode, sentTo]);
 
   const sendCode = async (target: string) => {
-    setError(null);
-    try { await sendSignInCode(target); setCooldown(30); }
+    setError(null); setBusy(true);
+    try { await sendSignInCode(target); setSentTo(target); setUsePassword(false); setCooldown(30); }
     catch { setError(t("rdCodeSendFailed", { defaultValue: "We couldn’t send a code. Try again in a moment." })); }
+    finally { setBusy(false); }
   };
 
   // Check the email once it looks complete; an existing account gets its sign-in code straight away.
@@ -100,8 +115,9 @@ export function RequestDetails({ profilePhone, showErrors, onChange }: {
     const result = await resolveAuthIdentifier(target, "chef");
     // A login without its app account (sign-up never finished) is new here: the code sign-up completes it.
     const existing = result.state === "existing";
-    setLookup(current => current?.email === target ? { email: target, state: existing ? "existing" : "new", methods: result.methods } : current);
-    if (existing && sentFor.current !== target) { sentFor.current = target; void sendCode(target); }
+    // A kitchen (manager) account can't request kitchen time: say so before anything is emailed.
+    const state = existing && result.portalAllowed === false ? "kitchen" : existing ? "existing" : "new";
+    setLookup(current => current?.email === target ? { email: target, state, methods: result.methods } : current);
   };
 
   const finish = async (action: () => Promise<unknown>) => {
@@ -122,7 +138,7 @@ export function RequestDetails({ profilePhone, showErrors, onChange }: {
     return <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl border bg-muted/30 px-4 py-3" data-testid="request-details-signed-in">
       <div className="min-w-0">
         <p className="text-xs text-muted-foreground">{t("rdSendingAs", { defaultValue: "Sending as" })}</p>
-        <p className="mt-0.5 break-words text-sm"><span className="font-medium">{identity?.fullName || user?.email}</span> · {user?.email}{profilePhone ? ` · ${profilePhone}` : ""}</p>
+        <p className="mt-0.5 break-words text-sm"><span className="font-medium">{identity?.fullName || user?.email}</span> · {user?.email}{profilePhone ? ` · ${formatPhoneForDisplay(profilePhone)}` : ""}</p>
       </div>
       <button type="button" onClick={() => void logout()} className="!min-h-0 text-sm font-medium text-primary underline-offset-4 hover:underline">{t("rdNotYou", { defaultValue: "Not you?" })}</button>
     </div>;
@@ -130,44 +146,56 @@ export function RequestDetails({ profilePhone, showErrors, onChange }: {
 
   const fieldError = (show: boolean, text: string, id: string) => show ? <p id={id} role="alert" className="mt-1.5 text-sm text-destructive">{text}</p> : null;
   const link = "!min-h-0 font-medium text-primary underline-offset-4 hover:underline disabled:text-muted-foreground disabled:no-underline";
+  const codeOut = !!lookup && sentTo === lookup.email;
 
   return <div ref={root} className="space-y-4" data-testid={`request-details-${mode}`}>
     <div>
       <Label htmlFor="rd-email" className="text-sm font-medium">{t("rdEmail", { defaultValue: "Email" })}<Req /></Label>
       <Input id="rd-email" type="email" autoComplete="email" inputMode="email" className="mt-2 h-10" value={email} aria-required="true"
-        aria-invalid={showErrors && !EMAIL.test(email.trim())}
-        onChange={event => { setEmail(event.target.value); if (lookup && lookup.email !== event.target.value.trim().toLowerCase()) { setLookup(null); setCode(""); setError(null); } }}
+        aria-invalid={lookup?.state === "kitchen" || (showErrors && !EMAIL.test(email.trim()))}
+        onChange={event => { setEmail(event.target.value); if (lookup && lookup.email !== event.target.value.trim().toLowerCase()) { setLookup(null); setCode(""); setError(null); setSentTo(null); setUsePassword(false); } }}
         onBlur={() => void check(email)}
         onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); void check(email); } }} />
       {lookup?.state === "checking" && <p className="mt-1.5 flex items-center gap-2 text-xs text-muted-foreground" role="status"><Loader2 className="h-3 w-3 animate-spin" aria-hidden />{t("rdChecking", { defaultValue: "Checking…" })}</p>}
       {mode === "new" && <p className="mt-1.5 text-xs text-muted-foreground">{t("rdNewHintCode", { defaultValue: "New to Local Cooks? When you send, we’ll email you a code to confirm this address." })}</p>}
-      {mode === "email" && fieldError(showErrors, t("rdEmailNeeded", { defaultValue: "Enter your email to send the request." }), "rd-email-error")}
+      {lookup?.state === "kitchen" ? fieldError(true, t("rdKitchenAccount", { defaultValue: "This email is used for a kitchen account. Use a different email to request kitchen time." }), "rd-email-error")
+        : mode === "email" && fieldError(showErrors, t("rdEmailNeeded", { defaultValue: "Enter your email to send the request." }), "rd-email-error")}
     </div>
 
-    {mode === "existing" && <div className="rounded-xl bg-[#FFF0F3] p-4" data-testid="request-details-sign-in">
-      <p className="text-sm"><span className="font-medium">{t("rdWelcomeBack", { defaultValue: "Welcome back." })}</span>{" "}
+    {mode === "existing" && <div className="rounded-xl bg-[#FFF0F3] p-4 sm:p-5" data-testid="request-details-sign-in">
+      <p className="text-sm font-semibold text-foreground">{t("rdWelcomeBack", { defaultValue: "Welcome back." })}</p>
+      <p className="mt-1 text-sm leading-6 text-foreground/80">
         {usePassword ? t("rdPasswordLead", { defaultValue: "Enter your password to send this request from your account." })
-          : t("rdCodeLead", { defaultValue: "You already have an account. Enter the 6-digit code we just emailed to {email} to send this request from it.", email: mask(lookup!.email) })}</p>
-      {/* Not a <form>: this sits inside the Request to apply form, and a nested form's button submits the outer one. */}
+          : codeOut ? t("rdCodeSentLead", { defaultValue: "Enter the 6-digit code we emailed to {email}.", email: mask(lookup!.email) })
+          : t("rdSignInLead", { defaultValue: "You already have a Local Cooks account. Sign in to send this request from it." })}</p>
+      {/* Not a <form>: this sits inside the request form, and a nested form's button submits the outer one. */}
       {usePassword ? <div className="mt-3 flex flex-col gap-2 sm:flex-row">
         <Label htmlFor="rd-password" className="sr-only">{t("rdPassword", { defaultValue: "Password" })}</Label>
-        <Input id="rd-password" type="password" autoComplete="current-password" className="h-10 bg-white" value={password} onChange={event => setPassword(event.target.value)}
+        <Input id="rd-password" type="password" autoComplete="current-password" autoFocus className="h-11 bg-white" value={password} onChange={event => setPassword(event.target.value)}
           onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); if (password) void finish(() => login(lookup!.email, password)); } }} />
-        <Button type="button" disabled={busy || !password} onClick={() => void finish(() => login(lookup!.email, password))}>{busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{t("rdSignIn", { defaultValue: "Sign in" })}</Button>
-      </div> : <CodeInput value={code} disabled={busy} invalid={!!error} label={t("rdCodeLabel", { defaultValue: "Sign-in code" })}
+        <Button type="button" className="h-11 sm:px-6" disabled={busy || !password} onClick={() => void finish(() => login(lookup!.email, password))}>{busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{t("rdSignIn", { defaultValue: "Sign in" })}</Button>
+      </div> : codeOut ? <CodeInput value={code} disabled={busy} invalid={!!error} label={t("rdCodeLabel", { defaultValue: "Sign-in code" })}
         onChange={next => { setCode(next); if (error) setError(null); }}
-        onComplete={next => void finish(() => signInWithEmailCode(lookup!.email, next))} />}
-      {busy && !usePassword && <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground" role="status"><Loader2 className="h-4 w-4 animate-spin" aria-hidden />{t("rdSigningIn", { defaultValue: "Signing you in…" })}</p>}
+        onComplete={next => void finish(() => signInWithEmailCode(lookup!.email, next))} />
+      : <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+        <Button type="button" className="h-11 sm:px-6" disabled={busy} onClick={() => void sendCode(lookup!.email)} data-testid="request-details-email-code">
+          {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />}{t("rdEmailMeCode", { defaultValue: "Email me a code" })}</Button>
+        {lookup!.methods.includes("password") && <Button type="button" variant="outline" className="h-11 bg-white" disabled={busy} onClick={() => { setUsePassword(true); setError(null); }}>
+          {t("rdUsePassword", { defaultValue: "Use password" })}</Button>}
+        {lookup!.methods.includes("google") && <Button type="button" variant="outline" className="h-11 gap-2 bg-white" disabled={busy} onClick={() => void finish(() => signInWithGoogle(false))}>
+          <GoogleIcon className="h-4 w-4" aria-hidden />{t("rdContinueGoogle", { defaultValue: "Continue with Google" })}</Button>}
+      </div>}
+      {busy && codeOut && !usePassword && <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground" role="status"><Loader2 className="h-4 w-4 animate-spin" aria-hidden />{t("rdSigningIn", { defaultValue: "Signing you in…" })}</p>}
       {error && <p role="alert" className="mt-2 text-sm text-destructive">{error}</p>}
-      <p className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-sm text-muted-foreground">
-        {!usePassword && <span>{t("rdNoCode", { defaultValue: "Didn’t get it?" })}{" "}
+      {(codeOut || usePassword) && <p className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+        {codeOut && !usePassword && <span>{t("rdNoCode", { defaultValue: "Didn’t get it?" })}{" "}
           <button type="button" className={link} disabled={cooldown > 0 || busy} onClick={() => void sendCode(lookup!.email)}>
             {cooldown > 0 ? t("rdResendIn", { defaultValue: "Send a new code in {seconds}s", seconds: cooldown }) : t("rdResend", { defaultValue: "Send a new code" })}</button></span>}
+        {usePassword && <button type="button" className={link} disabled={busy} onClick={() => void sendCode(lookup!.email)}>{t("rdEmailCodeInstead", { defaultValue: "Email me a code instead" })}</button>}
+        {codeOut && !usePassword && lookup!.methods.includes("password") && <button type="button" className={link} disabled={busy} onClick={() => { setUsePassword(true); setError(null); }}>{t("rdUsePassword", { defaultValue: "Use password" })}</button>}
         {lookup!.methods.includes("google") && <button type="button" className={link} disabled={busy} onClick={() => void finish(() => signInWithGoogle(false))}>{t("rdUseGoogle", { defaultValue: "Use Google" })}</button>}
-        {lookup!.methods.includes("password") && <button type="button" className={link} disabled={busy} onClick={() => { setUsePassword(p => !p); setError(null); }}>
-          {usePassword ? t("rdUseCode", { defaultValue: "Use a code instead" }) : t("rdUsePassword", { defaultValue: "Use password" })}</button>}
-      </p>
-      <p className="mt-2 text-xs text-muted-foreground">{t("rdFromAccount", { defaultValue: "Your name and phone come from your account once you’re in." })}</p>
+      </p>}
+      <p className="mt-3 text-xs text-muted-foreground">{t("rdFromAccount", { defaultValue: "Your name and phone come from your account once you’re in." })}</p>
     </div>}
 
     {mode === "new" && <div className="grid gap-4 sm:grid-cols-2">
@@ -178,8 +206,9 @@ export function RequestDetails({ profilePhone, showErrors, onChange }: {
       </div>
       <div>
         <Label htmlFor="rd-phone" className="text-sm font-medium">{t("rdPhone", { defaultValue: "Mobile phone" })}<Req /></Label>
-        <Input id="rd-phone" aria-required="true" type="tel" inputMode="tel" autoComplete="tel" placeholder="(709) 000-0000" className="mt-2 h-10" value={phone} onChange={event => setPhone(event.target.value)} onBlur={() => setLeft(l => ({ ...l, phone: true }))} aria-invalid={shown("phone") && !phoneOk} aria-describedby={shown("phone") && !phoneOk ? "rd-phone-error" : undefined} />
-        {fieldError(shown("phone") && !phoneOk, t("rdPhoneNeeded", { defaultValue: "Enter a valid mobile number." }), "rd-phone-error")}
+        <Input id="rd-phone" aria-required="true" type="tel" inputMode="tel" autoComplete="tel" placeholder="(709) 000-0000" className="mt-2 h-10" value={phone} onChange={event => setPhone(event.target.value)} onBlur={() => setLeft(l => ({ ...l, phone: true }))} aria-invalid={(shown("phone") && !phoneOk) || phoneRefused} aria-describedby={(shown("phone") && !phoneOk) || phoneRefused ? "rd-phone-error" : undefined} />
+        {phoneRefused ? fieldError(true, phoneError!, "rd-phone-error")
+          : fieldError(shown("phone") && !phoneOk, t("rdPhoneNeeded", { defaultValue: "Enter a valid mobile number." }), "rd-phone-error")}
       </div>
     </div>}
   </div>;
@@ -198,14 +227,16 @@ export function useConfirmByCode(onConfirmed: () => void | Promise<void>) {
   const [target, setTarget] = useState<CodeTarget | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** "phone" when the typed number is on another account: the page shows it under the phone field. */
+  const [errorField, setErrorField] = useState<"phone" | null>(null);
   const [cooldown, setCooldown] = useState(0);
   useEffect(() => { if (cooldown <= 0) return; const id = window.setTimeout(() => setCooldown(c => c - 1), 1000); return () => window.clearTimeout(id); }, [cooldown]);
 
-  const word = (e: unknown) => {
+  const word =(e: unknown) => {
     const message = e instanceof Error ? e.message : "";
     // One account per email and per phone: name which one is taken, so the chef knows what to change.
     const taken = duplicateAccountKind(e);
-    if (taken === "phone") return t("rdPhoneTaken", { defaultValue: "This mobile number is already on another Local Cooks account. Change details to use another number, or sign in to that account." });
+    if (taken === "phone") return t("rdPhoneTaken", { defaultValue: "This number is already on another Local Cooks account. Use a different number, or sign in with that account’s email." });
     if (taken === "email") return t("rdAccountExists", { defaultValue: "This email already has an account. Re-enter it above to sign in." });
     return message === "code-wrong" ? t("rdCodeWrong", { defaultValue: "That code isn’t right. Try again." })
       : message === "code-expired" ? t("rdCodeExpired", { defaultValue: "That code has expired or was already used. Send a new one." })
@@ -221,11 +252,11 @@ export function useConfirmByCode(onConfirmed: () => void | Promise<void>) {
     setCooldown(30);
   };
   const run = async (action: () => Promise<void>) => {
-    setBusy(true); setError(null);
-    try { await action(); } catch (e) { setError(word(e)); } finally { setBusy(false); }
+    setBusy(true); setError(null); setErrorField(null);
+    try { await action(); } catch (e) { setError(word(e)); setErrorField(duplicateAccountKind(e) === "phone" ? "phone" : null); } finally { setBusy(false); }
   };
   return {
-    target, busy, error, cooldown,
+    target, busy, error, errorField, cooldown,
     /** Signed in: the account's own email. Signed out: the details just typed. */
     start: (identity: RequestIdentity | null) => run(async () => {
       const next = { email: user?.email || identity?.email || "", identity };
@@ -236,10 +267,10 @@ export function useConfirmByCode(onConfirmed: () => void | Promise<void>) {
     confirm: (code: string) => target && run(async () => {
       if (user) { await signInWithEmailCode(target.email, code); await refreshUserData({ forceToken: true }); }
       else await signUpWithEmailCode({ email: target.email, code, fullName: target.identity!.fullName, phone: target.identity!.phone, termsAccepted: true });
-      setTarget(null);
-      await onConfirmed();
+      // The code step (and its "Confirming and sending…") stays until the request is sent; hiding it first flashed the form back.
+      try { await onConfirmed(); } finally { setTarget(null); }
     }),
-    cancel: () => { setTarget(null); setError(null); },
+    cancel: () => { setTarget(null); setError(null); setErrorField(null); },
   };
 }
 

@@ -124,5 +124,7 @@ export function resolvePortalAllowed(input: {
     // here would refuse a flow that works today.
     return account.role === "manager" || account.isManager === true || account.role === "admin";
   }
+  // The chef site sends a manager to the kitchen dashboard after sign-in; say so before a code is sent (Request to apply, tours).
+  if (portal === "chef") return account.role !== "manager";
   return null;
 }

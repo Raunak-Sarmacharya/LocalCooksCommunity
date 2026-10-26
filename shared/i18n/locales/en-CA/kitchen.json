@@ -1744,7 +1744,6 @@
   "rdEmailNeeded": "Enter your email to send the request.",
   "rdWelcomeBack": "Welcome back.",
   "rdPasswordLead": "Enter your password to send this request from your account.",
-  "rdCodeLead": "You already have an account. Enter the 6-digit code we just emailed to {email} to send this request from it.",
   "rdPassword": "Password",
   "rdSignIn": "Sign in",
   "rdCodeLabel": "Sign-in code",
@@ -1753,7 +1752,6 @@
   "rdResendIn": "Send a new code in {seconds}s",
   "rdResend": "Send a new code",
   "rdUseGoogle": "Use Google",
-  "rdUseCode": "Use a code instead",
   "rdUsePassword": "Use password",
   "rdFromAccount": "Your name and phone come from your account once you’re in.",
   "rdFullName": "Full name",
@@ -1854,6 +1852,13 @@
   "tourMissingStart": "Pick a start date, or tick Not decided yet.",
   "fullDay": "Full day",
   "tourSavedDeliveryFailed": "Your tour request is saved, but some notifications could not be delivered.",
-  "rdPhoneTaken": "This mobile number is already on another Local Cooks account. Change details to use another number, or sign in to that account.",
-  "rdProfileInvalid": "Check your full name and mobile number, then send again."
+  "rdPhoneTaken": "This number is already on another Local Cooks account. Use a different number, or sign in with that account’s email.",
+  "rdProfileInvalid": "Check your full name and mobile number, then send again.",
+  "rdSignInLead": "You already have a Local Cooks account. Sign in to send this request from it.",
+  "rdCodeSentLead": "Enter the 6-digit code we emailed to {email}.",
+  "rdEmailMeCode": "Email me a code",
+  "rdContinueGoogle": "Continue with Google",
+  "rdEmailCodeInstead": "Email me a code instead",
+  "rdKitchenAccount": "This email is used for a kitchen account. Use a different email to request kitchen time.",
+  "gridCardStorageCount": "{count, plural, one {# storage space} other {# storage spaces}}"
 }

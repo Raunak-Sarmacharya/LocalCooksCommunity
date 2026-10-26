@@ -96,6 +96,31 @@ describe('Your details', () => {
     expect(screen.getByLabelText(/^Mobile phone/)).toHaveAttribute('aria-required', 'true');
   });
 
+  it('an existing email gets no code until the visitor asks for one (owner, Oct 26)', async () => {
+    session.lookup = { state: 'existing', methods: ['password', 'google'] };
+    render(<RequestDetails showErrors={false} onChange={vi.fn()} />);
+    const email = screen.getByLabelText(/^Email/);
+    fireEvent.change(email, { target: { value: 'chef@example.com' } }); fireEvent.blur(email);
+    const ask = await screen.findByRole('button', { name: 'Email me a code' });
+    expect(screen.getByRole('button', { name: /Continue with Google/ })).toBeInTheDocument();
+    expect(session.sendSignInCode).not.toHaveBeenCalled();
+    fireEvent.click(ask);
+    await waitFor(() => expect(session.sendSignInCode).toHaveBeenCalledWith('chef@example.com'));
+    expect(session.sendSignInCode).toHaveBeenCalledTimes(1);
+    expect(await screen.findByLabelText('Sign-in code')).toBeInTheDocument();
+  });
+
+  it('a kitchen account email is turned away before any code is sent', async () => {
+    session.lookup = { state: 'existing', methods: ['password'], portalAllowed: false } as any;
+    render(<RequestDetails showErrors={false} onChange={vi.fn()} />);
+    const email = screen.getByLabelText(/^Email/);
+    fireEvent.change(email, { target: { value: 'manager@example.com' } }); fireEvent.blur(email);
+    expect(await screen.findByText(/used for a kitchen account/)).toBeInTheDocument();
+    expect(email).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.queryByRole('button', { name: 'Email me a code' })).not.toBeInTheDocument();
+    expect(session.sendSignInCode).not.toHaveBeenCalled();
+  });
+
   it('signing in with a password inside the request form never submits the request form', async () => {
     session.lookup = { state: 'existing', methods: ['password'] };
     const outerSubmit = vi.fn((event: any) => event.preventDefault());

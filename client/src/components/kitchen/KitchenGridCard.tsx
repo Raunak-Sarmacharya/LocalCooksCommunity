@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { SmartImage } from "@/components/ui/smart-image";
 import { TruncatedText } from "@/components/common/TruncatedText";
 import { KitchenPhotoPlaceholder } from "@/components/kitchen/KitchenPhotoPlaceholder";
-import { formatEquipmentBreakdown, formatStorageLine, type KitchenGridEquipmentSummary, type KitchenGridStorageSummary } from "@/lib/kitchen-grid-card";
+import { formatEquipmentBreakdown, type KitchenGridEquipmentSummary, type KitchenGridStorageSummary } from "@/lib/kitchen-grid-card";
 import { CARD_RADIUS } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
@@ -69,11 +69,10 @@ export function KitchenGridCard({
   const hasImage = !!imageUrl?.trim();
   const price = rateBadge(hourlyRateCents, dailyRateCents);
 
-  const storageLine = formatStorageLine(
-    storageSummary,
-    t("gridCardNone", "—"),
-    t("gridCardStorageSpaces", "storage spaces")
-  );
+  const storageUnits = storageSummary?.totalStorageUnits ?? 0;
+  const storageLine = storageUnits > 0
+    ? t("gridCardStorageCount", { defaultValue: "{count, plural, one {# storage space} other {# storage spaces}}", count: storageUnits })
+    : t("gridCardNone", "—");
   const equipmentLine = formatEquipmentBreakdown(equipmentSummary, {
     included: t("gridCardEquipmentIncluded", "included"),
     rental: t("gridCardEquipmentRental", "rental"),

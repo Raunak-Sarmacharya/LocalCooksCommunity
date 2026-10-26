@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { formatEquipmentBreakdown, formatEquipmentLine, formatStorageLine, mergeEquipmentLists, mergeEquipmentSummaries, mergeStorageSummaries, resolveEquipmentLabel } from "./kitchen-grid-card";
+import { formatEquipmentBreakdown, formatEquipmentLine, mergeEquipmentLists, mergeEquipmentSummaries, mergeStorageSummaries, resolveEquipmentLabel } from "./kitchen-grid-card";
 
 import { describe, it } from "vitest";
 
@@ -14,46 +14,6 @@ import { describe, it } from "vitest";
  */
 describe("kitchen-grid-card", () => {
   it("holds", () => {
-
-    {
-      assert.equal(
-        formatStorageLine(
-          {
-            hasDryStorage: true,
-            hasColdStorage: true,
-            hasFreezerStorage: false,
-            totalStorageUnits: 2,
-          },
-          "—"
-        ),
-        "2"
-      );
-      assert.equal(
-        formatStorageLine(
-          {
-            hasDryStorage: true,
-            hasColdStorage: false,
-            hasFreezerStorage: false,
-            totalStorageUnits: 3,
-          },
-          "—"
-        ),
-        "3"
-      );
-      assert.equal(
-        formatStorageLine(
-          {
-            hasDryStorage: false,
-            hasColdStorage: false,
-            hasFreezerStorage: false,
-            totalStorageUnits: 4,
-          },
-          "—"
-        ),
-        "4"
-      );
-      assert.equal(formatStorageLine(null, "—"), "—");
-    }
 
     {
       assert.equal(resolveEquipmentLabel("commercial-oven"), "Commercial Oven");

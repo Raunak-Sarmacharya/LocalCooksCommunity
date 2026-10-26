@@ -81,17 +81,6 @@ export function formatEquipmentBreakdown(
   return parts.join(" + ");
 }
 
-/** Storage line for cards — unit count only. */
-export function formatStorageLine(
-  summary: KitchenGridStorageSummary | null | undefined,
-  noneLabel: string,
-  spacesLabel?: string
-): string {
-  if (!summary || summary.totalStorageUnits <= 0) return noneLabel;
-  if (spacesLabel) return `${summary.totalStorageUnits} ${spacesLabel}`;
-  return String(summary.totalStorageUnits);
-}
-
 /** First equipment item(s) + leftover count, e.g. "Commercial Oven, Range/Stove +5". */
 export function formatEquipmentLine(
   equipment: string[] | undefined,

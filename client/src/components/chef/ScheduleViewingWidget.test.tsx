@@ -290,8 +290,12 @@ describe('tour request without a confirmed email (code first, owner Oct 26)', ()
     await newChefReady();
     fireEvent.click(screen.getByRole('checkbox', { name: /I agree to Local Cooks/ }));
     fireEvent.click(screen.getByTestId('tour-request-submit'));
-    expect(await screen.findByText(/This mobile number is already on another Local Cooks account/)).toBeInTheDocument();
+    // Under the phone field itself (the chef is at the send button, far from any page-level message).
+    expect(await screen.findByText(/This number is already on another Local Cooks account/)).toHaveAttribute('id', 'rd-phone-error');
+    expect(screen.getByLabelText(/^Mobile phone/)).toHaveAttribute('aria-invalid', 'true');
     expect(screen.queryByTestId('email-code-step')).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/^Mobile phone/), { target: { value: '709 555 0199' } });
+    expect(screen.queryByText(/This number is already on another Local Cooks account/)).not.toBeInTheDocument();
   });
 
   it('an existing email signs in inline, with no agreement and no account step', async () => {

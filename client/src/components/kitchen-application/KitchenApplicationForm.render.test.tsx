@@ -22,7 +22,7 @@
  * instead of shipping.
  */
 import { beforeEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import React from "react";
 
 /*
@@ -247,6 +247,17 @@ describe("KitchenApplicationForm render harness", () => {
     // Two instances on purpose: the wide block below `lg` and the sticky rail at `lg`+. Only one is
     // visible at a time, and both drive the same <form> through `form={FORM_ID}`.
     expect(screen.getAllByTestId("kitchen-application-submit").length).toBeGreaterThan(0);
+  });
+
+  it("one-page Send stays pressable with gaps and sends nothing (owner, Oct 26)", async () => {
+    const submit = vi.fn(); const onAttempt = vi.fn();
+    render(<KitchenApplicationForm location={location} onePage={{ details: <p>details</p>, detailsReady: false, identity: null, submit, onAttempt } as any} />);
+    const send = screen.getAllByTestId("kitchen-application-submit")[0];
+    expect(send).toBeEnabled();
+    fireEvent.submit(document.getElementById(send.getAttribute("form")!)!); // jsdom ignores the form= attribute on click
+    await waitFor(() => expect(onAttempt).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(submit).not.toHaveBeenCalled();
   });
 
   it("requires an explicit choice for both application agreements", async () => {

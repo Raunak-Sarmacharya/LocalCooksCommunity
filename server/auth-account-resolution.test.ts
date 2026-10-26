@@ -94,7 +94,8 @@ describe("auth account resolution", () => {
     // No portal named, or no account found: no verdict, so no gate.
     expect(resolvePortalAllowed({ portal: null, account: { role: "chef", isManager: false } })).toBeNull();
     expect(resolvePortalAllowed({ portal: "manager", account: null })).toBeNull();
-    // The chef portal has no rule yet, so it keeps its post-auth check unchanged.
-    expect(resolvePortalAllowed({ portal: "chef", account: { role: "chef", isManager: false } })).toBeNull();
+    // The chef portal turns a kitchen manager away before any code (the chef site sends them to the kitchen dashboard).
+    expect(resolvePortalAllowed({ portal: "chef", account: { role: "chef", isManager: false } })).toBe(true);
+    expect(resolvePortalAllowed({ portal: "chef", account: { role: "manager", isManager: true } })).toBe(false);
   });
 });

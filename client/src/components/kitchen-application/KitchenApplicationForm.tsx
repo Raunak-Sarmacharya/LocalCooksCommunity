@@ -1190,7 +1190,7 @@ export default function KitchenApplicationForm({
         type="submit"
         form={FORM_ID}
         data-testid="kitchen-application-submit"
-        disabled={isSubmitting || !canSubmit}
+        disabled={isSubmitting || (!canSubmit && !(onePage && currentTier === 1))}
         size="sm"
         className="flex-1"
       >
@@ -1331,7 +1331,9 @@ export default function KitchenApplicationForm({
     const { nextFileErrors, messages: fileMessages } = getStep2FileValidationErrors();
 
     setFileErrors(nextFileErrors);
-    showValidationToast([...formMessages, ...fileMessages]);
+    // The one-page request names its own sections: its schema still carries fields the page doesn't show (first/last name).
+    const todo = onePage && currentTier === 1 ? requiredItems.filter((item) => item.state === "todo").map((item) => item.label) : [];
+    showValidationToast(todo.length ? todo : [...formMessages, ...fileMessages]);
 
     /*
      * Bring the blocking field into view.
@@ -1911,6 +1913,9 @@ export default function KitchenApplicationForm({
           ref={formRef}
           onSubmitCapture={() => onePage?.onAttempt?.()}
           onSubmit={form.handleSubmit(async (data) => {
+            // One-page Send stays pressable (owner, Oct 26): a gap outside the schema (details, food safety) is named, not sent.
+            const gaps = onePage && currentTier === 1 ? requiredItems.filter((item) => item.state === "todo") : [];
+            if (gaps.length) { showValidationToast(gaps.map((item) => item.label)); gaps[0].onNavigate?.(); return; }
             // The one-page request confirms the email itself (a code), so no verification guard here.
             if (onePage?.submit) await onSubmit(data);
             else await guard(() => onSubmit(data));
@@ -3069,7 +3074,8 @@ export default function KitchenApplicationForm({
                             checked={field.value === true && watchedValues.accuracyAgree === true}
                             onCheckedChange={(checked) => {
                               field.onChange(checked === true);
-                              form.setValue("accuracyAgree", checked === true, { shouldValidate: form.formState.isSubmitted });
+                              // shouldDirty: a sign-in mid-request resets defaults with keepDirtyValues, which unticked this.
+                              form.setValue("accuracyAgree", checked === true, { shouldDirty: true, shouldValidate: form.formState.isSubmitted });
                             }}
                             className="mt-1"
                           />
