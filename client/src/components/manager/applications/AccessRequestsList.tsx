@@ -15,17 +15,8 @@ import { Button } from "@/components/ui/button";
 import { Search, X, MessageCircle, ArrowRight } from "@/components/ui/manager-icons";
 import type { Application } from "./types";
 
-export type AccessRequestTab = "review" | "waiting" | "declined";
-
-/** Which tab a request belongs in; approved customers without anything to review are on Customers instead. */
-export function accessRequestTab(app: Application): AccessRequestTab | null {
-  if (app.status === "rejected") return "declined";
-  if (app.status === "inReview") return "review";
-  if (app.status !== "approved") return null;
-  const tier = app.current_tier ?? 1;
-  if (tier >= 3) return (app.documentRenewals || []).some((renewal) => renewal.status === "pending") ? "review" : null;
-  return app.tier2_completed_at ? "review" : "waiting";
-}
+import { accessRequestTab } from "./access-request-tab";
+export { accessRequestTab, type AccessRequestTab } from "./access-request-tab";
 
 const day = (value?: string | null) => value ? new Date(value).toLocaleDateString(i18n.language, { month: "short", day: "numeric" }) : "";
 const DOCUMENT_NAME_KEYS = { foodSafetyLicense: "arDocFoodSafety", foodEstablishmentCert: "arDocEstablishment", insurance: "arDocInsurance" } as const;

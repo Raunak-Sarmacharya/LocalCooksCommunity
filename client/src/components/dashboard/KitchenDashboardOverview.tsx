@@ -46,6 +46,14 @@ import { bookingCancelCause } from "@/lib/booking-cancel-cause";
 import { bookingListBounds, bookingListPhase, bookingListPill, listWhenLine, openAttendanceAnswers, type BookingListRow } from "@/lib/booking-list-status";
 import { ct } from "@/i18n/chef-ns";
 import { useCommitmentProblems } from "@/components/support/CommitmentProblems";
+import { accessRequestTab } from "@/components/manager/applications/access-request-tab";
+
+/** Kitchen-facing stage, as on Access requests: a request Local Cooks cleared reads "Needs your review" / "Waiting on customer", never "Approved". */
+export function applicationActivityStatus(item: { status?: string | null }) {
+  const tab = accessRequestTab(item as Parameters<typeof accessRequestTab>[0]);
+  return tab === "review" ? "arTabReview" : tab === "waiting" ? "arTabWaiting" : tab === "declined" ? "arTabDeclined"
+    : item.status === "approved" ? "approved" : "overviewStatusUpdated";
+}
 
 interface Location { id: number; name: string; address: string; kitchenLicenseUrl?: string | null; kitchenLicenseStatus?: string | null; kitchenLicenseExpiry?: string | null; timezone?: string; kitchenLicensePendingUrl?: string | null; kitchenLicensePendingExpiry?: string | null }
 interface Kitchen { id: number; locationId: number; name: string; isActive: boolean; listingStatus?: string }
@@ -310,7 +318,7 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
       title: mt("activityStorageCancelled", { name: rental.chef?.name && !rental.chef.name.includes("@") ? rental.chef.name : mt("guestChef") }), person: "", kitchen: "",
       scheduled: mt("stCancelledMoney", { ns: "storage", refund: cad(rental.cancellation.refundCents, i18n.language), payout: cad(rental.cancellation.kitchenPayoutCents ?? 0, i18n.language) }),
       time: "", href: `/manager/storage/${rental.id}` }] : []),
-    ...locationApplications.filter(item => !!(item.updatedAt || item.createdAt)).map(item => ({kind:"application" as const,id:item.id,date:item.updatedAt || item.createdAt!,title:mt("overviewApplicationActivity", {status:mt(({inReview:"overviewAwaitingReview",approved:"approved",rejected:"rejected",pending:"pending"} as Record<string,string>)[item.status] ?? "overviewStatusUpdated")}),person:chefDisplayName(item),kitchen:locations.find(location=>location.id===item.locationId)?.name,scheduled:displayDate(item.updatedAt || item.createdAt!),time:""})),
+    ...locationApplications.filter(item => !!(item.updatedAt || item.createdAt)).map(item => ({kind:"application" as const,id:item.id,date:item.updatedAt || item.createdAt!,title:mt("overviewApplicationActivity", {status:mt(applicationActivityStatus(item))}),person:chefDisplayName(item),kitchen:locations.find(location=>location.id===item.locationId)?.name,scheduled:displayDate(item.updatedAt || item.createdAt!),time:""})),
     ...activity.claims.filter(item => !!(item.updatedAt || item.createdAt)).map(item => ({kind:"claim" as const,id:item.id,date:item.updatedAt || item.createdAt!,title:mt("overviewClaimActivity",{status:mt(financialActivityStatus[item.status ?? ""] ?? "overviewStatusUpdated")}),person:chefDisplayName(item),kitchen:item.kitchenName,scheduled:displayDate(item.updatedAt || item.createdAt!),time:""})),
   ].filter(item => Number.isFinite(Date.parse(item.date)) && Date.parse(item.date) <= Date.now()).sort((a, b) => Date.parse(b.date) - Date.parse(a.date)).slice(0, RECENT_ACTIVITY_LIMIT);
   const hasHistory = bookings.length > 0 || locationViewings.length > 0;

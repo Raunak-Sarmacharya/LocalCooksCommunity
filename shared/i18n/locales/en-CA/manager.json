@@ -4967,7 +4967,6 @@
   "arNo": "No",
   "arNotSure": "Not sure",
   "arStageRequest": "Request to apply",
-  "arStageApproved": "Approved {date}",
   "arStageWaived": "You approved them without booking requirements",
   "arStageSent": "Sent {date}",
   "arStageWaiting": "Waiting on the customer",

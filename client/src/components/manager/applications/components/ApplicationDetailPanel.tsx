@@ -212,7 +212,7 @@ export function ApplicationDetailPanel({
     // Where the request stands, in the customer's journey.
     const stages = [
         // A customer the kitchen added skipped Request to apply (owner, Oct 24).
-        { title: addedByKitchen ? mt("arStageAdded") : mt("arStageRequest"), note: mt(addedByKitchen ? "arStageAddedOn" : "arStageApproved", { date: dayOf(application.tier1_completed_at || application.reviewedAt) || '' }), state: 'done' as const },
+        { title: addedByKitchen ? mt("arStageAdded") : mt("arStageRequest"), note: addedByKitchen ? mt("arStageAddedOn", { date: dayOf(application.tier1_completed_at || application.reviewedAt) || '' }) : mt("arStageSent", { date: dayOf(application.createdAt) || '' }), state: 'done' as const },
         { title: mt("step2"), note: documentsWaived ? mt("arStageWaived") : sent ? mt("arStageSent", { date: dayOf(application.tier2_completed_at) }) : mt("arStageWaiting"), state: (isApproved ? 'done' : 'current') as 'done' | 'current' },
         { title: mt("arStageCanBook"), note: isApproved ? mt("arStageCanBookNote") : null, state: (isApproved ? 'done' : 'next') as 'done' | 'next' },
     ];

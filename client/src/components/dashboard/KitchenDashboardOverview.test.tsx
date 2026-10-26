@@ -41,7 +41,7 @@ vi.mock("@/lib/api", () => ({ apiGet: vi.fn() }));
 vi.mock("./BookingCalendarWidget", async (importOriginal) => ({ ...(await importOriginal<typeof import("./BookingCalendarWidget")>()),
   default: ({ events, stats }: { events: Array<{ key: string; date: string; label: string; state?: string; kitchenId?: number }>; stats?: (kitchenId: number | null) => ReactNode }) => <>{stats?.(null)}<div data-testid="calendar">{events.map(event => `${event.key}@${event.date}:${event.label}${event.state ? `[${event.state}]` : ""}${event.kitchenId ? `{k${event.kitchenId}}` : ""}`).join("|")}</div><div data-testid="stats-kitchen-11">{stats?.(11)}</div></> }));
 
-import KitchenDashboardOverview from "./KitchenDashboardOverview";
+import KitchenDashboardOverview, { applicationActivityStatus } from "./KitchenDashboardOverview";
 
 const location = () => ({
   id: 1,
@@ -635,4 +635,11 @@ describe("revamped overview (R3)", () => {
     for (const key of ["ovrPaidOutThisMonth", "r1Upcoming", "r1OnHold", "ovrPaidBookingsCount"]) expect(card).toContain(key);
     for (const key of ["overviewPaidEarnings", "revenueUpcomingPayouts", "overviewPendingPayments"]) expect(card).not.toContain(key);
   });
+});
+
+it("names a cleared request by the kitchen's own stage, never 'approved' before the kitchen reviewed it", () => {
+  expect(applicationActivityStatus({ status: "approved", current_tier: 1 } as any)).toBe("arTabWaiting");
+  expect(applicationActivityStatus({ status: "approved", current_tier: 2, tier2_completed_at: "2026-10-26" } as any)).toBe("arTabReview");
+  expect(applicationActivityStatus({ status: "approved", current_tier: 3 } as any)).toBe("approved");
+  expect(applicationActivityStatus({ status: "rejected" } as any)).toBe("arTabDeclined");
 });
