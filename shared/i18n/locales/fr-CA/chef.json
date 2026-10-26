@@ -4170,5 +4170,6 @@
   "bdhArrivalDetails": "Détails d’arrivée",
   "joinWithEmailTitle": "Rejoindre avec votre courriel",
   "joinAgreeTitle": "Acceptez les conditions de la cuisine",
-  "homeTodoStorageReclaim": "{unit} : la cuisine en a besoin"
+  "homeTodoStorageReclaim": "{unit} : la cuisine en a besoin",
+  "kciOptionalInline": "(facultatif)"
 }

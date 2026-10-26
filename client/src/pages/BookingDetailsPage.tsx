@@ -1768,7 +1768,7 @@ export default function BookingDetailsPage() {
           allowPrimary={claimTakesPrimary && !narrow} payInBarFor={narrow && claimTakesPrimary ? payableClaim?.id : null} payingId={payingClaimId} onPayingChange={setPayingClaimId} onChanged={() => { void claimsQuery.refetch(); void reloadBookingDetails(); }} />}
         {now.attention.includes('extensions') && ['confirmed', 'completed'].includes(booking.status) && (
           <SessionExtensionsCard variant="now" key={`extra-time-${booking.id}`} bookingId={booking.id} manager={isManagerView} chefName={chefName} onChanged={reloadBookingDetails}
-            tool={extTool} onToolChange={setExtTool} onToolsChange={setExtTools} allowPrimary={!primary && !claimTakesPrimary && !narrow}
+            tool={extTool} onToolChange={setExtTool} onToolsChange={setExtTools} allowPrimary={!primary && !claimTakesPrimary}
             refreshKey={[booking.status, booking.checkinStatus, booking.endTime, ...(booking.visits || []).map(visit => visit.checkinStatus)].join('|')} />
         )}
       </>}

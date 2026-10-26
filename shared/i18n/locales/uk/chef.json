@@ -4170,5 +4170,6 @@
   "bdhArrivalDetails": "Деталі прибуття",
   "joinWithEmailTitle": "Приєднатися з вашою електронною поштою",
   "joinAgreeTitle": "Погодьтеся з умовами кухні",
-  "homeTodoStorageReclaim": "{unit}: кухня потребує його назад"
+  "homeTodoStorageReclaim": "{unit}: кухня потребує його назад",
+  "kciOptionalInline": "(необов’язково)"
 }

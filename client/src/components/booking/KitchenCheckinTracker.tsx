@@ -767,7 +767,7 @@ export function KitchenCheckinTracker({
                 {fieldErrors.photos && <p role="alert" className="text-sm text-destructive">{fieldErrors.photos}</p>}
 
                     </>}
-                <Label htmlFor="chef-checkin-message">{t('bookingAttendanceChefMessage')} ({t("kciOptional", "Optional")})</Label>
+                <Label htmlFor="chef-checkin-message">{t('bookingAttendanceChefMessage')} <span className="font-normal text-muted-foreground">{t("kciOptionalInline", "(optional)")}</span></Label>
                 <Textarea id="chef-checkin-message"
                   placeholder={bt("optionalCheckinNotesPlaceholder")}
                   disabled={isPending}
@@ -801,7 +801,7 @@ export function KitchenCheckinTracker({
 
                 {fieldErrors.photos && <p role="alert" className="text-sm text-destructive">{fieldErrors.photos}</p>}
 
-                <Label htmlFor="chef-checkout-message">{t('bookingAttendanceChefMessage')} ({t("kciOptional", "Optional")})</Label>
+                <Label htmlFor="chef-checkout-message">{t('bookingAttendanceChefMessage')} <span className="font-normal text-muted-foreground">{t("kciOptionalInline", "(optional)")}</span></Label>
                 <Textarea id="chef-checkout-message"
                   placeholder={bt("checkoutNotesPlaceholder")}
                   disabled={isPending}
