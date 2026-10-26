@@ -1106,6 +1106,8 @@ export default function KitchenApplicationForm({
   };
 
   const { requiredItems, optionalItems, canSubmit } = buildProgress();
+  // Send stays pressable and names what's missing (owner, Oct 26): the one-page request and the booking requirements.
+  const namesGaps = (!!onePage && currentTier === 1) || currentTier >= 2;
 
   const requiredRemaining = requiredItems.filter((item) => item.state === "todo");
 
@@ -1190,7 +1192,7 @@ export default function KitchenApplicationForm({
         type="submit"
         form={FORM_ID}
         data-testid="kitchen-application-submit"
-        disabled={isSubmitting || (!canSubmit && !(onePage && currentTier === 1))}
+        disabled={isSubmitting || (!canSubmit && !namesGaps)}
         size="sm"
         className="flex-1"
       >
@@ -1332,7 +1334,7 @@ export default function KitchenApplicationForm({
 
     setFileErrors(nextFileErrors);
     // The one-page request names its own sections: its schema still carries fields the page doesn't show (first/last name).
-    const todo = onePage && currentTier === 1 ? requiredItems.filter((item) => item.state === "todo").map((item) => item.label) : [];
+    const todo = namesGaps ? requiredItems.filter((item) => item.state === "todo").map((item) => item.label) : [];
     showValidationToast(todo.length ? todo : [...formMessages, ...fileMessages]);
 
     /*
@@ -1914,7 +1916,7 @@ export default function KitchenApplicationForm({
           onSubmitCapture={() => onePage?.onAttempt?.()}
           onSubmit={form.handleSubmit(async (data) => {
             // One-page Send stays pressable (owner, Oct 26): a gap outside the schema (details, food safety) is named, not sent.
-            const gaps = onePage && currentTier === 1 ? requiredItems.filter((item) => item.state === "todo") : [];
+            const gaps = namesGaps ? requiredItems.filter((item) => item.state === "todo") : [];
             if (gaps.length) { showValidationToast(gaps.map((item) => item.label)); gaps[0].onNavigate?.(); return; }
             // The one-page request confirms the email itself (a code), so no verification guard here.
             if (onePage?.submit) await onSubmit(data);
@@ -2651,7 +2653,7 @@ export default function KitchenApplicationForm({
                           existingUrl={existingFoodHandlerUrl}
                           existingTrailing={<VerifiedDocumentChip status={application?.foodSafetyLicenseStatus} url={existingFoodHandlerUrl} expiry={application?.foodSafetyLicenseExpiry} />}
                           existingVerified={application?.foodSafetyLicenseStatus === 'approved'}
-                          label={t("clickToUploadLicense", { defaultValue: "Click to upload license" })}
+                          label={t("clickToUploadLicense", { defaultValue: "Click to upload file" })}
                           hint={t("fileFormatMax5MB", { defaultValue: "PDF, JPG, PNG (max 5MB)" })}
                           existingHint={t("currentFileKeptUnlessChanged", { defaultValue: "Your current file stays on record unless you choose another" })}
                           chooseLabel={t("chooseFile", { defaultValue: "Choose file" })}
@@ -2703,7 +2705,7 @@ export default function KitchenApplicationForm({
                             existingUrl={existingBusinessLicenseUrl}
                             existingTrailing={<VerifiedDocumentChip status={application?.foodEstablishmentCertStatus} url={existingBusinessLicenseUrl} expiry={application?.foodEstablishmentCertExpiry} />}
                             existingVerified={application?.foodEstablishmentCertStatus === 'approved'}
-                            label={t("clickToUploadLicense", { defaultValue: "Click to upload license" })}
+                            label={t("clickToUploadLicense", { defaultValue: "Click to upload file" })}
                             hint={t("fileFormatMax5MB", { defaultValue: "PDF, JPG, PNG (max 5MB)" })}
                             existingHint={t("currentFileKeptUnlessChanged", { defaultValue: "Your current file stays on record unless you choose another" })}
                             chooseLabel={t("chooseFile", { defaultValue: "Choose file" })}

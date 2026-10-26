@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { Check } from "lucide-react";
 import { openChefShopHome, useEarningsSummary, useShopStatus } from "@/components/chef/seller-revenue/hooks/useSellerRevenue";
 import { documentToneFromLabel, getKitchenDisplayStatus } from "@/components/chef/applications/status";
+import { KitchenAccessTracker } from "@/components/chef/applications/KitchenAccessTracker";
 import type {
   AnyApplication,
   KitchenApplicationWithLocation,
@@ -166,9 +167,7 @@ export default function OverviewTabContent({
           title: display.actionLabel || t("ovContinueCta"),
           description: app.location?.name || t("ovKitchenFallback"),
           cta: t("ovContinueCta"),
-          onClick: () => {
-            window.location.href = `/kitchen-requirements/${app.locationId}`;
-          },
+          onClick: () => navigate(`/dashboard?view=kitchen-requests&application=${app.id}`),
         });
       });
 
@@ -295,7 +294,9 @@ export default function OverviewTabContent({
 
   const kitchenSteps = [
     { done: kitchenApplications.length > 0, title: t("homeStepFind"), hint: t("homeStepFindHint"), action: { label: t("homeFindKitchens"), onClick: () => onSetActiveTab("discover-kitchens") } },
-    { done: hasApprovedKitchen, title: t("homeStepRequirements"), hint: t("homeStepRequirementsHint") },
+    // While every request is still with the kitchen, the next step isn't the chef's yet.
+    { done: hasApprovedKitchen, title: t("homeStepRequirements"), hint: t("homeStepRequirementsHint"),
+      waiting: kitchenApplications.length > 0 && !hasApprovedKitchen && !kitchenDisplays.some(({ display }) => display.actionKind === "complete-step") },
     { done: (enrichedBookings?.length ?? 0) > 0, title: t("homeStepBook"), hint: t("homeStepBookHint") },
   ];
   const sellerApproved = latestApp?.status === "approved";
@@ -329,6 +330,7 @@ export default function OverviewTabContent({
     );
   }
 
+  const readyKitchen = !nextBooking && !nextTour ? kitchenDisplays.find(({ display }) => display.actionKind === "book")?.app : undefined;
   return (
     <div className="mx-auto max-w-[1100px] space-y-6 sm:space-y-7">
       <div>
@@ -385,6 +387,13 @@ export default function OverviewTabContent({
                   end={<StatusWord tone={nextTour.status === "confirmed" ? "ok" : "wait"}>{nextTour.status === "confirmed" ? t("homeTourConfirmed") : t("homeTourRequested")}</StatusWord>} />
               </div>
             )}
+          </HomePanel>
+        ) : readyKitchen ? (
+          // Approved, nothing booked yet: the next step is booking (owner-approved mock, Oct 26).
+          <HomePanel className={cn(showSellerAccount ? "lg:col-span-6" : todo.length ? "lg:col-span-8" : "lg:col-span-12")} title={t("homeUpNext")}>
+            <p className="text-xl font-semibold tracking-[-0.015em]">{t("homeNothingBooked", "Nothing booked yet")}</p>
+            <p className="mt-0.5 text-sm text-muted-foreground">{t("homeReadyWhenYou", { defaultValue: "{kitchen} is ready when you are.", kitchen: readyKitchen.location?.name || t("ovKitchenFallback") })}</p>
+            <div className="mt-4"><Button size="sm" className="rounded-full px-4" onClick={() => openKitchenPreview(readyKitchen.locationId)}>{t("kdBook", "Book kitchen time")}</Button></div>
           </HomePanel>
         ) : null}
 
@@ -453,9 +462,10 @@ export default function OverviewTabContent({
         {kitchenDisplays.length > 0 && (
           <HomePanel className={cn(currentRentals.length ? "lg:col-span-6" : "lg:col-span-12")} title={t("homeYourKitchens")} count={kitchenDisplays.length} link={{ label: t("homeFindMore"), onClick: () => onSetActiveTab("discover-kitchens") }}>
             {kitchenDisplays.map(({ app, display }) => (
-              <HomeRow key={app.id} title={app.location?.name || t("ovKitchenFallback")} sub={display.actionKind === "wait" && display.actionLabel && display.actionLabel !== display.label ? display.actionLabel : ""}
-                onClick={() => display.actionKind === "book" ? openKitchenPreview(app.locationId) : display.actionKind === "complete-step" ? navigate(`/kitchen-requirements/${app.locationId}`) : navigate(`/dashboard?view=kitchen-requests&application=${app.id}`)}
+              <HomeRow key={app.id} title={app.location?.name || t("ovKitchenFallback")} sub=""
+                onClick={() => display.actionKind === "book" ? openKitchenPreview(app.locationId) : navigate(`/dashboard?view=kitchen-requests&application=${app.id}`)}
                 end={<>
+                  <KitchenAccessTracker app={app} mini className="hidden sm:flex" />
                   <StatusWord tone={display.tone === "success" ? "ok" : display.tone === "warning" || display.tone === "danger" ? "warn" : "wait"}>{display.label}</StatusWord>
                   {display.actionKind === "book" && <span className="text-sm font-semibold underline underline-offset-[3px]">{t("homeBook")}</span>}
                 </>} />
@@ -481,7 +491,7 @@ export default function OverviewTabContent({
                 <div key={list.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t py-3 first:border-t-0">
                   <p className="min-w-0 flex-1 text-sm"><span className="font-semibold">{list.title}</span><span className="ml-2 tabular-nums text-muted-foreground">{t("homeStepsDone", { done, total: list.steps.length })}</span></p>
                   {next && "action" in next && next.action ? <Button size="sm" variant="outline" className="h-8 rounded-full px-3" onClick={next.action.onClick}>{next.action.label}</Button>
-                    : next ? <span className="text-[13px] text-muted-foreground">{next.title}</span> : null}
+                    : next ? <span className="text-[13px] text-muted-foreground">{"waiting" in next && next.waiting ? t("kdInReview", "Waiting for the kitchen") : next.title}</span> : null}
                   <button type="button" onClick={() => hideList(list.id)} className="text-[13px] text-muted-foreground hover:text-foreground hover:underline">{t("homeHide")}</button>
                 </div>
               );
@@ -489,7 +499,8 @@ export default function OverviewTabContent({
           </section>
         )}
 
-        {!wantsKitchens && (
+        {/* Not beside the kitchen checklist, which already offers the same thing. */}
+        {!wantsKitchens && wantsSelling && (
           <HomePanel className="lg:col-span-12" title={t("homeKitchenToo")} link={{ label: t("homeFindKitchens"), onClick: () => onSetActiveTab("discover-kitchens") }}>
             <p className="text-sm text-muted-foreground">{t("homeKitchenTooBody")}</p>
           </HomePanel>

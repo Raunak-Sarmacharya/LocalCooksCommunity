@@ -25,7 +25,9 @@ export function documentNeedsAction(document: ApplicationDocument) {
 }
 
 /** One location's documents, as on "Your documents", with a View link; used on the application page too. */
-export function ApplicationDocumentRows({ app, viewLink }: { app: KitchenApplicationWithLocation & { documents?: ApplicationDocument[] }; viewLink?: (key: ApplicationDocument["key"]) => ReactNode }) {
+export function ApplicationDocumentRows({ app, viewLink, actions = true }: { app: KitchenApplicationWithLocation & { documents?: ApplicationDocument[] }; viewLink?: (key: ApplicationDocument["key"]) => ReactNode;
+  /** False while the request is still with the kitchen: the page offers one optional "Add now" instead. */
+  actions?: boolean }) {
   const { t, i18n } = useTranslation("chef");
   const statusOf = (document: ApplicationDocument) => !document.uploaded ? t("mdNotUploaded", "Not uploaded")
     : document.renewalPending ? t("mdRenewalInReview", "Renewal in review")
@@ -46,8 +48,8 @@ export function ApplicationDocumentRows({ app, viewLink }: { app: KitchenApplica
         <div className="flex shrink-0 items-center gap-3">
           {document.uploaded && viewLink?.(document.key)}
           {/* Before the booking requirements are sent, the step-2 form; after, the upload form on the application page. */}
-          {needs && <Link href={(app.current_tier ?? 1) < 3 && !app.documentsWaivedAt && !app.tier2_completed_at ? `/apply-kitchen/${app.locationId}` : `/dashboard?view=kitchen-requests&application=${app.id}&renew=1`}
-            className="!min-h-0 rounded-full border border-primary bg-primary px-3 py-1 text-xs font-medium text-primary-foreground">{document.uploaded ? t("mdRenew", "Renew") : t("mdUpload", "Upload")}</Link>}
+          {needs && actions && <Link href={(app.current_tier ?? 1) < 3 && !app.documentsWaivedAt && !app.tier2_completed_at ? `/apply-kitchen/${app.locationId}` : `/dashboard?view=kitchen-requests&application=${app.id}&renew=1`}
+            className="!min-h-0 rounded-full border bg-background px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted">{document.uploaded ? t("mdRenew", "Renew") : t("mdUpload", "Upload")}</Link>}
         </div>
       </li>;
     })}

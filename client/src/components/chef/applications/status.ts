@@ -173,11 +173,11 @@ function resolveApplicationDisplay(
 
   if (status === "rejected") {
     return {
-      label: tr("kdRejected", "Rejected"),
+      label: tr("kdRejected", "Declined"),
       tone: "danger",
       step: Math.min(tier, 3),
-      stepCaption: tr("kdNotApproved", "Not approved"),
-      actionLabel: tr("kdApplyAgain", "Apply again"),
+      stepCaption: tr("kdNotApproved", "Declined"),
+      actionLabel: tr("kdApplyAgain", "Send a new request"),
       actionKind: "discover",
     };
   }
@@ -188,7 +188,7 @@ function resolveApplicationDisplay(
       tone: "neutral",
       step: 0,
       stepCaption: tr("kdCancelled", "Cancelled"),
-      actionLabel: tr("kdApplyAgain", "Apply again"),
+      actionLabel: tr("kdApplyAgain", "Send a new request"),
       actionKind: "discover",
     };
   }
@@ -198,65 +198,65 @@ function resolveApplicationDisplay(
     // Treat that as Step 2 unlocked so chefs aren't stuck behind a "waiting" screen.
     if (tier >= 2 && !step2Submitted) {
       return {
-        label: tr("kdAwaitingDocuments", "Action required"),
+        label: tr("kdAwaitingDocuments", "Booking requirements to send"),
         tone: "warning",
         step: 2,
         stepCaption: tr("kdCompleteStep2", "Complete booking requirements"),
-        actionLabel: tr("kdUploadDocuments", "Continue application"),
+        actionLabel: tr("kdUploadDocuments", "Send booking requirements"),
         actionKind: "complete-step",
       };
     }
 
     return {
-      label: tr("kdInReview", "In review"),
+      label: step2Submitted ? tr("kdDocsWithKitchen", "Booking requirements sent") : tr("kdInReview", "Waiting for the kitchen"),
       tone: "progress",
       step: step2Submitted ? 2 : 1,
       stepCaption: step2Submitted ? tr("kdStep2Of3Submitted", "Booking requirements submitted") : tr("kdStep1Of3", "Request to apply"),
-      actionLabel: tr("kdApplicationInProgress", "Application in progress"),
+      actionLabel: tr("kdApplicationInProgress", "Waiting for the kitchen"),
       actionKind: "wait",
     };
   }
 
   if (status === "approved" && tier >= 3) {
     return {
-      label: tr("kdApproved", "Approved"),
+      label: tr("kdApproved", "Ready to book"),
       tone: "success",
       step: 3,
-      stepCaption: tr("ovReady", "Book Now"),
-      actionLabel: tr("kdBook", "Book"),
+      stepCaption: tr("ovReady", "Ready to book"),
+      actionLabel: tr("kdBook", "Book kitchen time"),
       actionKind: "book",
     };
   }
 
   if (status === "approved" && step2Submitted) {
     return {
-      label: tr("kdInReview", "In review"),
+      label: tr("kdDocsWithKitchen", "Booking requirements sent"),
       tone: "progress",
       step: 2,
       stepCaption: tr("kdStep2Of3Submitted", "Booking requirements submitted"),
-      actionLabel: tr("kdApplicationInProgress", "Application in progress"),
+      actionLabel: tr("kdApplicationInProgress", "Waiting for the kitchen"),
       actionKind: "wait",
     };
   }
 
   if (status === "approved" && (tier === 2 || tier === 1) && !step2Submitted) {
     return {
-      label: tr("kdAwaitingDocuments", "Action required"),
+      label: tr("kdAwaitingDocuments", "Booking requirements to send"),
       tone: "warning",
       step: 2,
       stepCaption: tr("kdCompleteStep2", "Complete booking requirements"),
-      actionLabel: tr("kdUploadDocuments", "Continue application"),
+      actionLabel: tr("kdUploadDocuments", "Send booking requirements"),
       actionKind: "complete-step",
     };
   }
 
   if (status === "approved") {
     return {
-      label: tr("kdAwaitingDocuments", "Action required"),
+      label: tr("kdAwaitingDocuments", "Booking requirements to send"),
       tone: "progress",
       step: 1,
       stepCaption: tr("kdContinueToStep2", "Continue"),
-      actionLabel: tr("kdUploadDocuments", "Continue application"),
+      actionLabel: tr("kdUploadDocuments", "Send booking requirements"),
       actionKind: "complete-step",
     };
   }
@@ -266,7 +266,7 @@ function resolveApplicationDisplay(
     tone: "neutral",
     step: 0,
     stepCaption: "",
-    actionLabel: tr("kdApplicationInProgress", "Application in progress"),
+    actionLabel: tr("kdApplicationInProgress", "Waiting for the kitchen"),
     actionKind: "wait",
   };
 }

@@ -55,6 +55,10 @@ export default function ApplyToKitchen() {
   });
   const progressKey = `kitchen_apply_progress_${kitchenId || locationId}`;
   const onePageMounted = useRef(false);
+  // Signed in when the page opened: the request sits inside the app (owner, Oct 26). Someone who signs in mid-request keeps
+  // the plain layout, because swapping layouts would remount the form and drop their answers.
+  const inAppAtStart = useRef<boolean | null>(null);
+  if (inAppAtStart.current === null && !authLoading) inAppAtStart.current = !!user && emailVerified;
   const [activeView, setActiveView] = useState("discover-kitchens");
   const [submittedTier, setSubmittedTier] = useState<number | null>(null);
   const { t } = useTranslation("kitchen");
@@ -117,6 +121,13 @@ export default function ApplyToKitchen() {
   const applicationProgress = hasKitchenApp && locationApplication
     ? getKitchenDisplayStatus(locationApplication)
     : null;
+  // After Send, and for anyone who already applied, the kitchen page is the one place for this kitchen (owner, Oct 26):
+  // it says where the request stands. Only booking requirements still to send keep this page (the step-2 form).
+  const goToKitchenPage = (query: string) => navigate(`/dashboard?view=kitchen-requests&location=${locationId}${query}`, { replace: true });
+  const alreadyApplied = !!user && emailVerified && submittedTier === null && !!locationApplication && hasKitchenApp
+    && !["rejected", "cancelled"].includes(locationApplication.status) && !(applicationProgress?.actionKind === "complete-step" && !applicationProgress.bookingBlocked);
+  useEffect(() => { if (alreadyApplied && !locationAppLoading) goToKitchenPage("&notice=applied"); }, [alreadyApplied, locationAppLoading]);
+  const onRequirements = applicationProgress?.actionKind === "complete-step" && !applicationProgress.bookingBlocked;
   const isAwaitingReview = applicationProgress?.actionKind === "wait" &&
     (locationApplication?.current_tier ?? 1) < 3;
   const step2Submitted = locationApplication ? hasStep2BeenSubmitted(locationApplication) : false;
@@ -182,6 +193,7 @@ export default function ApplyToKitchen() {
         onSuccess={(tier) => {
           try { localStorage.removeItem(progressKey); sessionStorage.removeItem(progressKey); } catch { /* storage unavailable */ }
           setSubmittedTier(tier);
+          goToKitchenPage(tier >= 2 ? "&sent=requirements" : "&sent=1");
         }}
         onCancel={() => navigate(`/kitchen-requirements/${locationId}`)}
       />
@@ -244,9 +256,9 @@ export default function ApplyToKitchen() {
 
   const applyBreadcrumbs = useMemo(
     () => [
-      { label: t("dashboard", { defaultValue: "Dashboard" }), onClick: () => navigate("/dashboard"), navId: "overview" as const },
+      // Same trail as My kitchens and the kitchen page: "Kitchens › {location} › {step}".
       {
-        label: t("discoverKitchens", { defaultValue: "Discover Kitchens" }),
+        label: t("kitchensCrumb", { defaultValue: "Kitchens" }),
         onClick: () => navigate("/dashboard?view=discover-kitchens"),
         navId: "discover-kitchens" as const,
       },
@@ -254,9 +266,9 @@ export default function ApplyToKitchen() {
         label: location?.name || t("applyFlowKitchenFallbackName", { defaultValue: "Kitchen" }),
         onClick: () => navigate(`/kitchen-requirements/${locationId}`),
       },
-      { label: t("requestToApply", { defaultValue: "Request to apply" }) },
+      { label: onRequirements ? t("bookingRequirementsCrumb", { defaultValue: "Booking requirements" }) : t("requestToApply", { defaultValue: "Request to apply" }) },
     ],
-    [t, navigate, location?.name, locationId]
+    [t, navigate, location?.name, locationId, onRequirements]
   );
 
   const inShell = useChefShellChrome({
@@ -290,11 +302,13 @@ export default function ApplyToKitchen() {
     && (onePageMounted.current || (!authLoading && !locationLoading && !kitchensLoading && !(user && emailVerified && (locationAppLoading || tourLoading))));
   onePageMounted.current = showOnePage;
   if (showOnePage) {
-    return <RequestToCookPage location={location as any} kitchen={selectedKitchen} kitchenId={selectedKitchen ? String(selectedKitchen.id) : kitchenId} emailVerified={emailVerified}
+    const page = <RequestToCookPage location={location as any} kitchen={selectedKitchen} kitchenId={selectedKitchen ? String(selectedKitchen.id) : kitchenId} emailVerified={emailVerified}
       globalApp={globalApp} tourReference={tourNextStep?.prefill}
       sourceTourId={tourNextStep?.action === 'apply' ? tourNextStep.sourceTourId : undefined}
       onCancel={() => navigate(`/kitchen-preview/${locationId}`)}
-      onSent={() => { void refetchLocationApp(); setSubmittedTier(1); }} />;
+      onSent={() => { void refetchLocationApp(); setSubmittedTier(1); goToKitchenPage("&sent=1"); }} />;
+    if (!inAppAtStart.current || inShell) return page;
+    return <ChefDashboardLayout activeView={activeView} onViewChange={applyOnViewChange} breadcrumbs={applyBreadcrumbs}>{page}</ChefDashboardLayout>;
   }
 
   if (authLoading || locationLoading || kitchensLoading) {

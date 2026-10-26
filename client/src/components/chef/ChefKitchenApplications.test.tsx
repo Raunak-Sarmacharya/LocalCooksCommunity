@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 const state = vi.hoisted(() => ({ search: "?view=kitchen-requests", applications: [] as any[], loading: false, error: null as any, navigate: vi.fn(), refetch: vi.fn() }));
 vi.mock("@/hooks/use-chef-kitchen-applications", () => ({ useChefKitchenApplications: () => ({ applications: state.applications, isLoading: state.loading, error: state.error, refetch: state.refetch }) }));
 vi.mock("wouter", async original => ({ ...await original<typeof import("wouter")>(), useSearch: () => state.search, useLocation: () => ["/dashboard", state.navigate] }));
-vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string, options?: any) => typeof options === "string" ? options : options?.defaultValue?.replace("{number}", String(options.number)) || key, i18n: { language: "en-CA" } }) }));
+vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string, options?: any) => typeof options === "string" ? options : options?.defaultValue?.replace(/\{(\w+)\}/g, (_: string, name: string) => String(options[name] ?? "")) || key, i18n: { language: "en-CA" } }) }));
 vi.mock("@/hooks/use-presigned-document-url", () => ({ usePresignedDocumentUrl: (url: string) => ({ url, isLoading: false, error: null }) }));
 import ChefKitchenApplications from "./ChefKitchenApplications";
 
@@ -19,28 +19,25 @@ beforeEach(() => {
 afterEach(() => { cleanup(); client.clear(); });
 const page = () => <QueryClientProvider client={client}><ChefKitchenApplications /></QueryClientProvider>;
 
-it("uses the real table for sorting, filtering, and mouse or keyboard row navigation", () => {
+it("lists kitchens as cards, what needs the chef first, each with its next step (owner-approved mock, Oct 26)", () => {
   render(page());
-  const table = screen.getByRole("table");
-  const newest = within(table).getByRole("link", { name: "APPLICATION-10" });
-  fireEvent.click(newest.closest("tr")!);
-  expect(state.navigate).toHaveBeenCalledWith("/dashboard?view=kitchen-requests&application=10");
-  fireEvent.keyDown(within(table).getByRole("link", { name: "APPLICATION-8" }).closest("tr")!, { key: "Enter" });
-  expect(state.navigate).toHaveBeenCalledWith("/dashboard?view=kitchen-requests&application=8");
-  fireEvent.change(screen.getByRole("textbox", { name: "Search kitchen applications" }), { target: { value: "Kitchen 9" } });
-  expect(within(table).getByRole("link", { name: "APPLICATION-9" })).toBeInTheDocument();
-  expect(within(table).queryByRole("link", { name: "APPLICATION-8" })).not.toBeInTheDocument();
-  fireEvent.change(screen.getByRole("textbox"), { target: { value: "" } });
-  fireEvent.click(screen.getByRole("button", { name: /Action required/ }));
-  expect(within(table).getByRole("link", { name: "APPLICATION-8" })).toBeInTheDocument();
-  expect(within(table).queryByRole("link", { name: "APPLICATION-9" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("table")).not.toBeInTheDocument();
+  expect(screen.queryByText(/APPLICATION-/)).not.toBeInTheDocument();
+  const rows = screen.getAllByTestId(/^kitchen-access-row-/);
+  expect(rows.map(row => row.getAttribute("data-testid"))).toEqual(["kitchen-access-row-8", "kitchen-access-row-7", "kitchen-access-row-9", "kitchen-access-row-10"]);
+  expect(rows[0]).toHaveAttribute("href", "/dashboard?view=kitchen-requests&application=8");
+  expect(within(rows[0]).getByText("Send booking requirements")).toBeInTheDocument();
+  expect(within(rows[2]).getByText("Book kitchen time")).toBeInTheDocument();
+  expect(screen.getByText(/1 needs you/)).toBeInTheDocument();
 });
 
 it("opens a full page for the linked application with every submitted custom answer and document", () => {
   state.search += "&application=8";
   state.applications[1] = fixture(8, "approved", 2, { foodSafetyLicenseUrl: "https://files.localcooks.ca/documents/safety.pdf", foodSafetyLicenseExpiry: "2099-12-31", foodEstablishmentCertUrl: "https://files.localcooks.ca/documents/licence.pdf", foodEstablishmentCertExpiry: "2099-11-30", customFieldsData: { consent: false, file_a: "https://files.localcooks.ca/documents/business.pdf" }, tier2_completed_at: "2026-10-09", tier_data: { tierFiles: { tier2_insurance_document: "https://files.localcooks.ca/documents/insurance.pdf" }, kitchen_experience_description: "I prepare meals for 20 people.", tier2_custom_fields_data: { file_b: "https://files.localcooks.ca/documents/cleaning.pdf", capacity: 0 }, admin_review_note: "Private internal note" }, feedback: "Please renew your licence.", sourceTourId: 83 });
   render(page());
-  expect(screen.getByRole("heading", { name: "Kitchen application", level: 1 })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Kitchen 8", level: 1 })).toBeInTheDocument();
+  expect(screen.getByTestId("kitchen-access-tracker")).toBeInTheDocument();
+  expect(screen.getByTestId("kitchen-access-next")).toHaveTextContent("Kitchen 8 is checking your booking requirements");
   expect(screen.queryByRole("table")).not.toBeInTheDocument();
   expect(screen.getByText("Jamie’s catering")).toBeInTheDocument();
   expect(screen.getByText("Weekly (regular user)")).toBeInTheDocument();
@@ -52,24 +49,61 @@ it("opens a full page for the linked application with every submitted custom ans
   for (const name of ["safety", "licence", "business", "insurance", "cleaning"]) expect(screen.getAllByRole("link").some(link => link.getAttribute("href") === `https://files.localcooks.ca/documents/${name}.pdf`)).toBe(true);
   expect(screen.getByRole("link", { name: "View kitchen tour" })).toHaveAttribute("href", "/dashboard?view=viewings&viewing=83");
   expect(screen.queryByText(/Private internal note|manager.*review|admin.*review/i)).not.toBeInTheDocument();
-  expect(screen.queryByRole("link", { name: "Continue application" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "Send booking requirements" })).not.toBeInTheDocument();
 });
 
 it.each([
-  ["approved", 2, {}, "Continue application"],
-  ["approved", 3, {}, "Book kitchen"],
-  ["rejected", 2, {}, "Apply again"],
+  ["approved", 2, {}, "Send booking requirements"],
+  ["approved", 3, {}, "Book kitchen time"],
+  ["rejected", 2, {}, "Send a new request"],
 ])("offers the correct action for %s at tier %s", (status, tier, extra, label) => {
   state.search += "&application=8"; state.applications[1] = fixture(8, status, tier, extra);
   render(page());
-  expect(screen.getByRole(label === "Book kitchen" ? "button" : "link", { name: label })).toBeInTheDocument();
+  expect(screen.getByRole(label === "Book kitchen time" ? "button" : "link", { name: label })).toBeInTheDocument();
+});
+
+it("lands on the kitchen page after Send with a one-time banner, selected by location", () => {
+  state.search += "&location=46&sent=1"; state.applications = [fixture(7, "inReview", 1)];
+  render(page());
+  expect(screen.getByTestId("request-sent-banner")).toHaveTextContent("Request sent to Kitchen 7.");
+  expect(screen.getByTestId("kitchen-access-next")).toHaveTextContent("Waiting for Kitchen 7");
+  expect(screen.getByText("Nothing is reserved or charged.", { exact: false })).toBeInTheDocument();
+});
+
+it("tells a chef who already applied where the request stands", () => {
+  state.search += "&location=46&notice=applied"; state.applications = [fixture(7, "inReview", 1)];
+  render(page());
+  expect(screen.getByTestId("application-tour-notice")).toHaveTextContent("You’ve already sent Kitchen 7 a request.");
+});
+
+it("in review, the kitchen's documents are optional to add now; no upload buttons yet", () => {
+  state.search += "&application=7"; state.applications = [fixture(7, "inReview", 1, { documents: [{ key: "foodSafetyLicense", label: "Food safety certificate", mode: "required", hasExpiry: true, uploaded: false, status: null, expiry: null, daysLeft: null, stage: null, renewalPending: false, waived: false }] })];
+  render(page());
+  expect(screen.getByText("Next, the kitchen asks for these")).toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "Upload" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Add now" }));
+  expect(screen.getByRole("button", { name: "Save documents" })).toBeInTheDocument();
+});
+
+it("approved without booking requirements: step 2 reads Not needed and the page says so", () => {
+  state.search += "&application=9"; state.applications[2] = fixture(9, "approved", 3, { documentsWaivedAt: "2026-10-20" });
+  render(page());
+  expect(screen.getByTestId("kitchen-access-tracker")).toHaveTextContent("Not needed");
+  expect(screen.getByTestId("kitchen-access-next")).toHaveTextContent("doesn’t need booking requirements from you");
+});
+
+it("a customer the kitchen added sees who added them, not a request they never sent", () => {
+  state.search += "&application=8"; state.applications[1] = fixture(8, "approved", 2, { tier_data: { addedByKitchen: true } });
+  render(page());
+  expect(screen.getByTestId("kitchen-access-tracker")).toHaveTextContent("Added by the kitchen");
+  expect(screen.getByTestId("kitchen-access-next")).toHaveTextContent("Kitchen 8 added you as a customer.");
 });
 
 it("keeps approved access visible when the kitchen is paused without offering booking", () => {
   state.search += "&application=9"; state.applications[2].locationListed = false;
   render(page());
   expect(screen.getByText(/Your kitchen access is approved\. Booking will be available/)).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "Book kitchen" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Book kitchen time" })).not.toBeInTheDocument();
 });
 
 it("handles missing applications and fetch errors without showing another record", () => {
@@ -83,14 +117,16 @@ it("handles missing applications and fetch errors without showing another record
   expect(screen.getByRole("alert")).toHaveTextContent("We couldn’t load your kitchen applications");
 });
 
-it.each(["document_expired", "document_review_required"])("replaces Book kitchen with a renew action when documents block booking (%s)", status => {
+it.each(["document_expired", "document_review_required"])("replaces Book kitchen with a renew action when documents block booking (%s)", async status => {
   state.search += "&application=9"; state.applications[2] = fixture(9, "approved", 3, { tier2_completed_at: "2026-10-09", bookingEligibility: { canBook: false, status, message: "" } });
   const scrollIntoView = vi.fn(); Element.prototype.scrollIntoView = scrollIntoView;
   render(page());
-  expect(screen.queryByRole("button", { name: "Book kitchen" })).not.toBeInTheDocument();
-  expect(screen.queryByRole("link", { name: "Continue application" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Book kitchen time" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "Send booking requirements" })).not.toBeInTheDocument();
+  expect(document.getElementById("renew-access-documents")).toBeNull(); // opens on request, not beside the same list
   fireEvent.click(screen.getByRole("button", { name: "Renew documents" }));
-  expect(scrollIntoView).toHaveBeenCalled();
+  await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+  expect(document.getElementById("renew-access-documents")).not.toBeNull();
 });
 
 it("shows no action at all while a renewal is under review or access has ended", () => {
@@ -98,8 +134,8 @@ it("shows no action at all while a renewal is under review or access has ended",
     cleanup();
     state.search = "?view=kitchen-requests&application=9"; state.applications[2] = fixture(9, "approved", 3, { tier2_completed_at: "2026-10-09", bookingEligibility: { canBook: false, status, message: "" } });
     render(page());
-    expect(screen.queryByRole("button", { name: "Book kitchen" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Book kitchen time" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Renew documents" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Continue application" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Send booking requirements" })).not.toBeInTheDocument();
   }
 });

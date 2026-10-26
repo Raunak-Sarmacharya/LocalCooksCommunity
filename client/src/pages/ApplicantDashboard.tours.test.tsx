@@ -5,7 +5,7 @@ vi.mock('@/hooks/use-auth', () => ({ useFirebaseAuth: () => ({ user: { uid: 'fix
 vi.mock('@/lib/firebase', () => ({ auth: { currentUser: { getIdToken: async () => 'fixture-token' } } }));
 vi.mock('@/lib/queryClient', () => ({ queryClient: { invalidateQueries: vi.fn() } }));
 vi.mock('@tanstack/react-query', () => ({ useQuery: () => ({ data: [], isLoading: false, refetch: vi.fn() }) }));
-vi.mock('@/hooks/use-chef-kitchen-applications', () => ({ useChefKitchenApplications: () => ({ applications: [] }) }));
+vi.mock('@/hooks/use-chef-kitchen-applications', () => ({ useChefKitchenApplications: () => ({ applications: [{ id: 57, locationId: 4, location: { name: 'Harbour Kitchen' } }] }) }));
 vi.mock('@/hooks/use-kitchen-bookings', () => ({ useKitchenBookings: () => ({ bookings: [], kitchens: [], cancelBooking: { mutate: vi.fn() } }) }));
 vi.mock('@/hooks/use-chef-resolution-center', () => ({ useChefResolutionCenter: () => ({ hasAnyItems: false, pendingDamageClaims: [], pendingPenalties: [] }) }));
 vi.mock('@/hooks/use-chef-sidebar-hidden-items', () => ({ useChefSidebarHiddenItems: () => [] }));
@@ -52,8 +52,10 @@ it('links a full-page application under My kitchens and returns to the table fro
   window.history.replaceState({}, '', '/dashboard?view=kitchen-requests&application=57');
   render(<ApplicantDashboard />);
   const parent = await within(await screen.findByRole('navigation', { name: 'Breadcrumb' })).findByRole('button', { name: 'shellMyKitchens' });
-  expect(screen.getByRole('navigation', { name: 'Breadcrumb' })).toHaveTextContent('APPLICATION-57');
+  // The kitchen's name, never a reference number (owner-approved mock, Oct 26).
+  expect(screen.getByRole('navigation', { name: 'Breadcrumb' })).toHaveTextContent('Harbour Kitchen');
+  expect(screen.getByRole('navigation', { name: 'Breadcrumb' })).not.toHaveTextContent('APPLICATION-57');
   fireEvent.click(parent);
   await waitFor(() => expect(window.location.search).toBe('?view=kitchen-requests'));
-  expect(screen.queryByText('APPLICATION-57')).not.toBeInTheDocument();
+  expect(within(screen.getByRole('navigation', { name: 'Breadcrumb' })).queryByText('Harbour Kitchen')).not.toBeInTheDocument();
 });

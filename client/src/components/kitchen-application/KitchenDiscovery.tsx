@@ -164,7 +164,8 @@ export default function KitchenDiscovery({
 
   const kitchenStatusLabel = (status: string) => getKitchenDisplayStatus({ status }, tChef).label;
 
-  if (activeTab === "applications") return <div className="min-w-0 space-y-6">{!new URLSearchParams(search).has("application") && <ChefPageHeader title={tChef("shellMyKitchenApplications", "My Kitchen Applications")} description={t("applyFlowMyApplicationsDesc", "Track your kitchen applications.")} />}<ChefKitchenApplications onOpenChat={onOpenChat} /></div>;
+  // My kitchens and the kitchen page carry their own titles (owner-approved mock, Oct 26).
+  if (activeTab === "applications") return <div className="min-w-0 space-y-6"><ChefKitchenApplications onOpenChat={onOpenChat} /></div>;
 
   if (isLoading) {
     return (

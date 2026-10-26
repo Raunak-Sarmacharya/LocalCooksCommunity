@@ -377,7 +377,7 @@
   "clickToUploadCertificate": "Cliquez pour télécharger",
   "clickToUploadFile": "Cliquez pour télécharger un fichier",
   "clickToUploadInsurance": "Cliquez pour télécharger l'assurance",
-  "clickToUploadLicense": "Cliquez pour télécharger la licence",
+  "clickToUploadLicense": "Cliquez pour téléverser un fichier",
   "closeLightbox": "Fermer la galerie",
   "coldStorageQuestion": "Cette chambre froide qui tourne à vide la nuit ?",
   "comesWithBooking": "Inclus",
@@ -1768,8 +1768,8 @@
   "rtcWhen": "Quand aimeriez-vous cuisiner?",
   "rtcOptional": "(facultatif)",
   "rtcWhenHelp": "Choisissez des jours et des heures pour voir le prix. Rien n’est réservé ni facturé.",
-  "rtcTitle": "Cuisiner à {name}",
-  "rtcLead": "{address}. Envoyez une seule demande et la cuisine vous répondra.",
+  "rtcTitle": "Demande d’adhésion à {name}",
+  "rtcLead": "{address}. La cuisine répond par courriel, puis demande ses exigences de réservation. Rien n’est réservé ni facturé.",
   "yourDetails": "Vos coordonnées",
   "preferredDaysProgress": "Jours souhaités",
   "yourRequest": "Votre demande",
@@ -1859,5 +1859,9 @@
   "rdContinueGoogle": "Continuer avec Google",
   "rdEmailCodeInstead": "M’envoyer plutôt un code",
   "rdKitchenAccount": "Ce courriel sert à un compte de cuisine. Utilisez un autre courriel pour demander du temps en cuisine.",
-  "gridCardStorageCount": "{count, plural, one {# espace d’entreposage} other {# espaces d’entreposage}}"
+  "gridCardStorageCount": "{count, plural, one {# espace d’entreposage} other {# espaces d’entreposage}}",
+  "rdFromProfile": "De votre profil :",
+  "rdEditProfile": "Modifier",
+  "bookingRequirementsCrumb": "Exigences de réservation",
+  "kitchensCrumb": "Cuisines"
 }

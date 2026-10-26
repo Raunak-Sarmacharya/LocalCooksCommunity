@@ -919,12 +919,15 @@ export default function ApplicantDashboard() {
       return [...baseBreadcrumbs, tours, ...(tourId ? [{ label: `TOUR-${tourId}` }] : [])];
     }
     if (activeTab === 'kitchen-requests') {
-      const applicationId = new URLSearchParams(dashboardSearch).get('application');
+      const params = new URLSearchParams(dashboardSearch);
+      const applicationId = params.get('application') || params.get('location');
+      // The kitchen's name, never a reference number (owner-approved mock, Oct 26).
+      const kitchen = kitchenApplications.find(app => String(app.id) === params.get('application') || String(app.locationId) === params.get('location'));
       return [
         ...baseBreadcrumbs,
         { label: t("shellKitchens"), onClick: () => navigate('/dashboard?view=discover-kitchens') },
         { label: t("shellMyKitchens"), navId: activeTab, ...(applicationId ? { onClick: () => navigate('/dashboard?view=kitchen-requests') } : {}) },
-        ...(applicationId ? [{ label: /^\d+$/.test(applicationId) ? `APPLICATION-${applicationId}` : t("applicationPageTitle", "Kitchen application") }] : []),
+        ...(applicationId ? [{ label: kitchen?.location?.name || t("applicationPageTitle", "Kitchen application") }] : []),
       ];
     }
 
@@ -944,7 +947,7 @@ export default function ApplicantDashboard() {
     }
 
     return undefined;
-  }, [activeTab, applicationViewMode, trainingViewMode, t, guardedApplicationNavigate, dashboardSearch, navigate]);
+  }, [activeTab, applicationViewMode, trainingViewMode, t, guardedApplicationNavigate, dashboardSearch, navigate, kitchenApplications]);
 
   const shellActiveView = activeTab;
 

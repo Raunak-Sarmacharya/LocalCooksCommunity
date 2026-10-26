@@ -377,7 +377,7 @@
   "clickToUploadCertificate": "Натисніть, щоб завантажити сертифікат",
   "clickToUploadFile": "Натисніть, щоб завантажити файл",
   "clickToUploadInsurance": "Натисніть, щоб завантажити страховий документ",
-  "clickToUploadLicense": "Натисніть, щоб завантажити ліцензію",
+  "clickToUploadLicense": "Натисніть, щоб завантажити файл",
   "closeLightbox": "Закрити галерею",
   "coldStorageQuestion": "Холодильні камери простоюють уночі?",
   "comesWithBooking": "Включено",
@@ -1768,8 +1768,8 @@
   "rtcWhen": "Коли ви хочете готувати?",
   "rtcOptional": "(необов’язково)",
   "rtcWhenHelp": "Виберіть дні й години, щоб побачити ціну. Нічого не бронюється і не списується.",
-  "rtcTitle": "Готуйте в {name}",
-  "rtcLead": "{address}. Надішліть один запит, і кухня вам відповість.",
+  "rtcTitle": "Запит на подання до {name}",
+  "rtcLead": "{address}. Кухня відповість електронною поштою, а потім попросить свої вимоги до бронювання. Нічого не бронюється і не оплачується.",
   "yourDetails": "Ваші дані",
   "preferredDaysProgress": "Бажані дні",
   "yourRequest": "Ваш запит",
@@ -1859,5 +1859,9 @@
   "rdContinueGoogle": "Продовжити з Google",
   "rdEmailCodeInstead": "Натомість надіслати код",
   "rdKitchenAccount": "Ця адреса використовується для облікового запису кухні. Вкажіть іншу адресу, щоб запитати час на кухні.",
-  "gridCardStorageCount": "{count, plural, one {# місце для зберігання} few {# місця для зберігання} many {# місць для зберігання} other {# місця для зберігання}}"
+  "gridCardStorageCount": "{count, plural, one {# місце для зберігання} few {# місця для зберігання} many {# місць для зберігання} other {# місця для зберігання}}",
+  "rdFromProfile": "З вашого профілю:",
+  "rdEditProfile": "Змінити",
+  "bookingRequirementsCrumb": "Вимоги до бронювання",
+  "kitchensCrumb": "Кухні"
 }

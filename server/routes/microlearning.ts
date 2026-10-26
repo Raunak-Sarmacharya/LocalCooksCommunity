@@ -49,7 +49,8 @@ router.get("/progress/:userId", async (req: Request, res: Response) => {
     let userId: number;
 
     // If param is a Firebase UID (not a number), use the authenticated user's Neon ID
-    if (isNaN(parseInt(paramUserId))) {
+    // Only an all-digit id is a Neon id: a Firebase UID can start with digits ("4Lhg…" parsed as user 4 → 403).
+    if (!/^\d+$/.test(paramUserId)) {
       // Firebase UID passed - use authenticated user's Neon ID
       userId = req.neonUser.id;
     } else {
@@ -227,7 +228,8 @@ router.get("/completion/:userId", async (req: Request, res: Response) => {
     const paramUserId = req.params.userId;
     let userId: number;
 
-    if (isNaN(parseInt(paramUserId))) {
+    // Only an all-digit id is a Neon id: a Firebase UID can start with digits ("4Lhg…" parsed as user 4 → 403).
+    if (!/^\d+$/.test(paramUserId)) {
       userId = req.neonUser.id;
     } else {
       userId = parseInt(paramUserId);

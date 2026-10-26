@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 import { normalizePhoneNumber, isValidNorthAmericanPhone, formatPhoneForDisplay } from "@shared/phone-validation";
 import { duplicateAccountKind } from "@/lib/registration-error";
 import GoogleIcon from "@/components/auth/GoogleIcon";
+import { useIsChefShell } from "@/layouts/chef-shell-context";
 
 export type RequestIdentity = { fullName: string; email: string; phone: string };
 export type DetailsMode = "signed-in" | "email" | "existing" | "new";
@@ -51,6 +52,7 @@ export function RequestDetails({ profilePhone, showErrors, onChange, phoneError 
 }) {
   const { t } = useTranslation("kitchen");
   const { user, logout, sendSignInCode, signInWithEmailCode, signInWithGoogle, login } = useFirebaseAuth();
+  const inShell = useIsChefShell();
   const [email, setEmail] = useState("");
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
@@ -134,6 +136,12 @@ export function RequestDetails({ profilePhone, showErrors, onChange, phoneError 
     } finally { setBusy(false); }
   };
 
+  // Inside the app there is no "Not you?": the details simply come from the profile, editable there (owner, Oct 25).
+  if (signedIn && inShell) {
+    return <p className="text-sm text-foreground/80" data-testid="request-details-profile">
+      {t("rdFromProfile", "From your profile:")} <span className="font-medium text-foreground">{identity?.fullName || user?.email}</span> · {user?.email}{profilePhone ? ` · ${formatPhoneForDisplay(profilePhone)}` : ""}
+      {" · "}<a href="/dashboard?view=profile" className="font-medium text-primary underline-offset-4 hover:underline">{t("rdEditProfile", "Edit")}</a></p>;
+  }
   if (signedIn) {
     return <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl border bg-muted/30 px-4 py-3" data-testid="request-details-signed-in">
       <div className="min-w-0">

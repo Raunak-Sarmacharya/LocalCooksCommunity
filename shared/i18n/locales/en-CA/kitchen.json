@@ -377,7 +377,7 @@
   "clickToUploadCertificate": "Click to upload certificate",
   "clickToUploadFile": "Click to upload file",
   "clickToUploadInsurance": "Click to upload insurance document",
-  "clickToUploadLicense": "Click to upload license",
+  "clickToUploadLicense": "Click to upload file",
   "closeLightbox": "Close lightbox",
   "coldStorageQuestion": "That cold storage sitting quiet overnight?",
   "comesWithBooking": "Included",
@@ -1768,8 +1768,8 @@
   "rtcWhen": "When would you like to cook?",
   "rtcOptional": "(optional)",
   "rtcWhenHelp": "Pick days and hours to see the price. Nothing is reserved or charged.",
-  "rtcTitle": "Cook at {name}",
-  "rtcLead": "{address}. Send one request and the kitchen will get back to you.",
+  "rtcTitle": "Request to apply to {name}",
+  "rtcLead": "{address}. The kitchen replies by email, then asks for its booking requirements. Nothing is reserved or charged.",
   "yourDetails": "Your details",
   "preferredDaysProgress": "Preferred days",
   "yourRequest": "Your request",
@@ -1860,5 +1860,9 @@
   "rdContinueGoogle": "Continue with Google",
   "rdEmailCodeInstead": "Email me a code instead",
   "rdKitchenAccount": "This email is used for a kitchen account. Use a different email to request kitchen time.",
-  "gridCardStorageCount": "{count, plural, one {# storage space} other {# storage spaces}}"
+  "gridCardStorageCount": "{count, plural, one {# storage space} other {# storage spaces}}",
+  "rdFromProfile": "From your profile:",
+  "rdEditProfile": "Edit",
+  "bookingRequirementsCrumb": "Booking requirements",
+  "kitchensCrumb": "Kitchens"
 }

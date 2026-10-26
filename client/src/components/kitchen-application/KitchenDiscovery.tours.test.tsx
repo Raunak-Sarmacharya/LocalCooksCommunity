@@ -20,6 +20,8 @@ it('switches chef tabs with a linked tour without changing hook order or duplica
   expect(screen.getByRole('heading', { name: 'TOUR-77 · Harbour kitchen' })).toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: 'Your kitchen tours' })).not.toBeInTheDocument();
   rendered.rerender(page('applications'));
-  expect(screen.getByRole('heading', { name: 'My Kitchen Applications' })).toBeInTheDocument();
+  // My kitchens carries its own title now (owner-approved mock, Oct 26): no second header above it.
+  expect(screen.getByText('Kitchen applications table')).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'My Kitchen Applications' })).not.toBeInTheDocument();
   client.clear();
 });

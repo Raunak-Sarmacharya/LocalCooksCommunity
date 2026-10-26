@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { X } from "lucide-react";
+import { KitchenAccessIntro } from "@/components/chef/applications/KitchenAccessTracker";
 import Header from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -116,11 +117,12 @@ export function RequestToCookPage({ location, kitchen, kitchenId, emailVerified,
     <main className={inShell ? "mx-auto max-w-6xl px-4 pb-12 pt-4 sm:px-6" : "mx-auto max-w-6xl px-4 pb-16 pt-[calc(var(--header-total)_+_1.5rem)] sm:px-6 sm:pt-[calc(var(--header-total)_+_2rem)]"}>
       <header className="mb-6 flex items-start justify-between gap-6">
         <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight">{t("rtcTitle", { defaultValue: "Cook at {name}", name: kitchenName })}</h1>
-          <p className="mt-1.5 max-w-2xl text-sm leading-6 text-muted-foreground">{t("rtcLead", { defaultValue: "{address}. Send one request and the kitchen will get back to you.", address: location.address })}</p>
+          <h1 className="text-2xl font-semibold tracking-tight">{t("rtcTitle", { defaultValue: "Request to apply to {name}", name: location.name || kitchenName })}</h1>
+          <p className="mt-1.5 max-w-2xl text-sm leading-6 text-muted-foreground">{t("rtcLead", { defaultValue: "{address}. The kitchen replies by email, then asks for its booking requirements. Nothing is reserved or charged.", address: location.address })}</p>
         </div>
         <Button variant="ghost" className="shrink-0 gap-2 text-muted-foreground" onClick={onCancel}><X className="h-4 w-4" aria-hidden />{t("cancelBtn", { defaultValue: "Cancel" })}</Button>
       </header>
+      {!codeFlow.target && <div className="mb-6 rounded-xl border bg-card px-5 py-5 sm:px-6"><KitchenAccessIntro /></div>}
       {content}
     </main>
   </div>;
