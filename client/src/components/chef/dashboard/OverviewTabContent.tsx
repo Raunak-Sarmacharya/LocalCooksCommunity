@@ -11,7 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { Check } from "lucide-react";
 import { openChefShopHome, useEarningsSummary, useShopStatus } from "@/components/chef/seller-revenue/hooks/useSellerRevenue";
-import { documentToneFromLabel, getKitchenDisplayStatus } from "@/components/chef/applications/status";
+import { documentToneFromLabel, getKitchenDisplayStatus, isActiveKitchenApplication } from "@/components/chef/applications/status";
 import { KitchenAccessTracker } from "@/components/chef/applications/KitchenAccessTracker";
 import type {
   AnyApplication,
@@ -293,10 +293,11 @@ export default function OverviewTabContent({
   ];
 
   const kitchenSteps = [
-    { done: kitchenApplications.length > 0, title: t("homeStepFind"), hint: t("homeStepFindHint"), action: { label: t("homeFindKitchens"), onClick: () => onSetActiveTab("discover-kitchens") } },
+    // A declined or withdrawn request doesn't count: the next step is finding a kitchen again.
+    { done: kitchenApplications.some(isActiveKitchenApplication), title: t("homeStepFind"), hint: t("homeStepFindHint"), action: { label: t("homeFindKitchens"), onClick: () => onSetActiveTab("discover-kitchens") } },
     // While every request is still with the kitchen, the next step isn't the chef's yet.
     { done: hasApprovedKitchen, title: t("homeStepRequirements"), hint: t("homeStepRequirementsHint"),
-      waiting: kitchenApplications.length > 0 && !hasApprovedKitchen && !kitchenDisplays.some(({ display }) => display.actionKind === "complete-step") },
+      waiting: !hasApprovedKitchen && kitchenDisplays.some(({ display }) => display.actionKind === "wait") && !kitchenDisplays.some(({ display }) => display.actionKind === "complete-step") },
     { done: (enrichedBookings?.length ?? 0) > 0, title: t("homeStepBook"), hint: t("homeStepBookHint") },
   ];
   const sellerApproved = latestApp?.status === "approved";
