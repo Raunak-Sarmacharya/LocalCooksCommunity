@@ -2,7 +2,7 @@
  * Session extensions add a second kitchen payment_transactions row on the SAME booking id (own PaymentIntent).
  * These readers must show the booking once, count each payment once, and never treat the extension as the booking's payment.
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PgDialect } from 'drizzle-orm/pg-core';
 const state = vi.hoisted(() => ({ queries: [] as string[], params: [] as unknown[][], respond: (_text: string): any[] => [] }));
 const capture = (query: any) => {
@@ -17,7 +17,7 @@ vi.mock('../logger', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.
 import { summarizePayoutStatementBookings } from './payout-statement-service';
 import { getRevenueMetrics, getTransactionHistory } from './revenue-service';
 import { createTestDatabase } from './kitchen-booking-changes.pglite';
-import { kitchenBookings, kitchens, paymentTransactions } from '@shared/schema';
+import { kitchenBookingDayAllocations, kitchenBookingDayPayouts, kitchenBookings, kitchens, paymentTransactions } from '@shared/schema';
 import { getRevenueMetricsFromTransactions } from './revenue-service-v2';
 import { findPaymentTransactionByBooking, getChefPaymentTransactions, syncStripeAmountsToBookings } from './payment-transactions-service';
 import { ManagerRepository } from '../domains/managers/manager.repository';
@@ -110,16 +110,11 @@ describe('the booking\'s own payment is never an extension charge', () => {
   });
 });
 
-it('both revenue readers tax each captured payment once after the booking subtotal changes', async () => {
-  state.respond = text => text.includes('table_exists') ? [{ table_exists: true }] : text.includes('total_bookings') ? [{ total_bookings: '1', bookings_with_transactions: '1' }]
-    : text.includes('COUNT(*)') ? [{ count: '1' }] : [{}];
-  await getRevenueMetrics(2, db);
-  await getRevenueMetricsFromTransactions(2, db);
-  const queries = state.queries.map((text, i) => ({ text, params: state.params[i] }))
-    .filter(({ text }) => text.includes('as effective_tax') || text.includes('as calculated_tax_amount') && text.includes('FROM payment_transactions pt'));
-  expect(queries).toHaveLength(2);
-  const test = await createTestDatabase([kitchens, kitchenBookings, paymentTransactions, (await import('@shared/schema')).kitchenBookingDayPayouts, (await import('@shared/schema')).kitchenBookingDayAllocations]);
-  try {
+describe('both revenue readers after a subtotal change', () => {
+  // The PGlite database is setup, not the assertion: built once here (it took ~1 s in the test body and timed out under full-suite load).
+  let test: Awaited<ReturnType<typeof createTestDatabase>>;
+  beforeAll(async () => {
+    test = await createTestDatabase([kitchens, kitchenBookings, paymentTransactions, kitchenBookingDayPayouts, kitchenBookingDayAllocations]);
     await test.db.insert(kitchens).values({ id: 4, name: 'Test', locationId: 5, taxRatePercent: '15' });
     await test.db.insert(kitchenBookings).values({ id: 197, chefId: 3, kitchenId: 4, bookingDate: new Date(), startTime: '08:00', endTime: '10:00', totalPrice: '5000' });
     await test.db.insert(paymentTransactions).values([
@@ -128,12 +123,23 @@ it('both revenue readers tax each captured payment once after the booking subtot
       { bookingId: 197, bookingType: 'kitchen', chefId: 3, managerId: 2, status: 'succeeded', amount: '3050', baseAmount: '2875', serviceFee: '175', managerRevenue: '2875', netAmount: '3050',
         taxAmount: '375', metadata: { kitchenChangeId: 'change-197', approvedSubtotal: 2500, approvedTax: 375, platformCommission: 175 } },
     ]);
+  });
+  afterAll(async () => { await test?.client.close(); });
+
+  it('tax each captured payment once after the booking subtotal changes', async () => {
+    state.respond = text => text.includes('table_exists') ? [{ table_exists: true }] : text.includes('total_bookings') ? [{ total_bookings: '1', bookings_with_transactions: '1' }]
+      : text.includes('COUNT(*)') ? [{ count: '1' }] : [{}];
+    await getRevenueMetrics(2, db);
+    await getRevenueMetricsFromTransactions(2, db);
+    const queries = state.queries.map((text, i) => ({ text, params: state.params[i] }))
+      .filter(({ text }) => text.includes('as effective_tax') || text.includes('as calculated_tax_amount') && text.includes('FROM payment_transactions pt'));
+    expect(queries).toHaveLength(2);
     for (const query of queries) {
       const result = await test.client.query(query.text, query.params);
       const row = result.rows[0] as Record<string, unknown>;
       expect(Number(row.effective_tax ?? row.calculated_tax_amount)).toBe(1125);
     }
-  } finally { await test.client.close(); }
+  });
 });
 
 describe('manager dashboard pending payments', () => {
