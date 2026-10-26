@@ -59,7 +59,10 @@ export function ApplicationDocumentRows({ app, viewLink, actions = true }: { app
 export function MyDocuments({ applications }: { applications: (KitchenApplicationWithLocation & { documents?: ApplicationDocument[] })[] }) {
   const { t } = useTranslation("chef");
   // Documents are collected once the first request is approved; a request still in review has nothing to do here yet.
-  const rows = applications.filter(app => app.documents?.length && app.status === "approved");
+  // A waived document that was never uploaded is nothing to show (the location line says it isn’t needed).
+  const rows = applications.filter(app => app.status === "approved")
+    .map(app => ({ ...app, documents: (app.documents || []).filter(doc => doc.uploaded || !doc.waived) }))
+    .filter(app => app.documents.length);
   if (!rows.length) return null;
   return (
     <section aria-labelledby="my-documents" className="rounded-xl border bg-card p-5" data-testid="my-documents">

@@ -65,9 +65,9 @@ export default function JoinKitchenPage() {
   const steps = !invite ? [] : [
     { title: t("joinStepJoin", "Join"), note: t("joinStepJoinNote", "Now, about 2 minutes"), now: true },
     ...(invite.requirementsChoice === "customer" ? [{ title: t("trRequirements", "Booking requirements"), note: t("joinStepSend", "Send what the kitchen asks for") }]
-      : invite.requirementsChoice === "uploaded" ? [{ title: t("trRequirements", "Booking requirements"), note: t("joinStepOnFile", "Already on file with the kitchen") }] : []),
+      : invite.requirementsChoice === "uploaded" ? [{ title: t("trRequirements", "Booking requirements"), note: t("joinStepOnFile", "The kitchen has your documents; send anything still missing") }] : []),
     { title: t("joinStepBook", "Book"), note: invite.requirementsChoice === "customer" ? t("joinStepBookAfterCheck", "Once the kitchen checks them")
-      : invite.requirementsChoice === "uploaded" ? t("joinStepBookUnlessMissing", "Right away, unless anything is missing") : t("joinStepBookRightAway", "Right after you join") },
+      : invite.requirementsChoice === "uploaded" ? t("joinStepBookUnlessMissing", "Once nothing is missing") : t("joinStepBookRightAway", "Right after you join") },
   ];
 
   return (

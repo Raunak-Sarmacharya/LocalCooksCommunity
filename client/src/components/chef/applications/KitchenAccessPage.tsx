@@ -103,6 +103,10 @@ export function KitchenAccessPage({ app, sent, notice, renewRequested, onOpenCha
     : app.documentsWaivedAt ? t("mdWaivedLocation", "This location doesn’t need documents from you") : tier >= 3 ? t("kaRemindLead", "We’ll remind you 45, 14 and 3 days before one expires.") : null;
   const panelTone = { act: "bg-primary/[0.06]", ok: "bg-emerald-50", wait: "bg-muted/60" }[next.tone];
 
+  const showDocuments = documents.length > 0 && display.actionKind !== "discover";
+  // Added by the kitchen: there was no request, so only show it when the kitchen left feedback.
+  const showRequest = !(app.tier_data as Record<string, unknown> | null)?.addedByKitchen || !!app.feedback;
+  const mainEmpty = !showRenewal && !showDocuments && !showRequest;
   return <section className="min-w-0 space-y-6 [overflow-wrap:anywhere]" aria-labelledby="kitchen-access-title" data-testid="kitchen-access-page">
     {sent && <div role="status" className="flex items-start gap-3 rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-900" data-testid="request-sent-banner">
       <Check className="mt-0.5 size-4 shrink-0" aria-hidden /><p className="min-w-0 flex-1"><span className="font-semibold">{sent === "joined" ? t("kaJoinedBanner", { defaultValue: "You joined {kitchen}.", kitchen: kitchenName }) : sent === "requirements" ? t("kaSentReqBanner", { defaultValue: "Booking requirements sent to {kitchen}.", kitchen: kitchenName }) : t("kaSentBanner", { defaultValue: "Request sent to {kitchen}.", kitchen: kitchenName })}</span>{sent !== "joined" && <> {t("kaSentCopy", "We emailed you a copy.")}</>}</p>
@@ -125,22 +129,21 @@ export function KitchenAccessPage({ app, sent, notice, renewRequested, onOpenCha
       {next.actions && <div className="flex flex-col gap-2 sm:flex-row [&>*]:w-full sm:[&>*]:w-auto">{next.actions}</div>}
     </div>
 
-    <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-      <div className="min-w-0 space-y-6">
+    <div className={cn("grid items-start gap-6", mainEmpty ? "max-w-md" : "lg:grid-cols-[minmax(0,1fr)_320px]")}>
+      {!mainEmpty && <div className="min-w-0 space-y-6">
         {showRenewal && <div id="renew-access-documents" tabIndex={-1} className="scroll-mt-4 outline-none"><RenewAccessDocuments applicationId={app.id} renewals={app.bookingEligibility?.renewals} documents={addNow.length ? addNow : documents} adding={addNow.length > 0} onRenewed={onChanged} /></div>}
-        {documents.length > 0 && display.actionKind !== "discover" && <section className="rounded-xl border bg-card p-5 sm:p-6" aria-labelledby="kitchen-access-docs">
+        {showDocuments && <section className="rounded-xl border bg-card p-5 sm:p-6" aria-labelledby="kitchen-access-docs">
           <div className="flex flex-wrap items-baseline justify-between gap-2"><h2 id="kitchen-access-docs" className="text-base font-semibold">{requirementsTitle}</h2>
             {inFirstReview && neededDocs.length > 0 && !adding && <Button variant="outline" size="sm" onClick={() => setAdding(true)}>{t("kaAddNow", "Add now")}</Button>}</div>
           {requirementsLead && <p className="mt-1 text-sm text-muted-foreground">{requirementsLead}</p>}
           <div className="mt-4"><ApplicationDocumentRows app={{ ...app, documents }} viewLink={viewLink} actions={tier >= 3} /></div>
           {adding && <div className="mt-5"><RenewAccessDocuments applicationId={app.id} documents={neededDocs} adding early onRenewed={() => { setAdding(false); onChanged(); }} /></div>}
         </section>}
-        {/* Added by the kitchen: there was no request, so only show this when the kitchen left feedback. */}
-        {(!(app.tier_data as Record<string, unknown> | null)?.addedByKitchen || app.feedback) && <section aria-labelledby="kitchen-access-request">
+        {showRequest && <section aria-labelledby="kitchen-access-request">
           <h2 id="kitchen-access-request" className="mb-3 text-base font-semibold">{t("kaYourRequest", "Your request")}</h2>
           {definitions.isLoading ? <Skeleton className="h-64 rounded-xl" /> : <KitchenApplicationDetails app={app} display={display} onBookKitchen={book} compact requirements={definitions.data} showActions={false} hideDocuments={(app.documents || []).length > 0} hideFeedback={display.actionKind === "discover"} />}
         </section>}
-      </div>
+      </div>}
       <aside className="space-y-4 lg:sticky lg:top-4">
         <section className="overflow-hidden rounded-xl border bg-card">
           {photo && <img src={photo} alt="" className="h-40 w-full object-cover" />}

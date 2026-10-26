@@ -29,7 +29,7 @@ it("they send them: Join, Booking requirements, Book; the email is locked to the
 
 it("documents on file: requirements already with the kitchen", async () => {
   invite("uploaded");
-  expect(await steps()).toEqual(["JoinNow, about 2 minutes", "Booking requirementsAlready on file with the kitchen", "BookRight away, unless anything is missing"]);
+  expect(await steps()).toEqual(["JoinNow, about 2 minutes", "Booking requirementsThe kitchen has your documents; send anything still missing", "BookOnce nothing is missing"]);
 });
 
 it("approved without requirements: Join, then Book", async () => {
