@@ -1,12 +1,11 @@
-import { beforeAll, beforeEach, expect, it, vi } from 'vitest';
+import { beforeEach, expect, it, vi } from 'vitest';
 const state = vi.hoisted(() => ({ create: vi.fn() }));
 vi.mock('stripe', () => ({ default: class { checkout = { sessions: { create: state.create } }; } }));
 vi.mock('../db', () => ({ db: { select: () => ({ from: () => ({ where: () => ({ limit: async () => [{ name: 'Harbour Kitchen' }] }) }) }) } }));
-let create: typeof import('./stripe-checkout-service').createPendingCheckoutSession;
-beforeAll(async () => {
-  vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
-  create = (await import('./stripe-checkout-service')).createPendingCheckoutSession;
-});
+// The Stripe key must exist when the module loads; set it before imports so the (heavy) import stays in the import phase,
+// not in a beforeAll with a 10 s budget (timed out under full-suite load, Oct 26).
+vi.hoisted(() => { process.env.STRIPE_SECRET_KEY = 'sk_test_mock'; });
+import { createPendingCheckoutSession as create } from './stripe-checkout-service';
 beforeEach(() => { state.create.mockReset().mockResolvedValue({ id: 'cs_mock', url: 'https://example.invalid/checkout' }); });
 const params = { bookingPriceInCents: 1000, platformFeeInCents: 0, managerStripeAccountId: 'acct_mock', customerEmail: 'test@example.invalid',
   successUrl: 'https://example.invalid/success', cancelUrl: 'https://example.invalid/cancel',

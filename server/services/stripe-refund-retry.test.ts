@@ -1,4 +1,4 @@
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PgDialect } from 'drizzle-orm/pg-core';
 const state = vi.hoisted(() => ({ source: { transferId: 'tr_one', managerRevenue: '11116', amount: '12200' } as any,
   lookupFailed: false, frozen: false, noTransfer: false, transfer: { id: 'tr_one', amount: 11116, amount_reversed: 0 }, reversals: [] as any[], refunds: [] as any[],
@@ -13,9 +13,10 @@ vi.mock('stripe', () => ({ default: class {
   transfers = { retrieve: async () => state.transfer, list: async function* () { if (!state.noTransfer) yield { ...state.transfer, metadata: { payment_intent_id: 'pi_one' } }; }, listReversals: async function* () { yield* state.reversals; }, createReversal: state.reverse };
   refunds = { list: async function* () { yield* state.refunds; }, create: state.refund };
 } }));
-let reverseTransferAndRefund: typeof import('./stripe-service').reverseTransferAndRefund;
-let createRefund: typeof import('./stripe-service').createRefund;
-beforeAll(async () => { vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock'); ({ reverseTransferAndRefund, createRefund } = await import('./stripe-service')); });
+// The Stripe key must exist when the module loads; set it before imports so the (heavy) import stays in the import phase,
+// not in a beforeAll with a 10 s budget (timed out under full-suite load, Oct 26).
+vi.hoisted(() => { process.env.STRIPE_SECRET_KEY = 'sk_test_mock'; });
+import { createRefund, reverseTransferAndRefund } from './stripe-service';
 beforeEach(() => {
   state.lookupFailed = false; state.frozen = false; state.noTransfer = false; state.source = { transferId: 'tr_one', managerRevenue: '11116', amount: '12200', serviceFee: '700' };
   state.transfer = { id: 'tr_one', amount: 11116, amount_reversed: 0 }; state.reversals = []; state.refunds = [];

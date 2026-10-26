@@ -1,4 +1,4 @@
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 const state = vi.hoisted(() => ({ lookupFailed: false, frozen: false, source: {} as any, charge: { amount_refunded: 0 },
   transfer: { id: 'tr_one', amount: 11116, amount_reversed: 2300 }, candidates: [] as any[], reversals: [] as any[], create: vi.fn(), reverse: vi.fn() }));
 vi.mock('stripe', () => ({ default: class {
@@ -10,8 +10,10 @@ vi.mock('../db', () => { const db: any = { execute: async () => ({ rows: state.f
     then: (resolve: any, reject: any) => state.lookupFailed ? reject(Error('Source lookup unavailable')) : resolve([state.source]) }; return chain;
 } }; return { db }; });
 vi.mock('./stripe-checkout-fee-service', () => ({ getFeeConfig: async () => ({ platformCommissionRate: .07 }) }));
-let transferToManagerForBooking: typeof import('./stripe-transfer-service').transferToManagerForBooking;
-beforeAll(async () => { vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock'); ({ transferToManagerForBooking } = await import('./stripe-transfer-service')); });
+// The Stripe key must exist when the module loads; set it before imports so the (heavy) import stays in the import phase,
+// not in a beforeAll with a 10 s budget (timed out under full-suite load, Oct 26).
+vi.hoisted(() => { process.env.STRIPE_SECRET_KEY = 'sk_test_mock'; });
+import { transferToManagerForBooking } from './stripe-transfer-service';
 beforeEach(() => {
   state.lookupFailed = false; state.frozen = false; state.source = { transferId: 'tr_one', refundAmount: '0', baseAmount: '11500', serviceFee: '700', metadata: {} };
   state.transfer = { id: 'tr_one', amount: 11116, amount_reversed: 2300 }; state.candidates = []; state.reversals = [];

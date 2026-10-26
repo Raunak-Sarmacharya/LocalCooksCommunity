@@ -1,4 +1,4 @@
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 // The gate sits in transferLockedSource, the single engine behind every caller: payment_intent.succeeded,
 // charge.updated, the manual Stripe sync and the claim/overstay fallbacks all reach it through transferToManagerForBooking.
 const state = vi.hoisted(() => ({ source: {} as any, eligible: true, retrieve: vi.fn(), list: vi.fn(), create: vi.fn(), record: vi.fn(), eligibility: vi.fn() }));
@@ -14,9 +14,10 @@ vi.mock('../db', () => { const db: any = { execute: async () => ({ rows: [] }), 
 vi.mock('./stripe-checkout-fee-service', () => ({ getFeeConfig: async () => ({ platformCommissionRate: 0 }) }));
 vi.mock('./kitchen-payout-service', () => ({ releasedPayoutStillEligible: state.eligibility, recordReleasedPayout: state.record }));
 vi.mock('./storage-rentals', () => ({ storageTermStillEligible: async () => false }));
-let transferToManagerForBooking: typeof import('./stripe-transfer-service').transferToManagerForBooking;
-let PAYOUT_DEFERRED_REASON: string;
-beforeAll(async () => { vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock'); ({ transferToManagerForBooking, PAYOUT_DEFERRED_REASON } = await import('./stripe-transfer-service')); }, 30000);
+// The Stripe key must exist when the module loads; set it before imports so the (heavy) import stays in the import phase,
+// not in a beforeAll with a 10 s budget (timed out under full-suite load, Oct 26).
+vi.hoisted(() => { process.env.STRIPE_SECRET_KEY = 'sk_test_mock'; });
+import { PAYOUT_DEFERRED_REASON, transferToManagerForBooking } from './stripe-transfer-service';
 const params = { paymentIntentId: 'pi_one', paymentTransactionId: 1, chargeAmountCents: 12000, actualStripeFeeCents: 358, chargeId: 'ch_one', transferGroup: 'pi_pi_one' };
 beforeEach(() => {
   state.source = { id: 1, bookingId: 7, transferId: null, refundAmount: '0', baseAmount: '11300', serviceFee: '700', managerId: 2,
