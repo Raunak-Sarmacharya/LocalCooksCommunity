@@ -674,5 +674,7 @@
   "stSituation_taken_back_reserved": "Ви забрали це місце з {moveOut}. Невикористані дні повернуто {chef}. Звільніть місце, щоб закрити оренду.",
   "stSituation_taken_back_active": "{chef} має звільнити місце до {moveOut}. Невикористані дні їм повернуть.",
   "stNextStep_taken_back_reserved": "Звільнення робить місце знову доступним для оренди.",
-  "stNextStep_taken_back_active": "Зафіксуйте виїзд, коли {chef} піде."
+  "stNextStep_taken_back_active": "Зафіксуйте виїзд, коли {chef} піде.",
+  "stChipTakenBack": "Повернуто",
+  "stDateNeededBackBy": "Повернуто {date}"
 }

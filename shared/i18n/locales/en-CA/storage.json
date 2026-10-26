@@ -674,5 +674,7 @@
   "stSituation_taken_back_reserved": "You took this unit back from {moveOut}. Unused days were refunded to {chef}. Release the unit to close the rental.",
   "stSituation_taken_back_active": "{chef} must move out by {moveOut}. Unused days are refunded to them.",
   "stNextStep_taken_back_reserved": "Releasing it makes the unit free to rent again.",
-  "stNextStep_taken_back_active": "Record the move-out when {chef} leaves."
+  "stNextStep_taken_back_active": "Record the move-out when {chef} leaves.",
+  "stChipTakenBack": "Taken back",
+  "stDateNeededBackBy": "Taken back {date}"
 }

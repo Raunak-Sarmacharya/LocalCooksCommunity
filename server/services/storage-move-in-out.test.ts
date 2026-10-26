@@ -112,10 +112,10 @@ describe('storage move-in and move-out', () => {
     await requestStorageCheckout(7, 3);
     expect((await rental()).rentalTerms.noBaseline).toBe(true);
   });
-  it('no move-in or extend once the kitchen took the unit back and that day has passed', async () => {
+  it('no move-in, move-out or extend once the kitchen took a never-used unit back and that day has passed', async () => {
     await h.db.update(storageBookings).set({ reclaimEndOn: '2026-10-15' }).where(eq(storageBookings.id, 7));
     const actions = (await readRental(7, chef)).actions;
-    expect(actions).not.toContain('move-in'); expect(actions).not.toContain('move_in'); expect(actions).not.toContain('extend');
+    expect(actions).not.toContain('move-in'); expect(actions).not.toContain('move_in'); expect(actions).not.toContain('extend'); expect(actions).not.toContain('move-out');
   });
   it('rejects wrong participants, actions before start, invalid evidence and repeated move-in', async () => {
     await expect(storageRentalVisitAction(7, { id: 99, role: 'manager' }, 'handover')).rejects.toMatchObject({ status: 404 });

@@ -91,6 +91,13 @@ describe("chips, dates and filters", () => {
     expect(filterUnitRows([row], 'needsAction')).toEqual([row]);
     expect(filterUnitRows([row], 'past')).toEqual([]);
   });
+  it('a never-used unit the kitchen took back is "taken back" with the take-back date, not overdue', () => {
+    vi.setSystemTime(new Date('2026-10-26T12:00:00Z'));
+    const [row] = unitRows([rental({ state: 'reserved', startOn: '2026-10-17', paidThrough: '2026-10-30', moveOutBy: '2026-10-24' })], [listing()]);
+    expect(row.chip).toBe('takenBack');
+    expect(row.date).toEqual({ key: 'neededBackBy', value: '2026-10-24' });
+    expect(filterUnitRows([row], 'needsAction')).toEqual([row]);
+  });
   it("maps state and phase to the chip the kitchen acts on", () => {
     expect(chipForRental(rental({ state: "reserved", phase: null }))).toBe("reserved");
     expect(chipForRental(rental({ state: "move_out_requested" }))).toBe("moveOutDue");

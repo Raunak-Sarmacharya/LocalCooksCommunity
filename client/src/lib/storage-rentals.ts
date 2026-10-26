@@ -16,7 +16,7 @@ export type RentalTerm = { id: number; seq: number; kind: string; startsOn: stri
   /** Already refunded on this payment (a kitchen take-back or a kitchen refund). */ refundedCents?: number }
 /** Only these are wired on the chef side; any other server action is ignored, never guessed. */
 export type RentalAction = "withdraw" | "cancel" | "extend" | "move_in" | "move_out" | "report_problem"
-export type StorageRental = { id: number; ref: string | null; kitchen: { id: number; name: string }; listing: { id: number; name: string; photos?: string[] }
+export type StorageRental = { id: number; ref: string | null; kitchen: { id: number; name: string }; listing: { id: number; name: string; photos?: string[]; storageType?: string }
   timezone?: string | null; releasedOn?: string | null;
   unitLabel: string; state: "requested" | "declined" | "expired" | "withdrawn" | "reserved" | "active" | "move_out_requested" | "removal_review" | "ended"
   phase: "current" | "ending_soon" | "grace" | "holdover" | null; startOn: string; paidThrough: string; graceEndsOn: string; holdoverDays: number

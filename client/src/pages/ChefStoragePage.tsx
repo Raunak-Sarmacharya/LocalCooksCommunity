@@ -3,6 +3,7 @@ import { useChefSidebarHiddenItems } from "@/hooks/use-chef-sidebar-hidden-items
 import { ChefSectionTabs } from "@/components/chef/ChefSectionTabs"
 /** "My storage" (WP-ST10): one card per rental: the unit, its kitchen, one plain status sentence, at most one action. */
 import { Link, useLocation } from "wouter"
+import { StoragePhoto } from "@/components/storage/StoragePhoto"
 import { useQuery } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { Button } from "@/components/ui/button"
@@ -20,12 +21,10 @@ export function RentalCard({ rental }: { rental: StorageRental }) {
   const t = tt as unknown as (key: string, options?: Record<string, unknown>) => string
   const status = rentalStatus(rental, t, i18n.language)
   const urgent = rental.state !== "removal_review" && !(rental.moveOutBy && rental.moveOutBy < rental.paidThrough) && can(rental, "extend") && (rental.phase === "grace" || rental.phase === "holdover" || rental.phase === "ending_soon")
-  const photo = rental.listing.photos?.[0]
-  const [photoFailed, setPhotoFailed] = useState(false)
   // The whole card opens the rental (the title link covers it); only an urgent Extend sits on top.
   return <article className="relative rounded-2xl border bg-card p-4 transition-colors hover:bg-muted/30 sm:p-5" data-testid={`storage-card-${rental.id}`}>
     <div className="flex items-start gap-3 sm:gap-4">
-      {photo && !photoFailed ? <img src={photo} alt="" onError={() => setPhotoFailed(true)} className="size-14 shrink-0 rounded-lg bg-muted object-cover sm:size-16" /> : <div className="size-14 shrink-0 rounded-lg bg-muted sm:size-16" aria-hidden />}
+      <StoragePhoto storageType={rental.listing.storageType} photos={rental.listing.photos} className="size-14 sm:size-16" />
       <div className="min-w-0 flex-1">
         <div className="flex items-start justify-between gap-3">
           <h3 className="min-w-0 line-clamp-2 text-[15px] font-semibold"><Link className="after:absolute after:inset-0 after:rounded-2xl focus-visible:underline" href={`/storage/${rental.id}`}>{t("stcListingUnit", { listing: rental.listing.name, unit: rental.unitLabel })}</Link></h3>

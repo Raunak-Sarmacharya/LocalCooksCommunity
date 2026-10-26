@@ -674,5 +674,7 @@
   "stSituation_taken_back_reserved": "Vous avez repris cette unité à partir du {moveOut}. Les jours non utilisés ont été remboursés à {chef}. Libérez l’unité pour fermer la location.",
   "stSituation_taken_back_active": "{chef} doit libérer l’unité d’ici le {moveOut}. Les jours non utilisés lui sont remboursés.",
   "stNextStep_taken_back_reserved": "La libérer rend l’unité de nouveau disponible.",
-  "stNextStep_taken_back_active": "Enregistrez le départ quand {chef} part."
+  "stNextStep_taken_back_active": "Enregistrez le départ quand {chef} part.",
+  "stChipTakenBack": "Reprise",
+  "stDateNeededBackBy": "Reprise le {date}"
 }

@@ -46,7 +46,7 @@ export function storageRentalVisitActions(rental: Rental, role: 'chef' | 'manage
   const takenBack = !!rental.reclaimEndOn && !!rental.paidThrough && rental.reclaimEndOn < rental.paidThrough && !!rental.timezone && localToday(now, rental.timezone) > rental.reclaimEndOn;
   if (role === 'chef') return started ? [
     ...(rental.rentalState === 'reserved' && !takenBack ? ['move-in', 'move_in'] : []),
-    ...(['reserved', 'active', 'removal_review'].includes(rental.rentalState!) ? ['move-out', 'move_out'] : []),
+    ...(['reserved', 'active', 'removal_review'].includes(rental.rentalState!) && !(takenBack && rental.rentalState === 'reserved') ? ['move-out', 'move_out'] : []),
   ] : []; // Underscore aliases keep the WP-ST10 photo dialogs usable during cutover.
   return [
     ...(started && ['reserved', 'active'].includes(rental.rentalState!) && !rental.handoverAt && !(takenBack && rental.rentalState === 'reserved') ? ['handover'] : []),

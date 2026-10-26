@@ -16,6 +16,7 @@ import { getAuthHeaders } from '@/lib/api';
 const DATE_KEY: Record<UnitDateKey, string> = {
   startsOn: "stDateStartsOn",
   startedOn: "stDateStartedOn",
+  neededBackBy: "stDateNeededBackBy",
   paidThrough: "stDatePaidThrough",
   extendBy: "stDateExtendBy",
   graceEnded: "stDateGraceEnded",

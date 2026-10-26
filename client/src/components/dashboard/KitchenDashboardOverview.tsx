@@ -114,7 +114,7 @@ const FOLLOW_UP_ACTIONS = ["overviewKitchenCheckoutReviews", "overviewBookingOut
 /** The storage board's own chip words ("Move-in overdue"), one key per chip, so a new chip can't arrive without a reason. */
 const storageChipKey = (chip: UnitChip) => `stChip${chip[0].toUpperCase()}${chip.slice(1)}`;
 /** The rental page's first action for each chip that needs the kitchen (`StorageRentalDetail`'s prominent actions). */
-const STORAGE_ACTION: Partial<Record<UnitChip, string>> = { moveInOverdue: "stActionHandover", grace: "stActionOfferExtension", holdover: "stActionHoldoverCharge",
+const STORAGE_ACTION: Partial<Record<UnitChip, string>> = { moveInOverdue: "stActionHandover", takenBack: "stActionReleaseUnit", grace: "stActionOfferExtension", holdover: "stActionHoldoverCharge",
   moveOutDue: "stActionClearMoveOut", needsCleaning: "stActionMarkReady", removalReview: "stActionRecordRemoval" };
 
 /**

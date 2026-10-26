@@ -91,6 +91,7 @@ export type UnitChip =
   | "free"
   | "reserved"
   | "moveInOverdue"
+  | "takenBack"
   | "occupied"
   | "endingSoon"
   | "grace"
@@ -100,7 +101,7 @@ export type UnitChip =
   | "removalReview";
 
 /** The single date a unit row shows, with the sentence that frames it. */
-export type UnitDateKey = "startsOn" | "startedOn" | "paidThrough" | "extendBy" | "graceEnded" | "releasedOn";
+export type UnitDateKey = "startsOn" | "startedOn" | "neededBackBy" | "paidThrough" | "extendBy" | "graceEnded" | "releasedOn";
 
 export interface UnitRow {
   /** Stable across re-renders: listing + unit. */
@@ -141,6 +142,8 @@ export function occupiesUnit(rental: StorageRental): boolean {
 export function chipForRental(rental: StorageRental, now = new Date()): UnitChip {
   switch (rental.state) {
     case "reserved":
+      // The kitchen took it back before the paid end (never moved in): it only needs releasing.
+      if (rental.moveOutBy && rental.moveOutBy < rental.paidThrough) return "takenBack";
       return rental.startOn < localToday(now, rental.timezone || 'America/St_Johns') ? "moveInOverdue" : "reserved";
     case "move_out_requested":
       return "moveOutDue";
@@ -165,6 +168,8 @@ export function unitDateFor(rental: StorageRental, now = new Date()): UnitRow["d
       return { key: "startsOn", value: rental.startOn };
     case "moveInOverdue":
       return { key: "startedOn", value: rental.startOn };
+    case "takenBack":
+      return { key: "neededBackBy", value: rental.moveOutBy! };
     case "grace":
       return { key: "extendBy", value: rental.graceEndsOn };
     case "holdover":
@@ -176,7 +181,7 @@ export function unitDateFor(rental: StorageRental, now = new Date()): UnitRow["d
   }
 }
 
-const NEEDS_ACTION_CHIPS: UnitChip[] = ["moveInOverdue", "grace", "holdover", "moveOutDue", "needsCleaning", "removalReview"];
+const NEEDS_ACTION_CHIPS: UnitChip[] = ["moveInOverdue", "takenBack", "grace", "holdover", "moveOutDue", "needsCleaning", "removalReview"];
 
 export function chipNeedsAction(chip: UnitChip): boolean {
   return NEEDS_ACTION_CHIPS.includes(chip);
