@@ -7,7 +7,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import SEOHead from "@/components/SEO/SEOHead";
 import { AnimatePresence, motion } from "framer-motion";
 import { Icon } from "@iconify/react";
-import { Building2, ArrowRight, ArrowLeft, Search, Lock, Map as MapIcon, X } from "lucide-react";
+import { Building2, ArrowRight, ArrowLeft, Search, Lock, Map as MapIcon, X, ChevronDown, Check } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import Header from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,7 +42,11 @@ interface PublicKitchen {
   /** Equipment names, from `equipment_listings` - the kitchen's real kit. */
   equipment?: string[];
   hourlyRate?: number | null;
+  /** Cents; null when the kitchen books by the hour only. */
+  dailyRate?: number | null;
   currency?: string;
+  storageSummary?: { hasDryStorage: boolean; hasColdStorage: boolean; hasFreezerStorage: boolean; totalStorageUnits: number } | null;
+  equipmentSummary?: { included: number; rental: number } | null;
   locationId: number;
   locationName?: string;
   locationSlug?: string | null;
@@ -67,11 +72,6 @@ function kitchenImage(k: PublicKitchen): string | null {
   const raw = (k.imageUrl || k.brandImageUrl || "").trim();
   if (!raw) return null;
   return getR2ProxyUrl(raw) || raw;
-}
-
-function formatFromRate(cents: number | null | undefined): string | null {
-  if (cents == null || Number.isNaN(Number(cents)) || Number(cents) <= 0) return null;
-  return `${formatCurrency(Number(cents))}/hr`;
 }
 
 /** Compact rate for map pills ("$25/hr" instead of "$25.00/hr") so pills stay short. */
@@ -118,19 +118,30 @@ function BrowseKitchenCard({
   const [imageError, setImageError] = useState(false);
   const img = kitchenImage(kitchen);
   const showImage = !!img && !imageError;
-  const rateLabel = formatFromRate(kitchen.hourlyRate ?? null);
-  const equipment = (kitchen.equipment || []).slice(0, 3);
+  // Whole dollars read cleaner on a card ("$25", not "$25.00"); cents stay when there are any.
+  const money = (cents?: number | null) => cents && cents > 0 ? formatCurrency(Number(cents)).replace(/\.00(?=\D*$)/, "") : null;
+  const hourly = money(kitchen.hourlyRate);
+  const daily = money(kitchen.dailyRate);
+  const storage = kitchen.storageSummary;
+  const storageKinds = storage ? [storage.hasDryStorage && t("kbDry", "Dry"), storage.hasColdStorage && t("kbCold", "Cold"), storage.hasFreezerStorage && t("kbFreezer", "Freezer")].filter(Boolean) as string[] : [];
+  const storageFact = storage && storage.totalStorageUnits > 0
+    ? t("kbStorageFact", { defaultValue: "{kinds} storage · {count, plural, one {# space} other {# spaces}}", kinds: storageKinds.join(" + ") || t("kbStorageWord", "Storage"), count: storage.totalStorageUnits })
+    : t("kbNoStorage", "No storage");
+  const equipmentFact = kitchen.equipmentSummary && (kitchen.equipmentSummary.included + kitchen.equipmentSummary.rental) > 0
+    ? [kitchen.equipmentSummary.included ? t("kbIncluded", { defaultValue: "{count} included", count: kitchen.equipmentSummary.included }) : null,
+       kitchen.equipmentSummary.rental ? t("kbToRent", { defaultValue: "{count} to rent", count: kitchen.equipmentSummary.rental }) : null].filter(Boolean).join(" · ")
+    : null;
 
   const primaryLabel = (() => {
     switch (action.kind) {
       case "book":
-        return t("bookNow", "Book Now");
+        return t("kbBook", "Book kitchen time");
       case "continue":
-        return t("continueApplication", "Continue Application");
+        return t("kbSendRequirements", "Send booking requirements");
       case "pending":
-        return t("underReview", "Under Review");
+        return t("kbWaiting", "Waiting for the kitchen");
       case "reapply":
-        return t("applyAgain", "Apply Again");
+        return t("kbNewRequest", "Send a new request");
       case "apply":
         return t("requestToApply", "Request to apply");
       case "guest":
@@ -138,7 +149,8 @@ function BrowseKitchenCard({
     }
   })();
 
-  const primaryDisabled = action.kind === "pending";
+  // Waiting opens the kitchen page (where the request stands), not a dead button.
+  const primaryDisabled = false;
   // Book / Apply / Reapply already open preview — don't also show View Details.
   const primaryOpensPreview =
     action.kind === "book" || action.kind === "apply" || action.kind === "reapply";
@@ -199,12 +211,6 @@ function BrowseKitchenCard({
             </div>
           )}
 
-          {rateLabel && (
-            <span className="absolute right-3 top-3 z-10 inline-flex items-center gap-1 rounded-full bg-white/95 px-2.5 py-1 shadow-[0_4px_12px_-4px_rgba(0,0,0,0.3)] backdrop-blur">
-              <span className="text-[0.72rem] font-medium text-[#5F5F5F]">{t("fromPrefix", "From")}</span>
-              <span className="text-[0.72rem] font-semibold text-[#E10939]">{rateLabel}</span>
-            </span>
-          )}
         </button>
 
         {/* Details. Every line reserves its height whether or not it has content, and the
@@ -213,6 +219,8 @@ function BrowseKitchenCard({
           <h3 className="truncate text-[1.1rem] font-semibold tracking-[-0.01em] text-[#1F1F1F] transition-colors duration-300 group-hover/card:text-[#E10939]">
             {kitchen.name}
           </h3>
+          {hourly && <p className="mt-0.5 text-[0.95rem] font-semibold tabular-nums text-[#1F1F1F]">{hourly}<span className="font-normal text-[#6B6B6B]">/{t("kbHr", "hr")}</span>
+            {daily && <><span className="mx-1.5 text-[#B0B0B0]" aria-hidden>·</span>{daily}<span className="font-normal text-[#6B6B6B]">/{t("kbDay", "day")}</span></>}</p>}
 
           <div className="mt-1.5 flex min-w-0 items-center gap-1.5">
             <Icon icon="mdi:map-marker-outline" className="h-4 w-4 shrink-0 text-[#E10939]" aria-hidden />
@@ -225,15 +233,9 @@ function BrowseKitchenCard({
             {kitchen.description?.trim() || "\u00a0"}
           </p>
 
-          <div className="mb-4 flex min-h-[26px] flex-wrap items-start gap-1.5">
-            {equipment.map((item) => (
-              <span
-                key={item}
-                className="rounded-full bg-[#F3F1EF] px-2.5 py-1 text-[0.7rem] font-medium text-[#5F5F5F]"
-              >
-                {item}
-              </span>
-            ))}
+          <div className="mb-4 flex min-h-[26px] flex-wrap items-start gap-1.5" data-testid="kb-facts">
+            <span className="rounded-full bg-[#F3F1EF] px-2.5 py-1 text-[0.72rem] font-medium text-[#4A4A4A]">{storageFact}</span>
+            {equipmentFact && <span className="rounded-full bg-[#F3F1EF] px-2.5 py-1 text-[0.72rem] font-medium text-[#4A4A4A]">{t("kbEquipment", { defaultValue: "Equipment: {summary}", summary: equipmentFact })}</span>}
           </div>
 
           <div className="mt-auto flex flex-col gap-0.5">
@@ -287,6 +289,9 @@ function BrowseKitchenCard({
   );
 }
 
+const chipClass = "inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-[#2C2C2C]/12 bg-white px-3.5 text-[0.8rem] font-medium text-[#3A3A3A] transition-colors hover:border-[#2C2C2C]/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E10939]/40";
+const chipOnClass = "border-[#1A1A1A] bg-[#1A1A1A] text-white hover:border-[#1A1A1A]";
+
 function CardSkeleton() {
   return (
     <div className="rounded-[26px] bg-white p-2 shadow-[0_1px_2px_rgba(80,0,20,0.08),0_24px_48px_-24px_rgba(80,0,20,0.25)] ring-1 ring-black/[0.04]">
@@ -315,10 +320,26 @@ function MapPanelSkeleton() {
 }
 
 export default function KitchenComparisonPage() {
+  return <KitchenBrowser />;
+}
+
+type StorageFilter = "any" | "has" | "cold";
+const PRICE_STEPS = [1500, 2500, 4000];
+
+/**
+ * Find kitchens, one page for everyone (owner, Oct 26). Signed out it is the public Compare page; `embedded` renders the
+ * same list, map and filters inside the chef app (Kitchens › Find) without the marketing header and sign-up card.
+ */
+export function KitchenBrowser({ embedded = false }: { embedded?: boolean }) {
   const { t } = useTranslation("kitchen");
   const { user, loading: authLoading } = useFirebaseAuth();
   const [, navigate] = useLocation();
   const [searchQuery, setSearchQuery] = useState("");
+  const [storageFilter, setStorageFilter] = useState<StorageFilter>("any");
+  const [maxPrice, setMaxPrice] = useState<number | null>(null);
+  const [equipmentFilter, setEquipmentFilter] = useState<string[]>([]);
+  const filtersOn = storageFilter !== "any" || maxPrice != null || equipmentFilter.length > 0;
+  const clearFilters = () => { setStorageFilter("any"); setMaxPrice(null); setEquipmentFilter([]); setSearchQuery(""); };
   const [hoveredLocationId, setHoveredLocationId] = useState<number | null>(null);
   const [mobileMapOpen, setMobileMapOpen] = useState(false);
   const [headerSearchVisible, setHeaderSearchVisible] = useState(false);
@@ -327,8 +348,8 @@ export default function KitchenComparisonPage() {
   const { applications, isLoading: applicationsLoading } = useChefKitchenApplicationsStatus();
 
   useEffect(() => {
-    window.scrollTo(0, 0);
-  }, []);
+    if (!embedded) window.scrollTo(0, 0);
+  }, [embedded]);
 
   /**
    * The search handoff. The in-flow search card scrolls away with the hero on desktop; the
@@ -387,6 +408,11 @@ export default function KitchenComparisonPage() {
   const filteredKitchens = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     return publicKitchens.filter((k) => {
+      const storage = k.storageSummary;
+      if (storageFilter === "has" && !(storage && storage.totalStorageUnits > 0)) return false;
+      if (storageFilter === "cold" && !(storage?.hasColdStorage || storage?.hasFreezerStorage)) return false;
+      if (maxPrice != null && !(k.hourlyRate && Number(k.hourlyRate) <= maxPrice)) return false;
+      if (equipmentFilter.length && !equipmentFilter.every((item) => (k.equipment || []).includes(item))) return false;
       if (!query) return true;
       return (
         k.name.toLowerCase().includes(query) ||
@@ -396,7 +422,8 @@ export default function KitchenComparisonPage() {
         (k.equipment || []).some((item) => item.toLowerCase().includes(query))
       );
     });
-  }, [publicKitchens, searchQuery]);
+  }, [publicKitchens, searchQuery, storageFilter, maxPrice, equipmentFilter]);
+  const allEquipment = useMemo(() => Array.from(new Set(publicKitchens.flatMap((k) => k.equipment || []))).sort((a, b) => a.localeCompare(b)), [publicKitchens]);
 
   /**
    * One marker per ADDRESS. Kitchens at the same location share identical coordinates, so
@@ -468,12 +495,13 @@ export default function KitchenComparisonPage() {
         navigate(`/apply-kitchen/${kitchen.locationId}`);
         break;
       case "continue":
-        navigate(`/kitchen-requirements/${kitchen.locationId}`);
+        navigate(`/apply-kitchen/${kitchen.locationId}`);
         break;
       case "guest":
         navigate(`/auth?redirect=${encodeURIComponent(redirectPreview)}`);
         break;
       case "pending":
+        navigate(`/dashboard?view=kitchen-requests&location=${kitchen.locationId}`);
         break;
     }
   };
@@ -498,7 +526,8 @@ export default function KitchenComparisonPage() {
   const showMapToggle = showMap && filteredKitchens.length > 0 && !mobileMapOpen;
 
   return (
-    <div className="relative flex min-h-screen flex-col bg-gradient-to-b from-[#FFF8F5] via-white to-[#FFF8F5]">
+    <div className={embedded ? "relative min-w-0" : "relative flex min-h-screen flex-col bg-gradient-to-b from-[#FFF8F5] via-white to-[#FFF8F5]"}>
+      {!embedded && <>
       <SEOHead
         title={t("seoBrowseKitchensTitle", "Browse Kitchens | Commercial Kitchen Access")}
         description={t("seoBrowseKitchensDesc", "Browse certified commercial kitchens in St. John's, Newfoundland. Compare amenities, pricing, and availability, then book by the hour.")}
@@ -551,15 +580,16 @@ export default function KitchenComparisonPage() {
           </AnimatePresence>
         }
       />
+      </>}
 
-      <main className="relative z-10 flex-1 pb-16 pt-[calc(var(--header-total)_+_2.5rem)]">
-        <div className="container mx-auto max-w-7xl px-4 sm:px-6">
+      <main className={embedded ? "relative min-w-0" : "relative z-10 flex-1 pb-16 pt-[calc(var(--header-total)_+_2.5rem)]"}>
+        <div className={embedded ? "min-w-0" : "container mx-auto max-w-7xl px-4 sm:px-6"}>
           {/* No items-start: the aside must STRETCH to the row's height or the sticky map has
               zero travel room and scrolls away with the page (the "stagnant map" bug). */}
           <div className={cn(showMap || isLoading ? "lg:flex lg:gap-6 xl:gap-8" : "")}>
             {/* Left column: hero, search, cards */}
             <div className="min-w-0 flex-1">
-              {user && (
+              {user && !embedded && (
                 <FadeInSection>
                   <div className="mb-6">
                     <Button
@@ -574,7 +604,13 @@ export default function KitchenComparisonPage() {
                 </FadeInSection>
               )}
 
-              {/* Page hero */}
+              {embedded ? (
+                <div className="mb-5">
+                  <h1 className="text-2xl font-semibold tracking-tight text-[#1A1A1A]">{t("kbTitle", "Kitchens in St. John’s")}</h1>
+                  <p className="mt-1 text-sm text-[#6B6B6B]">{t("kbLead", { defaultValue: "{count, plural, one {# licensed commercial kitchen} other {# licensed commercial kitchens}} · book by the hour or the day", count: publicKitchens.length })}</p>
+                </div>
+              ) : (
+              /* Page hero */
               <FadeInSection>
                 <div className="mb-6 max-w-2xl sm:mb-8">
                   {/* The heading is two fragments so the gradient styles only the tail. The accent
@@ -595,6 +631,7 @@ export default function KitchenComparisonPage() {
                   </p>
                 </div>
               </FadeInSection>
+              )}
 
               {/* The search stays in the page flow at every size. On desktop, the compact
                   search in the header takes over after this card scrolls past. */}
@@ -610,10 +647,33 @@ export default function KitchenComparisonPage() {
                       aria-label={t("searchKitchensAria", "Search kitchens")}
                     />
                   </div>
+                  <div className="mt-3 flex gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible" role="group" aria-label={t("kbFilters", "Filters")} data-testid="kb-filters">
+                    {([["has", t("kbHasStorage", "Has storage")], ["cold", t("kbColdStorage", "Cold or freezer storage")]] as const).map(([value, label]) => (
+                      <button key={value} type="button" aria-pressed={storageFilter === value} onClick={() => setStorageFilter((current) => current === value ? "any" : value)}
+                        className={cn(chipClass, storageFilter === value && chipOnClass)}>{storageFilter === value && <Check className="h-3.5 w-3.5" aria-hidden />}{label}</button>
+                    ))}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild><button type="button" className={cn(chipClass, maxPrice != null && chipOnClass)}>
+                        {maxPrice != null ? t("kbUnder", { defaultValue: "Under {amount}/hr", amount: formatCurrency(maxPrice) }) : t("kbPrice", "Price")}<ChevronDown className="h-3.5 w-3.5" aria-hidden /></button></DropdownMenuTrigger>
+                      <DropdownMenuContent align="start">
+                        <DropdownMenuItem onSelect={() => setMaxPrice(null)}>{t("kbAnyPrice", "Any price")}</DropdownMenuItem>
+                        {PRICE_STEPS.map((cents) => <DropdownMenuItem key={cents} onSelect={() => setMaxPrice(cents)}>{t("kbUnder", { defaultValue: "Under {amount}/hr", amount: formatCurrency(cents) })}</DropdownMenuItem>)}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                    {allEquipment.length > 0 && <DropdownMenu>
+                      <DropdownMenuTrigger asChild><button type="button" className={cn(chipClass, equipmentFilter.length > 0 && chipOnClass)}>
+                        {equipmentFilter.length ? t("kbEquipmentCount", { defaultValue: "Equipment ({count})", count: equipmentFilter.length }) : t("kbEquipmentChip", "Equipment")}<ChevronDown className="h-3.5 w-3.5" aria-hidden /></button></DropdownMenuTrigger>
+                      <DropdownMenuContent align="start" className="max-h-72 overflow-y-auto">
+                        {allEquipment.map((item) => <DropdownMenuItem key={item} onSelect={(event) => { event.preventDefault(); setEquipmentFilter((current) => current.includes(item) ? current.filter((x) => x !== item) : [...current, item]); }}>
+                          <span className="mr-2 inline-flex w-4">{equipmentFilter.includes(item) && <Check className="h-4 w-4" aria-hidden />}</span>{item}</DropdownMenuItem>)}
+                      </DropdownMenuContent>
+                    </DropdownMenu>}
+                    {filtersOn && <button type="button" onClick={clearFilters} className="shrink-0 px-2 text-[0.8rem] font-medium text-[#E10939] hover:underline">{t("kbClear", "Clear")}</button>}
+                  </div>
                   {!isLoading && (
-                    <p className="mt-2 px-1 font-mono text-[10px] uppercase tracking-wider text-[#6B6B6B]">
+                    <p className="mt-2 px-1 text-[0.8rem] text-[#6B6B6B]">
                       {filteredKitchens.length} {filteredKitchens.length === 1 ? t("kitchenSingular", "kitchen") : t("kitchenPlural", "kitchens")}
-                      {searchQuery.trim() ? (" " + t("matchingYourSearch", "matching your search")) : (" " + t("availableWord", "available"))}
+                      {searchQuery.trim() || filtersOn ? (" " + t("matchingYourSearch", "matching your search")) : (" " + t("availableWord", "available"))}
                     </p>
                   )}
                 </div>
@@ -652,16 +712,16 @@ export default function KitchenComparisonPage() {
                       <Building2 className="h-7 w-7 text-[#E10939]" />
                     </div>
                     <h2 className="mb-2 text-xl font-bold text-[#1A1A1A]">
-                      {searchQuery.trim() ? t("noMatchesFound", "No matches found") : t("kitchensComingSoon", "Kitchens coming soon")}
+                      {searchQuery.trim() || filtersOn ? t("noMatchesFound", "No matches found") : t("kitchensComingSoon", "Kitchens coming soon")}
                     </h2>
                     <p className="text-sm leading-relaxed text-[#6B6B6B]">
                       {searchQuery.trim() ? t("tryDifferentSearch", "Try a different search, or clear the filter to see all spaces.") : t("kitchensOnboardingNotice", "We're onboarding certified commercial kitchens in St. John's. Check back soon.")}
                     </p>
-                    {searchQuery.trim() && (
+                    {(searchQuery.trim() || filtersOn) && (
                       <Button
                         variant="outline"
                         className="mt-6 rounded-full border-[#E10939]/30 text-[#E10939] hover:bg-[#E10939]/5"
-                        onClick={() => setSearchQuery("")}
+                        onClick={clearFilters}
                       >
                         {t("clearSearch")}
                       </Button>
@@ -671,7 +731,7 @@ export default function KitchenComparisonPage() {
               )}
 
               {/* Soft auth — minimal, preview-style */}
-              {!authLoading && !user && filteredKitchens.length > 0 && (
+              {!embedded && !authLoading && !user && filteredKitchens.length > 0 && (
                 <FadeInSection delay={1}>
                   <div className="mx-auto mt-12 max-w-lg rounded-2xl border border-[#2C2C2C]/8 bg-white p-6 text-center shadow-[0_8px_30px_rgba(44,44,44,0.05)] sm:p-8">
                     <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-[#E10939]/10">
@@ -707,13 +767,13 @@ export default function KitchenComparisonPage() {
                 hover-synced with the cards; clicking a pill previews the kitchens there. */}
             {isLoading ? (
               <aside className="hidden lg:block lg:w-[42%] lg:shrink-0 xl:w-[40%]">
-                <div className="sticky top-[calc(var(--header-total)_+_1rem)] h-[calc(100vh_-_var(--header-total)_-_2rem)]">
+                <div className={embedded ? "sticky top-4 h-[calc(100svh_-_8rem)]" : "sticky top-[calc(var(--header-total)_+_1rem)] h-[calc(100vh_-_var(--header-total)_-_2rem)]"}>
                   <MapPanelSkeleton />
                 </div>
               </aside>
             ) : showMap ? (
               <aside className="hidden lg:block lg:w-[42%] lg:shrink-0 xl:w-[40%]">
-                <div className="sticky top-[calc(var(--header-total)_+_1rem)] h-[calc(100vh_-_var(--header-total)_-_2rem)]">
+                <div className={embedded ? "sticky top-4 h-[calc(100svh_-_8rem)]" : "sticky top-[calc(var(--header-total)_+_1rem)] h-[calc(100vh_-_var(--header-total)_-_2rem)]"}>
                   <motion.div
                     initial={{ opacity: 0, scale: 0.98 }}
                     animate={{ opacity: 1, scale: 1 }}

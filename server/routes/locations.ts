@@ -265,6 +265,8 @@ router.get('/public/kitchens', async (req: Request, res: Response) => {
                 equipment,
                 equipmentSummary,
                 hourlyRate: kitchen.hourlyRate ? parseFloat(String(kitchen.hourlyRate)) : null,
+                // Cards show the day price too when a kitchen offers one.
+                dailyRate: (kitchen as { dailyRate?: unknown }).dailyRate ? parseFloat(String((kitchen as { dailyRate?: unknown }).dailyRate)) : null,
                 currency: kitchen.currency || 'CAD',
                 minimumBookingHours: kitchen.minimumBookingHours ? parseFloat(String(kitchen.minimumBookingHours)) : null,
                 // Location info

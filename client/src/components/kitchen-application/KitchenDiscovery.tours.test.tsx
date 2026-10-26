@@ -6,6 +6,7 @@ import KitchenDiscovery from './KitchenDiscovery';
 vi.mock('@/hooks/use-chef-kitchen-applications', () => ({ useChefKitchenApplicationsStatus: () => ({ applications: [], hasAnyApproved: false, approvedCount: 0, pendingCount: 0, isLoading: false }) }));
 vi.mock('@/components/chef/ChefViewingsList', () => ({ default: () => <h1>TOUR-77 · Harbour kitchen</h1> }));
 vi.mock('@/components/chef/ChefKitchenApplications', () => ({ default: () => <div>Kitchen applications table</div> }));
+vi.mock('@/pages/KitchenComparisonPage', () => ({ KitchenBrowser: () => <h1>Kitchens in St. John’s</h1> }));
 vi.mock('react-i18next', async original => ({ ...await original<typeof import('react-i18next')>(), useTranslation: () => ({ t: (key: string, fallback?: string) => fallback || key, i18n: { language: 'en-CA' } }) }));
 afterEach(() => { cleanup(); window.history.replaceState({}, '', '/'); });
 
@@ -15,7 +16,7 @@ it('switches chef tabs with a linked tour without changing hook order or duplica
   client.setQueryData(['/api/public/kitchens'], []);
   const page = (defaultTab: string) => <QueryClientProvider client={client}><KitchenDiscovery defaultTab={defaultTab} /></QueryClientProvider>;
   const rendered = render(page('discover'));
-  expect(screen.getByRole('heading', { name: 'Discover kitchens' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Kitchens in St. John’s' })).toBeInTheDocument();
   rendered.rerender(page('tours'));
   expect(screen.getByRole('heading', { name: 'TOUR-77 · Harbour kitchen' })).toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: 'Your kitchen tours' })).not.toBeInTheDocument();

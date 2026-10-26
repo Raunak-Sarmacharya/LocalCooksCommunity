@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import { Icon } from "@iconify/react";
 import { Link, useLocation, useSearch } from "wouter";
 import ChefViewingsList from "@/components/chef/ChefViewingsList";
+import { KitchenBrowser } from "@/pages/KitchenComparisonPage";
 import ChefKitchenApplications from "@/components/chef/ChefKitchenApplications";
 import { ChefPageHeader, InfoChip } from "@/components/chef/ui";
 import { getKitchenDisplayStatus, kitchenLocationId } from "@/components/chef/applications/status";
@@ -166,6 +167,8 @@ export default function KitchenDiscovery({
 
   // My kitchens and the kitchen page carry their own titles (owner-approved mock, Oct 26).
   if (activeTab === "applications") return <div className="min-w-0 space-y-6"><ChefKitchenApplications onOpenChat={onOpenChat} /></div>;
+  // Find: the same list, map and filters as the public page, inside the app (owner, Oct 26).
+  if (activeTab === "discover" && !compact) return <KitchenBrowser embedded />;
 
   if (isLoading) {
     return (
