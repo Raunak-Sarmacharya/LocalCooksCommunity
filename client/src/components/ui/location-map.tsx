@@ -33,7 +33,7 @@ export function LocationMap({ address, name, latitude, longitude, heightClassNam
       .on("tileerror", () => setTilesUnavailable(true))
       .on("tileload", () => setTilesUnavailable(false))
       .addTo(map);
-    L.control.zoom({ position: "bottomright" }).addTo(map);
+    L.control.zoom({ position: "topright" }).addTo(map);
     // Compare's pill styling, adapted to a single fixed location label.
     // DOM text keeps manager-provided names and addresses out of HTML strings.
     const pill = document.createElement("div");
@@ -74,7 +74,7 @@ export function LocationMap({ address, name, latitude, longitude, heightClassNam
       {hasCoordinates ? <>
         <div ref={container} className="kc-map !min-h-0" role="region" aria-label={name ? `Map showing ${name}` : "Location map"} />
         {tilesUnavailable && <p role="status" className="absolute bottom-8 left-3 right-14 z-[500] rounded-lg bg-white/95 px-3 py-2 text-xs text-muted-foreground shadow-sm">{t("mapTilesUnavailable", "Map could not load. Use Get directions below.")}</p>}
-        <button type="button" aria-label={t("recenterMap", "Recenter map")} onClick={() => mapRef.current?.setView([latitude!, longitude!], zoom)} className="absolute right-[10px] top-[10px] z-[500] flex h-8 w-8 items-center justify-center rounded-xl border-0 bg-white text-gray-700 shadow-sm hover:bg-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-700"><LocateFixed size={16} /></button>
+        <button type="button" aria-label={t("recenterMap", "Recenter map")} onClick={() => mapRef.current?.setView([latitude!, longitude!], zoom)} className="absolute bottom-7 right-[10px] z-[500] flex h-8 w-8 items-center justify-center rounded-xl border-0 bg-white text-gray-700 shadow-sm hover:bg-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-700"><LocateFixed size={16} /></button>
       </> : <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-sm text-muted-foreground"><MapPin size={24} /><p>{t("mapUnavailable", "Map preview unavailable. Open directions to locate the kitchen.")}</p></div>}
     </div>
     <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-border/50 p-3">

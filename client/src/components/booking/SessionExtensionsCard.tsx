@@ -155,11 +155,11 @@ export function SessionExtensionsCard({ bookingId, manager, chefName, onChanged,
       ? t("sxbHistoryExtra", { defaultValue: "Extra time paid · {amount}", amount: cash(item.amountCents) })
       : item.kind === "early_start" ? item.free
         // The manager reads their own decisions in the first person; the chef reads the kitchen's name.
-        ? manager ? t("sxbHistoryEarlyFreeManager", { defaultValue: "You let {chef} start {early} early — no charge", chef: chefName, early: minutesText(item.minutes) })
-          : t("sxbHistoryEarlyFree", { defaultValue: "{kitchen} let you start {early} early — no charge", kitchen, early: minutesText(item.minutes) })
+        ? manager ? t("sxbHistoryEarlyFreeManager", { defaultValue: "You let {chef} start {early} early, free", chef: chefName, early: minutesText(item.minutes) })
+          : t("sxbHistoryEarlyFree", { defaultValue: "{kitchen} let you start {early} early, free", kitchen, early: minutesText(item.minutes) })
         : t("sxbHistoryEarly", { defaultValue: "Started earlier at {time} · {amount}", time: clock(item.endAt), amount: cash(item.amountCents) })
-      : item.free ? manager ? t("sxbHistoryFreeManager", { defaultValue: "You gave {chef} {duration} (until {time}) — no charge", chef: chefName, duration: duration(item.minutes), time: clock(item.endAt) })
-        : t("sxbHistoryFree", { defaultValue: "{kitchen} gave you {duration} (until {time}) — no charge", kitchen, duration: duration(item.minutes), time: clock(item.endAt) })
+      : item.free ? manager ? t("sxbHistoryFreeManager", { defaultValue: "You gave {chef} {duration} (until {time}), free", chef: chefName, duration: duration(item.minutes), time: clock(item.endAt) })
+        : t("sxbHistoryFree", { defaultValue: "{kitchen} gave you {duration} (until {time}), free", kitchen, duration: duration(item.minutes), time: clock(item.endAt) })
       : t("sxbHistoryExtended", { defaultValue: "Extended until {time} · {amount}", time: clock(item.endAt), amount: cash(item.amountCents) })}</li>)}
   </ul>
 
@@ -197,13 +197,13 @@ export function SessionExtensionsCard({ bookingId, manager, chefName, onChanged,
     ))}
     {view.closed && (manager
       ? <p className="text-sm text-muted-foreground" role="status" data-testid="extension-closed">{view.closed.kind === "request"
-        ? t("sxbRequestClosed", { defaultValue: "Request closed — not answered in time" })
+        ? t("sxbRequestClosed", { defaultValue: "Request closed: not answered in time" })
         : t("sxbOfferExpired", { defaultValue: "Offer expired" })}</p>
       : <div className="space-y-2" data-testid="extension-closed">
         <p className="text-sm" role="status">{view.closed.kind === "request"
           ? t(view.closed.status === "expired" ? "sxbExpiredChef" : "sxbLapsed", { defaultValue: view.closed.status === "expired"
-            ? "{kitchen} didn’t answer in time. Your {amount} hold was released — you weren’t charged."
-            : "{kitchen} didn’t answer in time. Your {amount} hold is being released — you won’t be charged.", kitchen, amount: cash(view.closed.amountCents) })
+            ? "{kitchen} didn’t answer in time. Your {amount} hold was released. You weren’t charged."
+            : "{kitchen} didn’t answer in time. Your {amount} hold is being released. You won’t be charged.", kitchen, amount: cash(view.closed.amountCents) })
           : t("sxbOfferExpiredChef", { defaultValue: "{kitchen}’s offer expired.", kitchen })}</p>
         {view.closed.kind === "request" && <MessageKitchenButton bookingId={bookingId} />}
       </div>)}
@@ -271,7 +271,7 @@ export function SessionExtensionsCard({ bookingId, manager, chefName, onChanged,
               {/* Focus brings it into view; the bottom margin keeps it clear of the phone's sticky Message bar. */}
               <Textarea id={`extra-dispute-${item.id}`} autoFocus className="scroll-mb-32" value={disputeNote} maxLength={1000} rows={3} onChange={event => setDisputeNote(event.target.value)} />
               <Button type="button" className={tap} variant={nowMode ? "outline" : "default"} disabled={!!busy || !disputeNote.trim()} onClick={() => void act(`dispute-${item.id}`, () => decide(item, "dispute", { note: disputeNote.trim() }),
-                t("sxbDisputeSent", { defaultValue: "Thanks — Local Cooks will review this and get back to you. Nothing was charged." })).then(() => setDisputing(null))}>
+                t("sxbDisputeSent", { defaultValue: "Thanks. Local Cooks will review this and get back to you. Nothing was charged." })).then(() => setDisputing(null))}>
                 {t("sxbSendToSupport", { defaultValue: "Send to Local Cooks" })}</Button>
             </div>}
           </>}
@@ -334,8 +334,8 @@ export function SessionExtensionsCard({ bookingId, manager, chefName, onChanged,
             {free ? t("sxbFree", { defaultValue: "Free" }) : t("sxbChargeFor", { defaultValue: "Charge for the extra time · {amount}", amount: cash(pick.amountCents) })}</label>)}
         </fieldset>
         <p className="text-xs text-muted-foreground">{pick.free
-          ? pick.kind === "early_start" ? t("sxbFreeStartHint", { defaultValue: "{chef} can start at {time} right away — we’ll let them know.", chef: chefName, time: clock(pick.at) })
-            : t("sxbFreeEndHint", { defaultValue: "{chef} gets until {time} right away — we’ll let them know.", chef: chefName, time: clock(pick.at) })
+          ? pick.kind === "early_start" ? t("sxbFreeStartHint", { defaultValue: "{chef} can start at {time} right away. We’ll let them know.", chef: chefName, time: clock(pick.at) })
+            : t("sxbFreeEndHint", { defaultValue: "{chef} gets until {time} right away. We’ll let them know.", chef: chefName, time: clock(pick.at) })
           : t("sxbPaidOfferHint", { defaultValue: "{chef} accepts and pays with their saved card. Nothing changes until they pay.", chef: chefName })}</p>
         <Button type="button" className={tap} disabled={!!busy} onClick={() => void act(`offer-${pick.minutes}`, () => createExtension(bookingId, { kind: pick.kind, minutes: pick.minutes,
             requestKey, free: pick.free, expectedEndAt: pick.kind === "early_start" ? state.startAt : state.endAt, expectedAmountCents: pick.free ? 0 : pick.amountCents,

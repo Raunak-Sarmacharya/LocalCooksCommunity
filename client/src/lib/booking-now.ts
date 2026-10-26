@@ -117,7 +117,7 @@ function chefSentence(phase: BookingHeaderPhase, f: BookingNowFacts, t: T): stri
       return f.opensAt ? t('bdhNextChefDetailsReady', { time: f.opensAt }) : t('bdhNextChefConfirmed');
     case 'today':
       if (f.runningLate && f.endWithZone) return t('bnChefRunningLate', { kitchen, duration: f.runningLate.duration, end: f.endWithZone });
-      return f.opensAt ? t('bnChefTodayOpensAt', { time: f.opensAt }) : t('bdhNextChefConfirmed');
+      return f.opensClock ? t('bnChefTodayOpensAt', { time: f.opensClock }) : t('bdhNextChefConfirmed');
     case 'checkin_open':
       if (f.runningLate && f.endWithZone) return t('bnChefRunningLate', { kitchen, duration: f.runningLate.duration, end: f.endWithZone });
       return f.startPassed && f.endWithZone ? t('bnChefCheckinOpenLate', { end: f.endWithZone }) : t('bdhNextChefCheckinOpen');

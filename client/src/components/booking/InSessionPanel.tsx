@@ -148,7 +148,8 @@ export function InSessionPanel({
 
       {phase === "ending" && <p className="text-sm">{t("kvIsLast15Hint", { defaultValue: "Your booked time is almost up. Check out when you’re finished." })}</p>}
       {/* One row of actions. Outside the last 15 minutes there is no filled button: nothing is urgent. */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+      {/* items-start: when "Need more time?" opens its panel in this row, the other buttons keep their own height. */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-start">
         {phase !== "active" && canCheckout && !checkoutStarted && <Button type="button" className={tap} onClick={onStartCheckout}>
           <LogOut className="h-4 w-4 mr-2 shrink-0" />{t("kciIsCheckOutNow", { defaultValue: "Check out now" })}
         </Button>}

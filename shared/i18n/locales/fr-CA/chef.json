@@ -485,7 +485,7 @@
   "bkLoadingBookings": "Chargement des réservations...",
   "bkLoginToDownload": "Connectez-vous pour télécharger la facture",
   "bkMoveOutBannerBody": "Soumettez vos photos de départ montrant que l'unité est propre et vide. Le gestionnaire examinera et vous dégagera.",
-  "bkMyBookings": "Mes réservations",
+  "bkMyBookings": "Réservations",
   "bkMyStorageTitle": "Mes entreposages",
   "bkNextPage": "Suivant",
   "bkNoBookingsFound": "Aucune réservation trouvée",
@@ -2025,7 +2025,7 @@
   "shellManyUnpaidCharges": "Vous avez {count} frais impayés. Réglez-les pour continuer à réserver.",
   "shellMessages": "Messages",
   "shellMyApplication": "Ma demande",
-  "shellMyBookings": "Mes réservations",
+  "shellMyBookings": "Réservations",
   "shellMyEarnings": "Revenus",
   "shellMyKitchens": "Mes cuisines",
   "shellMyTransactions": "Mes transactions",
@@ -3587,7 +3587,7 @@
   "inspClaimLine": "Réclamation pour dommages · {amount} · {status}",
   "inspClaimLink": "Voir la réclamation sur la page de la réservation",
   "bnChefRunningLate": "Vous avez prévenu {kitchen} que vous aurez environ {duration} de retard. Votre réservation se termine quand même à {end}.",
-  "bnChefTodayOpensAt": "L’enregistrement ouvre {time}. Enregistrez-vous à votre arrivée à la cuisine.",
+  "bnChefTodayOpensAt": "L’enregistrement ouvre aujourd’hui à {time}. Enregistrez-vous à votre arrivée à la cuisine.",
   "bnChefCheckinOpenLate": "L’enregistrement est ouvert. Votre réservation se termine quand même à {end}.",
   "bnChefCheckoutSubmitted": "Départ envoyé à {time}. Nous vous préviendrons si la cuisine signale quoi que ce soit.",
   "mdNextDay": "Prochain : jour {number} sur {total} · {date} à {time}.",
@@ -4153,5 +4153,6 @@
   "homeReadyWhenYou": "{kitchen} est prête quand vous l’êtes.",
   "kaAddTitleCount": "{count, plural, one {La cuisine a besoin d’un autre document} other {La cuisine a besoin de # autres documents}}",
   "shellAlsoSell": "Vendez aussi vos plats",
-  "shellAlsoSellHint": "Demande en environ 10 minutes"
+  "shellAlsoSellHint": "Demande en environ 10 minutes",
+  "inspectConfirmBodyNoNote": "La visite sera fermée sans problème constaté. {chef} sera avisé."
 }

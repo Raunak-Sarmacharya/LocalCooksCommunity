@@ -216,7 +216,7 @@ export async function persistBookingCloseout(bookingId: number, tx: Transaction,
         undefined, { recipientPolicy: 'participants', notificationRecipientPolicy: stillCheckedIn || noArrival ? 'participants' : 'manager', serviceEndedAt: next.serviceEndedAt,
           ...(noArrival ? { noArrival: true } : {}),
           // A chef still checked in is never told the visit is "complete": they are asked to check out now.
-          roleText: noArrivalText ?? (stillCheckedIn ? { chef: { title: 'Your booked time has ended', message: `Your booking (${reference}) has ended and you’re still checked in. Please check out now — the kitchen may charge for the extra time.` },
+          roleText: noArrivalText ?? (stillCheckedIn ? { chef: { title: 'Your booked time has ended', message: `Your booking (${reference}) has ended and you’re still checked in. Please check out now. The kitchen may charge for the extra time.` },
             manager: { title: 'Booked time ended — not checked out', message: `The booked time for ${reference} has ended and the customer hasn’t checked out. Message them, or record when they left; you can then charge for the extra time.` } }
             : { chef: { title: 'Your visit is complete', message: `Your visit (${reference}) is complete. Open the booking for a summary or to report a problem.` },
             manager: { title: 'A visit has ended', message: `The visit for ${reference} has ended. Review the checkout photos and notes before the inspection deadline.` } }),

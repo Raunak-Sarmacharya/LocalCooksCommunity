@@ -637,7 +637,7 @@ describe("payout said once (manager, checkout to review)", () => {
       closeout: closeout("2030-01-16T15:30:00Z"), totalPrice: 10000, paymentTransaction: { amount: 12000, serviceFee: 700, managerRevenue: 11300, stripeProcessingFee: 358, status: "succeeded" },
       payout: { timing: "after_closeout", status: "scheduled", holdReason: null, expectedAt: "2030-01-16T15:30:00Z", sentAt: null, amountCents: 5464 } };
     render(<BookingDetailsPage />);
-    expect(await screen.findByTestId("booking-next-step")).toHaveTextContent("Ada Lovelace checked out. Finish the inspection to get paid now — or it’s sent Jan 16 at 12:00 p.m.");
+    expect(await screen.findByTestId("booking-next-step")).toHaveTextContent("Ada Lovelace checked out. Finish the inspection to get paid now. Otherwise it’s sent Jan 16 at 12:00 p.m.");
     expect(within(screen.getByTestId("payment-card")).getByTestId("kitchen-payout-status")).toHaveTextContent(/^Sent automatically if you don’t inspect\.$/);
     expect(count("Jan 16 at 12:00 p.m.")).toBe(1);
     // Headline + the statement's bottom line.

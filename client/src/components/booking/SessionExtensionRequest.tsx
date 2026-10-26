@@ -146,7 +146,7 @@ export function SessionExtensionRequest({ bookingId, kitchenName, timezone, clas
   const lapsedItem = view.kind === "lapsed" ? view.item : view.kind === "waiting" && lapsedAt(view.item, serverClock) ? view.item : null
   if (lapsedItem) return (
     <div className="space-y-2 rounded-lg border p-3" role="status" data-testid="extension-lapsed">
-      <p className="text-sm">{t("sxLapsed", { defaultValue: "{kitchen} didn’t answer in time. Your {amount} hold is being released — you won’t be charged.",
+      <p className="text-sm">{t("sxLapsed", { defaultValue: "{kitchen} didn’t answer in time. Your {amount} hold is being released. You won’t be charged.",
         kitchen: kitchenName, amount: money(lapsedItem.amountCents, state.currency, locale) })}</p>
       <div className="flex flex-col gap-2 sm:flex-row">
         <Button type="button" className={className} onClick={() => void open(true)}>{t("sxAskAgain", { defaultValue: "Ask again" })}</Button>

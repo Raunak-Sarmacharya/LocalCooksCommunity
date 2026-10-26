@@ -134,7 +134,7 @@ describe("SessionExtensionsCard variants", () => {
   it("record: only the confirmed history, no heading", async () => {
     body = state({ history: [item({ status: "approved", confirmed: true, free: true })] });
     render(<SessionExtensionsCard variant="record" bookingId={10} manager chefName="Maya Chen" />);
-    expect(await screen.findByTestId("extension-history")).toHaveTextContent(/^You gave Maya Chen 1 more hour \(until 5:00\s?p\.m\.\) — no charge$/);
+    expect(await screen.findByTestId("extension-history")).toHaveTextContent(/^You gave Maya Chen 1 more hour \(until 5:00\s?p\.m\.\), free$/);
     expect(screen.queryByRole("heading")).not.toBeInTheDocument();
   });
 });

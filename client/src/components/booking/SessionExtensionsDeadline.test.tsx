@@ -42,7 +42,7 @@ describe("chef: the request closes at the deadline", () => {
     fireEvent.click(screen.getByRole("button", { name: "Need more time?" }));
     expect(await screen.findByTestId("extension-waiting")).toBeInTheDocument();
     const lapsed = await screen.findByTestId("extension-lapsed", undefined, { timeout: 2000 });
-    expect(lapsed).toHaveTextContent("Harbour Kitchen didn’t answer in time. Your $30.00 hold is being released — you won’t be charged.");
+    expect(lapsed).toHaveTextContent("Harbour Kitchen didn’t answer in time. Your $30.00 hold is being released. You won’t be charged.");
     expect(screen.queryByTestId("extension-waiting")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Need more time?" })).not.toBeInTheDocument();
     fireEvent.click(within(lapsed).getByRole("button", { name: "Message Harbour Kitchen" }));
@@ -91,7 +91,7 @@ describe("booking page: the request and offer close at the deadline", () => {
     render(<SessionExtensionsCard bookingId={10} manager chefName="Maya Chen" />);
     expect(await screen.findByTestId("extension-request-banner")).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByTestId("extension-request-banner")).not.toBeInTheDocument(), { timeout: 2000 });
-    expect(screen.getByTestId("extension-closed")).toHaveTextContent("Request closed — not answered in time");
+    expect(screen.getByTestId("extension-closed")).toHaveTextContent("Request closed: not answered in time");
     expect(screen.queryByRole("button", { name: /Approve/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Decline" })).not.toBeInTheDocument();
   });
@@ -116,14 +116,14 @@ describe("booking page: the request and offer close at the deadline", () => {
     render(<SessionExtensionsCard bookingId={10} manager={false} chefName="Maya" />);
     expect(await screen.findByText("Waiting for Harbour Kitchen · we’ll let you know")).toBeInTheDocument();
     const closed = await screen.findByTestId("extension-closed", undefined, { timeout: 2000 });
-    expect(closed).toHaveTextContent("Harbour Kitchen didn’t answer in time. Your $30.00 hold is being released — you won’t be charged.");
+    expect(closed).toHaveTextContent("Harbour Kitchen didn’t answer in time. Your $30.00 hold is being released. You won’t be charged.");
     expect(screen.queryByText("Waiting for Harbour Kitchen · we’ll let you know")).not.toBeInTheDocument();
     expect(within(closed).getByRole("button", { name: /Message/ })).toBeInTheDocument();
   });
   it("after the server records the expiry the chef line stays (no flicker), reading 'was released'", async () => {
     body = state({ serverNow: iso(SERVER_NOW + 5_000), history: [item({ status: "expired" })] });
     render(<SessionExtensionsCard bookingId={10} manager={false} chefName="Maya" />);
-    expect(await screen.findByTestId("extension-closed")).toHaveTextContent("Your $30.00 hold was released — you weren’t charged.");
+    expect(await screen.findByTestId("extension-closed")).toHaveTextContent("Your $30.00 hold was released. You weren’t charged.");
   });
   it("does not call a withdrawn request 'unanswered' (expired before its deadline)", async () => {
     body = state({ history: [item({ status: "expired", expiresAt: iso(SERVER_NOW + 600_000) })] });

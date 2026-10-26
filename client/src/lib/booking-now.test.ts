@@ -72,7 +72,7 @@ describe('copy per moment', () => {
         .toBe('Ada Lovelace is running about 15 min late. Their booking still ends at 12:00 p.m. NT.');
   });
   it('the payout amount stays on the Payment card; the sentence keeps the action', () => {
-    expect(sentence('checkout_review', 'manager')).toBe('Ada Lovelace checked out. Finish the inspection to get paid now — or it’s sent Jan 16 at 12:00 p.m.');
+    expect(sentence('checkout_review', 'manager')).toBe('Ada Lovelace checked out. Finish the inspection to get paid now. Otherwise it’s sent Jan 16 at 12:00 p.m.');
     expect(sentence('checkout_review', 'manager')).not.toContain('$54.64');
     expect(sentence('confirmed', 'chef', { detailsReleaseAt: 'Oct 15 at 9:00 p.m.' })).toBe('We’ll share arrival details on Oct 15 at 9:00 p.m.');
   });

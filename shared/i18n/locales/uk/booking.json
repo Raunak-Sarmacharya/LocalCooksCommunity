@@ -1564,5 +1564,9 @@
   "dcR2Totals": "Заявлено {claimed} · Отримано {collected} · Ще очікується {pending}",
   "dcR2NoMatch": "Немає претензій за цими фільтрами.",
   "vrEmpty": "Поки що нічого не записано. Тут з’явиться час заїзду та виїзду.",
-  "checkoutDates": "Днів: {count} — {dates}"
+  "checkoutDates": "Днів: {count} — {dates}",
+  "historyExt_gave_offer_chef": "Кухня надала вам ще {minutes} хв безкоштовно",
+  "historyExt_gave_offer_manager": "Ви надали {chef} ще {minutes} хв безкоштовно",
+  "historyExt_gave_early_chef": "Кухня дозволила вам почати на {minutes} хв раніше безкоштовно",
+  "historyExt_gave_early_manager": "Ви дозволили {chef} почати на {minutes} хв раніше безкоштовно"
 }

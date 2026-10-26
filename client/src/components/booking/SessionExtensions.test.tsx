@@ -203,7 +203,7 @@ describe("booking page: extra time", () => {
     const accept = await screen.findByRole('button', { name: 'Accept & pay $30.00' });
     responses[0].body = state({ history: [item({ kind: 'offer', status: 'approved', paid: true, confirmed: true })] });
     fireEvent.click(accept);
-    expect(await screen.findByRole('status')).toHaveTextContent('Time added — you now have until 5:00 p.m. $30.00 was charged.');
+    expect(await screen.findByRole('status')).toHaveTextContent('Time added. You now have until 5:00 p.m. $30.00 was charged.');
     expect(screen.queryByRole('button', { name: 'Accept & pay $30.00' })).not.toBeInTheDocument();
   });
   it('a 15-minute paid offer says it is billed as 30 minutes (live #181)', async () => {
@@ -347,19 +347,19 @@ describe("booking page: extra time", () => {
   it("shows free grants in history with who gave them", async () => {
     responses.push({ match: /\/extensions$/, method: "GET", body: state({ inSession: false, history: [item({ kind: "early_start", free: true, minutes: 30, status: "approved", confirmed: true, amountCents: 0 })] }) });
     render(<SessionExtensionsCard bookingId={10} manager={false} chefName="" />);
-    expect(await screen.findByText("Harbour Kitchen let you start 30 minutes early — no charge")).toBeInTheDocument();
+    expect(await screen.findByText("Harbour Kitchen let you start 30 minutes early, free")).toBeInTheDocument();
   });
   it("the manager reads their own free grants in the first person; the chef reads the kitchen's name", async () => {
     const history = [item({ id: 6, kind: "early_start", free: true, minutes: 30, status: "approved", confirmed: true, amountCents: 0 }),
       item({ id: 7, kind: "offer", free: true, minutes: 30, status: "approved", confirmed: true, amountCents: 0, endAt: "2026-10-14T19:00:00.000Z" })]
     responses.push({ match: /\/extensions$/, method: "GET", body: state({ inSession: false, history }) })
     const manager = render(<SessionExtensionsCard bookingId={10} manager chefName="Maya Chen" />)
-    expect(await screen.findByText("You let Maya Chen start 30 minutes early — no charge")).toBeInTheDocument()
-    expect(screen.getByText(/^You gave Maya Chen 30 more minutes \(until 4:30\s?p\.m\.\) — no charge$/)).toBeInTheDocument()
+    expect(await screen.findByText("You let Maya Chen start 30 minutes early, free")).toBeInTheDocument()
+    expect(screen.getByText(/^You gave Maya Chen 30 more minutes \(until 4:30\s?p\.m\.\), free$/)).toBeInTheDocument()
     expect(screen.queryByText(/Harbour Kitchen let/)).not.toBeInTheDocument()
     manager.unmount()
     render(<SessionExtensionsCard bookingId={10} manager={false} chefName="" />)
-    expect(await screen.findByText(/^Harbour Kitchen gave you 30 more minutes \(until 4:30\s?p\.m\.\) — no charge$/)).toBeInTheDocument()
+    expect(await screen.findByText(/^Harbour Kitchen gave you 30 more minutes \(until 4:30\s?p\.m\.\), free$/)).toBeInTheDocument()
   });
   it("Offer more time: quick picks as chips plus Choose a time… for any free end, with a summary and the right free copy", async () => {
     const options = [15, 30, 45, 60, 75].map(minutes => ({ minutes, endTime: "", endAt: new Date(Date.parse(END) + minutes * 60_000).toISOString(),
@@ -381,7 +381,7 @@ describe("booking page: extra time", () => {
     expect(screen.getByTestId("extension-pick-summary")).toHaveTextContent(/^Until 5:15\s?p\.m\. · \$45\.00$/)
     fireEvent.click(screen.getByRole("radio", { name: "Free" }))
     expect(screen.getByTestId("extension-pick-summary")).toHaveTextContent(/· Free$/)
-    expect(screen.getByText(/^Maya Chen gets until 5:15\s?p\.m\. right away — we’ll let them know\.$/)).toBeInTheDocument()
+    expect(screen.getByText(/^Maya Chen gets until 5:15\s?p\.m\. right away. We’ll let them know\.$/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "Give it free" }))
     await waitFor(() => expect(posts()[0].body).toMatchObject({ kind: "offer", minutes: 75, free: true, expectedAmountCents: 0 }))
   });
@@ -399,7 +399,7 @@ describe("booking page: extra time", () => {
     fireEvent.click(screen.getByRole("combobox", { name: "New start time" }))
     fireEvent.click(screen.getByRole("option", { name: /1:45\s?p\.m\./ }))
     expect(screen.getByTestId("extension-pick-summary")).toHaveTextContent(/^Starts at 1:45\s?p\.m\. · Free$/)
-    expect(screen.getByText(/^Maya Chen can start at 1:45\s?p\.m\. right away — we’ll let them know\.$/)).toBeInTheDocument()
+    expect(screen.getByText(/^Maya Chen can start at 1:45\s?p\.m\. right away. We’ll let them know\.$/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "Start now" }))
     expect(screen.getByTestId("extension-pick-summary")).toHaveTextContent(/^Starts at 1:00\s?p\.m\. · \$30\.00$/)
     fireEvent.click(screen.getByRole("button", { name: "Send offer · $30.00" }))

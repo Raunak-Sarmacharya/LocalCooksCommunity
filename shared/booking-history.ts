@@ -15,6 +15,7 @@ export type BookingHistoryEvent = { key: string; kind: typeof kinds[number]; rec
   /** Cents; on `goodwill_refunded` (a Local Cooks-funded refund; the kitchen payout is unchanged) and extra-time money events. */ amountCents?: number;
   /** Extra-time events only: who started it (`ask` chef request, `offer` kitchen offer, `early` earlier start, `charge` kitchen charge) and the minutes involved. */
   extFlow?: ExtensionFlow; minutes?: number;
+  /** `ext_offered` only: the kitchen gave the time free; it applied at once, nothing to accept. */ free?: boolean;
   /** `replaced_by` / `replaces` only: the booking reference on the other side of the link. */
   otherRef?: string;
   /** `replaced_by` / `replaces` only: the other booking's id, for a link (its own page still checks access). */
@@ -59,14 +60,15 @@ export function extensionHistoryEvents(rows: ExtensionRow[]): BookingHistoryEven
     if (extFlow === 'charge' && row.status === 'waived' && resolution?.outcome !== 'waived') { add('ext_waived', row.createdAt); continue; }
     // A charge reads as the kitchen asked it, even after Local Cooks lowered or waived it.
     const asked = resolution?.originalAmountCents ?? row.amountCents;
-    add(extFlow === 'ask' || extFlow === 'charge' ? 'ext_requested' : 'ext_offered', row.createdAt, extFlow === 'charge' && asked > 0 ? { amountCents: asked } : {});
+    const gift = (extFlow === 'offer' || extFlow === 'early') && !!row.free;
+    add(extFlow === 'ask' || extFlow === 'charge' ? 'ext_requested' : 'ext_offered', row.createdAt, extFlow === 'charge' && asked > 0 ? { amountCents: asked } : gift ? { free: true } : {});
     if (resolution?.disputedAt) add('ext_disputed', resolution.disputedAt);
     if (resolution?.decidedAt) add(resolution.outcome === 'waived' ? 'ext_lc_waived' : 'ext_lc_decided', resolution.decidedAt, resolution.outcome === 'waived' ? {} : { amountCents: row.amountCents });
     const decidedAt = row.operation?.decidedAt ?? row.updatedAt;
     if (['approved', 'paid'].includes(row.status) && extFlow !== 'charge') {
       // An auto-approved request has no kitchen decision to show; the payment line says it all.
-      // A free offer applies at once: nothing to accept, so the offer line says it all.
-      if (!(extFlow === 'ask' && row.autoApprove) && !(extFlow === 'offer' && row.free)) add(extFlow === 'ask' ? 'ext_approved' : 'ext_accepted', extFlow === 'ask' ? row.operation?.decidedAt ?? row.paidAt ?? row.appliedAt ?? decidedAt ?? row.authorizedAt
+      // Free time (offer or earlier start) applies at once: nothing to accept, so the offer line says it all.
+      if (!(extFlow === 'ask' && row.autoApprove) && !gift) add(extFlow === 'ask' ? 'ext_approved' : 'ext_accepted', extFlow === 'ask' ? row.operation?.decidedAt ?? row.paidAt ?? row.appliedAt ?? decidedAt ?? row.authorizedAt
         // The customer accepting an offer is their card authorization.
         : row.authorizedAt ?? row.paidAt ?? row.appliedAt ?? decidedAt);
     }

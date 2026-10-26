@@ -485,7 +485,7 @@
   "bkLoadingBookings": "Завантаження бронювань...",
   "bkLoginToDownload": "Увійдіть, щоб завантажити рахунок",
   "bkMoveOutBannerBody": "Надішліть фото виходу, що показують, що приміщення чисте та порожнє. Менеджер перегляне та звільнить вас.",
-  "bkMyBookings": "Мої бронювання",
+  "bkMyBookings": "Бронювання",
   "bkMyStorageTitle": "Моє зберігання",
   "bkNextPage": "Наступна",
   "bkNoBookingsFound": "Бронювань не знайдено",
@@ -2025,7 +2025,7 @@
   "shellManyUnpaidCharges": "У вас {count} несплачених зборів. Сплатіть їх, щоб продовжити бронювання.",
   "shellMessages": "Повідомлення",
   "shellMyApplication": "Моя заявка",
-  "shellMyBookings": "Мої бронювання",
+  "shellMyBookings": "Бронювання",
   "shellMyEarnings": "Дохід",
   "shellMyKitchens": "Мої кухні",
   "shellMyTransactions": "Мої транзакції",
@@ -3587,7 +3587,7 @@
   "inspClaimLine": "Скарга про пошкодження · {amount} · {status}",
   "inspClaimLink": "Переглянути скаргу на сторінці бронювання",
   "bnChefRunningLate": "Ви повідомили {kitchen}, що запізнюєтеся приблизно на {duration}. Ваше бронювання все одно закінчується о {end}.",
-  "bnChefTodayOpensAt": "Реєстрація відкривається {time}. Зареєструйтеся, коли прибудете на кухню.",
+  "bnChefTodayOpensAt": "Реєстрація відкривається сьогодні о {time}. Зареєструйтеся, коли прибудете на кухню.",
   "bnChefCheckinOpenLate": "Реєстрація відкрита. Ваше бронювання все одно закінчується о {end}.",
   "bnChefCheckoutSubmitted": "Виїзд надіслано о {time}. Ми повідомимо, якщо кухня щось помітить.",
   "mdNextDay": "Далі: день {number} із {total} · {date} о {time}.",
@@ -4153,5 +4153,6 @@
   "homeReadyWhenYou": "{kitchen} готова, щойно будете готові ви.",
   "kaAddTitleCount": "{count, plural, one {Кухні потрібен ще один документ} few {Кухні потрібні ще # документи} many {Кухні потрібно ще # документів} other {Кухні потрібно ще # документа}}",
   "shellAlsoSell": "Також продавайте свою їжу",
-  "shellAlsoSellHint": "Заявка займає близько 10 хвилин"
+  "shellAlsoSellHint": "Заявка займає близько 10 хвилин",
+  "inspectConfirmBodyNoNote": "Візит буде закрито без виявлених проблем. {chef} отримає сповіщення."
 }

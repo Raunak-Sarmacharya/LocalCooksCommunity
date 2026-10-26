@@ -4234,7 +4234,7 @@ export const generateCancellationAcceptedEmail = (data: {
         <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Time:</span> <strong style="color: #1e293b;">${data.startTime} – ${data.endTime}</strong></p>
       </div>
       <div style="margin: 16px 0 0 0; text-align: center;">
-        <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">View My Bookings</a>
+        <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">View your bookings</a>
       </div>
       <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:${getSupportEmail()}" style="color: hsl(347, 91%, 51%); text-decoration: none;">${getSupportEmail()}</a></p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
@@ -4319,7 +4319,7 @@ export const generateCancellationDeclinedEmail = (data: {
         <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Time:</span> <strong style="color: #1e293b;">${data.startTime} – ${data.endTime}</strong></p>
       </div>
       <div style="margin: 16px 0 0 0; text-align: center;">
-        <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">View My Bookings</a>
+        <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">View your bookings</a>
       </div>
       <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:${getSupportEmail()}" style="color: hsl(347, 91%, 51%); text-decoration: none;">${getSupportEmail()}</a></p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">

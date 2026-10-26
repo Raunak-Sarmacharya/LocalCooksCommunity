@@ -511,7 +511,7 @@ describe("full-page kitchen visit", () => {
       status = ended({ status: "completed", checkinStatus: "checked_in" });
       setup();
       const message = await screen.findByTestId("visit-next-step");
-      expect(message).toHaveTextContent(/^Your booking ended at \d{1,2}:\d{2}\s[ap]\.m\. \S+\. Please check out now — Test kitchen may charge for the extra time\.$/);
+      expect(message).toHaveTextContent(/^Your booking ended at \d{1,2}:\d{2}\s[ap]\.m\. \S+\. Please check out now. Test kitchen may charge for the extra time\.$/);
       expect(screen.queryByText("Visit finished")).not.toBeInTheDocument();
       expect(screen.getByText(/min past your booking/)).toBeInTheDocument();
       fireEvent.click(screen.getByRole("button", { name: "Check out now" }));

@@ -285,7 +285,7 @@ function InspectionTask({ booking, evidence, visitId, formatEvent, refresh, bloc
   };
   return <>
     <Dialog open={confirmOpen} onOpenChange={value => { if (!saving) setConfirmOpen(value); }}>
-      <DialogContent showCloseButton><DialogHeader><DialogTitle>{t('inspectConfirmTitle')}</DialogTitle><DialogDescription>{t(continuingClaim ? 'wfdConfirmClaim' : 'inspectConfirmBody', { chef })}</DialogDescription></DialogHeader>
+      <DialogContent showCloseButton><DialogHeader><DialogTitle>{t('inspectConfirmTitle')}</DialogTitle><DialogDescription>{t(continuingClaim ? 'wfdConfirmClaim' : note.trim() ? 'inspectConfirmBody' : 'inspectConfirmBodyNoNote', { chef })}</DialogDescription></DialogHeader>
         {payoutNow && <p className="text-sm font-medium">{t('inspectConfirmPayoutLine', { amount: payoutAmount })}</p>}
         {note && <blockquote className="whitespace-pre-wrap rounded-lg bg-muted p-3 text-sm">{note}</blockquote>}
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}

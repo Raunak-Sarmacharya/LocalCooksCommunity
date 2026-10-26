@@ -175,7 +175,8 @@ export function reduceClockCloseout(booking: ClockBooking, evidence: ClockEviden
   const current = visits.find(visit => ['arrival_window', 'in_booked_time', 'booked_time_ended'].includes(visit.phase))
     || visits.find(visit => visit.phase === 'upcoming') || visits[visits.length - 1];
   return { phase: time >= serviceEnd ? 'ended' : current.phase, serviceEndedAt: saved.serviceEndedAt || iso(serviceEnd),
-    timezone: saved.timezone, visits, status: active && time >= serviceEnd && booking.status === 'confirmed' ? 'completed' : booking.status,
+    timezone: saved.timezone, visits, // Done at the booked end, or sooner once every visit is checked out and the kitchen cleared it (payout released; owner, Oct 26).
+    status: active && booking.status === 'confirmed' && (time >= serviceEnd || visits.every(visit => visit.inspection.outcome === 'manager_cleared')) ? 'completed' : booking.status,
     serverNow: now.toISOString(), nextDueAt: pending.length ? iso(Math.min(...pending)) : null };
 }
 

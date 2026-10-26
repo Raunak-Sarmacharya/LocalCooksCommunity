@@ -41,7 +41,7 @@ export function BookingHistoryPanel({ id, version, reference, role, timezone, ca
     const flow = event.extFlow ?? 'ask', who = chefName || t('historyChefFallback');
     const flowKey = flow === 'early' ? 'offer' : flow;
     const name = event.kind === 'ext_requested' ? `requested_${flow === 'charge' ? 'charge' : 'ask'}_${role}`
-      : event.kind === 'ext_offered' ? `offered_${flow === 'early' ? 'early' : 'offer'}_${role}`
+      : event.kind === 'ext_offered' ? `${event.free ? 'gave' : 'offered'}_${flow === 'early' ? 'early' : 'offer'}_${role}`
       : event.kind === 'ext_approved' ? `approved_ask_${role}` : event.kind === 'ext_accepted' ? `accepted_offer_${role}`
       : event.kind === 'ext_paid' ? `paid_${role}` : event.kind === 'ext_declined' ? `declined_${flowKey}_${role}`
       : event.kind === 'ext_expired' ? `expired_${flowKey}` : event.kind === 'ext_withdrawn' ? `withdrawn_${flowKey}`

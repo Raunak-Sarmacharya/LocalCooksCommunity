@@ -30,7 +30,7 @@ describe("visitStatusSentence", () => {
   });
   it("says the booked time ended and check-out is open when the chef is still checked in", () => {
     expect(say({ checkinStatus: "checked_in", clockEnded: true, lateCheckout: true, bookingEnds: "10:30 a.m. NT" }).text)
-      .toBe("Your booking ended at 10:30 a.m. NT. Please check out now — Main Kitchen may charge for the extra time.");
+      .toBe("Your booking ended at 10:30 a.m. NT. Please check out now. Main Kitchen may charge for the extra time.");
   });
   it("says an ended visit without a check-in is over", () => {
     expect(say({ clockEnded: true }).text).toBe("This visit is over. No check-in was recorded.");

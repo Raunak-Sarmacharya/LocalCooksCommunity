@@ -175,3 +175,14 @@ describe('extra time in the history', () => {
     expect(events.map(event => event.kind)).toEqual(['ext_requested', 'ext_disputed', 'ext_lc_waived']);
   });
 });
+
+describe('free time the kitchen gave', () => {
+  it('is one "gave" line per free offer or earlier start, with no accept step', () => {
+    const at = '2026-10-26T16:50:59.358Z';
+    const events = extensionHistoryEvents([
+      { id: 26, kind: 'early_start', status: 'approved', minutes: 30, amountCents: 0, free: true, createdAt: at, appliedAt: at },
+      { id: 28, kind: 'offer', status: 'approved', minutes: 30, amountCents: 0, free: true, createdAt: at, appliedAt: at },
+    ]);
+    expect(events.map(e => [e.kind, e.extFlow, e.free])).toEqual([['ext_offered', 'early', true], ['ext_offered', 'offer', true]]);
+  });
+});

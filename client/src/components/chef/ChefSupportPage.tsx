@@ -58,7 +58,7 @@ export default function ChefSupportPage({
         },
         {
           q: t("supportFaqKitchenBookingsQ2", "Can I cancel or reschedule?"),
-          a: t("supportFaqKitchenBookingsA2", "Manage bookings from My Bookings. Cancellation rules vary by kitchen."),
+          a: t("supportFaqKitchenBookingsA2", "Manage bookings from Bookings. Cancellation rules vary by kitchen."),
         },
         {
           q: t("supportFaqKitchenBookingsQ3", "What equipment is included?"),

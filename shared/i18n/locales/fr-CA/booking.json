@@ -1564,5 +1564,9 @@
   "dcR2Totals": "Réclamé {claimed} · Reçu {collected} · En attente {pending}",
   "dcR2NoMatch": "Aucune réclamation ne correspond à ces filtres.",
   "vrEmpty": "Rien n’est encore enregistré. Les heures d’arrivée et de départ s’afficheront ici.",
-  "checkoutDates": "{count} jours : {dates}"
+  "checkoutDates": "{count} jours : {dates}",
+  "historyExt_gave_offer_chef": "La cuisine vous a offert {minutes} minutes de plus, gratuitement",
+  "historyExt_gave_offer_manager": "Vous avez offert {minutes} minutes de plus à {chef}, gratuitement",
+  "historyExt_gave_early_chef": "La cuisine vous a permis de commencer {minutes} minutes plus tôt, gratuitement",
+  "historyExt_gave_early_manager": "Vous avez permis à {chef} de commencer {minutes} minutes plus tôt, gratuitement"
 }

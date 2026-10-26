@@ -52,7 +52,7 @@ function buildSentence(input: VisitSentenceInput, t: VisitSentenceTranslate): Vi
   const stillEnds = (end?: string) => end ? ` ${t("kciBookingStillEnds", "Your booking still ends at {end}.", { end })}` : ""
 
   if (lateCheckout) {
-    return plain(t("kciOverstayBanner", "Your booking ended at {end}. Please check out now — {kitchen} may charge for the extra time.", { end: bookingEnds, kitchen }))
+    return plain(t("kciOverstayBanner", "Your booking ended at {end}. Please check out now. {kitchen} may charge for the extra time.", { end: bookingEnds, kitchen }))
   }
   if (clockEnded && checkinStatus === "checked_in") {
     return plain(t("kciVisitEndedNoCheckout", "Your booked time has ended and your checkout wasn’t recorded. Message {kitchen} if your departure needs to be added.", { kitchen }))

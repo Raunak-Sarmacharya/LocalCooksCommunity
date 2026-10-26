@@ -104,7 +104,7 @@ describe('closeout persistence and reads (mocked database/providers)', () => {
     const call = vi.mocked(queueBookingLifecycleEvent).mock.calls.find(args => args[2] === 'service_ended')!;
     const roleText = (call[6] as any).roleText;
     expect(roleText.chef).toMatchObject({ title: 'Your booked time has ended' });
-    expect(roleText.chef.message).toMatch(/still checked in\. Please check out now — the kitchen may charge for the extra time\./);
+    expect(roleText.chef.message).toMatch(/still checked in\. Please check out now. The kitchen may charge for the extra time\./);
     expect(roleText.manager.message).toMatch(/hasn’t checked out\. Message them, or record when they left/);
   });
   it('delayed and duplicate sweep is idempotent and records the due instant, never worker time', async () => {
@@ -212,11 +212,11 @@ describe('closeout persistence and reads (mocked database/providers)', () => {
     expect(state.booking.checkoutApprovedBy).toBe(7); expect(state.booking).not.toHaveProperty('checkedOutAt');
     expect(state.booking).not.toHaveProperty('checkoutRequestedAt');
   });
-  it('early clear does not complete service', async () => {
+  it('an early clear completes the booking at once (owner, Oct 26)', async () => {
     vi.setSystemTime(new Date('2026-10-13T13:00:00Z'));
     state.booking.checkoutRequestedAt = new Date('2026-10-13T12:45:00Z');
     const result = await recordKitchenInspection(10, 7);
-    expect(result.success).toBe(true); expect(state.booking.status).toBe('confirmed');
+    expect(result.success).toBe(true); expect(result).toMatchObject({ bookingCompleted: true }); expect(state.booking.status).toBe('completed');
   });
   it.each([['2026-10-13T12:00:00Z', 7], ['2026-10-15T12:00:00Z', 7], ['2026-10-13T14:00:00Z', 99]])('rejects inspection at %s by %s without writes', async (time, manager) => {
     vi.setSystemTime(new Date(time)); expect((await recordKitchenInspection(10, manager)).success).toBe(false); expect(state.writes).toEqual([]);
