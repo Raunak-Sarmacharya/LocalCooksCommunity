@@ -6,6 +6,7 @@
  * requirements checklist (every document the kitchen asks for, including its own, and every answer). The request
  * to apply the customer sent comes after, with readable values. Local Cooks' first-step review is never mentioned.
  */
+import { formatPhoneForDisplay } from "@shared/phone-validation";
 import { accessDocumentStage, customDocumentFields, isKitchenDocument } from "@shared/location-booking-eligibility";
 import { fromCalendarDate } from "@/lib/calendar-date";
 import { formatPreferredSchedule } from "@/lib/preferred-schedule";
@@ -125,7 +126,6 @@ export function ApplicationDetailPanel({
     const canWaive = !!onApproveWithoutDocuments && application.status === 'approved' && tier < 3 && !documentsWaived;
     const firstName = application.fullName.split(/\s+/)[0] || application.fullName;
     const reviewable = isStep2NeedsReview || isApproved;
-    const sent = !!application.tier2_completed_at;
     const addedByKitchen = !!(application.tier_data as Record<string, any> | null)?.addedByKitchen;
 
     const businessInfo = parseBusinessInfo(application.businessDescription);
@@ -171,6 +171,12 @@ export function ApplicationDetailPanel({
     }
     const questions = (r?.tier2_custom_fields || []).filter(f => !isKitchenDocument(f));
     const experience = tierData.kitchen_experience_description as string | undefined;
+    const filled = (value: unknown) => !(value === undefined || value === null || value === '' || (Array.isArray(value) && !value.length));
+    const providedAny = docs.some(doc => doc.url) || questions.some(field => filled(answers[field.id])) || !!experience;
+    // Approving without requirements stamps the step-2 date, so "sent" means the customer actually sent something.
+    const sent = !!application.tier2_completed_at && (!documentsWaived || providedAny);
+    // Waived and nothing sent: the questions collapse to one line instead of a list of "No answer".
+    const collapseQuestions = documentsWaived && !sent;
 
     const docStatus = (doc: DocRow): { label: string; tone: 'muted' | 'amber' | 'green' | 'red' } => {
         if (!doc.url) return { label: documentsWaived ? mt("arStatusWaived") : mt("arStatusNotSent"), tone: 'muted' };
@@ -238,7 +244,7 @@ export function ApplicationDetailPanel({
                     </div>
                     <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
                         <a href={`mailto:${application.email}`} className="inline-flex min-w-0 items-center gap-1.5 text-foreground hover:underline"><Mail className="h-4 w-4 shrink-0 text-muted-foreground" /><span className="truncate">{application.email}</span></a>
-                        {application.phone && <a href={`tel:${application.phone}`} className="inline-flex items-center gap-1.5 text-foreground hover:underline"><Phone className="h-4 w-4 text-muted-foreground" />{application.phone}</a>}
+                        {application.phone && <a href={`tel:${application.phone}`} className="inline-flex items-center gap-1.5 text-foreground hover:underline"><Phone className="h-4 w-4 text-muted-foreground" />{formatPhoneForDisplay(application.phone)}</a>}
                         {/* While waiting, the next-step card below carries Message. */}
                         {application.status === 'approved' && tab !== 'waiting' && (
                             <Button type="button" variant="outline" size="sm" onClick={onOpenChat} className="gap-1.5"><MessageCircle className="h-4 w-4" />{mt("arMessage", { name: firstName })}</Button>
@@ -327,9 +333,6 @@ export function ApplicationDetailPanel({
                         <h2 className="text-base font-semibold text-foreground">{mt("step2")}</h2>
                         <p className="text-sm text-muted-foreground">{sent ? mt("arStageSent", { date: dayOf(application.tier2_completed_at) }) : documentsWaived ? mt("arStageWaived") : mt("arNotSentYet", { name: firstName })}</p>
                     </div>
-                    {documentsWaived && (
-                        <p className="border-b bg-muted/30 px-4 py-2.5 text-sm text-muted-foreground sm:px-5" data-testid="documents-waived-note">{mt("documentsWaivedNote")}</p>
-                    )}
                     {docs.length > 0 && (
                         <div className="px-4 py-3 sm:px-5">
                             <h3 className="text-xs font-medium text-muted-foreground">{mt("qbDocumentsTitle")}</h3>
@@ -342,14 +345,14 @@ export function ApplicationDetailPanel({
                                                 <div className="min-w-0">
                                                     <p className="text-sm font-medium text-foreground">{doc.title}</p>
                                                     <p className="text-xs text-muted-foreground">
-                                                        {doc.mode === 'required' ? mt("docModeRequired") : doc.mode === 'track' ? mt("docModeTrack") : mt("arOnFile")}
+                                                        {documentsWaived && !doc.url ? mt("arNotNeededFor", { name: firstName }) : doc.mode === 'required' ? mt("docModeRequired") : doc.mode === 'track' ? mt("docModeTrack") : mt("arOnFile")}
                                                         {doc.expiry ? ` · ${isExpired(doc.expiry) ? mt("arExpired", { date: dateLong(doc.expiry) }) : mt("arExpires", { date: dateLong(doc.expiry) })}` : ''}
                                                     </p>
                                                 </div>
                                                 <div className="flex shrink-0 items-center gap-3">
-                                                    <span className={cn("text-xs font-medium",
+                                                    {!(documentsWaived && !doc.url) && <span className={cn("text-xs font-medium",
                                                         status.tone === 'green' && "text-emerald-700", status.tone === 'amber' && "text-amber-800",
-                                                        status.tone === 'red' && "text-red-700", status.tone === 'muted' && "text-muted-foreground")}>{status.label}</span>
+                                                        status.tone === 'red' && "text-red-700", status.tone === 'muted' && "text-muted-foreground")}>{status.label}</span>}
                                                     {doc.url && (
                                                         <Button type="button" size="sm" variant={status.tone === 'amber' && reviewable ? 'default' : 'outline'} onClick={() => openDoc(doc)}>
                                                             {status.tone === 'amber' && reviewable ? mt("arCheck") : mt("view")}
@@ -364,7 +367,11 @@ export function ApplicationDetailPanel({
                             </ul>
                         </div>
                     )}
-                    {(questions.length > 0 || r?.tier2_kitchen_experience_required || experience) && (
+                    {collapseQuestions && (questions.length > 0 || r?.tier2_kitchen_experience_required) && (
+                        <p className="border-t px-4 py-3 text-sm text-muted-foreground sm:px-5" data-testid="questions-not-asked">
+                            {mt("arQuestionsNotAsked", { count: questions.length + (r?.tier2_kitchen_experience_required ? 1 : 0), name: firstName })}</p>
+                    )}
+                    {!collapseQuestions && (questions.length > 0 || r?.tier2_kitchen_experience_required || experience) && (
                         <div className="border-t px-4 py-3 sm:px-5">
                             <h3 className="text-xs font-medium text-muted-foreground">{mt("customQuestionsForKitchenApplications")}</h3>
                             <dl className="mt-1 divide-y">

@@ -5182,5 +5182,7 @@
   "tourCancelReasonLabel": "Motif de l’annulation",
   "tourReasonPlaceholder": "Dites à {name} pourquoi (cette personne le verra)",
   "ovrWaitingForAnswer": "En attente de votre réponse",
-  "tourHistoryActorYou": "Vous"
+  "tourHistoryActorYou": "Vous",
+  "arNotNeededFor": "Pas nécessaire pour {name}",
+  "arQuestionsNotAsked": "{count, plural, one {# question} other {# questions}} · non posées à {name}"
 }

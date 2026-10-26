@@ -5182,5 +5182,7 @@
   "tourCancelReasonLabel": "Причина скасування",
   "tourReasonPlaceholder": "Поясніть {name}, чому (це буде видно)",
   "ovrWaitingForAnswer": "Очікує вашої відповіді",
-  "tourHistoryActorYou": "Ви"
+  "tourHistoryActorYou": "Ви",
+  "arNotNeededFor": "Не потрібно для {name}",
+  "arQuestionsNotAsked": "{count, plural, one {# запитання} few {# запитання} many {# запитань} other {# запитання}} · не ставилися {name}"
 }

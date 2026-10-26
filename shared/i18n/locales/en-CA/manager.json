@@ -5182,5 +5182,7 @@
   "tourCancelReasonLabel": "Reason for cancelling",
   "tourReasonPlaceholder": "Tell {name} why (they’ll see this)",
   "ovrWaitingForAnswer": "Waiting for your answer",
-  "tourHistoryActorYou": "You"
+  "tourHistoryActorYou": "You",
+  "arNotNeededFor": "Not needed for {name}",
+  "arQuestionsNotAsked": "{count, plural, one {# question} other {# questions}} · not asked of {name}"
 }
