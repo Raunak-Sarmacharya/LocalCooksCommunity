@@ -4151,5 +4151,7 @@
   "kaRenewBody": "Les nouvelles réservations sont suspendues jusqu’à ce que la cuisine ait les documents indiqués ci-dessous. Vos réservations existantes restent telles quelles.",
   "homeNothingBooked": "Rien de réservé pour l’instant",
   "homeReadyWhenYou": "{kitchen} est prête quand vous l’êtes.",
-  "kaAddTitleCount": "{count, plural, one {La cuisine a besoin d’un autre document} other {La cuisine a besoin de # autres documents}}"
+  "kaAddTitleCount": "{count, plural, one {La cuisine a besoin d’un autre document} other {La cuisine a besoin de # autres documents}}",
+  "shellAlsoSell": "Vendez aussi vos plats",
+  "shellAlsoSellHint": "Demande en environ 10 minutes"
 }

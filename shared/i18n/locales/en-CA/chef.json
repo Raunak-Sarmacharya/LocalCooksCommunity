@@ -4151,5 +4151,7 @@
   "kaRenewBody": "New bookings are paused until the kitchen has the documents marked below. Bookings you already have stay as they are.",
   "homeNothingBooked": "Nothing booked yet",
   "homeReadyWhenYou": "{kitchen} is ready when you are.",
-  "kaAddTitleCount": "{count, plural, one {The kitchen needs one more document} other {The kitchen needs # more documents}}"
+  "kaAddTitleCount": "{count, plural, one {The kitchen needs one more document} other {The kitchen needs # more documents}}",
+  "shellAlsoSell": "Also sell your food",
+  "shellAlsoSellHint": "Apply in about 10 minutes"
 }

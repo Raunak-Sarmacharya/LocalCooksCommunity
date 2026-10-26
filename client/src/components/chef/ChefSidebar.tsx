@@ -206,6 +206,18 @@ export function ChefSidebar({
                         </SidebarMenu>
                     </SidebarGroup>
                 ))}
+                {/* The other service, one quiet tap away until they start it (Airbnb "Switch to hosting", Turo pattern). */}
+                {hiddenItems.includes("applications") && (
+                    <SidebarGroup className="mt-auto px-2 py-2 group-data-[collapsible=icon]:hidden">
+                        <button type="button" onClick={() => { navigate("/dashboard?view=applications&action=new"); closeMobileIfNeeded() }}
+                            className="flex w-full items-start gap-2.5 rounded-lg px-2 py-2 text-left text-sm text-sidebar-foreground/80 hover:bg-sidebar-foreground/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+                            data-testid="sidebar-other-path">
+                            <Icon icon="mdi:storefront-outline" width={16} height={16} className="mt-0.5 shrink-0" aria-hidden />
+                            <span className="min-w-0"><span className="block font-medium text-sidebar-foreground">{t("shellAlsoSell", "Also sell your food")}</span>
+                                <span className="block text-xs text-muted-foreground">{t("shellAlsoSellHint", "Apply in about 10 minutes")}</span></span>
+                        </button>
+                    </SidebarGroup>
+                )}
             </SidebarContent>
 
             <ProfileGettingStarted
