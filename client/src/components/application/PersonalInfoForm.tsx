@@ -61,6 +61,14 @@ const createPersonalInfoSchema = (t: (key: string) => string) => z.object({
 
 type PersonalInfoFormData = z.infer<ReturnType<typeof createPersonalInfoSchema>>;
 
+/** The field's own shape, "+1 (709) 555-0188", from a stored "+17095550188" or a value already typed here. */
+export function asFieldPhone(value: string) {
+  const digits = value.replace(/\D/g, "");
+  const local = digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits.length === 10 ? digits : "";
+  if (local) return `+1 (${local.slice(0, 3)}) ${local.slice(3, 6)}-${local.slice(6)}`;
+  return value.startsWith("+1") ? value : "+1 ";
+}
+
 export default function PersonalInfoForm() {
   const { t } = useTranslation("chef");
   const { formData, updateFormData, goToNextStep } = useApplicationForm();
@@ -70,11 +78,8 @@ export default function PersonalInfoForm() {
   const userEmail = user?.email || "";
   const registrationName = getRegistrationName(userEmail);
   
-  const [phoneValue, setPhoneValue] = useState(() => {
-    // Initialize with +1 prefix if not already present
-    const existing = formData.phone || "";
-    return existing.startsWith("+1") ? existing : "+1 ";
-  });
+  // The account already has a verified phone: start with it (the person can still change it).
+  const [phoneValue, setPhoneValue] = useState(() => asFieldPhone(formData.phone || user?.phoneNumber || ""));
   
   const schema = createPersonalInfoSchema((key: string) => t(key as any));
   
@@ -98,10 +103,14 @@ export default function PersonalInfoForm() {
     }
   }, [userEmail, registrationName, user?.displayName, form]);
 
-  // Update form value when phoneValue changes
+  // Keep the form value in step, but only re-check after the first check (blur or submit): no error before typing.
   useEffect(() => {
-    form.setValue("phone", phoneValue, { shouldValidate: true, shouldDirty: true });
+    form.setValue("phone", phoneValue, { shouldValidate: form.formState.touchedFields.phone || form.formState.isSubmitted, shouldDirty: true });
   }, [phoneValue, form]);
+  // The account's phone can arrive after the first render.
+  useEffect(() => {
+    if (user?.phoneNumber && phoneValue.replace(/\D/g, "").length <= 1 && !formData.phone) setPhoneValue(asFieldPhone(user.phoneNumber));
+  }, [user?.phoneNumber]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Function to handle phone input with fixed +1 prefix and exactly 10 digits
   const handlePhoneInput = (e: React.FormEvent<HTMLInputElement>) => {
@@ -298,6 +307,7 @@ export default function PersonalInfoForm() {
               onInput={handlePhoneInput}
               onClick={handlePhoneClick}
               onKeyDown={handlePhoneKeyDown}
+              onBlur={() => { form.setValue("phone", phoneValue, { shouldTouch: true }); void form.trigger("phone"); }}
               className="mt-2"
             />
             {form.formState.errors.phone && (
