@@ -17,6 +17,7 @@ interface AddressAutocompleteProps {
   value: string;
   onChange: (value: string, lat?: number, lng?: number) => void;
   placeholder?: string;
+  id?: string;
   className?: string;
   disabled?: boolean;
   /**
@@ -47,6 +48,7 @@ export default function AddressAutocomplete({
   value,
   onChange,
   placeholder = "Enter address...",
+  id,
   className,
   disabled = false,
   province
@@ -251,6 +253,7 @@ export default function AddressAutocomplete({
       <div className="relative">
         <Input
           ref={inputRef}
+          id={id}
           value={inputValue}
           onChange={(e) => handleInputChange(e.target.value)}
           onKeyDown={handleKeyDown}

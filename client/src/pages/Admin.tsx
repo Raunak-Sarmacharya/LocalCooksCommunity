@@ -23,6 +23,7 @@ import { EmailLogSection } from "@/components/admin/sections/EmailLogSection";
 import { CommitmentProblems } from '@/components/support/CommitmentProblems';
 import { formatApplicationStatus, formatCertificationStatus, formatKitchenPreference } from "@/lib/applicationSchema";
 import { Application } from "@shared/schema";
+import { needsDocumentCheck } from "@shared/seller-application";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import React, { useState, useEffect, useMemo } from "react";
@@ -749,10 +750,7 @@ function AdminDashboard() {
     let matchesQuickFilters = true;
 
     if (quickFilters.needsDocumentReview) {
-      matchesQuickFilters = matchesQuickFilters && app.status === "approved" && (
-        app.foodSafetyLicenseStatus === "pending" ||
-        app.foodEstablishmentCertStatus === "pending"
-      );
+      matchesQuickFilters = matchesQuickFilters && needsDocumentCheck(app);
     }
 
     if (quickFilters.recentApplications) {
@@ -967,14 +965,9 @@ function AdminDashboard() {
                       <Shield className="h-4 w-4 text-purple-600" />
                     </div>
                     <div>
-                      <p className="text-xs text-muted-foreground">Doc Review</p>
+                      <p className="text-xs text-muted-foreground">Documents to check</p>
                       <p className="text-xl font-bold">
-                        {applications.filter(app =>
-                          app.status === "approved" && (
-                            app.foodSafetyLicenseStatus === "pending" ||
-                            app.foodEstablishmentCertStatus === "pending"
-                          )
-                        ).length}
+                        {applications.filter(needsDocumentCheck).length}
                       </p>
                     </div>
                   </div>
@@ -1017,20 +1010,10 @@ function AdminDashboard() {
                   onClick={() => setQuickFilters(prev => ({ ...prev, needsDocumentReview: !prev.needsDocumentReview }))}
                 >
                   <Shield className="h-3.5 w-3.5 mr-1.5" />
-                  Doc Review
-                  {applications.filter(app =>
-                    app.status === "approved" && (
-                      app.foodSafetyLicenseStatus === "pending" ||
-                      app.foodEstablishmentCertStatus === "pending"
-                    )
-                  ).length > 0 && (
+                  Documents to check
+                  {applications.filter(needsDocumentCheck).length > 0 && (
                     <Badge variant="destructive" className="ml-1.5 h-5 min-w-5 rounded-full px-1 text-[10px]">
-                      {applications.filter(app =>
-                        app.status === "approved" && (
-                          app.foodSafetyLicenseStatus === "pending" ||
-                          app.foodEstablishmentCertStatus === "pending"
-                        )
-                      ).length}
+                      {applications.filter(needsDocumentCheck).length}
                     </Badge>
                   )}
                 </Button>
@@ -1511,8 +1494,9 @@ function AdminDashboard() {
                               <FormLegend />
                               <div className="space-y-2">
                                 <div>
-                                  <label className="text-xs font-medium text-gray-600">Shop Name <span className="text-red-500">*</span></label>
+                                  <label htmlFor="shop-name" className="text-xs font-medium text-gray-600">Shop Name <span className="text-red-500">*</span></label>
                                   <Input
+                                    id="shop-name"
                                     placeholder="e.g. Sarah's Kitchen"
                                     value={shopDetails[selectedApplication.id]?.shopName ?? ((selectedApplication as any).shopName && (selectedApplication as any).shopName !== "Shop Not Named" ? (selectedApplication as any).shopName : '')}
                                     onChange={(e) => setShopDetails(prev => ({
@@ -1527,8 +1511,9 @@ function AdminDashboard() {
                                   />
                                 </div>
                                 <div>
-                                  <label className="text-xs font-medium text-gray-600">Shop Address <span className="text-red-500">*</span></label>
+                                  <label htmlFor="shop-address" className="text-xs font-medium text-gray-600">Shop Address <span className="text-red-500">*</span></label>
                                   <AddressAutocomplete
+                                    id="shop-address"
                                     placeholder="e.g. 123 Water St, St. John's, NL"
                                     value={shopDetails[selectedApplication.id]?.shopAddress ?? ((selectedApplication as any).shopAddress && (selectedApplication as any).shopAddress !== "Address Not Provided" ? (selectedApplication as any).shopAddress : '')}
                                     province={SERVICE_PROVINCE}

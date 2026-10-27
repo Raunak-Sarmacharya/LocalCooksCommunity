@@ -97,3 +97,7 @@ export const SELLER_DOCUMENT_NAMES: Record<SellerDocument["kind"], string> = {
   establishmentLicence: "Kitchen's Food Establishment Licence",
   homeRegistration: "Home-based Food Industry Registration",
 };
+
+/** An uploaded document Local Cooks hasn't checked yet, on a live application (admin "Documents to check"). */
+export const needsDocumentCheck = (app: ApplicationLike) =>
+  (app.status === "inReview" || app.status === "approved") && sellerDocuments(app).some((doc) => doc.state === "uploaded");

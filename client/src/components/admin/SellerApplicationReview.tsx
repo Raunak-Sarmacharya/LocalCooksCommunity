@@ -194,7 +194,9 @@ const NEXT: Record<string, string> = {
 export function SellerApplicationSummary({ application: app }: { application: Application }) {
   const progress = sellerProgress(app);
   const checking = progress.current === "documents" && !progress.owed.length;
-  const next = progress.outcome !== "active" ? null : checking ? "Check their documents" : NEXT[progress.current ?? ""];
+  const next = progress.outcome !== "active" ? null
+    : app.status === "approved" && !app.phpShopCreated ? "Create their shop"
+    : checking ? "Check their documents" : NEXT[progress.current ?? ""];
   const kitchen = app.kitchenPreference === "commercial" ? `commercial_${app.commercialKitchen === "localcooks" ? "localcooks" : "other"}` : app.kitchenPreference;
   return (
     <div className="space-y-2 text-sm">

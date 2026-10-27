@@ -1448,3 +1448,11 @@ State Oct 18 (evening): multi-day + single-day booking cycle verified end to end
 - **Bug:** certificate download never worked (Firebase uid parsed as a number → 403; route returned JSON). Now the caller's own uid or id (admins any id) and a real PDF, redesigned (name, course, completion date, reference, disclaimer). Route test.
 - Public guide (EN/FR/UK): "SkillsPass NL (free)" and "Other providers" (ProbeIt etc.), plus one line pointing to NL's approved-course list.
 - Watch: KitchenBookingFlow change-request test failed once more under full-suite load; passes 3/3 alone.
+
+## Oct 27 (later) — seller decisions, shop sign-in, Hostinger
+
+- **Owner:** reject needs a confirm, no reason field ("don't overcomplicate"); re-apply any time; landing FAQ: no "trial", say chefs keep 100% of sales, Stripe's card fee the only cost (no commission, nothing charged now). Built in 90126ecd: Reject confirm; approved/rejected/cancelled emails and the shop sign-in email on the shared template; FAQ A1/Q3/A3/A4/Q5/A5 + SEO description (EN/FR/UK); A4's broken sentence fixed.
+- **Accepted risk (owner, Oct 27):** shop logins stay username = phone, password = first 3 letters of shop name + last 4 phone digits, so admin can see and help. Shop login (staging checked) has no "forgot password"; the shop has change-password; the sign-in email tells chefs to change it. Revisit as the business grows.
+- **Environments confirmed (Vercel, URL values only):** dev/preview bridge and admin bridge → stagingwebapp.localcook.shop; production → shop.localcook.shop. Server and client shop links follow the same split. One `PHP_BRIDGE_API_SECRET` serves all environments (recommend separate staging/live secrets later).
+- **Flow fact:** approval does not create the shop; admin presses Create shop (name + NL address from the call), then sends the sign-in email.
+- **Hostinger:** no access needed yet; the PHP shop has no git repo (Hostinger only). Recommended when PHP work starts: SSH key (owner pastes public key in hPanel) + copy the shop code into a private repo first; staging first, live after OK.

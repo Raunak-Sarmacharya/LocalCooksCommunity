@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { PGlite } from "@electric-sql/pglite";
-import { sellerDocuments, sellerProgress } from "./seller-application";
+import { needsDocumentCheck, sellerDocuments, sellerProgress } from "./seller-application";
 
 const app = (extra: Record<string, unknown> = {}) => ({ status: "inReview", kitchenPreference: "commercial", commercialKitchen: "other", documentsRequested: [], ...extra });
 const kinds = (a: ReturnType<typeof app>) => sellerDocuments(a).map((doc) => `${doc.kind}${doc.recommended ? " (recommended)" : ""}`);
@@ -60,4 +60,13 @@ describe("migration 0118 (executed in PGlite)", () => {
       expect(rows[0]).toMatchObject({ contact_method: null, contact_time: null, commercial_kitchen: null, food_types: [], documents_requested: [], documents_request_note: null, documents_requested_at: null });
     } finally { await client.close(); }
   }, 60_000);
+});
+
+describe("admin: documents to check", () => {
+  it("only an uploaded, unchecked file on a live application; the default 'pending' status alone doesn't count", () => {
+    expect(needsDocumentCheck(app({ status: "approved", foodSafetyLicenseStatus: "pending" }))).toBe(false);
+    expect(needsDocumentCheck(app({ status: "approved", foodSafetyLicenseUrl: "x", foodSafetyLicenseStatus: "pending" }))).toBe(true);
+    expect(needsDocumentCheck(app({ foodSafetyLicenseUrl: "x", foodSafetyLicenseStatus: "approved" }))).toBe(false);
+    expect(needsDocumentCheck(app({ status: "cancelled", foodSafetyLicenseUrl: "x" }))).toBe(false);
+  });
 });
