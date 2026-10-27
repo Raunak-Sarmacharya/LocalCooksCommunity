@@ -12,7 +12,7 @@ import { InfoChip } from "@/components/chef/info-chip";
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
 import { cn } from "@/lib/utils";
-import { openChefShopHome, useShopStatus } from "@/components/chef/seller-revenue/hooks/useSellerRevenue";
+import { openChefShopHome, openChefShopPayouts, useShopStatus } from "@/components/chef/seller-revenue/hooks/useSellerRevenue";
 import { ChoicePills } from "@/components/application/ChoicePills";
 import { KitchenSettingFields, type KitchenSetting } from "@/components/application/KitchenPreferenceForm";
 import { DocumentName, UploadDocumentButton } from "@/components/application/SellerDocumentRow";
@@ -28,7 +28,6 @@ interface SellerApplicationTabContentProps {
   onStartApplication: () => void;
   onCancelApplication: (type: "chef", id: number) => void;
   onDiscoverKitchens: () => void;
-  onOpenAccounts: () => void;
 }
 
 const STEPS: SellerStepId[] = ["apply", "call", "documents", "shop", "paid", "open"];
@@ -53,7 +52,7 @@ function docChip(doc: SellerDocument, t: Tr) {
 /** Step and state keys are built at runtime ("sell_title_" + step), so this page translates with plain string keys. */
 type Tr = (key: string, options?: Record<string, unknown> | string) => string;
 
-export default function SellerApplicationTabContent({ applications, showKitchenCard, onStartApplication, onCancelApplication, onDiscoverKitchens, onOpenAccounts }: SellerApplicationTabContentProps) {
+export default function SellerApplicationTabContent({ applications, showKitchenCard, onStartApplication, onCancelApplication, onDiscoverKitchens }: SellerApplicationTabContentProps) {
   const { t: typedT, i18n } = useTranslation("chef");
   const t = typedT as unknown as Tr;
   const { toast } = useToast();
@@ -115,7 +114,7 @@ export default function SellerApplicationTabContent({ applications, showKitchenC
       }
       case "shop": return { note: state === "current" ? t("sell_shop_noteCurrent") : state === "done" ? t("sell_shop_noteDone") : t("sell_shop_noteAhead") };
       case "paid": return state === "current"
-        ? { note: t("sell_paid_noteCurrent"), action: <Button className="mt-3 rounded-xl" onClick={onOpenAccounts}>{t("sell_paid_cta")}</Button> }
+        ? { note: t("sell_paid_noteCurrent"), action: <Button className="mt-3 rounded-xl" onClick={openChefShopPayouts}>{t("sell_paid_cta")}<Icon icon="mdi:open-in-new" className="size-4" aria-hidden /></Button> }
         : { note: state === "done" ? t("sell_paid_noteDone") : t("sell_paid_noteAhead") };
       case "open": return state === "current"
         ? { note: t("sell_open_noteCurrent"), action: <Button className="mt-3 rounded-xl" onClick={() => openChefShopHome()}>{t("sell_open_cta")}<Icon icon="mdi:open-in-new" className="size-4" aria-hidden /></Button> }

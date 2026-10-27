@@ -691,23 +691,15 @@ async function requireApprovedSeller(req: Request, res: Response, next: NextFunc
         const chefId = req.neonUser!.id;
 
         const [app] = await db
-            .select({
-                status: applications.status,
-                foodSafetyLicenseStatus: applications.foodSafetyLicenseStatus,
-                foodEstablishmentCertUrl: applications.foodEstablishmentCertUrl,
-                foodEstablishmentCertStatus: applications.foodEstablishmentCertStatus,
-            })
+            .select({ status: applications.status })
             .from(applications)
             .where(eq(applications.userId, chefId))
             .orderBy(desc(applications.id))
             .limit(1);
 
-        if (!app || app.status !== 'approved' || app.foodSafetyLicenseStatus !== 'approved') {
-            return res.status(403).json({ error: 'SELLER_NOT_APPROVED', message: 'Your seller application must be fully approved to access this feature.' });
-        }
-
-        if (app.foodEstablishmentCertUrl && app.foodEstablishmentCertStatus !== 'approved') {
-            return res.status(403).json({ error: 'SELLER_NOT_APPROVED', message: 'Your seller application must be fully approved to access this feature.' });
+        // Owner, Oct 27: approval never waits on documents, so the newest application being approved is the gate.
+        if (!app || app.status !== 'approved') {
+            return res.status(403).json({ error: 'SELLER_NOT_APPROVED', message: 'Your seller application must be approved to access this feature.' });
         }
 
         next();

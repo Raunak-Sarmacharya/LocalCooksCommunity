@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getShopHomeUrl } from "@/lib/shop-urls";
+import { getShopHomeUrl, getVendorOnboardingUrl } from "@/lib/shop-urls";
 import { auth } from "@/lib/firebase";
 import { logger } from "@/lib/logger";
 import { tt } from "@/i18n/common-ns";
@@ -15,6 +15,11 @@ export function getChefShopHomeUrl(): string {
 
 export function openChefShopHome(): void {
   window.open(getChefShopHomeUrl(), "_blank", "noopener,noreferrer");
+}
+
+/** Shop sign-in that lands on the shop's onboarding, where payouts are connected with Stripe. */
+export function openChefShopPayouts(): void {
+  window.open(getVendorOnboardingUrl(), "_blank", "noopener,noreferrer");
 }
 
 // ─── Auth Helper ────────────────────────────────────────────────────────────
@@ -147,8 +152,7 @@ export function useShopStatus(enabled = true) {
   // Match requireApprovedSeller: only the newest application grants access.
   const latest = applications?.reduce<Application | undefined>((current, app) =>
     !current || app.id > current.id ? app : current, undefined);
-  const approved = latest?.status === "approved" && latest.foodSafetyLicenseStatus === "approved"
-    && (!latest.foodEstablishmentCertUrl || latest.foodEstablishmentCertStatus === "approved");
+  const approved = latest?.status === "approved";
   return useQuery<ShopStatus>({
     queryKey: ["/api/chef/seller/shop-status", user?.uid],
     queryFn: async () => {

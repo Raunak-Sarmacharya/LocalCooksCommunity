@@ -683,7 +683,6 @@ export default function ApplicantDashboard() {
       onStartApplication={() => setApplicationViewMode("form")}
       onCancelApplication={handleCancelApplication}
       onDiscoverKitchens={() => setActiveTab("discover-kitchens")}
-      onOpenAccounts={() => setActiveTab("my-account")}
     />
   );
 

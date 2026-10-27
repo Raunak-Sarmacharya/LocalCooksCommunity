@@ -1115,7 +1115,7 @@ export const generateFullVerificationEmail = (userData: { fullName: string; emai
   const { username, password } = generateVendorCredentials(userData.shopName || userData.fullName, userData.phone);
   return renderTransactionalEmail({ to: userData.email, recipientName: userData.fullName.split(' ')[0] || userData.fullName,
     subject: 'Your Local Cooks shop is ready',
-    message: `Your shop${userData.shopName ? `, ${userData.shopName},` : ''} is set up. Sign in with the details below, then change your password in your shop settings.\n\nNext, connect your bank with Stripe so you can get paid, and add your dishes, prices and pickup or delivery.`,
+    message: `Your shop${userData.shopName ? `, ${userData.shopName},` : ''} is set up. Sign in with the details below, then change your password in Edit Profile.\n\nNext, connect your bank with Stripe so you can get paid, and add your dishes, prices and pickup or delivery.`,
     facts: [{ label: 'Phone number', value: username }, { label: 'Password', value: password }],
     actionLabel: 'Sign in to your shop', actionUrl: getShopLoginUrl(),
     secondaryLink: { label: 'Connect payouts with Stripe', url: getVendorDashboardUrl() } });

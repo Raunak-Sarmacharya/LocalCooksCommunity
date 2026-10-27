@@ -8,9 +8,7 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 it.each([
   [],
   [{ id: 1, status: 'pending' }],
-  [{ id: 1, status: 'approved', foodSafetyLicenseStatus: 'pending' }],
-  [{ id: 1, status: 'approved', foodSafetyLicenseStatus: 'approved', foodEstablishmentCertUrl: 'cert', foodEstablishmentCertStatus: 'pending' }],
-  [{ id: 1, status: 'approved', foodSafetyLicenseStatus: 'approved' }, { id: 2, status: 'pending' }],
+  [{ id: 1, status: 'approved' }, { id: 2, status: 'pending' }],
 ].map(applications => ({ applications })))('does not request shop status for an ineligible seller: $applications', async ({ applications }) => {
   const fetchMock = vi.fn(async (_url: string) => ({ ok: true, json: async () => applications }));
   vi.stubGlobal('fetch', fetchMock);
@@ -19,9 +17,9 @@ it.each([
   await waitFor(() => expect(client.getQueryData(['/api/firebase/applications/my', 'chef'])).toBeDefined());
   expect(fetchMock.mock.calls.every(call => call[0] !== '/api/chef/seller/shop-status')).toBe(true);
 });
-it('loads shop status after the newest seller application is fully approved', async () => {
+it('loads shop status once the newest seller application is approved, documents or not (owner, Oct 27)', async () => {
   const fetchMock = vi.fn(async (url: string) => ({ ok: true, json: async () =>
-    url.includes('applications/my') ? [{ id: 1, status: 'approved', foodSafetyLicenseStatus: 'approved' }] : { linked: true } }));
+    url.includes('applications/my') ? [{ id: 1, status: 'approved', foodSafetyLicenseStatus: 'pending' }] : { linked: true } }));
   vi.stubGlobal('fetch', fetchMock);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const { result } = renderHook(() => useShopStatus(), { wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider> });

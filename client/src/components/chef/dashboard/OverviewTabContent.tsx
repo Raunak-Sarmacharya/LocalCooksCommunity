@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { Check } from "lucide-react";
-import { openChefShopHome, useEarningsSummary, useShopStatus } from "@/components/chef/seller-revenue/hooks/useSellerRevenue";
+import { openChefShopHome, openChefShopPayouts, useEarningsSummary, useShopStatus } from "@/components/chef/seller-revenue/hooks/useSellerRevenue";
 import { getKitchenDisplayStatus, isActiveKitchenApplication } from "@/components/chef/applications/status";
 import { InfoChip } from "@/components/chef/info-chip";
 import { sellerProgress } from "@shared/seller-application";
@@ -277,7 +277,7 @@ export default function OverviewTabContent({
   const sellingCard = !wantsSelling || selling?.outcome === "rejected" || selling?.current === "open" ? null
     : !selling ? { chip: null, line: t("sell_homeApply"), action: { label: t("sell_startApplication"), onClick: () => { onSetApplicationViewMode("form"); onSetActiveTab("applications"); } } }
     : selling.owed.length ? { chip: t("sell_homeChip_owed"), line: st("sell_homeOwed", { documents: selling.owed.map((doc) => st(`sell_doc_${doc.kind}`)).join(", ") }), action: { label: t("sell_upload"), onClick: openSelling } }
-    : selling.current === "paid" ? { chip: t("sell_homeChip_paid"), line: t("sell_paid_noteCurrent"), action: { label: t("sell_paid_cta"), onClick: () => onSetActiveTab("my-account") } }
+    : selling.current === "paid" ? { chip: t("sell_homeChip_paid"), line: t("sell_paid_noteCurrent"), action: { label: t("sell_paid_cta"), onClick: openChefShopPayouts } }
     : { chip: st(`sell_homeChip_${selling.current}`), line: st(`sell_lede_${selling.current}`), action: { label: t("sell_seeNextSteps"), onClick: openSelling, quiet: true } };
   // One checklist per path (owner, Oct 25): each closes on its own once its required steps are done.
   const checklists = [

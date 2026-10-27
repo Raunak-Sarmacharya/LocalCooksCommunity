@@ -9,7 +9,7 @@ import { InfoChip } from "@/components/chef/info-chip";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChefPageHeader, QuietNotice, StatTile } from "@/components/chef/ui";
-import { openChefShopHome, useShopStatus, useStripeDashboardLink, useEarningsSummary } from "@/components/chef/seller-revenue/hooks/useSellerRevenue";
+import { openChefShopHome, openChefShopPayouts, useShopStatus, useStripeDashboardLink, useEarningsSummary } from "@/components/chef/seller-revenue/hooks/useSellerRevenue";
 import { Icon } from "@iconify/react";
 import { useToast } from "@/hooks/use-toast";
 import { formatDate } from "@/lib/formatters";
@@ -170,7 +170,7 @@ export default function ChefSellerAccount({ onOpenApplications }: ChefSellerAcco
 
   const handleOpenStripe = async () => {
     if (!stripeConnected) {
-      openChefShopHome();
+      openChefShopPayouts();
       return;
     }
     try {
