@@ -9,7 +9,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { Check } from "lucide-react";
+import { Check, ChevronDown } from "lucide-react";
 import { openChefShopHome, openChefShopPayouts, useEarningsSummary, useShopStatus } from "@/components/chef/seller-revenue/hooks/useSellerRevenue";
 import { getKitchenDisplayStatus, isActiveKitchenApplication } from "@/components/chef/applications/status";
 import { InfoChip } from "@/components/chef/info-chip";
@@ -261,9 +261,15 @@ export default function OverviewTabContent({
     ...attentionItems,
   ];
 
+  // Toured (or a tour that closed without a result) and not yet applied there: that kitchen is the next step.
+  const touredNotApplied = tourRows.find((tour) => (tour.status === "completed" || tour.disruptionReason === "outcome_unknown") && tour.locationId
+    && !kitchenApplications.some((app) => app.locationId === tour.locationId));
   const kitchenSteps = [
     // A declined or withdrawn request doesn't count: the next step is finding a kitchen again.
-    { done: kitchenApplications.some(isActiveKitchenApplication), title: t("homeStepFind"), hint: t("homeStepFindHint"), action: { label: t("homeFindKitchens"), onClick: () => onSetActiveTab("discover-kitchens") } },
+    { done: kitchenApplications.some(isActiveKitchenApplication), title: t("homeStepFind"), hint: touredNotApplied ? t("homeStepFindToured", { kitchen: touredNotApplied.kitchenName || touredNotApplied.locationName }) : t("homeStepFindHint"),
+      action: touredNotApplied
+        ? { label: t("homeRequestToApply"), onClick: () => navigate(`/apply-kitchen/${touredNotApplied.locationId}?tourId=${touredNotApplied.id}`) }
+        : { label: t("homeFindKitchens"), onClick: () => onSetActiveTab("discover-kitchens") } },
     // While every request is still with the kitchen, the next step isn't the chef's yet.
     { done: hasApprovedKitchen, title: t("homeStepRequirements"), hint: t("homeStepRequirementsHint"),
       waiting: !hasApprovedKitchen && kitchenDisplays.some(({ display }) => display.actionKind === "wait") && !kitchenDisplays.some(({ display }) => display.actionKind === "complete-step") },
@@ -289,7 +295,32 @@ export default function OverviewTabContent({
   const [hiddenLists, setHiddenLists] = useState<string[]>(() =>
     typeof window === "undefined" ? [] : ["kitchen", "selling"].filter((id) => localStorage.getItem(hideKey(id)) === "1"));
   const hideList = (id: string) => { localStorage.setItem(hideKey(id), "1"); setHiddenLists((ids) => [...ids, id]); };
+  const showList = (id: string) => { localStorage.removeItem(hideKey(id)); setHiddenLists((ids) => ids.filter((other) => other !== id)); setOpenLists((ids) => [...ids, id]); };
+  const [openLists, setOpenLists] = useState<string[]>([]);
   const visibleChecklists = checklists.filter((list) => !hasActivity || !hiddenLists.includes(list.id));
+  const hiddenChecklists = hasActivity ? checklists.filter((list) => hiddenLists.includes(list.id)) : [];
+
+  const renderSteps = (list: (typeof checklists)[number]) => {
+    const firstOpen = list.steps.findIndex((step) => !step.done);
+    return (
+      <ol>
+        {list.steps.map((step, i) => (
+          <li key={step.title} className="grid grid-cols-[22px_1fr] items-center gap-x-3 gap-y-2 border-t py-2.5 first:border-t-0 sm:grid-cols-[22px_1fr_auto]">
+            <span aria-hidden className={cn("grid h-[22px] w-[22px] place-items-center rounded-full", step.done ? "bg-foreground text-background" : "shadow-[inset_0_0_0_1.5px_hsl(var(--border))]")}>
+              {step.done && <Check className="h-3 w-3" strokeWidth={3} />}
+            </span>
+            <div className="min-w-0">
+              <p className={cn("text-sm font-medium", step.done && "text-muted-foreground line-through decoration-border")}>{step.title}<span className="sr-only">{step.done ? ` (${t("homeDone")})` : ""}</span></p>
+              {!step.done && <p className="text-[13px] text-muted-foreground">{step.hint}</p>}
+            </div>
+            {i === firstOpen && "action" in step && step.action ? (
+              <Button size="sm" className="col-start-2 justify-self-start rounded-full px-4 sm:col-start-auto" onClick={step.action.onClick}>{step.action.label}</Button>
+            ) : null}
+          </li>
+        ))}
+      </ol>
+    );
+  };
 
   const dateLine = new Intl.DateTimeFormat(locale, { weekday: "long", month: "long", day: "numeric" }).format(new Date());
 
@@ -418,26 +449,10 @@ export default function OverviewTabContent({
 
         {!hasActivity && checklists.map((list) => {
           const done = list.steps.filter((step) => step.done).length;
-          const firstOpen = list.steps.findIndex((step) => !step.done);
           return (
             <HomePanel key={list.id} className={cn(checklists.length > 1 || kitchenDisplays.length ? "lg:col-span-6" : "lg:col-span-12")} title={list.title}
               aside={<span className="text-[13px] tabular-nums text-muted-foreground">{t("homeStepsDone", { done, total: list.steps.length })}</span>}>
-              <ol>
-                {list.steps.map((step, i) => (
-                  <li key={step.title} className="grid grid-cols-[22px_1fr] items-center gap-x-3 gap-y-2 border-t py-2.5 first:border-t-0 sm:grid-cols-[22px_1fr_auto]">
-                    <span aria-hidden className={cn("grid h-[22px] w-[22px] place-items-center rounded-full", step.done ? "bg-foreground text-background" : "shadow-[inset_0_0_0_1.5px_hsl(var(--border))]")}>
-                      {step.done && <Check className="h-3 w-3" strokeWidth={3} />}
-                    </span>
-                    <div className="min-w-0">
-                      <p className={cn("text-sm font-medium", step.done && "text-muted-foreground line-through decoration-border")}>{step.title}<span className="sr-only">{step.done ? ` (${t("homeDone")})` : ""}</span></p>
-                      {!step.done && <p className="text-[13px] text-muted-foreground">{step.hint}</p>}
-                    </div>
-                    {i === firstOpen && "action" in step && step.action ? (
-                      <Button size="sm" className="col-start-2 justify-self-start rounded-full px-4 sm:col-start-auto" onClick={step.action.onClick}>{step.action.label}</Button>
-                    ) : null}
-                  </li>
-                ))}
-              </ol>
+              {renderSteps(list)}
             </HomePanel>
           );
         })}
@@ -471,11 +486,19 @@ export default function OverviewTabContent({
               const done = list.steps.filter((step) => step.done).length;
               const next = list.steps.find((step) => !step.done);
               return (
-                <div key={list.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t py-3 first:border-t-0">
-                  <p className="min-w-0 flex-1 text-sm"><span className="font-semibold">{list.title}</span><span className="ml-2 tabular-nums text-muted-foreground">{t("homeStepsDone", { done, total: list.steps.length })}</span></p>
-                  {next && "action" in next && next.action ? <Button size="sm" variant="outline" className="h-8 rounded-full px-3" onClick={next.action.onClick}>{next.action.label}</Button>
-                    : next ? <span className="text-[13px] text-muted-foreground">{"waiting" in next && next.waiting ? t("kdInReview", "Waiting for the kitchen") : next.title}</span> : null}
-                  <button type="button" onClick={() => hideList(list.id)} className="text-[13px] text-muted-foreground hover:text-foreground hover:underline">{t("homeHide")}</button>
+                <div key={list.id} className="border-t first:border-t-0">
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2 py-3">
+                    {/* Collapsed by default once something real is happening; one tap shows the steps (Shopify setup guide). */}
+                    <button type="button" aria-expanded={openLists.includes(list.id)} onClick={() => setOpenLists((ids) => ids.includes(list.id) ? ids.filter((id) => id !== list.id) : [...ids, list.id])}
+                      className="flex min-w-0 flex-1 items-center gap-2 text-left text-sm">
+                      <ChevronDown className={cn("size-4 shrink-0 text-muted-foreground transition-transform", openLists.includes(list.id) && "rotate-180")} aria-hidden />
+                      <span className="font-semibold">{list.title}</span><span className="tabular-nums text-muted-foreground">{t("homeStepsDone", { done, total: list.steps.length })}</span>
+                    </button>
+                    {!openLists.includes(list.id) && (next && "action" in next && next.action ? <Button size="sm" variant="outline" className="h-8 rounded-full px-3" onClick={next.action.onClick}>{next.action.label}</Button>
+                      : next ? <span className="text-[13px] text-muted-foreground">{"waiting" in next && next.waiting ? t("kdInReview", "Waiting for the kitchen") : next.title}</span> : null)}
+                    <button type="button" onClick={() => hideList(list.id)} className="text-[13px] text-muted-foreground hover:text-foreground hover:underline">{t("homeHide")}</button>
+                  </div>
+                  {openLists.includes(list.id) && <div className="pb-3 pl-6">{renderSteps(list)}</div>}
                 </div>
               );
             })}
@@ -487,6 +510,14 @@ export default function OverviewTabContent({
           <HomePanel className="lg:col-span-12" title={t("homeKitchenToo")} link={{ label: t("homeFindKitchens"), onClick: () => onSetActiveTab("discover-kitchens") }}>
             <p className="text-sm text-muted-foreground">{t("homeKitchenTooBody")}</p>
           </HomePanel>
+        )}
+
+        {hiddenChecklists.length > 0 && (
+          <p className="lg:col-span-12 text-[13px] text-muted-foreground">
+            {hiddenChecklists.map((list) => (
+              <button key={list.id} type="button" className="hover:text-foreground hover:underline" onClick={() => showList(list.id)}>{t("homeShowGuide", { title: list.title })}</button>
+            ))}
+          </p>
         )}
 
         {!wantsSelling && (

@@ -1,14 +1,14 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const h = vi.hoisted(() => ({ toursLoading: false }));
+const h = vi.hoisted(() => ({ toursLoading: false, tours: [] as unknown[], navigate: vi.fn() }));
 vi.mock("@/hooks/use-auth", () => ({ useFirebaseAuth: () => ({ user: { uid: "u" } }) }));
 vi.mock("@/lib/firebase", () => ({ auth: { currentUser: null } }));
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock("@/hooks/use-tour-clock", () => ({ useTourClock: () => undefined }));
 vi.mock("@/i18n/common-ns", () => ({ tt: (key: string) => key }));
-vi.mock("wouter", () => ({ useLocation: () => ["/", vi.fn()] }));
-vi.mock("@tanstack/react-query", () => ({ useQuery: () => ({ data: [], isError: false, isLoading: h.toursLoading }) }));
+vi.mock("wouter", () => ({ useLocation: () => ["/", h.navigate] }));
+vi.mock("@tanstack/react-query", () => ({ useQuery: (opts: { queryKey: unknown[] }) => ({ data: opts.queryKey[0] === "/api/viewings" ? h.tours : [], isError: false, isLoading: h.toursLoading }) }));
 vi.mock("@/components/chef/seller-revenue/hooks/useSellerRevenue", () => ({
   useShopStatus: () => ({ data: undefined }), useEarningsSummary: () => ({ data: undefined }), useStripeDashboardLink: () => ({ mutateAsync: vi.fn() }), openChefShopHome: vi.fn(),
 }));
@@ -58,4 +58,23 @@ it('labels booking 138 with its overnight calendar date and localized clock', ()
     // Same 12-hour range as My bookings and the booking page ("4:45–5:45 a.m.").
     expect(screen.getAllByText(/4:45–5:45\s*a\.m\./).length).toBeGreaterThan(0);
   } finally { vi.useRealTimers(); }
+});
+
+describe("setup guide once something is happening (Shopify-style)", () => {
+  it("a chef who toured gets Request to apply as the next step; the line expands to the steps, hides, and comes back", async () => {
+    const { fireEvent } = await import("@testing-library/react");
+    localStorage.clear();
+    h.tours = [{ id: 7, status: "completed", locationId: 47, kitchenName: "Harbour Kitchen", scheduledAt: "2026-10-20T14:00:00Z" }];
+    render(<OverviewTabContent {...props()} />);
+    const toggle = screen.getByRole("button", { expanded: false });
+    expect(screen.getAllByRole("button", { name: "homeRequestToApply" }).length).toBeGreaterThan(0);
+    fireEvent.click(toggle);
+    expect(screen.getByRole("button", { expanded: true })).toBeInTheDocument();
+    expect(screen.getByText("homeStepRequirements")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "homeHide" }));
+    expect(screen.queryByText("homeStepRequirements")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "homeShowGuide" }));
+    expect(screen.getByText("homeStepRequirements")).toBeInTheDocument();
+    h.tours = [];
+  });
 });

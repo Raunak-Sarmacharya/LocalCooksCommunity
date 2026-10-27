@@ -4469,5 +4469,7 @@
   "chatUnreadCount": "{count, plural, one {# непрочитане повідомлення} few {# непрочитані повідомлення} many {# непрочитаних повідомлень} other {# непрочитаних повідомлень}}",
   "chatStatus_cancellation_requested": "Запит на скасування",
   "chatBackToInbox": "Назад до повідомлень",
-  "chatWriteMessage": "Написати повідомлення"
+  "chatWriteMessage": "Написати повідомлення",
+  "homeStepFindToured": "Ви відвідали {kitchen}. Надішліть запит, щоб бронювати там.",
+  "homeShowGuide": "Показати «{title}»"
 }

@@ -4469,5 +4469,7 @@
   "chatUnreadCount": "{count, plural, one {# unread message} other {# unread messages}}",
   "chatStatus_cancellation_requested": "Cancellation requested",
   "chatBackToInbox": "Back to messages",
-  "chatWriteMessage": "Write a message"
+  "chatWriteMessage": "Write a message",
+  "homeStepFindToured": "You toured {kitchen}. Send a request to apply so you can book there.",
+  "homeShowGuide": "Show “{title}”"
 }
