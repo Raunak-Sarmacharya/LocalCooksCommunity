@@ -4,6 +4,7 @@
  */
 import { useState, type ReactNode } from "react";
 import { ExternalLink, Loader2 } from "lucide-react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -118,7 +119,21 @@ export function SellerApplicationReview({ application: app, onChanged, onOpenDoc
         <div className="flex flex-wrap items-center gap-2 border-t pt-4">
           {app.status === "inReview" && <Button onClick={() => onStatus("approved")} disabled={statusBusy}>{statusBusy && <Loader2 className="size-4 animate-spin" />}Approve</Button>}
           <RequestDocuments app={app} docs={docs} onChanged={onChanged} />
-          {app.status === "inReview" && <Button variant="ghost" className="text-muted-foreground" onClick={() => onStatus("rejected")} disabled={statusBusy}>Reject</Button>}
+          {app.status === "inReview" && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild><Button variant="ghost" className="text-muted-foreground" disabled={statusBusy}>Reject</Button></AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>{app.fullName ? `Reject the application from ${app.fullName}?` : "Reject this application?"}</AlertDialogTitle>
+                  <AlertDialogDescription>We email them that we can’t approve it right now and that they can apply again anytime.</AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Keep reviewing</AlertDialogCancel>
+                  <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => onStatus("rejected")}>Reject application</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
           {app.status === "inReview" && missing.length > 0 && (
             <span className="text-xs text-muted-foreground sm:ml-2">{missing.length === 1 ? "1 document" : `${missing.length} documents`} not on file. You can approve now and still ask for {missing.length === 1 ? "it" : "them"} later.</span>
           )}

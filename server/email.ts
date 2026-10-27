@@ -1080,134 +1080,20 @@ const getUniformEmailStyles = () => `
   a { color: hsl(347, 91%, 51%); text-decoration: underline; }
 </style>`;
 
-// Generate application status change email with spam-optimized content
-export const generateStatusChangeEmail = (
-  applicationData: {
-    fullName: string;
-    email: string;
-    status: string;
-  }
-): EmailContent => {
-  const firstName = applicationData.fullName.split(' ')[0];
-
-  // Create professional, non-promotional subject line
-  const getSubjectLine = (status: string) => {
-    switch (status) {
-      case 'approved':
-        return 'Application Approved - Local Cooks';
-      case 'rejected':
-        return 'Application Update - Local Cooks';
-      case 'cancelled':
-        return 'Application Status Update - Local Cooks';
-      case 'under_review':
-        return 'Application Under Review - Local Cooks';
-      default:
-        return 'Application Status Update - Local Cooks';
-    }
+/** Seller application decision or cancellation (approved, rejected, cancelled). */
+export const generateStatusChangeEmail = (applicationData: { fullName: string; email: string; status: string }): EmailContent => {
+  const copy: Record<string, { subject: string; message: string; actionLabel: string }> = {
+    approved: { subject: 'You’re approved to sell on Local Cooks', actionLabel: 'See next steps',
+      message: 'You’re approved to sell on Local Cooks. Next, we set up your shop and email you how to sign in.' },
+    rejected: { subject: 'Your Local Cooks application', actionLabel: 'View your application',
+      message: 'Thanks for applying to sell on Local Cooks. We can’t approve your application right now. If something changes, like your kitchen or your documents, you can apply again anytime.' },
+    cancelled: { subject: 'Your application is cancelled', actionLabel: 'Start a new application',
+      message: 'You cancelled your application to sell on Local Cooks. You can start a new one whenever you’re ready.' },
   };
-
-  const subject = getSubjectLine(applicationData.status);
-
-  const getMessage = (status: string) => {
-    switch (status) {
-      case 'approved':
-        return 'You&#8217;re approved to sell on Local Cooks. Next, we set up your shop and email you how to sign in to it.';
-      case 'rejected':
-        return 'Thank you for your application. After careful review, we are unable to move forward at this time. We appreciate your interest in Local Cooks.';
-      case 'cancelled':
-        return 'Your application has been cancelled. You can submit a new application anytime when you&#8217;re ready.';
-      case 'under_review':
-        return 'Your application is currently under review by our team. We&#8217;ll notify you once the review is complete.';
-      case 'pending':
-        return 'Your application has been received and is pending review. We&#8217;ll be in touch with updates soon.';
-      default:
-        return 'Your application status has been updated. Please check your dashboard for more details.';
-    }
-  };
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'approved':
-        return `<span style="display: inline-block; padding: 4px 12px; background: #f0fdf4; color: #16a34a; border: 1px solid #dcfce7; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">&#10003; Approved</span>`;
-      case 'rejected':
-        return `<span style="display: inline-block; padding: 4px 12px; background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">Not Approved</span>`;
-      case 'cancelled':
-        return `<span style="display: inline-block; padding: 4px 12px; background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">Cancelled</span>`;
-      case 'under_review':
-        return `<span style="display: inline-block; padding: 4px 12px; background: #fffbeb; color: #d97706; border: 1px solid #fef3c7; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">&#9679; Under Review</span>`;
-      default:
-        return `<span style="display: inline-block; padding: 4px 12px; background: #fffbeb; color: #d97706; border: 1px solid #fef3c7; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">&#9679; Pending</span>`;
-    }
-  };
-
-  const message = getMessage(applicationData.status);
-
-  // Use uniform email template with proper styling
-  const html = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${subject}</title>
-  ${getUniformEmailStyles()}
-</head>
-<body>
-  <div class="email-container">
-    <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
-    </div>
-    <div class="content">
-      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
-      <p class="message" style="margin-bottom: 20px;">${message}</p>
-      <div style="margin: 16px 0 4px 0; text-align: center;">
-        ${getStatusBadge(applicationData.status)}
-      </div>
-      ${applicationData.status === 'approved' ? `
-      <div style="margin: 24px 0 0; text-align: center;"><a href="${getDashboardUrl()}?view=applications" class="cta-button">See next steps</a></div>` : ''}${applicationData.status === 'rejected' ? `
-      <div style="margin: 24px 0 0; text-align: center;"><a href="${getDashboardUrl()}?view=applications" class="cta-button">View Application</a></div>` : ''}${applicationData.status === 'cancelled' ? `
-      <p class="message" style="margin-top: 24px; margin-bottom: 20px;">You can submit a new application anytime when you&#8217;re ready to join Local Cooks.</p>
-      <div style="margin: 16px 0 0 0; text-align: center;">
-        <a href="${getWebsiteUrl()}/apply" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Submit New Application</a>
-      </div>` : ''}
-      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
-      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
-        <p style="font-size: 15px; color: #64748b; margin: 0;">Best regards,</p>
-        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
-      </div>
-    </div>
-    <div class="footer">
-      <div class="divider"></div>
-      <p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks</p>
-    </div>
-  </div>
-</body>
-</html>`;
-
-  const statusLabel = applicationData.status.charAt(0).toUpperCase() + applicationData.status.slice(1).replace('_', ' ');
-  const text = `
-Hi ${firstName},
-
-${getMessage(applicationData.status).replace(/&#8217;/g, "'")}
-
-Status: ${statusLabel}
-
-${applicationData.status === 'approved' ? `See next steps: ${getDashboardUrl()}?view=applications` : ''}${applicationData.status === 'rejected' ? `View your application: ${getDashboardUrl()}?view=applications` : ''}${applicationData.status === 'cancelled' ? `You can submit a new application anytime: ${getWebsiteUrl()}/apply` : ''}
-
-If you have any questions, contact us at support@localcooks.ca
-
-Best regards,
-The Local Cooks Team
-
-© ${new Date().getFullYear()} Local Cooks
-  `.trim();
-
-  return {
-    to: applicationData.email,
-    subject,
-    text,
-    html: prepareEmailHtml(html)
-  };
+  const { subject, message, actionLabel } = copy[applicationData.status]
+    ?? { subject: 'Your Local Cooks application', message: 'Your application to sell on Local Cooks was updated.', actionLabel: 'View your application' };
+  return renderTransactionalEmail({ to: applicationData.email, recipientName: applicationData.fullName.split(' ')[0] || applicationData.fullName,
+    subject, message, facts: [], actionLabel, actionUrl: `${getDashboardUrl()}?view=applications` });
 };
 
 // Generate vendor login credentials
@@ -1224,112 +1110,15 @@ export const generateVendorCredentials = (name: string, phone: string) => {
 };
 
 // Generate full verification email with vendor credentials
-export const generateFullVerificationEmail = (
-  userData: {
-    fullName: string;
-    email: string;
-    phone: string;
-    shopName?: string;
-  }
-): EmailContent => {
+export const generateFullVerificationEmail = (userData: { fullName: string; email: string; phone: string; shopName?: string }): EmailContent => {
+  // Owner, Oct 27: keep the phone + shop-name login so admin can help; chefs change it in the shop.
   const { username, password } = generateVendorCredentials(userData.shopName || userData.fullName, userData.phone);
-  const firstName = userData.fullName.split(' ')[0];
-
-  const html = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Chef Account Approved</title>
-  ${getUniformEmailStyles()}
-</head>
-<body>
-  <div class="email-container">
-    <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
-    </div>
-    <div class="content">
-      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
-      <p class="message" style="margin-bottom: 20px;">Your documents have been approved and you are now fully verified. You can start accepting orders and serving customers through Local Cooks.</p>
-      <div style="margin: 16px 0 4px 0; text-align: center;">
-        <span style="display: inline-block; padding: 4px 12px; background: #f0fdf4; color: #16a34a; border: 1px solid #dcfce7; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">&#10003; Fully Verified</span>
-      </div>
-      <p class="message" style="margin-top: 24px; margin-bottom: 8px; font-weight: 600; color: #1e293b;">Your login credentials:</p>
-      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 16px 0;">
-        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Username:</span> <strong style="color: #1e293b; font-family: 'Courier New', monospace;">${username}</strong></p>
-        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Password:</span> <strong style="color: #1e293b; font-family: 'Courier New', monospace;">${password}</strong></p>
-      </div>
-      <div style="background: #fffbeb; border: 1px solid #fef3c7; border-radius: 8px; padding: 12px 16px; margin: 0 0 24px 0;">
-        <p style="font-size: 14px; line-height: 1.6; color: #92400e; margin: 0;"><strong>Important:</strong> Please change your password after your first login for security.</p>
-      </div>
-      <p class="message" style="margin-bottom: 8px; font-weight: 600; color: #1e293b;">Next steps:</p>
-      <p class="message" style="margin-bottom: 10px;">You have two accounts to set up:</p>
-      <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0 0 24px 4px;">
-        <tr>
-          <td style="padding: 6px 10px 6px 0; vertical-align: top; width: 16px; color: hsl(347, 91%, 55%); font-size: 16px; line-height: 24px;">&#8226;</td>
-          <td style="padding: 6px 0; font-size: 15px; line-height: 1.65; color: #475569;"><strong style="color: #1e293b;">Chef Dashboard</strong> &#8212; use your credentials above to manage your profile, products, and orders</td>
-        </tr>
-        <tr>
-          <td style="padding: 6px 10px 6px 0; vertical-align: top; width: 16px; color: hsl(347, 91%, 55%); font-size: 16px; line-height: 24px;">&#8226;</td>
-          <td style="padding: 6px 0; font-size: 15px; line-height: 1.65; color: #475569;"><strong style="color: #1e293b;">Stripe Payments</strong> &#8212; set up payment processing to start receiving payments from customers</td>
-        </tr>
-      </table>
-      <div style="text-align: center; margin: 0 0 8px 0;">
-        <a href="${getShopLoginUrl()}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0 8px 8px 0;">Access Chef Dashboard</a>
-        <a href="${getVendorDashboardUrl()}" style="display: inline-block; padding: 10px 24px; background: #f1f5f9; color: #475569 !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; border: 1px solid #e2e8f0; margin: 0 0 8px 0;">Set Up Stripe Payments</a>
-      </div>
-      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
-      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
-        <p style="font-size: 15px; color: #64748b; margin: 0;">Warmly,</p>
-        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
-      </div>
-    </div>
-    <div class="footer">
-      <div class="divider"></div>
-      <p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks</p>
-    </div>
-  </div>
-</body>
-</html>`;
-
-  const text = `
-Hi ${firstName},
-
-Your documents have been approved and you are now fully verified. You can start accepting orders and serving customers through Local Cooks.
-
-Your login credentials:
-Username: ${username}
-Password: ${password}
-
-Important: Please change your password after your first login for security.
-
-Next steps:
-• Chef Dashboard — use your credentials above to manage your profile, products, and orders
-  Access: ${getShopLoginUrl()}
-• Stripe Payments — set up payment processing to start receiving payments
-  Access: ${getVendorDashboardUrl()}
-
-If you have any questions, contact us at support@localcooks.ca
-
-Warmly,
-The Local Cooks Team
-
-© ${new Date().getFullYear()} Local Cooks
-  `.trim();
-
-  return {
-    to: userData.email,
-    subject: 'Chef Account Approved',
-    text,
-    html: prepareEmailHtml(html),
-    headers: {
-      'X-Priority': '3',
-      'X-MSMail-Priority': 'Normal',
-      'Importance': 'Normal',
-      'List-Unsubscribe': `<mailto:${getUnsubscribeEmail()}>`
-    }
-  };
+  return renderTransactionalEmail({ to: userData.email, recipientName: userData.fullName.split(' ')[0] || userData.fullName,
+    subject: 'Your Local Cooks shop is ready',
+    message: `Your shop${userData.shopName ? `, ${userData.shopName},` : ''} is set up. Sign in with the details below, then change your password in your shop settings.\n\nNext, connect your bank with Stripe so you can get paid, and add your dishes, prices and pickup or delivery.`,
+    facts: [{ label: 'Phone number', value: username }, { label: 'Password', value: password }],
+    actionLabel: 'Sign in to your shop', actionUrl: getShopLoginUrl(),
+    secondaryLink: { label: 'Connect payouts with Stripe', url: getVendorDashboardUrl() } });
 };
 
 // Generate document verification status change email with unified design
