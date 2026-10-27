@@ -469,11 +469,11 @@ export default function ChefResourcesPage_en_fr() {
       question: "Can I operate a home-based food business in NL?",
       answer: "Yes, but you must register as a Home-Based Food Business and comply with specific restrictions. Low-risk baked goods and preserves are typically allowed, while high-risk items require a commercial kitchen."
     }, {
-      question: "How long does it take to get approved on LocalCooks?",
-      answer: "Most chef applications are reviewed and approved within 24 hours. You'll need to complete your food safety certification and provide government ID during the application process."
+      question: "Combien de temps pour avoir une réponse de Local Cooks?",
+      answer: "Nous vous contactons dans les 24 à 48 heures suivant votre demande pour parler de la suite. Vous pouvez faire votre demande sans documents et les envoyer plus tard."
     }]} siteNavigation={[{
       name: "Apply as Chef",
-      description: "Join LocalCooks — get approved in 24 hours, keep 100% during trial",
+      description: "Rejoignez Local Cooks — demande en 5 minutes environ",
       url: "https://chef.localcooks.ca/apply"
     }, {
       name: "Book a Kitchen",
