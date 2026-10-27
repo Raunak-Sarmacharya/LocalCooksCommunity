@@ -100,14 +100,16 @@ export default function UnifiedChatView({ userId, role, initialConversationId, i
   });
   const appliedContext = useRef<string | null>(null);
   const contextKey = initialConversationId + ':' + (initialTourId || '');
+  // Desktop with nothing asked for: open the latest conversation (Airbnb/Turo inboxes); phones keep the list first.
+  const desktopDefault = () => !initialConversationId && !initialTourId && typeof window !== "undefined" && window.matchMedia?.("(min-width: 768px)").matches ? conversations[0] ?? null : null;
   useEffect(() => {
     if (initialTourId && !exactTour.data) { setSelectedConversation(null); return; }
     if (appliedContext.current !== contextKey) {
       const conv = conversations.find(c => c.id === initialConversationId);
-      setSelectedConversation(conv || null);
+      setSelectedConversation(conv || desktopDefault());
       if (conv) { setIsMobileListVisible(false); appliedContext.current = contextKey; }
     } else {
-      setSelectedConversation(current => conversations.find(c => c.id === current?.id) || null);
+      setSelectedConversation(current => conversations.find(c => c.id === current?.id) || desktopDefault());
     }
   }, [initialConversationId, initialTourId, exactTour.data, conversations, contextKey]);
 

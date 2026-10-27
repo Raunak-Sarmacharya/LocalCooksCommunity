@@ -8,7 +8,7 @@ export function NotificationSoundControls({ sound }: { sound: ReturnType<typeof 
   const { t } = useTranslation('common');
   const descriptionId = useId();
   return (
-    <div className="border-b px-4 py-3">
+    <div className="border-b px-4 py-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-sm font-medium">
           {sound.enabled ? <Volume2 className="size-4" aria-hidden /> : <VolumeX className="size-4" aria-hidden />}
@@ -24,7 +24,8 @@ export function NotificationSoundControls({ sound }: { sound: ReturnType<typeof 
           </Button>
         </div>
       </div>
-      <p id={descriptionId} className="mt-1.5 text-xs leading-relaxed text-muted-foreground" role="status">
+      {/* One line normally; the explanation only when something needs explaining (blocked or unavailable). */}
+      <p id={descriptionId} className={sound.status === 'unavailable' || sound.status === 'activation' ? "mt-1.5 text-xs leading-relaxed text-muted-foreground" : "sr-only"} role="status">
         {t(sound.status === 'unavailable' ? 'notificationSoundUnavailable' : sound.status === 'activation'
           ? 'notificationSoundActivation' : sound.enabled ? 'notificationSoundOnDescription' : 'notificationSoundOffDescription')}
       </p>

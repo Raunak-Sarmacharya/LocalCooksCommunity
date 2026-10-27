@@ -67,3 +67,17 @@ describe('shared inbox and exact selection', () => {
     expect(state.panel).toHaveBeenLastCalledWith(expect.objectContaining({ bookingId: 10 }));
   });
 });
+
+describe('opening the inbox with nothing selected', () => {
+  it('desktop opens the latest conversation; a phone keeps the list', async () => {
+    vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(min-width: 768px)', addEventListener() {}, removeEventListener() {} }));
+    const desktop = show();
+    expect(await screen.findByTestId('thread')).toHaveTextContent('original-5');
+    desktop.unmount();
+    vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
+    show();
+    await screen.findByText('Kitchen 5');
+    expect(screen.queryByTestId('thread')).toBeNull();
+    vi.unstubAllGlobals(); vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+  });
+});

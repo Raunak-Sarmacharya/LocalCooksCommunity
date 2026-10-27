@@ -324,7 +324,7 @@ export default function ChefProfileSettings() {
     <div className="relative mx-auto max-w-4xl space-y-8 pb-10">
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-foreground">
-          {t("cmdProfileSettings", "Profile Settings")}
+          {t("profileTitle", "Profile")}
         </h1>
         <p className="text-muted-foreground mt-1">
           {t("manageYourAccountDetailsAndSecurityPreferences", "Manage your account details and password.")}
@@ -449,7 +449,7 @@ export default function ChefProfileSettings() {
               "Your public profile details"
             )}
           >
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
+            <div className="grid grid-cols-1 gap-3 sm:gap-4">
               <FieldRow
                 label={t("profileDisplayName", "Display Name")}
                 value={displayName || "—"}
@@ -471,27 +471,7 @@ export default function ChefProfileSettings() {
                 cancelLabel={t("profileCancel", "Cancel")}
                 editLabel={t("profileEdit", "Edit")}
               />
-              <FieldRow
-                label={t("profileUsername", "Username")}
-                value={username || "—"}
-                original={username}
-                editing={editingField === "username"}
-                draft={draft}
-                onDraftChange={setDraft}
-                onEdit={() => startEdit("username", username)}
-                onCancel={cancelEdit}
-                onSave={saveFieldAction.execute}
-                saveStatus={saveFieldAction.status}
-                inputId="username"
-                placeholder={t("profileUsernamePlaceholder", "johndoe")}
-                saveLabels={{
-                  idle: t("profileSaveChanges", "Save"),
-                  loading: t("profileSaving", "Saving"),
-                  success: t("profileSaved", "Saved"),
-                }}
-                cancelLabel={t("profileCancel", "Cancel")}
-                editLabel={t("profileEdit", "Edit")}
-              />
+              {/* The email (the account's sign-in) lives on Sign-in & security; it isn't edited here. */}
             </div>
           </Section>
         </TabsContent>

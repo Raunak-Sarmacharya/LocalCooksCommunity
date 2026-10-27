@@ -77,6 +77,14 @@ describe('sweepStorageRentals notices', () => {
     expect(sent()).toEqual(['7:ending:2:2026-10-20']);
   });
 
+  it('a 7-day rental gets no ending reminder in its first half, then the 2-day and last-day ones', async () => {
+    await seed({ termStart: '2026-10-26', paidThrough: '2026-11-01', occupancy: '[2026-10-26,2026-11-07)' });
+    await sweep('2026-10-26T15:00:00Z'); // first day: the 7-day step is already "due" by date, but it's the first half
+    expect(sent()).toEqual([]);
+    await sweep('2026-10-30T15:00:00Z');
+    expect(sent()).toEqual(['7:ending:2:2026-11-01']);
+  });
+
   it('announces grace +1/+3/+5 and the start of holdover once each', async () => {
     await seed();
     for (const iso of ['2026-10-11T15:00:00Z', '2026-10-11T18:00:00Z', '2026-10-13T15:00:00Z', '2026-10-15T15:00:00Z', '2026-10-15T20:00:00Z',

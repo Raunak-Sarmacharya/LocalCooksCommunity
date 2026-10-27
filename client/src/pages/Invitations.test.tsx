@@ -33,6 +33,8 @@ let routes: Array<[RegExp, unknown]>;
 const calls: Array<{ url: string; method: string; body?: any }> = [];
 const policyResponse = { policy: { id: 1, version: 1, noticeHours: 24, lateChargePercent: 50 }, timezone: 'America/St_Johns' };
 beforeEach(() => {
+  // The fixtures are dated around Oct 16-27, 2026: pin the clock so picked dates never fall into the past.
+  vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-16T13:00:00Z'));
   calls.length = 0;
   if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {};
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
@@ -42,7 +44,7 @@ beforeEach(() => {
     return { ok: !!hit, json: async () => hit ? hit[1] : { error: 'not found' } };
   }));
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 const mount = (node: React.ReactNode) => render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{node}</QueryClientProvider>);
 /** The house date field opens the shared calendar; pick the day in the shown month. */
 const pickDate = async (label: string, monthDay: string) => {

@@ -521,6 +521,11 @@ router.put("/chef/my-profile", requireChef, async (req: Request, res: Response) 
 
         // Update username if changed
         if (username !== undefined && username !== user.username) {
+            // The username is the account email: only the email this person verified at sign-in, never any address typed here.
+            const verifiedEmail = req.firebaseUser?.email_verified ? String(req.firebaseUser.email || '').trim().toLowerCase() : '';
+            if (!verifiedEmail || verifiedEmail !== String(username).trim().toLowerCase()) {
+                return res.status(403).json({ code: "EMAIL_CHANGE_NEEDS_VERIFICATION", error: "To change your email, contact Local Cooks support." });
+            }
             const existingUser = await userService.getUserByUsername(username);
             if (existingUser && existingUser.id !== user.id) {
                 return res.status(400).json({ error: "Username already taken" });

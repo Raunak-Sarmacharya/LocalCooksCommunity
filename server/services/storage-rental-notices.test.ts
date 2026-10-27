@@ -132,7 +132,7 @@ describe('per-reader wording', () => {
   });
   it('reads naturally on the last paid day, when no extension length is suggested', async () => {
     await queueStorageRentalNotice(tx(), 5, 'ending', { ...facts, eventKey: 'd0', days: 0, amountCents: 1000 });
-    expect(notice(5)!.message).toBe('Extend now · $10.00.');
+    expect(notice(5)!.message).toBe('Extend now to keep it.');
   });
   it('tells each reader once that the holdover was paid, with the amount incl. tax and no Stripe ids', async () => {
     await queueStorageRentalNotice(tx(), 5, 'holdover_paid', { eventKey: 'record:3', amountCents: 518, days: 1 });

@@ -102,7 +102,9 @@ async function sweepOne(id: number, now: Date) {
       const phase = phaseOf(rental, today);
       const end = phase.effectiveEnd, base = { paidThrough: end, timezone };
       if (phase.phase === 'current' || phase.phase === 'ending_soon') {
-        const steps = [14, 7, 2, 0].filter(n => today >= addDays(end, -n));
+        // No "ending" reminder in a term's first half: a 7-day rental isn't told to extend the day it starts.
+        const half = addDays(rental.termStart!, Math.ceil(daysBetween(rental.termStart!, end) / 2));
+        const steps = [14, 7, 2, 0].filter(n => today >= addDays(end, -n) && addDays(end, -n) >= half);
         // Price the suggested extension only when a reminder is actually going out.
         const latest = steps.at(-1);
         const ext = latest !== undefined && !sent.has(`ending:${latest}:${end}`) ? await suggestedExtension(f) : { days: 0, amountCents: 0 };

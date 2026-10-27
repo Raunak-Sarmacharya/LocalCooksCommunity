@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { ChatAvatar } from "@/components/ui/chat/chat-avatar";
 import { Conversation } from "@/services/chat-service";
 import { Timestamp } from "firebase/firestore";
-import { Archive, ArchiveRestore, CheckCircle, Clock } from "lucide-react";
+import { Archive, ArchiveRestore, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useTranslation } from "react-i18next";
 
@@ -88,12 +88,9 @@ export function ConversationItem({
           icon: Clock,
           className: 'bg-orange-50 text-orange-700 border-orange-200'
         };
+      // Fully approved is the normal state: no badge (only steps still in progress get one).
       case 'fully_approved':
-        return {
-          label: t('chatApproved'),
-          icon: CheckCircle,
-          className: 'bg-green-50 text-green-700 border-green-200'
-        };
+        return null;
       case 'inReview':
         return {
           label: t('chatPending'),
