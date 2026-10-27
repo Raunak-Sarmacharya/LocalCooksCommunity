@@ -34,9 +34,10 @@ describe("where the chef is (current step, then a/c/d/s/p/o as done/current/upco
     expect(at(app({ ...asked, foodSafetyLicenseUrl: "x", foodSafetyLicenseStatus: "pending" }))).toEqual(["documents", "ddcuuu"]);
     expect(sellerProgress(app({ ...asked, foodSafetyLicenseUrl: "x" })).owed).toEqual([]);
   });
-  it("approved without documents: straight to the shop; a rejected file is owed again", () => {
+  it("approved without documents: straight to the shop; a file still owed stays open beside the shop steps", () => {
     expect(at(app({ status: "approved" }))).toEqual(["shop", "dddcuu"]);
-    expect(at(app({ status: "approved", foodSafetyLicenseUrl: "x", foodSafetyLicenseStatus: "rejected" }))).toEqual(["documents", "ddcuuu"]);
+    expect(at(app({ status: "approved", foodSafetyLicenseUrl: "x", foodSafetyLicenseStatus: "rejected" }))).toEqual(["shop", "ddccuu"]);
+    expect(at(app({ status: "approved", phpShopCreated: true, documentsRequested: ["foodSafety"] }))).toEqual(["paid", "ddcdcu"]);
   });
   it("shop created: payouts; Stripe connected: open", () => {
     expect(at(app({ status: "approved", phpShopCreated: true }))).toEqual(["paid", "ddddcu"]);

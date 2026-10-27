@@ -74,19 +74,20 @@ export type SellerProgress = {
 
 /**
  * Where the chef is. Before approval: the call, until Local Cooks asks for documents; then documents (owed, or with
- * Local Cooks to check). After approval: any document still owed, then the shop (Local Cooks creates it), payouts
- * (Stripe, in the shop) and opening (menu, in the shop). Approving never waits on documents.
+ * Local Cooks to check). After approval: the shop (Local Cooks creates it), payouts (Stripe, in the shop) and opening
+ * (menu, in the shop), with any document still owed open beside them. Approving never waits on documents.
  */
 export function sellerProgress(app: ApplicationLike, { stripeConnected = false } = {}): SellerProgress {
   const outcome = app.status === "rejected" ? "rejected" : app.status === "cancelled" ? "cancelled" : "active";
   const owed = sellerDocuments(app).filter((doc) => doc.state === "requested" || doc.state === "rejected");
   const order: SellerStepId[] = ["apply", "call", "documents", "shop", "paid", "open"];
   const current: SellerStepId | null = outcome !== "active" ? null
-    : owed.length ? "documents"
-    : app.status !== "approved" ? (app.documentsRequestedAt ? "documents" : "call")
+    : app.status !== "approved" ? (owed.length || app.documentsRequestedAt ? "documents" : "call")
     : !app.phpShopCreated ? "shop" : !stripeConnected ? "paid" : "open";
   const at = current ? order.indexOf(current) : 1;
-  const steps = order.map((id, index) => ({ id, state: (index < at ? "done" : index === at && current ? "current" : "upcoming") as SellerStepState }));
+  // After approval the shop goes ahead; a document still owed stays open beside it.
+  const steps = order.map((id, index) => ({ id, state: (
+    id === "documents" && current && owed.length ? "current" : index < at ? "done" : index === at && current ? "current" : "upcoming") as SellerStepState }));
   return { outcome, steps, current, owed };
 }
 
