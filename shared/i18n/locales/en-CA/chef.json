@@ -4171,5 +4171,6 @@
   "joinWithEmailTitle": "Join with your email",
   "joinAgreeTitle": "Agree to the kitchen’s terms",
   "homeTodoStorageReclaim": "{unit}: the kitchen needs it back",
-  "kciOptionalInline": "(optional)"
+  "kciOptionalInline": "(optional)",
+  "coEarlyNoRefund": "Leaving before then isn’t refunded."
 }

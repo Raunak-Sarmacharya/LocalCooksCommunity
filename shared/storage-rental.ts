@@ -70,7 +70,9 @@ export function rentalPhase(r: RentalDates & { dailyPriceCents: number; taxRateP
   if (!['reserved', 'active', 'removal_review'].includes(r.rentalState)) return null;
   const effectiveEnd = minDay(r.paidThrough, servedReclaimEnd(r));
   const graceEndsOn = addDays(effectiveEnd, GRACE_DAYS);
-  const phase: RentalPhase = today <= addDays(effectiveEnd, -7) ? 'current' : today <= effectiveEnd ? 'ending_soon' : today <= graceEndsOn ? 'grace' : 'holdover';
+  // "Ending soon" from 6 days before the end, but never in a term's first half (a 7-day rental isn't ending the day it starts).
+  const soonFrom = [addDays(effectiveEnd, -6), addDays(r.termStart, Math.ceil(daysBetween(r.termStart, effectiveEnd) / 2))].sort().at(-1)!;
+  const phase: RentalPhase = today < soonFrom ? 'current' : today <= effectiveEnd ? 'ending_soon' : today <= graceEndsOn ? 'grace' : 'holdover';
   // Accrual stops growing at the removal-review threshold (owner OQ6: frozen at 15).
   const holdoverDays = phase === 'holdover' ? Math.min(daysBetween(graceEndsOn, today), REMOVAL_REVIEW_DAYS) : 0;
   const subtotal = holdoverDays * r.dailyPriceCents;

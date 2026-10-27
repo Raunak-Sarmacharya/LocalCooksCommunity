@@ -4171,5 +4171,6 @@
   "joinWithEmailTitle": "Приєднатися з вашою електронною поштою",
   "joinAgreeTitle": "Погодьтеся з умовами кухні",
   "homeTodoStorageReclaim": "{unit}: кухня потребує його назад",
-  "kciOptionalInline": "(необов’язково)"
+  "kciOptionalInline": "(необов’язково)",
+  "coEarlyNoRefund": "Виїзд раніше цієї дати не повертається."
 }

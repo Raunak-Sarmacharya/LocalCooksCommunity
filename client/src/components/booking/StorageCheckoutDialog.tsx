@@ -12,6 +12,7 @@ import { ct } from '@/i18n/chef-ns';
 
 import { useState, useEffect } from "react";
 import { storageDay } from "@/lib/storage-rentals";
+import { localToday } from "@shared/storage-rental";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, CheckCircle, Clock, Info } from "lucide-react";
@@ -176,6 +177,8 @@ export function StorageCheckoutDialog({
             <div className="text-xs text-muted-foreground mt-1">
               {t("coEndDate")} {storageDay(storageBooking.endDate.slice(0, 10), i18n.language, true)}
             </div>
+            {/* Leaving before the paid end: the existing rule (unused days aren't refunded), said where the chef decides. */}
+            {storageBooking.endDate.slice(0, 10) > localToday(new Date(), "America/St_Johns") && <div className="mt-1 text-xs text-muted-foreground">{t("coEarlyNoRefund")}</div>}
             {storageBooking.storageType && (
               <Badge variant="outline" className="mt-2 text-xs">
                 {storageBooking.storageType}

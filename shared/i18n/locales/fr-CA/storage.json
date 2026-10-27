@@ -314,7 +314,7 @@
   "stDeclineBody": "Refuser {chef} pour {listing}? Le blocage de {amount} est libéré et la personne reçoit le motif.",
   "stReasonLabel": "Motif",
   "stReasonPlaceholder": "Expliquez le motif",
-  "stReasonRequired": "Ajoutez un motif avant de refuser.",
+  "stReasonRequired": "Ajoutez une raison pour continuer.",
   "stApproveSubmit": "Approuver la demande",
   "stDeclineSubmit": "Refuser la demande",
   "stCancel": "Annuler",
@@ -337,7 +337,7 @@
   "stChipEndingSoon": "Bientôt terminée",
   "stChipGrace": "Grâce",
   "stChipHoldover": "Dépassement",
-  "stChipMoveOutDue": "Départ à confirmer",
+  "stChipMoveOutDue": "Vérifier le départ",
   "stChipNeedsCleaning": "À nettoyer",
   "stChipRemovalReview": "Examen de retrait",
   "stBoardError": "Impossible de charger l’entreposage. Réessayez.",
@@ -620,7 +620,7 @@
   "stNextStep_grace": "Écrivez à {chef} pour organiser une prolongation ou un départ.",
   "stSituation_holdover": "Le délai de grâce a pris fin le {grace}. {chef} dépasse la période de {days, plural, one {# jour} other {# jours}}, avec {amount} accumulés.",
   "stNextStep_holdover": "Écrivez à {chef} pour organiser son départ ou demandez le paiement du dépassement.",
-  "stSituation_move_out_requested": "Le départ est prévu au plus tard le {moveOut}. L’unité reste attribuée à {chef} jusqu’à sa libération.",
+  "stSituation_move_out_requested": "{chef} dit avoir libéré l’unité. Elle lui reste attribuée jusqu’à votre confirmation.",
   "stNextStep_move_out_requested": "Confirmez le départ si l’unité est vide ou signalez les articles laissés avec des photos.",
   "stSituation_removal_review": "Des articles restent dans cette unité et leur retrait est à l’étude.",
   "stNextStep_removal_review": "Contactez {chef} pour organiser la récupération. Enregistrez le retrait seulement lorsque l’action disponible le permet.",
@@ -682,5 +682,9 @@
   "stcBlockedAction": "Voir ce qu’il faut",
   "stcFitsDays": "Seulement {count, plural, one {# jour est libre} other {# jours sont libres}} à partir de ce début (jusqu’au {end}).",
   "stcUseFitsDays": "Louer {count, plural, one {# jour} other {# jours}}",
-  "stcFullFromStart": "Rien n’est libre à partir de cette date. Choisissez un début plus tard."
+  "stcFullFromStart": "Rien n’est libre à partir de cette date. Choisissez un début plus tard.",
+  "stcNotYetTitle": "Aucune disponibilité dans les {count} prochains jours",
+  "stcNotYetFrom": "La prochaine disponibilité commence le {date}. Vous pourrez la demander à partir du {opens}.",
+  "stcNotYetFull": "Toutes les unités sont prises pour l’instant. Revenez plus tard ou demandez à la cuisine.",
+  "stcOtherStorageHere": "Voir d’autres espaces ici"
 }

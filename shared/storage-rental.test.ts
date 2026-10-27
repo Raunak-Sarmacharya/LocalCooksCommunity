@@ -52,6 +52,12 @@ describe('rentalPhase', () => {
     expect(result).toMatchObject({ phase, effectiveEnd: '2026-10-30', graceEndsOn: '2026-11-04', holdoverDays: days });
     expect(result.accruedCents).toBe(days * 300 + Math.round(days * 300 * 0.15));
   });
+  it('a short term is not "ending soon" in its first half', () => {
+    const week = { ...r, termStart: '2026-10-26', paidThrough: '2026-11-01' };
+    expect(rentalPhase(week, '2026-10-26')!.phase).toBe('current');
+    expect(rentalPhase(week, '2026-10-28')!.phase).toBe('current');
+    expect(rentalPhase(week, '2026-10-29')!.phase).toBe('ending_soon');
+  });
   it('uses an earlier reclaim date and ignores non-running states', () => {
     expect(rentalPhase({ ...r, reclaimEndOn: '2026-10-20' }, '2026-10-21')).toMatchObject({ phase: 'grace', effectiveEnd: '2026-10-20' });
     expect(rentalPhase({ ...r, rentalState: 'removal_review' }, '2027-01-01')!.holdoverDays).toBe(15);

@@ -314,7 +314,7 @@
   "stDeclineBody": "Decline {chef} for {listing}? Their card hold of {amount} is released and they are told why.",
   "stReasonLabel": "Reason",
   "stReasonPlaceholder": "Tell them why",
-  "stReasonRequired": "Add a reason before declining.",
+  "stReasonRequired": "Add a reason to continue.",
   "stApproveSubmit": "Approve request",
   "stDeclineSubmit": "Decline request",
   "stCancel": "Cancel",
@@ -337,7 +337,7 @@
   "stChipEndingSoon": "Ending soon",
   "stChipGrace": "Grace",
   "stChipHoldover": "Holdover",
-  "stChipMoveOutDue": "Move-out due",
+  "stChipMoveOutDue": "Check move-out",
   "stChipNeedsCleaning": "Needs cleaning",
   "stChipRemovalReview": "Removal review",
   "stBoardError": "Couldn't load storage. Try again.",
@@ -620,7 +620,7 @@
   "stNextStep_grace": "Message {chef} to arrange an extension or move-out.",
   "stSituation_holdover": "Grace ended {grace}. {chef} is {days, plural, one {# day} other {# days}} into holdover, with {amount} accrued.",
   "stNextStep_holdover": "Message {chef} to arrange move-out, or request payment for holdover.",
-  "stSituation_move_out_requested": "Move-out is due by {moveOut}. The unit stays assigned to {chef} until it’s released.",
+  "stSituation_move_out_requested": "{chef} says they’ve moved out. The unit stays assigned to them until you confirm.",
   "stNextStep_move_out_requested": "Confirm move-out if it’s empty, or report items left behind with photos.",
   "stSituation_removal_review": "Items remain in this unit and removal is under review.",
   "stNextStep_removal_review": "Contact {chef} to arrange collection. Record removal only when the available action allows it.",
@@ -682,5 +682,9 @@
   "stcBlockedAction": "See what’s needed",
   "stcFitsDays": "Only {count, plural, one {# day is} other {# days are}} free from this start (through {end}).",
   "stcUseFitsDays": "Rent for {count, plural, one {# day} other {# days}}",
-  "stcFullFromStart": "Nothing is free from this start. Pick a later start date."
+  "stcFullFromStart": "Nothing is free from this start. Pick a later start date.",
+  "stcNotYetTitle": "No opening in the next {count} days",
+  "stcNotYetFrom": "The next opening starts {date}. You can request it from {opens}.",
+  "stcNotYetFull": "Every unit is taken for now. Check back later or ask the kitchen.",
+  "stcOtherStorageHere": "See other storage here"
 }

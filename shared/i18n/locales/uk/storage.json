@@ -314,7 +314,7 @@
   "stDeclineBody": "Відхилити {chef} для {listing}? Блокування {amount} буде знято, і кухар побачить причину.",
   "stReasonLabel": "Причина",
   "stReasonPlaceholder": "Поясніть причину",
-  "stReasonRequired": "Додайте причину перед відхиленням.",
+  "stReasonRequired": "Додайте причину, щоб продовжити.",
   "stApproveSubmit": "Схвалити запит",
   "stDeclineSubmit": "Відхилити запит",
   "stCancel": "Скасувати",
@@ -337,7 +337,7 @@
   "stChipEndingSoon": "Скоро завершиться",
   "stChipGrace": "Пільговий час",
   "stChipHoldover": "Понад строк",
-  "stChipMoveOutDue": "Час виїжджати",
+  "stChipMoveOutDue": "Перевірити виїзд",
   "stChipNeedsCleaning": "Потрібне прибирання",
   "stChipRemovalReview": "Розгляд вивезення",
   "stBoardError": "Не вдалося завантажити зберігання. Спробуйте ще раз.",
@@ -620,7 +620,7 @@
   "stNextStep_grace": "Напишіть {chef}, щоб узгодити продовження або вивезення речей.",
   "stSituation_holdover": "Пільговий період закінчився {grace}. Прострочення для {chef}: {days, plural, one {# день} few {# дні} many {# днів} other {# дня}}. Нараховано {amount}.",
   "stNextStep_holdover": "Напишіть {chef}, щоб узгодити вивезення речей, або надішліть запит на оплату прострочення.",
-  "stSituation_move_out_requested": "Речі потрібно вивезти до {moveOut}. Комірка залишається закріпленою за {chef}, доки її не звільнять.",
+  "stSituation_move_out_requested": "{chef} повідомляє, що звільнив(-ла) місце. Воно залишається за ним/нею, доки ви не підтвердите.",
   "stNextStep_move_out_requested": "Підтвердьте вивезення, якщо комірка порожня, або повідомте про залишені речі з фотографіями.",
   "stSituation_removal_review": "У комірці залишилися речі; їх видалення розглядається.",
   "stNextStep_removal_review": "Зв’яжіться з {chef}, щоб узгодити отримання речей. Фіксуйте видалення лише тоді, коли доступна відповідна дія.",
@@ -682,5 +682,9 @@
   "stcBlockedAction": "Що потрібно",
   "stcFitsDays": "З цієї дати вільно лише {count, plural, one {# день} few {# дні} many {# днів} other {# дня}} (до {end}).",
   "stcUseFitsDays": "Орендувати на {count, plural, one {# день} few {# дні} many {# днів} other {# дня}}",
-  "stcFullFromStart": "З цієї дати нічого не вільно. Оберіть пізнішу дату початку."
+  "stcFullFromStart": "З цієї дати нічого не вільно. Оберіть пізнішу дату початку.",
+  "stcNotYetTitle": "Немає вільних місць у найближчі {count} днів",
+  "stcNotYetFrom": "Наступне вільне місце з {date}. Подати запит можна з {opens}.",
+  "stcNotYetFull": "Усі місця зараз зайняті. Перевірте пізніше або запитайте кухню.",
+  "stcOtherStorageHere": "Інші місця тут"
 }

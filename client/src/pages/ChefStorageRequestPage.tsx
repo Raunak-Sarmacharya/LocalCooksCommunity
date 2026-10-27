@@ -44,6 +44,9 @@ export default function ChefStorageRequestPage() {
   const startOptions = useMemo(() => Array.from({ length: MAX_LEAD_DAYS + 1 }, (_, n) => addDays(today, n)), [today])
   const firstFree = listing?.availability.state === "from" && listing.availability.from && listing.availability.from > today ? listing.availability.from : today
   const maxDays = listing?.maxTermDays ?? 30
+  // No start the chef can pick (next opening is past the request window, or none): say when, instead of greyed-out dates.
+  const nextOpening = listing?.availability.state === "from" ? listing.availability.from ?? null : null
+  const noStartInWindow = !!listing && (listing.availability.state === "full" || (!!nextOpening && nextOpening > startOptions[startOptions.length - 1]))
 
   const [step, setStep] = useState<1 | 2>(1)
   const [startOn, setStartOn] = useState<string | null>(null)
@@ -112,7 +115,7 @@ export default function ChefStorageRequestPage() {
       <Button asChild variant="outline" className="min-h-11"><Link href="/storage">{t("stcBackToStorage")}</Link></Button>
     </div> : !listing ? <div role="status" aria-label={t("stcLoading")} className="space-y-3"><Skeleton className="h-20 w-full rounded-2xl" /><Skeleton className="h-64 w-full rounded-2xl" /></div> : <>
       <header className="space-y-1">
-        {!approvalNeeded && <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("stcStep", { step, label: t(step === 1 ? "stcStepDates" : "stcStepReview") })}</p>}
+        {!approvalNeeded && !noStartInWindow && <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("stcStep", { step, label: t(step === 1 ? "stcStepDates" : "stcStepReview") })}</p>}
         <h1 className="text-2xl font-semibold tracking-tight">{listing.name}</h1>
         <p className="text-sm text-muted-foreground">{t("stcAtKitchenPrice", { kitchen, amount: cad(listing.dailyPriceCents, locale) })}</p>
       </header>
@@ -129,6 +132,10 @@ export default function ChefStorageRequestPage() {
         <PublishedCancellationPolicySummary kitchenId={kitchenId} />
         {refusal ? (refusal.actionUrl && <Button className="min-h-12 w-full sm:w-auto" onClick={() => navigate(refusal.actionUrl!)}>{t("stcBlockedAction")}</Button>)
           : <Button className="min-h-12 w-full sm:w-auto" onClick={() => navigate(listing.locationId ? `/apply-kitchen/${listing.locationId}?kitchenId=${kitchenId}` : "/dashboard?view=discover-kitchens")}>{t("stcApply")}</Button>}
+      </section> : noStartInWindow ? <section className="space-y-3 rounded-2xl border p-5" data-testid="storage-not-yet">
+        <h2 className="text-base font-semibold">{t("stcNotYetTitle", { count: MAX_LEAD_DAYS })}</h2>
+        <p className="text-sm leading-relaxed">{nextOpening ? t("stcNotYetFrom", { date: storageDay(nextOpening, locale), opens: storageDay(addDays(nextOpening, -MAX_LEAD_DAYS), locale) }) : t("stcNotYetFull")}</p>
+        <Button asChild variant="outline" className="min-h-11"><Link href={`/storage/new?kitchenId=${kitchenId}`}>{t("stcOtherStorageHere")}</Link></Button>
       </section> : step === 1 ? <>
         <fieldset className="space-y-3 rounded-2xl border p-4 sm:p-5">
           <legend className="px-1 text-base font-semibold">{t("stcStartLabel")}</legend>

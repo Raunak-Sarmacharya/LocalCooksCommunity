@@ -27,12 +27,12 @@ beforeAll(async () => {
   await i18n.changeLanguage("en-CA")
 })
 beforeEach(() => {
-  Object.assign(state, { approved: true, refusal: undefined, fits: undefined, quoteTotal: 3500, calls: [] })
+  Object.assign(state, { approved: true, refusal: undefined, fits: undefined, availability: undefined, quoteTotal: 3500, calls: [] })
   window.history.pushState({}, "", "/storage/new?kitchenId=1&listingId=4")
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
     const body = init?.body ? JSON.parse(String(init.body)) : undefined
     state.calls.push([url, body])
-    if (url.endsWith("/storage-availability")) return { ok: true, json: async () => [listing] }
+    if (url.endsWith("/storage-availability")) return { ok: true, json: async () => [{ ...listing, ...((state as any).availability ? { availability: (state as any).availability } : {}) }] }
     if (url.endsWith("/quote")) {
       if (!state.approved) return { ok: false, json: async () => ({ code: "approval_required", error: "Apply to this kitchen first.", refusal: (state as any).refusal }) }
       if ((state as any).fits !== undefined && body.days > (state as any).fits) return { ok: false, json: async () => ({ code: "full", error: "This storage is full for those dates.", fitsDays: (state as any).fits }) }
@@ -103,6 +103,15 @@ describe("rent storage stepper", () => {
     fireEvent.click(button)
     expect(await screen.findByRole("alert")).toHaveTextContent("The price is now $42.00. Check it, then tap the button again.")
     expect(state.calls.some(([url]) => url === "/api/chef/storage-rentals")).toBe(false)
+  })
+
+  it("no start inside the request window: says when it opens instead of greyed-out dates", async () => {
+    Object.assign(state, { availability: { state: "from", from: "2099-01-30" } })
+    show()
+    const panel = await screen.findByTestId("storage-not-yet")
+    expect(panel).toHaveTextContent("No opening in the next 14 days")
+    expect(panel).toHaveTextContent(/The next opening starts .+ You can request it from .+\./)
+    expect(screen.queryByRole("button", { name: "Continue" })).toBeNull()
   })
 
   it("full for the chosen span: says how many days fit and sets them in one tap", async () => {
