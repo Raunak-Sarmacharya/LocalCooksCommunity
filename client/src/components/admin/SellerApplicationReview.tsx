@@ -196,6 +196,7 @@ export function SellerApplicationSummary({ application: app }: { application: Ap
   const checking = progress.current === "documents" && !progress.owed.length;
   const next = progress.outcome !== "active" ? null
     : app.status === "approved" && !app.phpShopCreated ? "Create their shop"
+    : app.phpShopCreated && !app.verificationEmailSentAt ? "Send their sign-in email"
     : checking ? "Check their documents" : NEXT[progress.current ?? ""];
   const kitchen = app.kitchenPreference === "commercial" ? `commercial_${app.commercialKitchen === "localcooks" ? "localcooks" : "other"}` : app.kitchenPreference;
   return (
