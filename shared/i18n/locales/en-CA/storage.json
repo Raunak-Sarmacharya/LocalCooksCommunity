@@ -689,5 +689,7 @@
   "stcOtherStorageHere": "See other storage here",
   "stcPoliciesLink": "Storage rules and policies",
   "stcPoliciesTitle": "Policies",
-  "stcCancelBy": "Cancel by {deadline} for a refund, minus the card processing fee."
+  "stcCancelBy": "Cancel by {deadline} for a refund, minus the card processing fee.",
+  "stCancelledOn": "Cancelled {date}",
+  "stNoPayout": "No payout"
 }

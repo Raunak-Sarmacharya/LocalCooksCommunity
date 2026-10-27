@@ -4758,7 +4758,7 @@
   "slList": "Publier",
   "slViewUnits": "Voir les unités",
   "slFinishSetup": "À compléter : {items}",
-  "slOccupancy": "{units} unités · {inUse} occupées · {requests} demandes",
+  "slOccupancy": "{units, plural, one {# unité} other {# unités}} · {inUse} occupée(s) · {requests, plural, one {# demande} other {# demandes}}",
   "slMissing_name": "nom",
   "slMissing_type": "type",
   "slMissing_price": "prix par jour",

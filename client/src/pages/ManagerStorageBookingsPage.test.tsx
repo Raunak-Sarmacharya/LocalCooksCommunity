@@ -203,3 +203,13 @@ it("leaves a draft listing's units off the board until it is listed", async () =
   expect(await screen.findByText("Morgan Lee")).toBeInTheDocument();
   expect(screen.queryByRole("heading", { name: "Draft freezer" })).toBeNull();
 });
+
+it('a cancelled past rental says when it was cancelled and that there is no payout', async () => {
+  mockFetch([{ ...request, id: 10, ref: 'SB-CXL', state: 'ended', startOn: '2026-10-30', paidThrough: '2026-11-05', releasedOn: '2026-10-22', actions: [],
+    cancellation: { cancelledAt: '2026-10-22T15:00:00Z', refundCents: 1282, reason: null }, terms: [{ ...term, status: 'refunded', payoutCents: 0 }] } as any]);
+  renderBoard();
+  const row = await screen.findByRole('link', { name: /SB-CXL/ });
+  expect(row).toHaveTextContent('stCancelledOn');
+  expect(row).toHaveTextContent('stNoPayout');
+  expect(row).not.toHaveTextContent(/Oct 30.*Oct 22/);
+});

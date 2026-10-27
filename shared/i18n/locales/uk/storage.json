@@ -689,5 +689,7 @@
   "stcOtherStorageHere": "Інші місця тут",
   "stcPoliciesLink": "Правила та політика зберігання",
   "stcPoliciesTitle": "Правила",
-  "stcCancelBy": "Скасуйте до {deadline}, щоб отримати повернення без комісії за обробку картки."
+  "stcCancelBy": "Скасуйте до {deadline}, щоб отримати повернення без комісії за обробку картки.",
+  "stCancelledOn": "Скасовано {date}",
+  "stNoPayout": "Без виплати"
 }

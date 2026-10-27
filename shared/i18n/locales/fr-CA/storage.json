@@ -689,5 +689,7 @@
   "stcOtherStorageHere": "Voir d’autres espaces ici",
   "stcPoliciesLink": "Règles et politiques d’entreposage",
   "stcPoliciesTitle": "Politiques",
-  "stcCancelBy": "Annulez avant le {deadline} pour un remboursement, moins les frais de traitement de la carte."
+  "stcCancelBy": "Annulez avant le {deadline} pour un remboursement, moins les frais de traitement de la carte.",
+  "stCancelledOn": "Annulée le {date}",
+  "stNoPayout": "Aucun versement"
 }
