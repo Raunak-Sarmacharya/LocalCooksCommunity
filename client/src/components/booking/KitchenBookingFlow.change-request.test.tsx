@@ -23,8 +23,14 @@ import KitchenBookingFlow from './KitchenBookingFlow';
 
 const json = (body: unknown, status = 200) => ({ ok: status < 400, status, json: async () => body });
 
+let nextKitchenId = 4;
+// Requests this test's own kitchen received. An earlier test's unmounted flow can still fire its month-availability
+// fetch (after an awaited token) into this test's fetch stub; a fresh kitchen id per test tells those stragglers apart.
+const ownUrls = () => fixture.urls.filter(url => url.includes(`/kitchens/${fixture.kitchen.id}/`));
+
 beforeEach(() => {
-  localStorage.clear(); fixture.toast.mockReset(); fixture.urls = []; fixture.bodies = [];
+  fixture.kitchen.id = nextKitchenId++;
+  localStorage.clear();fixture.toast.mockReset(); fixture.urls = []; fixture.bodies = [];
   fixture.earlier = { id: 10, referenceCode: 'KB-OLD111', status: 'pending', bookingDate: '2099-10-04T12:00:00.000Z', startTime: '09:00', endTime: '10:00', paymentTransaction: { amount: 2440 } };
   fixture.checkoutResponse = json({ sessionUrl: 'https://checkout.example/session' });
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: any) => {
@@ -67,10 +73,10 @@ describe('changing a pending request (rebook first)', () => {
   it('asks for the hours with the earlier request’s own hours free (slots and calendar carry replaces)', async () => {
     await open(10);
     await screen.findByTestId('change-request-banner');
-    const slots = fixture.urls.filter(url => url.includes('/slots?'));
+    const slots = ownUrls().filter(url => url.includes('/slots?'));
     expect(slots.length).toBeGreaterThan(0);
     for (const url of slots) expect(url).toContain('replaces=10');
-    for (const url of fixture.urls.filter(item => item.includes('/month-availability'))) expect(url).toContain('replaces=10');
+    for (const url of ownUrls().filter(item => item.includes('/month-availability'))) expect(url).toContain('replaces=10');
   });
 
   it('adds one line to the consent: the earlier request, its exact hold amount, and that banks can take a few days', async () => {
@@ -95,7 +101,7 @@ describe('changing a pending request (rebook first)', () => {
     await open(10); await toConfirm();
     fireEvent.click(submit());
     await waitFor(() => expect(fixture.bodies).toHaveLength(1));
-    expect(fixture.bodies[0]).toMatchObject({ replacesBookingId: 10, kitchenId: 4 });
+    expect(fixture.bodies[0]).toMatchObject({ replacesBookingId: 10, kitchenId: fixture.kitchen.id });
   });
 
   it('shows the server’s plain refusal when the kitchen answered meanwhile, and starts nothing', async () => {
@@ -109,7 +115,7 @@ describe('changing a pending request (rebook first)', () => {
     await open(); await toConfirm();
     expect(screen.queryByTestId('change-request-banner')).toBeNull();
     expect(screen.queryByTestId('change-request-consent')).toBeNull();
-    expect(fixture.urls.some(url => url.includes('replaces='))).toBe(false);
+    expect(ownUrls().some(url => url.includes('replaces='))).toBe(false);
     fireEvent.click(submit());
     await waitFor(() => expect(fixture.bodies).toHaveLength(1));
     expect(fixture.bodies[0]).not.toHaveProperty('replacesBookingId');

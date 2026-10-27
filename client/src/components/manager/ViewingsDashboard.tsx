@@ -782,9 +782,9 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
               </section>}</section>}
                 {canEditTourNotes && <section id="tour-visit-notes" aria-label={mt('tourMeetingInstructionsTitle')} className="order-2 space-y-3 rounded-2xl border bg-card p-4 sm:px-5">
                   <div className="flex items-start gap-3"><FileText className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" /><div className="space-y-1"><h2 className="text-sm font-semibold">{mt('tourMeetingInstructionsTitle')}</h2><p className="text-sm leading-relaxed text-muted-foreground">{mt('tourMeetingInstructionsHelp')}</p></div></div>
-                  {(selectedViewing.arrivalNotes !== undefined || selectedViewing.departureNotes !== undefined) && <dl className="grid gap-3 sm:grid-cols-2">
+                  {/* Tours show arrival instructions only (owner, Oct 25); departure notes belong to kitchen bookings. */}
+                  {selectedViewing.arrivalNotes !== undefined && <dl>
                     <div><dt className="text-xs font-medium text-muted-foreground">{mt('arrivalInstructionsTitle')}</dt><dd className="mt-1 whitespace-pre-wrap text-sm">{selectedViewing.arrivalNotes?.trim() || mt('tourInstructionsMissing')}</dd></div>
-                    <div><dt className="text-xs font-medium text-muted-foreground">{mt('departureInstructionsTitle')}</dt><dd className="mt-1 whitespace-pre-wrap text-sm">{selectedViewing.departureNotes?.trim() || mt('tourInstructionsMissing')}</dd></div>
                   </dl>}
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><p className="text-xs leading-relaxed text-muted-foreground">{mt('tourMeetingInstructionsScope')}</p><Button variant="outline" className="h-auto min-h-11 w-full shrink-0 whitespace-normal px-4 py-2 sm:w-auto" title={mt('tourEditVisitNotes')} onClick={() => requestNavigation(() => onConfigureNotes!(selectedViewing.viewing.targetedKitchenId!, selectedViewing.viewing.locationId, selectedViewing.viewing.id))}>{mt('tourVisitNotesButton')}<ArrowRight className="ml-2 h-4 w-4 shrink-0" /></Button></div>
                 </section>}

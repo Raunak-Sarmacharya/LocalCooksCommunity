@@ -152,7 +152,7 @@ describe('manager acceptance review', () => {
     expect(notes).toHaveAttribute('title', 'tourEditVisitNotes');
     expect(instructions.getByText('tourMeetingInstructionsScope')).toBeInTheDocument();
     expect(instructions.getByText('Meet at the north entrance.')).toBeInTheDocument();
-    expect(instructions.getByText('Return your visitor badge to the host.')).toBeInTheDocument();
+    expect(instructions.queryByText('Return your visitor badge to the host.')).not.toBeInTheDocument(); // tours: arrival only (owner, Oct 25)
     expect(screen.getByRole('region', { name: 'tourHistoryTitle' }).closest('aside')).not.toBeNull();
     expect(screen.getByTestId('manager-tour-help').closest('aside')).toBeNull();
     fireEvent.click(notes);

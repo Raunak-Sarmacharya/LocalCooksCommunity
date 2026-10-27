@@ -1509,3 +1509,14 @@ State Oct 18 (evening): multi-day + single-day booking cycle verified end to end
   - After day 1 of a multi-day booking ends, the kitchen page still shows that day's large check-in code.
   - Moved pending requests show off-grid times (5-minute steps).
 - Tests: booking test clock PGlite 9 (DST, overnight, snapshot trigger, visit-date uniqueness, overlap refusal, multi-day request rule, reminder carry-over, window crossing midnight, step coverage, per-day payout); tours 5. Fork's full run: client 9,100, server 4,373, tsc clean.
+
+## Oct 27 (late night): small gaps found during the test-clock work (owner: fix them)
+- Multi-day booking, kitchen page: after a day ended unused, its large check-in code stayed up. Now the next day's code shows (VisitCodePanel test fails without the fix).
+- Admin Tour Requests: auto-closed tours that nobody recorded read "Closed · not recorded" (was "Disrupted").
+- Kitchen tour page: arrival instructions only (Oct 25 rule); the help line no longer mentions departure (en/fr/uk).
+- Flaky `KitchenBookingFlow.change-request`: the cause was test leakage. Earlier tests' month-availability requests (awaited `getIdToken`, never cancelled on unmount) landed in the next test's `fixture.urls` under load. Each test now gets its own kitchen id and asserts only its own URLs; 20/20 loops pass. The component still doesn't cancel that fetch on unmount (not changed).
+- verify-localcooks helper: the date grid was fine. `phase0-chef` is blocked at kitchen 54 (location 47 now also asks for a business licence and HACCP plan), and the Start picker's accessible name now includes its value. The helper fails fast on a blocked chef and matches `/^Start/`; use a waived chef via `VERIFY_CHEF_EMAIL`.
+- **Found, not fixed (to the owner):**
+  - Locally the email-code send returns 500 for `.test` addresses (never handed to SMTP), and the sign-in page then reloads with no error instead of showing "Sign In Failed".
+  - `phase0-chef`'s block shows the food-safety-certificate message although that certificate is approved until 2027.
+  - `bounded-smtp` real-socket test failed once under full-suite load (passes 3/3 alone).

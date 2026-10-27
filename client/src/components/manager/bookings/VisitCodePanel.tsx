@@ -80,19 +80,22 @@ export function VisitCodePanel({ bookingId, customerName, kitchenName, timezone,
   const [dialogError, setDialogError] = useState("")
 
   // Active = confirmed, not consumed/revoked, and inside [start - lead, end]. Anything else needs no timer.
-  const windowOpen = (target: ManagerVisitCodeState) => {
-    if (!timezone) return true
+  const bounds = (target: ManagerVisitCodeState) => {
+    if (!timezone) return null
     const visit = target.visitId ? visits.find(row => row.id === target.visitId) : undefined
     const start = visit?.startTime ?? startTime, end = visit?.endTime ?? endTime
     try {
       const day = visit?.visitDate?.slice(0, 10) || bookingDate.split("T")[0]
       const anchor = visit?.operatingWindowStartTime || operatingWindowStartTime
-      const begins = createBookingDateTime(calendarDateForBookingTime(day, start, anchor), start, timezone)
-      const ends = createBookingDateTime(calendarDateForBookingTime(day, end, anchor, start), end, timezone)
-      const now = Date.now()
-      return now >= begins.getTime() - POLL_LEAD_MINUTES * 60_000 && now <= ends.getTime()
-    } catch { return true }
+      return { begins: createBookingDateTime(calendarDateForBookingTime(day, start, anchor), start, timezone).getTime(),
+        ends: createBookingDateTime(calendarDateForBookingTime(day, end, anchor, start), end, timezone).getTime() }
+    } catch { return null }
   }
+  const windowOpen = (target: ManagerVisitCodeState) => {
+    const window = bounds(target), now = Date.now()
+    return !window || now >= window.begins - POLL_LEAD_MINUTES * 60_000 && now <= window.ends
+  }
+  const dayEnded = (target: ManagerVisitCodeState) => { const window = bounds(target); return !!window && Date.now() > window.ends }
   const pollActive = (data?: ManagerVisitCodeResponse) =>
     bookingStatus === "confirmed" && !!data?.targets?.some(target => !target.consumed && !target.revoked && windowOpen(target))
 
@@ -136,7 +139,8 @@ export function VisitCodePanel({ bookingId, customerName, kitchenName, timezone,
   const allTargets = query.data?.targets ?? []
   // Several days: only the day whose check-in is open now (else the next one), never tomorrow's code today.
   const openNow = allTargets.filter(target => target.visitId && windowOpen(target))
-  const upcoming = allTargets.find(target => !target.consumed && !target.revoked)
+  // A day that ended unused is over: the next day's code (or the history) shows, never a past day's code.
+  const upcoming = allTargets.find(target => !target.consumed && !target.revoked && !(target.visitId && dayEnded(target)))
   const multiDay = new Set(visits.map(visit => visit.visitDate?.slice(0, 10)).filter(Boolean)).size > 1
   const targets = multiDay && allTargets.length > 1 ? (openNow.length ? openNow : upcoming ? [upcoming] : allTargets) : allTargets
   const zone = timezone || undefined

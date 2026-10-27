@@ -3517,7 +3517,7 @@
   "tourHistory_status_unverified": "Tour ended",
   "tourEditMeetingInstructions": "Edit meeting instructions",
   "tourMeetingInstructionsTitle": "Meeting instructions",
-  "tourMeetingInstructionsHelp": "Parking, entrance, meeting point and departure details.",
+  "tourMeetingInstructionsHelp": "Parking, entrance and meeting point.",
   "tourMeetingInstructionsScope": "Shared by every tour of this kitchen. Saved changes appear in confirmed tour details and future reminders; emails already sent stay the same.",
   "tourPlansChanged": "Need a different time?",
   "tourRescheduleScenarioHelp": "Kitchen unexpectedly unavailable, or the customer called to say they can’t attend? You can offer a new time here, even if they haven’t requested a change online.",

@@ -3517,7 +3517,7 @@
   "tourHistory_status_unverified": "Visite terminée",
   "tourEditMeetingInstructions": "Modifier les consignes de rencontre",
   "tourMeetingInstructionsTitle": "Consignes de rencontre",
-  "tourMeetingInstructionsHelp": "Stationnement, entrée, point de rencontre et départ.",
+  "tourMeetingInstructionsHelp": "Stationnement, entrée et point de rencontre.",
   "tourMeetingInstructionsScope": "Communes à toutes les visites de cette cuisine. Les modifications enregistrées apparaissent dans les visites confirmées et les futurs rappels; les courriels déjà envoyés restent inchangés.",
   "tourPlansChanged": "Besoin d’une autre heure?",
   "tourRescheduleScenarioHelp": "La cuisine est indisponible à l’improviste ou le client vous a appelé pour dire qu’il ne peut pas venir? Proposez une autre heure ici, même sans demande de changement en ligne.",

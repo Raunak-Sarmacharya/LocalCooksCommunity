@@ -3517,7 +3517,7 @@
   "tourHistory_status_unverified": "Огляд завершено",
   "tourEditMeetingInstructions": "Редагувати інструкції зустрічі",
   "tourMeetingInstructionsTitle": "Інструкції зустрічі",
-  "tourMeetingInstructionsHelp": "Паркування, вхід, місце зустрічі та від’їзд.",
+  "tourMeetingInstructionsHelp": "Паркування, вхід і місце зустрічі.",
   "tourMeetingInstructionsScope": "Спільні для всіх турів цією кухнею. Збережені зміни з’являються в підтверджених турах і майбутніх нагадуваннях; вже надіслані листи не змінюються.",
   "tourPlansChanged": "Потрібен інший час?",
   "tourRescheduleScenarioHelp": "Кухня несподівано недоступна або клієнт зателефонував і повідомив, що не зможе прийти? Запропонуйте новий час тут, навіть без запиту на зміну онлайн.",

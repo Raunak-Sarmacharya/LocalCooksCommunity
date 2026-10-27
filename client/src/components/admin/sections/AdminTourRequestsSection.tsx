@@ -246,7 +246,7 @@ export function AdminTourRequestsSection() {
                   </div>
                   <Badge variant={request.viewing.status === "cancelled" || request.viewing.status === "no_show" ? "destructive" : request.viewing.status === "confirmed" || request.viewing.status === "completed" ? "success" : "warning"}>
                     {request.viewing.requestExpiredAt || ['pending_local_cooks', 'pending'].includes(request.viewing.status) && new Date(request.viewing.scheduledAt).getTime() <= Date.now() ? 'Request expired' : request.viewing.status === "cancelled"
-                      ? request.viewing.disruptionReason ? "Disrupted" : request.viewing.adminReviewDecision === "denied" || request.viewing.cancelledBy === "manager_declined" ? "Rejected" : "Cancelled"
+                      ? request.viewing.disruptionReason === 'outcome_unknown' ? "Closed · not recorded" : request.viewing.disruptionReason ? "Disrupted" : request.viewing.adminReviewDecision === "denied" || request.viewing.cancelledBy === "manager_declined" ? "Rejected" : "Cancelled"
                       : request.viewing.status === "confirmed" ? "Confirmed"
                       : request.viewing.status === "completed" ? "Completed"
                       : request.viewing.status === "no_show" ? "No show"

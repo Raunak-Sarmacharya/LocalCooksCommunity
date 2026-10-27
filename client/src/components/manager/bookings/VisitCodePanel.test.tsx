@@ -149,6 +149,17 @@ describe("VisitCodePanel", () => {
     } finally { vi.useRealTimers(); }
   });
 
+  it("moves on to the next day's code once a day ends unused, instead of keeping the past day's code up", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-19T22:00:00Z")); // 7:30 p.m.: day 1 (5-6 p.m.) is over
+    state.targets = [{ ...base, targetKey: "visit:1", visitId: 1 }, { ...base, targetKey: "visit:2", visitId: 2, code: "222333" }];
+    try {
+      await mount({ embedded: true, visits: [{ id: 1, blockIndex: 0, startTime: "17:00", endTime: "18:00", visitDate: "2026-10-19" },
+        { id: 2, blockIndex: 0, startTime: "17:00", endTime: "18:00", visitDate: "2026-10-20" }] });
+      await screen.findByTestId("visit-code-visit:2");
+      expect(screen.queryByTestId("visit-code-visit:1")).not.toBeInTheDocument();
+    } finally { vi.useRealTimers(); }
+  });
+
   it("switches back to staffed without needing a reason", async () => {
     state.targets = [{ ...base, mode: "self", code: null, modeReason: "Front desk is closed today" }];
     await mount();
