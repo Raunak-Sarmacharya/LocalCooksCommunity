@@ -254,17 +254,17 @@ router.get("/completion/:userId", async (req: Request, res: Response) => {
   }
 });
 
-// Generate and download certificate
+// Download the certificate of completion (PDF). The path id is the caller's own (numeric id or Firebase uid); admins may
+// pass another user's numeric id.
 router.get("/certificate/:userId", async (req: Request, res: Response) => {
   try {
     if (!req.neonUser) {
       return res.status(401).json({ message: 'Authentication required' });
     }
-
-    const userId = parseInt(req.params.userId);
-
-    // Verify user can access this certificate (either their own or admin)
-    if (req.neonUser.id !== userId && req.neonUser.role !== 'admin') {
+    const asked = req.params.userId;
+    const own = asked === String(req.neonUser.id) || asked === req.neonUser.firebaseUid;
+    const userId = own ? req.neonUser.id : req.neonUser.role === 'admin' ? parseInt(asked) : NaN;
+    if (isNaN(userId)) {
       return res.status(403).json({ message: 'Access denied' });
     }
 
@@ -272,21 +272,20 @@ router.get("/certificate/:userId", async (req: Request, res: Response) => {
     if (!completion || !completion.confirmed) {
       return res.status(404).json({ message: 'No confirmed completion found' });
     }
-
     const user = await userService.getUser(userId);
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    // For now, return a placeholder certificate URL
-    const certificateUrl = `/api/certificates/microlearning-${userId}-${Date.now()}.pdf`;
-
-    res.json({
-      success: true,
-      certificateUrl,
-      completionDate: completion.completedAt,
-      message: 'Certificate for skillpass.nl food safety training preparation - Complete your official certification at skillpass.nl'
+    const completedAt = new Date(completion.completedAt ?? Date.now());
+    const pdf = await generateCertificatePDF({
+      name: (own && (req.firebaseUser as { name?: string } | undefined)?.name) || user.username,
+      completedAt,
+      reference: `LC-FS-${userId}-${completedAt.getFullYear()}`,
     });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename="local-cooks-certificate-of-completion.pdf"');
+    res.send(pdf);
   } catch (error) {
     logger.error('Error generating certificate:', error);
     res.status(500).json({ message: 'Failed to generate certificate' });

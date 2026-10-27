@@ -198,7 +198,7 @@ export function ChefSidebar({
 
             {/* Main Navigation Content */}
             <SidebarContent className="gap-0">
-                {visibleSections.map((section) => (
+                {visibleSections.filter((section) => section.id !== "section-utility").map((section) => (
                     <SidebarGroup key={section.id} className="px-2 py-1">
                         {section.titleKey && <SidebarGroupLabel className="h-7 px-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{tr(section.titleKey as never)}</SidebarGroupLabel>}
                         <SidebarMenu className="gap-1.5">
@@ -207,8 +207,10 @@ export function ChefSidebar({
                     </SidebarGroup>
                 ))}
                 {/* The other service, one quiet tap away until they start it (Airbnb "Switch to hosting", Turo pattern). */}
+                {/* Utilities sit at the foot: the other service while unstarted, then Resources (always). */}
+                <div className="mt-auto" />
                 {hiddenItems.includes("applications") && (
-                    <SidebarGroup className="mt-auto px-2 py-2 group-data-[collapsible=icon]:hidden">
+                    <SidebarGroup className="px-2 py-2 group-data-[collapsible=icon]:hidden">
                         <button type="button" onClick={() => { navigate("/dashboard?view=applications&action=new"); closeMobileIfNeeded() }}
                             className="flex w-full items-start gap-2.5 rounded-lg px-2 py-2 text-left text-sm text-sidebar-foreground/80 hover:bg-sidebar-foreground/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
                             data-testid="sidebar-other-path">
@@ -218,6 +220,11 @@ export function ChefSidebar({
                         </button>
                     </SidebarGroup>
                 )}
+                {visibleSections.filter((section) => section.id === "section-utility").map((section) => (
+                    <SidebarGroup key={section.id} className="px-2 pb-2 pt-1">
+                        <SidebarMenu className="gap-1.5">{section.visibleItems.map(renderNavItem)}</SidebarMenu>
+                    </SidebarGroup>
+                ))}
             </SidebarContent>
 
             <ProfileGettingStarted

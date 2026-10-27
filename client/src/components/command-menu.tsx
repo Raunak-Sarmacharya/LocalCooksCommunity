@@ -369,9 +369,9 @@ export function CommandMenu({ open, onOpenChange, onViewChange, onLogout, portal
                                     <span>{t("shellLinkedAccounts")}</span>
                                 </CommandItem>
                                 )}
-                                <CommandItem onSelect={() => runCommand(() => onViewChange?.("training"))}>
-                                    <Icon icon={findChefNavItem("training")!.icon} className="mr-2 h-4 w-4" aria-hidden />
-                                    <span>{t("shellTraining")}</span>
+                                <CommandItem onSelect={() => runCommand(() => onViewChange?.("resources"))}>
+                                    <Icon icon={findChefNavItem("resources")!.icon} className="mr-2 h-4 w-4" aria-hidden />
+                                    <span>{t("shellResources")}</span>
                                 </CommandItem>
                                 <CommandItem onSelect={() => runCommand(() => onViewChange?.("transactions"))}>
                                     <CreditCard className="mr-2 h-4 w-4" />

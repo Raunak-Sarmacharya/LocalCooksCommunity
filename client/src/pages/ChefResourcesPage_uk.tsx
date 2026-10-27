@@ -41,10 +41,10 @@ const SECTIONS: Section[] = [{
   icon: GraduationCap,
   subsections: [{
     id: "skillspass-nl",
-    title: "Безкоштовно: SkillsPass NL"
+    title: "SkillsPass NL (безкоштовно)"
   }, {
     id: "paid-alternatives",
-    title: "Платні альтернативи"
+    title: "Інші постачальники"
   }]
 }, {
   id: "register-your-business",
@@ -563,15 +563,16 @@ export default function ChefResourcesPage_en_uk() {
                 <li><strong>Професійний авторитет.</strong> Демонструє відданість безпеці харчових продуктів клієнтам і регуляторам.</li>
               </ul>
 
-              <SubHeading id="skillspass-nl">Безкоштовно: SkillsPass NL</SubHeading>
+              <SubHeading id="skillspass-nl">SkillsPass NL (безкоштовно)</SubHeading>
               <ResourceTable headers={["", ""]} rows={[["Вартість", "Безкоштовно"], ["Постачальник", "Уряд Ньюфаундленду та Лабрадору"], ["Вебсайт", "skillspassnl.com"], ["Курси", "Безпека харчових продуктів: Загальна обізнаність · Приготування їжі вдома · Власник і менеджер"], ["Формат", "Онлайн, приблизно 30 хвилин на модуль"], ["Сертифікат", "Завантажується негайно після здачі"]]} />
               <p className="text-gray-600">
                 <strong>Як почати:</strong> Відвідайте{" "}
                 <ExtLink href="https://skillspassnl.bluedrop.io/storefront/online-registration/10863">skillspassnl.bluedrop.io</ExtLink>, створіть безкоштовний обліковий запис, пройдіть відповідні модулі, пройдіть оцінювання та завантажте свій сертифікат.Для власників бізнесу рекомендується модуль «Безпека харчових продуктів: власник і менеджер» — він охоплює юридичні зобов’язання, окрім елементарної гігієни.
               </p>
 
-              <SubHeading id="paid-alternatives">Платні альтернативи (визнання в усій Канаді)</SubHeading>
+              <SubHeading id="paid-alternatives">Інші постачальники</SubHeading>
               <ResourceTable headers={["Постачальник", "Термін дії", "Вебсайт"]} rows={[["ProbeIt Food Safety", "5 років, визнається по всій Канаді", "probeit.ca"], ["Canadian Food Safety Training", "Перевірте постачальника", "foodsafetytraining.ca"]]} />
+              <p className="text-gray-600">Комерційні кухні можуть спитати, який курс ви пройшли; Ньюфаундленд і Лабрадор веде перелік схвалених курсів на{" "}<ExtLink href="https://www.gov.nl.ca/hcs/publichealth/envhealth/foodsafetytraining/">gov.nl.ca</ExtLink>.</p>
               <InfoCard variant="tip">
                 <strong>Переїзд між провінціями?</strong> Ньюфаундленд зазвичай приймає дійсні сертифікати з інших провінцій (наприклад, FoodSafe Level 1 з Британської Колумбії).Перш ніж покладатися на сертифікат, отриманий за межами провінції, зверніться до місцевого спеціаліста з охорони навколишнього середовища.
               </InfoCard>

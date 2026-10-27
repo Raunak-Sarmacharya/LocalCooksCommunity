@@ -20,7 +20,7 @@ const navigationItems = [
   { labelKey: "shellBookings", value: "bookings", icon: Calendar, group: "shellNavigation" },
   { labelKey: "shellMyEarnings", value: "seller-revenue", icon: DollarSign, group: "shellNavigation" },
   { labelKey: "shellLinkedAccounts", value: "my-account", icon: Store, group: "shellNavigation" },
-  { labelKey: "shellTraining", value: "training", icon: BookOpen, group: "shellNavigation" },
+  { labelKey: "shellResources", value: "resources", icon: BookOpen, group: "shellNavigation" },
   { labelKey: "shellMessages", value: "messages", icon: MessageCircle, group: "shellNavigation" },
   { labelKey: "shellDiscoverKitchens", value: "discover-kitchens", icon: Search, group: "shellNavigation" },
   { labelKey: "shellSupport", value: "support", icon: Headphones, group: "shellNavigation" },

@@ -767,7 +767,7 @@ export default function TrainingVideoPlayer({ className }: TrainingVideoPlayerPr
                         const url = window.URL.createObjectURL(blob);
                         const a = document.createElement('a');
                         a.href = url;
-                        a.download = 'local-cooks-certificate.pdf';
+                        a.download = 'local-cooks-certificate-of-completion.pdf';
                         document.body.appendChild(a);
                         a.click();
                         window.URL.revokeObjectURL(url);

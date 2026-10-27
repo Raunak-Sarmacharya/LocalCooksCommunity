@@ -36,7 +36,7 @@ const viewLabelKeys: Record<string, string> = {
     "kitchen-applications": "shellMyKitchens",
     "kitchen-requests": "shellMyKitchens",
     bookings: "shellBookings",
-    training: "shellTraining",
+    resources: "shellResources",
     messages: "shellMessages",
     discover: "shellDiscoverKitchens",
     "discover-kitchens": "shellKitchens",

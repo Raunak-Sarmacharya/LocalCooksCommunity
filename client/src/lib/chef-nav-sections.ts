@@ -8,7 +8,7 @@ addIcon("fluent:person-link-16-filled", {"width": 16, "height": 16, "body": "<pa
 export type ChefNavItemId =
   | "overview"
   | "applications"
-  | "training"
+  | "resources"
   | "seller-revenue"
   | "my-account"
   | "kitchen-applications"
@@ -68,7 +68,6 @@ export const chefNavSections: ChefNavSection[] = [
       {
         id: "applications", labelKey: "shellSelling", icon: "mdi:storefront-outline", tabLabelKey: "sell_tabGettingStarted",
         members: [
-          { id: "training", labelKey: "shellTraining", icon: "mdi:school-outline" },
           { id: "seller-revenue", labelKey: "shellMyEarnings", icon: "mdi:cash-multiple" },
           { id: "my-account", labelKey: "shellLinkedAccounts", icon: "fluent:person-link-16-filled" },
         ],
@@ -80,6 +79,8 @@ export const chefNavSections: ChefNavSection[] = [
       },
     ],
   },
+  // Always shown, at the foot of the sidebar (Airbnb "Resource Center", Turo host resources; owner, Oct 27).
+  { id: "section-utility", items: [{ id: "resources", labelKey: "shellResources", icon: "mdi:book-open-page-variant-outline" }] },
 ];
 
 /** The sidebar item a view belongs to: itself, or the item that owns it. */

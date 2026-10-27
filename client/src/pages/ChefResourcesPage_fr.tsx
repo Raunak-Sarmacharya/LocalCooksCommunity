@@ -41,10 +41,10 @@ const SECTIONS: Section[] = [{
   icon: GraduationCap,
   subsections: [{
     id: "skillspass-nl",
-    title: "Gratuit : SkillsPass NL"
+    title: "SkillsPass NL (gratuit)"
   }, {
     id: "paid-alternatives",
-    title: "Alternatives payantes"
+    title: "Autres fournisseurs"
   }]
 }, {
   id: "register-your-business",
@@ -570,8 +570,9 @@ export default function ChefResourcesPage_en_fr() {
                 <ExtLink href="https://skillspassnl.bluedrop.io/storefront/online-registration/10863">skillspassnl.bluedrop.io</ExtLink>, créez un compte gratuit, complétez les modules pertinents, réussissez l'évaluation et téléchargez votre certificat.Pour les propriétaires d'entreprise, le module « Sécurité alimentaire : propriétaire et gestionnaire » est recommandé : il couvre les responsabilités légales au-delà de l'hygiène de base.
               </p>
 
-              <SubHeading id="paid-alternatives">Alternatives payantes (reconnaissance pancanadienne)</SubHeading>
+              <SubHeading id="paid-alternatives">Autres fournisseurs</SubHeading>
               <ResourceTable headers={["Fournisseur", "Validité", "Site Web"]} rows={[["ProbeIt Food Safety", "5 ans, reconnu partout au Canada", "probeit.ca"], ["Canadian Food Safety Training", "Vérifier le fournisseur", "foodsafetytraining.ca"]]} />
+              <p className="text-gray-600">Les cuisines commerciales peuvent vous demander quel cours vous avez suivi; Terre-Neuve-et-Labrador publie une liste de cours approuvés sur{" "}<ExtLink href="https://www.gov.nl.ca/hcs/publichealth/envhealth/foodsafetytraining/">gov.nl.ca</ExtLink>.</p>
               <InfoCard variant="tip">
                 <strong>Vous déménagez entre les provinces?</strong> Terre-Neuve accepte généralement les certifications valides d'autres provinces (par exemple, FoodSafe Level 1 de la Colombie-Britannique).Vérifiez auprès de votre agent d'hygiène du milieu local avant de vous fier à un certificat provenant d'une autre province.
               </InfoCard>

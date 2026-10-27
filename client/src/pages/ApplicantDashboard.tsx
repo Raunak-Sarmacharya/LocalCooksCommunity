@@ -28,7 +28,7 @@ import { useLocation, useSearch } from "wouter";
 import { useCustomAlerts } from "@/components/ui/custom-alerts";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import KitchenDiscovery from "@/components/kitchen-application/KitchenDiscovery";
-import TrainingOverviewPanel from "@/components/training/TrainingOverviewPanel";
+import ChefResourcesPanel from "@/components/resources/ChefResourcesPanel";
 import ApplicationFormPanel from "@/components/application/ApplicationFormPanel";
 import { leaveSellerApplication } from "@/components/application/ApplicationFormContext";
 import ChefSupportPage from "@/components/chef/ChefSupportPage";
@@ -88,8 +88,9 @@ export default function ApplicantDashboard() {
   // Parse view from URL query parameter (e.g., /dashboard?view=messages)
   const getInitialTab = () => {
     const params = new URLSearchParams(window.location.search);
-    const view = params.get('view');
-    if (view && ['overview', 'applications', 'kitchen-applications', 'kitchen-requests', 'discover-kitchens', 'viewings', 'bookings', 'training', 'messages', 'support', 'feedback', 'seller-revenue', 'my-account', 'transactions', 'issues-refunds', 'notifications', 'profile'].includes(view)) {
+    // Training became Resources (owner, Oct 27): old ?view=training links land there.
+    const view = params.get('view') === 'training' ? 'resources' : params.get('view');
+    if (view && ['overview', 'applications', 'kitchen-applications', 'kitchen-requests', 'discover-kitchens', 'viewings', 'bookings', 'resources', 'messages', 'support', 'feedback', 'seller-revenue', 'my-account', 'transactions', 'issues-refunds', 'notifications', 'profile'].includes(view)) {
       return view;
     }
     return 'overview';
@@ -168,12 +169,12 @@ export default function ApplicantDashboard() {
   useEffect(() => {
     const VALID_VIEWS = [
       'overview', 'applications', 'kitchen-applications', 'kitchen-requests', 'discover-kitchens',
-      'viewings', 'bookings', 'training', 'messages', 'support', 'feedback',
+      'viewings', 'bookings', 'resources', 'messages', 'support', 'feedback',
       'damage-claims', 'issues-refunds', 'profile', 'seller-revenue', 'my-account', 'transactions'
     ];
     const syncFromUrl = () => {
       const params = new URLSearchParams(window.location.search);
-      const view = params.get('view');
+      const view = params.get('view') === 'training' ? 'resources' : params.get('view');
       const action = params.get('action');
       setDeepLinkConversationId(params.get("conversation"));
       setDeepLinkTourId(params.get("tour"));
@@ -477,6 +478,11 @@ export default function ApplicantDashboard() {
    */
   // Approval no longer waits on documents (owner, Oct 27): Local Cooks may approve first and ask for them later.
   const isSellerApplicationFullyApproved = getMostRecentApplication()?.status === "approved";
+  // Resources highlights the chef's own kitchen: the seller application's setting, else "commercial" for kitchen bookers.
+  const latestSellerApp = getMostRecentApplication();
+  const latestSellerKitchenSetting: "commercial" | "home" | null =
+    latestSellerApp && latestSellerApp.status !== "cancelled" && latestSellerApp.kitchenPreference !== "notSure" ? latestSellerApp.kitchenPreference as "commercial" | "home"
+    : kitchenApplications.length > 0 ? "commercial" : null;
 
   // Shop status to verify if shop is created in case application flag is out of sync
   const { data: shopStatus } = useShopStatus(isSellerApplicationFullyApproved);
@@ -681,10 +687,12 @@ export default function ApplicantDashboard() {
     />
   );
 
-  const trainingTabContent = (
-    <TrainingOverviewPanel
+  const resourcesTabContent = (
+    <ChefResourcesPanel
       viewMode={trainingViewMode}
       onViewModeChange={setTrainingViewMode}
+      kitchenSetting={latestSellerKitchenSetting}
+      onFindKitchens={() => setActiveTab("discover-kitchens")}
     />
   );
 
@@ -759,8 +767,8 @@ export default function ApplicantDashboard() {
         return <div className="space-y-8 animate-in fade-in-50 duration-500">{discoverKitchensTabContent}</div>;
       case "bookings":
         return <div className="space-y-8 animate-in fade-in-50 duration-500">{bookingsTabContent}</div>;
-      case "training":
-        return <div className="space-y-8 animate-in fade-in-50 duration-500">{trainingTabContent}</div>;
+      case "resources":
+        return <div className="space-y-8 animate-in fade-in-50 duration-500">{resourcesTabContent}</div>;
       case "messages":
         if (!hasKitchenMessages) {
           return <div className="space-y-8 animate-in fade-in-50 duration-500">{overviewTabContent}</div>;
@@ -854,13 +862,13 @@ export default function ApplicantDashboard() {
       ];
     }
 
-    if (activeTab === 'training' && trainingViewMode === 'player') {
+    if (activeTab === 'resources' && trainingViewMode === 'player') {
       return [
         ...baseBreadcrumbs,
         {
-          label: t("shellTraining"),
+          label: t("shellResources"),
           onClick: () => setTrainingViewMode('overview'),
-          navId: "training" as const,
+          navId: "resources" as const,
         },
         { label: t("shellVideoPlayer") },
       ];
@@ -927,7 +935,7 @@ export default function ApplicantDashboard() {
     guardedApplicationNavigate(() => {
       setActiveTab(view);
       setApplicationViewMode("list"); // Reset to list view regardless of which tab is clicked
-      if (view !== "training") setTrainingViewMode("overview");
+      if (view !== "resources") setTrainingViewMode("overview");
     });
   }, [guardedApplicationNavigate]);
 
@@ -957,7 +965,7 @@ export default function ApplicantDashboard() {
         guardedApplicationNavigate(() => {
           setActiveTab(view);
           if (view !== 'applications') setApplicationViewMode('list');
-          if (view !== 'training') setTrainingViewMode('overview');
+          if (view !== 'resources') setTrainingViewMode('overview');
         });
       }} />
 

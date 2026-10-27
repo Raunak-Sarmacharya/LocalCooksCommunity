@@ -39,8 +39,8 @@ const SECTIONS: Section[] = [
     title: "Food Safety Certification",
     icon: GraduationCap,
     subsections: [
-      { id: "skillspass-nl", title: "Free: SkillsPass NL" },
-      { id: "paid-alternatives", title: "Paid Alternatives" },
+      { id: "skillspass-nl", title: "SkillsPass NL (free)" },
+      { id: "paid-alternatives", title: "Other providers" },
     ],
   },
   {
@@ -555,7 +555,7 @@ export default function ChefResourcesPage_en() {
                 <li><strong>Professional credibility.</strong> Demonstrates commitment to food safety to customers and regulators.</li>
               </ul>
 
-              <SubHeading id="skillspass-nl">Free: SkillsPass NL</SubHeading>
+              <SubHeading id="skillspass-nl">SkillsPass NL (free)</SubHeading>
               <ResourceTable
                 headers={["", ""]}
                 rows={[
@@ -572,7 +572,7 @@ export default function ChefResourcesPage_en() {
                 <ExtLink href="https://skillspassnl.bluedrop.io/storefront/online-registration/10863">skillspassnl.bluedrop.io</ExtLink>, create a free account, complete the relevant modules, pass the assessment, and download your certificate. For business owners, the &ldquo;Food Safety: Owner &amp; Manager&rdquo; module is recommended — it covers legal liabilities beyond basic hygiene.
               </p>
 
-              <SubHeading id="paid-alternatives">Paid Alternatives (Canada-Wide Recognition)</SubHeading>
+              <SubHeading id="paid-alternatives">Other providers</SubHeading>
               <ResourceTable
                 headers={["Provider", "Validity", "Website"]}
                 rows={[
@@ -580,6 +580,7 @@ export default function ChefResourcesPage_en() {
                   ["Canadian Food Safety Training", "Check provider", "foodsafetytraining.ca"],
                 ]}
               />
+              <p className="text-gray-600">Commercial kitchens may ask which course you took; Newfoundland and Labrador keeps a list of approved courses at{" "}<ExtLink href="https://www.gov.nl.ca/hcs/publichealth/envhealth/foodsafetytraining/">gov.nl.ca</ExtLink>.</p>
               <InfoCard variant="tip">
                 <strong>Moving between provinces?</strong> Newfoundland generally accepts valid certifications from other provinces (e.g., FoodSafe Level 1 from BC). Verify with your local Environmental Health Officer before relying on an out-of-province certificate.
               </InfoCard>
