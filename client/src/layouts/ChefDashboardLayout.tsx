@@ -17,7 +17,7 @@ import type { TFunction } from "i18next"
 import { Link } from "wouter"
 import { DamageClaimBookingHoldBanner } from '@/components/booking/DamageClaimCards'
 import { ChefInvitationsBanner } from '@/components/booking/ChefInvitationsBanner'
-import { findChefNavItem, type ChefBreadcrumb } from "@/lib/chef-nav-sections"
+import { chefNavOwner, findChefNavItem, type ChefBreadcrumb } from "@/lib/chef-nav-sections"
 import { ChefShellUiProvider } from "@/layouts/chef-shell-context"
 import { SCROLL_AREA_FLUID_CONTENT } from "@/lib/scroll-area-classes"
 
@@ -65,9 +65,10 @@ export default function ChefDashboardLayout({
     const tr = t as unknown as TFunction
     const [isCommandOpen, setIsCommandOpen] = React.useState(false)
     const autoHiddenItems = useChefSidebarHiddenItems()
+    // The section the chef is on always shows (e.g. Selling while they apply, before it would otherwise appear).
     const sidebarHiddenItems = React.useMemo(
-        () => Array.from(new Set([...autoHiddenItems, ...hiddenItems])),
-        [autoHiddenItems, hiddenItems]
+        () => Array.from(new Set([...autoHiddenItems, ...hiddenItems])).filter((id) => id !== chefNavOwner(activeView)?.id),
+        [autoHiddenItems, hiddenItems, activeView]
     )
 
     // Breadcrumbs: Dashboard > Page (> nested) — skip section group titles (Kitchens, Selling, …)

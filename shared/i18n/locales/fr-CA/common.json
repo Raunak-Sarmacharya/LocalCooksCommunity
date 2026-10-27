@@ -136,7 +136,7 @@
   "kitchenCount": "{count, plural, =0 {Aucune cuisine} one {# cuisine} other {# cuisines}}",
   "logoAlt": "Logo de {name}",
   "viewAvailability": "Voir les disponibilités",
-  "sellerStep1Title": "Postulez en 10 minutes environ",
+  "sellerStep1Title": "Faites votre demande en 5 minutes environ",
   "sellerStep1Detail": "Renseignements personnels, type de cuisine et certifications.",
   "sellerStep2Title": "Nous examinons votre demande sous 24 à 48 h",
   "sellerStep2Detail": "La plupart des examens sont rapides. Nous vous envoyons un courriel dès que le statut change.",

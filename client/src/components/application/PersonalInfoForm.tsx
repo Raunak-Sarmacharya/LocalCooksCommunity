@@ -11,6 +11,9 @@ import { Label } from "@/components/ui/label";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { ApplicationStepFooter } from "./ApplicationStepFooter";
+import { ChoicePills } from "./ChoicePills";
+import { Icon } from "@iconify/react";
+import type { SellerContactMethod, SellerContactTime } from "@shared/schema";
 import { clearRegistrationName, getRegistrationName } from "@/lib/registration-identity";
 
 // Phone validation helper (matches server-side validation)
@@ -256,15 +259,20 @@ export default function PersonalInfoForm() {
     return digits.length;
   };
 
+  const [contactMethod, setContactMethod] = useState<SellerContactMethod | undefined>(formData.contactMethod);
+  const [contactTime, setContactTime] = useState<SellerContactTime | undefined>(formData.contactTime);
+  const [contactError, setContactError] = useState(false);
+
   const onSubmit = (data: PersonalInfoFormData) => {
-    updateFormData(data);
+    if (!contactMethod) { setContactError(true); return; }
+    updateFormData({ ...data, email: userEmail || data.email, contactMethod, contactTime });
     clearRegistrationName(userEmail);
     goToNextStep();
   };
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4" data-testid="seller-application-step-1">
+      <form onSubmit={(event) => { if (!contactMethod) setContactError(true); void form.handleSubmit(onSubmit)(event); }} className="space-y-5" data-testid="seller-application-step-1">
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="sm:col-span-2">
             <Label htmlFor="fullName">{t("sellerApp_fullName")}</Label>
@@ -281,20 +289,11 @@ export default function PersonalInfoForm() {
 
           <div>
             <Label htmlFor="email">{t("sellerApp_email")}</Label>
-            <Input
-              id="email"
-              type="email"
-              placeholder={t("sellerApp_emailPlaceholder")}
-              {...form.register("email")}
-              defaultValue={userEmail}
-              className="mt-2"
-            />
-            {form.formState.errors.email && (
-              <p className="mt-1.5 text-sm text-destructive">{form.formState.errors.email.message}</p>
-            )}
-            <p className="mt-1.5 text-xs text-muted-foreground">
-              {t("sellerApp_emailPrefilled")}
-            </p>
+            {/* The account's verified email: applications always use it. */}
+            <div id="email" className="mt-2 flex h-10 items-center justify-between gap-3 rounded-md bg-muted px-3 text-sm">
+              <span className="truncate">{userEmail}</span>
+              <span className="shrink-0 text-xs text-muted-foreground">{t("sell_emailYourAccount")}</span>
+            </div>
           </div>
 
           <div>
@@ -321,6 +320,26 @@ export default function PersonalInfoForm() {
             </div>
           </div>
         </div>
+
+        <fieldset className="space-y-2.5">
+          <legend className="text-sm font-medium">{t("sell_contactQuestion")}</legend>
+          <ChoicePills label={t("sell_contactQuestion")} value={contactMethod} onChange={(value: SellerContactMethod) => { setContactMethod(value); setContactError(false); }} options={[
+            { value: "call", label: t("sell_contactCall"), icon: <Icon icon="mdi:phone-outline" className="size-4" aria-hidden /> },
+            { value: "text", label: t("sell_contactText"), icon: <Icon icon="mdi:message-text-outline" className="size-4" aria-hidden /> },
+            { value: "email", label: t("sell_contactEmail"), icon: <Icon icon="mdi:email-outline" className="size-4" aria-hidden /> },
+          ]} />
+          {contactError && <p className="text-sm text-destructive" role="alert">{t("sell_contactRequired")}</p>}
+        </fieldset>
+
+        <fieldset className="space-y-2.5">
+          <legend className="text-sm font-medium">{t("sell_bestTime")} <span className="font-normal text-muted-foreground">{t("sell_optional")}</span></legend>
+          <ChoicePills label={t("sell_bestTime")} value={contactTime} onChange={(value: SellerContactTime) => setContactTime(value)} options={[
+            { value: "morning", label: t("sell_timeMorning") },
+            { value: "afternoon", label: t("sell_timeAfternoon") },
+            { value: "evening", label: t("sell_timeEvening") },
+            { value: "any", label: t("sell_timeAny") },
+          ]} />
+        </fieldset>
 
         <ApplicationStepFooter
           continueLabel={t("sellerApp_continue")}

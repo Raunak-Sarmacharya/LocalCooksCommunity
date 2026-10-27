@@ -2,30 +2,23 @@ import { sendAdminNotificationEmail } from '../services/admin-email-preferences'
 import { getShopLoginUrl } from "../shop-urls";
 import { logger } from "../logger";
 import { Router, Request, Response } from "express";
-import fs from "fs";
-import path from "path";
 import { fromZodError } from "zod-validation-error";
 import {
-    insertApplicationSchema,
     updateApplicationStatusSchema,
-    updateDocumentVerificationSchema
+    updateDocumentVerificationSchema,
+    SELLER_COMMERCIAL_KITCHENS,
+    SELLER_DOCUMENT_KEYS,
 } from "@shared/schema";
-import {
-    upload,
-    uploadToBlob,
-    getFileUrl
-} from "../fileUpload";
-// import { storage } from "../storage"; // Legacy storage removed
+import { z } from "zod";
+import { sellerDocuments, SELLER_DOCUMENT_NAMES } from "@shared/seller-application";
 import {
     sendEmail,
     generateStatusChangeEmail,
-    generateApplicationWithDocumentsEmail,
-    generateApplicationWithoutDocumentsEmail,
     generateFullVerificationEmail,
     generateVendorCredentials,
     generateChefAllDocumentsApprovedEmail,
     generateDocumentStatusChangeEmail,
-    generateNewSellerApplicationAdminEmail,
+    generateSellerDocumentsRequestedEmail,
     getDashboardUrl,
 } from "../email";
 import { users } from '@shared/schema';
@@ -70,319 +63,6 @@ const appRepo = new ApplicationRepository();
 const appService = new ApplicationService(appRepo);
 const userRepo = new UserRepository();
 const userService = new UserService(userRepo);
-
-// Application submission endpoint (supports both JSON and multipart form data)
-router.post("/",
-    upload.fields([
-        { name: 'foodSafetyLicense', maxCount: 1 },
-        { name: 'foodEstablishmentCert', maxCount: 1 }
-    ]),
-    async (req: Request, res: Response) => {
-        try {
-            // Require authentication to submit an application
-            if (!req.neonUser) {
-                // Clean up uploaded files on error
-                if (req.files) {
-                    const files = req.files as { [fieldname: string]: Express.Multer.File[] };
-                    Object.values(files).flat().forEach(file => {
-                        try {
-                            fs.unlinkSync(file.path);
-                        } catch (e) {
-                            logger.error('Error cleaning up file:', e);
-                        }
-                    });
-                }
-                return res.status(401).json({ message: "You must be logged in to submit an application" });
-            }
-
-            // Validate the request body using Zod schema
-            const parsedData = insertApplicationSchema.safeParse(req.body);
-
-            if (!parsedData.success) {
-                // Clean up uploaded files on validation error
-                if (req.files) {
-                    const files = req.files as { [fieldname: string]: Express.Multer.File[] };
-                    Object.values(files).flat().forEach(file => {
-                        try {
-                            fs.unlinkSync(file.path);
-                        } catch (e) {
-                            logger.error('Error cleaning up file:', e);
-                        }
-                    });
-                }
-
-                const validationError = fromZodError(parsedData.error);
-                return res.status(400).json({
-                    message: "Validation error",
-                    errors: validationError.details
-                });
-            }
-
-            // Ensure the application is associated with the current user
-            // Override any userId in the request to prevent spoofing
-            // Normalize phone number before storing (schema already does this via transform, but ensure it's done)
-            const applicationData: CreateApplicationDTO = {
-                // Map fields from parsedData to CreateApplicationDTO
-                userId: req.neonUser!.id,
-                fullName: parsedData.data.fullName,
-                shopName: parsedData.data.shopName,
-                shopAddress: parsedData.data.shopAddress,
-                email: parsedData.data.email,
-                phone: normalizePhoneForStorage(parsedData.data.phone) || parsedData.data.phone,
-                foodSafetyLicense: parsedData.data.foodSafetyLicense,
-                foodEstablishmentCert: parsedData.data.foodEstablishmentCert,
-                kitchenPreference: parsedData.data.kitchenPreference,
-                businessType: parsedData.data.businessType,
-                experience: parsedData.data.experience,
-                businessDescription: parsedData.data.businessDescription,
-                feedback: parsedData.data.feedback,
-                // Files handled below
-                foodSafetyLicenseUrl: undefined,
-                foodEstablishmentCertUrl: undefined
-            };
-
-            logger.info('=== APPLICATION SUBMISSION WITH DOCUMENTS ===');
-            // ... (keep logs if needed, but reducing verbosity for brevity in refactor)
-
-            // Handle uploaded files and URL inputs
-            const files = req.files as { [fieldname: string]: Express.Multer.File[] };
-
-            // Handle file uploads
-            if (files) {
-                const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
-
-                if (files.foodSafetyLicense && files.foodSafetyLicense[0]) {
-                    logger.info('📄 Uploading food safety license file...');
-                    if (isProduction) {
-                        applicationData.foodSafetyLicenseUrl = await uploadToBlob(files.foodSafetyLicense[0], req.neonUser!.id);
-                    } else {
-                        applicationData.foodSafetyLicenseUrl = getFileUrl(files.foodSafetyLicense[0].filename);
-                    }
-                }
-
-                if (files.foodEstablishmentCert && files.foodEstablishmentCert[0]) {
-                    logger.info('📄 Uploading food establishment cert file...');
-                    if (isProduction) {
-                        applicationData.foodEstablishmentCertUrl = await uploadToBlob(files.foodEstablishmentCert[0], req.neonUser!.id);
-                    } else {
-                        applicationData.foodEstablishmentCertUrl = getFileUrl(files.foodEstablishmentCert[0].filename);
-                    }
-                }
-            }
-
-            // Handle URL inputs from form (fallback if no files uploaded)
-            if (req.body.foodSafetyLicenseUrl && !applicationData.foodSafetyLicenseUrl) {
-                applicationData.foodSafetyLicenseUrl = req.body.foodSafetyLicenseUrl;
-            }
-
-            if (req.body.foodEstablishmentCertUrl && !applicationData.foodEstablishmentCertUrl) {
-                applicationData.foodEstablishmentCertUrl = req.body.foodEstablishmentCertUrl;
-            }
-
-            // Create the application via Service
-            const application = await appService.submitApplication(applicationData);
-
-            // Fetch the full application record to ensure all fields are present (Service returns DTO, but for emails we might want full object if DTO is partial? No, DTO is full)
-            // appService.submitApplication returns the created application.
-            // But strict typing suggests we might want to reload it or just use it.
-            // The service returns `ApplicationDTO`.
-
-            logger.info('✅ Application created successfully:', {
-                id: application.id,
-                hasDocuments: !!(application.foodSafetyLicenseUrl || application.foodEstablishmentCertUrl)
-            });
-
-            try {
-                if (application.userId) await notificationService.notifySellerApplicationSubmitted({
-                    chefId: application.userId,
-                    applicationId: application.id,
-                    hasDocuments: !!(application.foodSafetyLicenseUrl || application.foodEstablishmentCertUrl),
-                });
-            } catch (notificationError) {
-                logger.error('Error creating seller application receipt notification:', notificationError);
-            }
-
-            // Send appropriate email notification for new application
-            try {
-                if (application.email) {
-                    const hasDocuments = !!(application.foodSafetyLicenseUrl || application.foodEstablishmentCertUrl);
-
-                    if (hasDocuments) {
-                        // Application submitted WITH documents - send combined email
-                        const emailContent = generateApplicationWithDocumentsEmail({
-                            fullName: application.fullName || "Applicant",
-                            email: application.email
-                        });
-
-                        await sendEmail(emailContent, {
-                            trackingId: `app_with_docs_${application.id}_${Date.now()} `
-                        });
-                    } else {
-                        // Application submitted WITHOUT documents - prompt to upload
-                        const emailContent = generateApplicationWithoutDocumentsEmail({
-                            fullName: application.fullName || "Applicant",
-                            email: application.email
-                        });
-
-                        await sendEmail(emailContent, {
-                            trackingId: `app_no_docs_${application.id}_${Date.now()} `
-                        });
-                    }
-                }
-            } catch (emailError) {
-                // Log the error but don't fail the request
-                logger.error("Error sending new application email:", emailError);
-            }
-
-            // Send admin notification email about new seller application
-            try {
-                const { users } = await import('@shared/schema');
-                const { eq: eqOp, isNotNull, ne, and: andOp } = await import('drizzle-orm');
-                const { db } = await import('../db');
-                const adminUsers = await db
-                    .select({ id: users.id, username: users.username })
-                    .from(users)
-                    .where(
-                        andOp(
-                            eqOp(users.role, 'admin'),
-                            isNotNull(users.username),
-                            ne(users.username, '')
-                        )
-                    );
-                const hasDocuments = !!(application.foodSafetyLicenseUrl || application.foodEstablishmentCertUrl);
-                for (const admin of adminUsers) {
-                    await notificationService.createForManager({ managerId: admin.id, type: 'application_new', priority: 'high', title: 'Seller application awaiting review', message: `${application.fullName || 'A chef'} submitted a seller application.`, metadata: { applicationId: application.id, workflow: 'seller' }, actionUrl: '/admin?section=applications', actionLabel: 'Review application' });
-                    if (admin.username) {
-                        const adminEmail = generateNewSellerApplicationAdminEmail({
-                            adminEmail: admin.username,
-                            chefName: application.fullName || 'Chef',
-                            chefEmail: application.email || '',
-                            hasDocuments,
-                            submittedAt: new Date(),
-                        });
-                        await sendAdminNotificationEmail(adminEmail, {
-                            trackingId: `seller_app_admin_notify_${admin.username}_${application.id}_${Date.now()}`
-                        });
-                    }
-                }
-                logger.info(`✅ Sent seller application admin notification to ${adminUsers.length} admin(s)`);
-            } catch (adminEmailError) {
-                logger.error('Error sending admin notification for new seller application:', adminEmailError);
-            }
-
-            logger.info('=== APPLICATION SUBMISSION COMPLETE ===');
-            return res.status(201).json(application);
-
-        } catch (error) {
-            logger.error("Error creating application:", error);
-
-            // Clean up uploaded files on error (development only)
-            if (req.files) {
-                const files = req.files as { [fieldname: string]: Express.Multer.File[] };
-                Object.values(files).flat().forEach(file => {
-                    try {
-                        if (file.path) {
-                            fs.unlinkSync(file.path);
-                        }
-                    } catch (e) {
-                        logger.error('Error cleaning up file:', e);
-                    }
-                });
-            }
-
-            if (error instanceof DomainError) {
-                return res.status(error.statusCode).json({ message: error.message });
-            }
-            return res.status(500).json({ message: "Internal server error" });
-        }
-    }
-);
-
-// 🔥 Update Application Documents (with Firebase Auth)
-router.patch('/:id/documents',
-    requireFirebaseAuthWithUser,
-    upload.fields([
-        { name: 'foodSafetyLicense', maxCount: 1 },
-        { name: 'foodEstablishmentCert', maxCount: 1 }
-    ]),
-    async (req: Request, res: Response) => {
-        try {
-            const id = parseInt(req.params.id);
-            if (isNaN(id)) {
-                return res.status(400).json({ message: "Invalid application ID" });
-            }
-
-            logger.info(`📝 PATCH /api/applications/${id}/documents - User ${req.neonUser!.id} updating documents`);
-
-            // Check if application exists and belongs to user
-            const application = await appService.getApplicationById(id);
-            if (!application) {
-                return res.status(404).json({ message: "Application not found" });
-            }
-
-            // Allow only owner to update
-            if (application.userId !== req.neonUser!.id) {
-                return res.status(403).json({ message: "Access denied" });
-            }
-
-            // Handle file uploads if present
-            const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
-            let foodSafetyLicenseUrl: string | undefined;
-            let foodEstablishmentCertUrl: string | undefined;
-
-            const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
-
-            if (files) {
-                // Upload food safety license if provided
-                if (files.foodSafetyLicense && files.foodSafetyLicense[0]) {
-                    logger.info('📄 Uploading food safety license file...');
-                    if (isProduction) {
-                        foodSafetyLicenseUrl = await uploadToBlob(files.foodSafetyLicense[0], req.neonUser!.id, 'documents');
-                    } else {
-                        foodSafetyLicenseUrl = getFileUrl(files.foodSafetyLicense[0].filename);
-                    }
-                }
-
-                // Upload food establishment cert if provided
-                if (files.foodEstablishmentCert && files.foodEstablishmentCert[0]) {
-                    logger.info('📄 Uploading food establishment cert file...');
-                    if (isProduction) {
-                        foodEstablishmentCertUrl = await uploadToBlob(files.foodEstablishmentCert[0], req.neonUser!.id, 'documents');
-                    } else {
-                        foodEstablishmentCertUrl = getFileUrl(files.foodEstablishmentCert[0].filename);
-                    }
-                }
-            }
-
-            // Prepare update data
-            const updates: any = {};
-            if (foodSafetyLicenseUrl) {
-                updates.foodSafetyLicenseUrl = foodSafetyLicenseUrl;
-            }
-            if (foodEstablishmentCertUrl) {
-                updates.foodEstablishmentCertUrl = foodEstablishmentCertUrl;
-            }
-
-            if (Object.keys(updates).length === 0) {
-                return res.status(400).json({ message: "No documents provided for update" });
-            }
-
-            // Update docs (service resets status to pending automatically)
-            const updatedApplication = await appService.updateDocuments(id, updates);
-
-            if (!updatedApplication) {
-                return res.status(500).json({ message: "Failed to update application documents" });
-            }
-
-            res.json(updatedApplication);
-        } catch (error) {
-            logger.error('Error updating application documents:', error);
-            res.status(500).json({
-                error: 'Failed to update application documents',
-                message: error instanceof Error ? error.message : 'Unknown error'
-            });
-        }
-    });
 
 // Get all applications endpoint (for admin view)
 router.get("/", async (req: Request, res: Response) => {
@@ -673,7 +353,7 @@ router.patch("/:id/document-verification", async (req: Request, res: Response) =
                 await notificationService.notifySellerDocumentRejected({
                     chefId: updatedApplication.userId,
                     applicationId: updatedApplication.id,
-                    documentName: parsedData.data.foodSafetyLicenseStatus === 'rejected' ? 'Food Safety License' : 'Food Establishment Certificate',
+                    documentName: SELLER_DOCUMENT_NAMES[sellerDocuments(updatedApplication).find(doc => doc.key === (parsedData.data.foodSafetyLicenseStatus === 'rejected' ? 'foodSafety' : 'kitchen'))?.kind ?? 'foodSafety'],
                     feedback: updatedApplication.documentsAdminFeedback || undefined,
                 });
             } catch (notificationError) {
@@ -682,7 +362,7 @@ router.patch("/:id/document-verification", async (req: Request, res: Response) =
         }
         if ((parsedData.data.foodSafetyLicenseStatus === 'approved' || parsedData.data.foodEstablishmentCertStatus === 'approved') && updatedApplication.userId) {
             try {
-                const documentName = parsedData.data.foodSafetyLicenseStatus === 'approved' ? 'Food Safety License' : 'Food Establishment Certificate';
+                const documentName = SELLER_DOCUMENT_NAMES[sellerDocuments(updatedApplication).find(doc => doc.key === (parsedData.data.foodSafetyLicenseStatus === 'approved' ? 'foodSafety' : 'kitchen'))?.kind ?? 'foodSafety'];
                 await notificationService.createForChef({ chefId: updatedApplication.userId, type: 'application_approved', priority: 'normal', title: `${documentName} approved`, message: `Your ${documentName} was approved.`, metadata: { applicationId: updatedApplication.id, workflow: 'seller' }, actionUrl: '/dashboard?view=applications', actionLabel: 'View application' });
             } catch (notificationError) { logger.error('Error creating seller document approval notification:', notificationError); }
         }
@@ -765,6 +445,53 @@ router.patch("/:id/document-verification", async (req: Request, res: Response) =
         if (error instanceof DomainError) {
             return res.status(error.statusCode).json({ message: error.message });
         }
+        return res.status(500).json({ message: "Internal server error" });
+    }
+});
+
+// After the call (admin only): the kitchen setting decides which documents apply.
+const kitchenSettingSchema = z.object({ kitchenPreference: z.enum(["commercial", "home", "notSure"]), commercialKitchen: z.enum(SELLER_COMMERCIAL_KITCHENS).nullish() });
+router.patch("/:id/kitchen", async (req: Request, res: Response) => {
+    try {
+        if (req.neonUser?.role !== "admin") return res.status(403).json({ message: "Admin access required" });
+        const id = parseInt(req.params.id);
+        const parsed = kitchenSettingSchema.safeParse(req.body);
+        if (isNaN(id) || !parsed.success) return res.status(400).json({ message: "Invalid kitchen setting" });
+        const { kitchenPreference, commercialKitchen } = parsed.data;
+        const updated = await appService.updateApplication(id, { kitchenPreference, commercialKitchen: kitchenPreference === "commercial" ? commercialKitchen ?? "other" : null });
+        return res.json(updated);
+    } catch (error) {
+        logger.error("Error updating seller kitchen setting:", error);
+        if (error instanceof DomainError) return res.status(error.statusCode).json({ message: error.message });
+        return res.status(500).json({ message: "Internal server error" });
+    }
+});
+
+// Ask the chef for documents (admin only): replaces any earlier request, then email + in-app to-do.
+const requestDocumentsSchema = z.object({ documents: z.array(z.enum(SELLER_DOCUMENT_KEYS)).min(1).max(2), note: z.string().trim().max(1000).optional() });
+router.post("/:id/request-documents", async (req: Request, res: Response) => {
+    try {
+        if (req.neonUser?.role !== "admin") return res.status(403).json({ message: "Admin access required" });
+        const id = parseInt(req.params.id);
+        const parsed = requestDocumentsSchema.safeParse(req.body);
+        if (isNaN(id) || !parsed.success) return res.status(400).json({ message: "Pick at least one document" });
+        const application = await appService.getApplicationById(id);
+        if (application.status === "cancelled" || application.status === "rejected") return res.status(409).json({ message: "This application is closed" });
+        const documents = Array.from(new Set(parsed.data.documents));
+        const updated = await appService.updateApplication(id, { documentsRequested: documents, documentsRequestNote: parsed.data.note || null, documentsRequestedAt: new Date() });
+        const names = sellerDocuments(updated).filter(doc => documents.includes(doc.key)).map(doc => SELLER_DOCUMENT_NAMES[doc.kind]);
+        if (updated.userId) {
+            try { await notificationService.notifySellerDocumentsRequested({ chefId: updated.userId, applicationId: id, documentNames: names, note: updated.documentsRequestNote }); }
+            catch (notificationError) { logger.error("Error creating seller documents request notification:", notificationError); }
+        }
+        try {
+            if (updated.email) await sendEmail(generateSellerDocumentsRequestedEmail({ fullName: updated.fullName || "there", email: updated.email, documentNames: names, note: updated.documentsRequestNote }),
+                { trackingId: `seller_docs_requested_${id}_${Date.now()}` });
+        } catch (emailError) { logger.error("Error sending seller documents request email:", emailError); }
+        return res.json(updated);
+    } catch (error) {
+        logger.error("Error requesting seller documents:", error);
+        if (error instanceof DomainError) return res.status(error.statusCode).json({ message: error.message });
         return res.status(500).json({ message: "Internal server error" });
     }
 });

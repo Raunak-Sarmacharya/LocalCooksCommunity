@@ -185,8 +185,32 @@ export const applications = pgTable("applications", {
   experience: text("experience"),
   businessDescription: text("business_description"),
 
+  // How and when to reach them for the call after applying; which commercial kitchen; what they plan to sell (0118).
+  contactMethod: text("contact_method").$type<SellerContactMethod>(),
+  contactTime: text("contact_time").$type<SellerContactTime>(),
+  commercialKitchen: text("commercial_kitchen").$type<SellerCommercialKitchen>(),
+  foodTypes: text("food_types").array().$type<SellerFoodType[]>().default(sql`'{}'::text[]`).notNull(),
+  // Documents admin asked for after the call ('foodSafety' | 'kitchen'), with an optional note.
+  documentsRequested: text("documents_requested").array().$type<SellerDocumentKey[]>().default(sql`'{}'::text[]`).notNull(),
+  documentsRequestNote: text("documents_request_note"),
+  documentsRequestedAt: timestamp("documents_requested_at"),
+
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+export const SELLER_CONTACT_METHODS = ["call", "text", "email"] as const;
+export const SELLER_CONTACT_TIMES = ["morning", "afternoon", "evening", "any"] as const;
+export const SELLER_COMMERCIAL_KITCHENS = ["localcooks", "other"] as const;
+export const SELLER_FOOD_TYPES = ["meat_fish", "vegetarian", "baked", "desserts", "preserves", "other"] as const;
+export const SELLER_DOCUMENT_KEYS = ["foodSafety", "kitchen"] as const;
+export type SellerContactMethod = typeof SELLER_CONTACT_METHODS[number];
+export type SellerContactTime = typeof SELLER_CONTACT_TIMES[number];
+export type SellerCommercialKitchen = typeof SELLER_COMMERCIAL_KITCHENS[number];
+export type SellerFoodType = typeof SELLER_FOOD_TYPES[number];
+export type SellerDocumentKey = typeof SELLER_DOCUMENT_KEYS[number];
+// Multipart bodies carry lists as "a,b"; JSON bodies as arrays.
+const foodTypesField = z.preprocess((val) => typeof val === "string" ? val.split(",").filter(Boolean) : val ?? [], z.array(z.enum(SELLER_FOOD_TYPES)).max(SELLER_FOOD_TYPES.length));
+const blankAsUndefined = (val: unknown) => val === "" || val === null ? undefined : val;
 
 
 // Define the Zod schema for inserting an application
@@ -210,9 +234,16 @@ export const insertApplicationSchema = createInsertSchema(applications, {
   // Allow setting document status during creation
   foodSafetyLicenseStatus: z.enum(["pending", "approved", "rejected"]).optional(),
   foodEstablishmentCertStatus: z.enum(["pending", "approved", "rejected"]).optional(),
+  contactMethod: z.preprocess(blankAsUndefined, z.enum(SELLER_CONTACT_METHODS).optional()),
+  contactTime: z.preprocess(blankAsUndefined, z.enum(SELLER_CONTACT_TIMES).optional()),
+  commercialKitchen: z.preprocess(blankAsUndefined, z.enum(SELLER_COMMERCIAL_KITCHENS).optional()),
+  foodTypes: foodTypesField.optional(),
 }).omit({
   id: true,
   status: true,
+  documentsRequested: true,
+  documentsRequestNote: true,
+  documentsRequestedAt: true,
   createdAt: true,
   documentsAdminFeedback: true,
   documentsReviewedBy: true,

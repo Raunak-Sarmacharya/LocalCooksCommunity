@@ -276,6 +276,13 @@ export class MemStorage implements IStorage {
       verificationEmailSentAt: null,
       lat: insertApplication.lat || null,
       slong: insertApplication.slong || null,
+      contactMethod: insertApplication.contactMethod ?? null,
+      contactTime: insertApplication.contactTime ?? null,
+      commercialKitchen: insertApplication.commercialKitchen ?? null,
+      foodTypes: insertApplication.foodTypes ?? [],
+      documentsRequested: [],
+      documentsRequestNote: null,
+      documentsRequestedAt: null,
 
       createdAt: now,
     };

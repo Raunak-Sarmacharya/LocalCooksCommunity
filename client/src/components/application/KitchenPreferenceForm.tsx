@@ -1,127 +1,91 @@
-import { zodResolver } from "@hookform/resolvers/zod";
+import { useState } from "react";
 import { Icon } from "@iconify/react";
-import { useForm } from "react-hook-form";
-import { z } from "zod";
-import { useApplicationForm } from "./ApplicationFormContext";
 import { useTranslation } from "react-i18next";
+import { cn } from "@/lib/utils";
+import { useApplicationForm } from "./ApplicationFormContext";
 import { ApplicationStepFooter } from "./ApplicationStepFooter";
+import { ChoicePills } from "./ChoicePills";
+import kitchenImage from "@/assets/commercial-kitchen.jpg";
+import homeImage from "@/assets/home-cook.jpg";
+import type { SellerCommercialKitchen, SellerFoodType } from "@shared/schema";
 
-import { Form } from "@/components/ui/form";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+export type KitchenSetting = {
+  kitchenPreference?: "commercial" | "home" | "notSure";
+  commercialKitchen?: SellerCommercialKitchen;
+  foodTypes: SellerFoodType[];
+};
 
-// Create a schema for just the kitchen preference field
-const kitchenPreferenceSchema = z.object({
-  kitchenPreference: z.enum(["commercial", "home", "notSure"]),
-});
-
-type KitchenPreferenceFormData = z.infer<typeof kitchenPreferenceSchema>;
+/** Where they cook and what they plan to sell. Used by step 2 and by "Edit" while in review. */
+export function KitchenSettingFields({ value, onChange, error }: { value: KitchenSetting; onChange: (value: KitchenSetting) => void; error?: boolean }) {
+  const { t } = useTranslation("chef");
+  const options = [
+    { value: "commercial" as const, title: t("sell_kitchenCommercial"), note: t("sell_kitchenCommercialNote"), image: kitchenImage },
+    { value: "home" as const, title: t("sell_kitchenHome"), note: t("sell_kitchenHomeNote"), image: homeImage },
+    { value: "notSure" as const, title: t("sell_kitchenNotSure"), note: t("sell_kitchenNotSureNote"), image: null },
+  ];
+  return (
+    <div className="space-y-6">
+      <div role="radiogroup" aria-label={t("sell_step2Title")} className="grid gap-2.5">
+        {options.map((option) => {
+          const on = value.kitchenPreference === option.value;
+          return (
+            <div key={option.value} className="space-y-2.5">
+              <button type="button" role="radio" aria-checked={on}
+                onClick={() => onChange({ ...value, kitchenPreference: option.value, commercialKitchen: option.value === "commercial" ? value.commercialKitchen ?? "localcooks" : undefined })}
+                className={cn("grid w-full grid-cols-[52px_1fr_20px] items-center gap-3.5 rounded-xl bg-background p-3 text-left transition-shadow sm:grid-cols-[56px_1fr_20px] sm:px-4",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                  on ? "shadow-[inset_0_0_0_2px_hsl(var(--primary))]" : "shadow-[inset_0_0_0_1px_hsl(var(--input))] hover:shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.4)]")}>
+                {option.image
+                  ? <img src={option.image} alt="" className="size-[52px] rounded-lg object-cover sm:size-14" />
+                  : <span className="grid size-[52px] place-items-center rounded-lg bg-muted sm:size-14"><Icon icon="mdi:help-circle-outline" className="size-6 text-muted-foreground" aria-hidden /></span>}
+                <span className="min-w-0">
+                  <span className="block font-semibold">{option.title}</span>
+                  <span className="block text-sm text-muted-foreground">{option.note}</span>
+                </span>
+                <span aria-hidden className={cn("size-5 rounded-full transition-shadow", on ? "shadow-[inset_0_0_0_6px_hsl(var(--primary))]" : "shadow-[inset_0_0_0_2px_hsl(var(--input))]")} />
+              </button>
+              {on && option.value === "commercial" && (
+                <ChoicePills className="pl-0 sm:pl-[70px]" label={t("sell_whichKitchen")} value={value.commercialKitchen}
+                  onChange={(commercialKitchen: SellerCommercialKitchen) => onChange({ ...value, commercialKitchen })}
+                  options={[{ value: "localcooks", label: t("sell_kitchenLocalCooks") }, { value: "other", label: t("sell_kitchenOther") }]} />
+              )}
+            </div>
+          );
+        })}
+        {error && <p className="text-sm text-destructive" role="alert">{t("sell_kitchenRequired")}</p>}
+      </div>
+      <fieldset className="space-y-2.5">
+        <legend className="text-sm font-medium">{t("sell_foodQuestion")} <span className="font-normal text-muted-foreground">{t("sell_pickAny")}</span></legend>
+        <ChoicePills label={t("sell_foodQuestion")} value={value.foodTypes} onChange={(foodTypes: SellerFoodType[]) => onChange({ ...value, foodTypes })} options={[
+          { value: "meat_fish", label: t("sell_foodMeatFish") },
+          { value: "vegetarian", label: t("sell_foodVegetarian") },
+          { value: "baked", label: t("sell_foodBaked") },
+          { value: "desserts", label: t("sell_foodDesserts") },
+          { value: "preserves", label: t("sell_foodPreserves") },
+          { value: "other", label: t("sell_foodOther") },
+        ]} />
+      </fieldset>
+    </div>
+  );
+}
 
 export default function KitchenPreferenceForm() {
   const { t } = useTranslation("chef");
   const { formData, updateFormData, goToNextStep } = useApplicationForm();
-
-  const form = useForm<KitchenPreferenceFormData>({
-    resolver: zodResolver(kitchenPreferenceSchema),
-    defaultValues: {
-      kitchenPreference: formData.kitchenPreference,
-    },
+  const [setting, setSetting] = useState<KitchenSetting>({
+    kitchenPreference: formData.kitchenPreference, commercialKitchen: formData.commercialKitchen, foodTypes: formData.foodTypes ?? [],
   });
-
-  const onSubmit = (data: KitchenPreferenceFormData) => {
-    // Update the form data with the kitchen preference
-    updateFormData(data);
-
-    // Go to the next step (certifications form)
-    goToNextStep();
-  };
+  const [error, setError] = useState(false);
 
   return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4" data-testid="seller-application-step-2">
-        <RadioGroup
-          value={form.watch("kitchenPreference") || ""}
-          onValueChange={(value) => form.setValue("kitchenPreference", value as KitchenPreferenceFormData["kitchenPreference"], { shouldValidate: true, shouldDirty: true })}
-          aria-label={t("apStatKitchenSetting")}
-          className="grid gap-2.5 md:grid-cols-3"
-        >
-          {(
-            [
-              {
-                value: "commercial" as const,
-                title: t("sellerApp_kpCommercialTitle"),
-                subtitle: t("sellerApp_kpCommercialSub"),
-                icon: "mdi:office-building-outline",
-                points: [t("sellerApp_kpCommercialP1"), t("sellerApp_kpCommercialP2"), t("sellerApp_kpCommercialP3")],
-              },
-              {
-                value: "home" as const,
-                title: t("sellerApp_kpHomeTitle"),
-                subtitle: t("sellerApp_kpHomeSub"),
-                icon: "mdi:home-outline",
-                points: [t("sellerApp_kpHomeP1"), t("sellerApp_kpHomeP2"), t("sellerApp_kpHomeP3")],
-              },
-              {
-                value: "notSure" as const,
-                title: t("sellerApp_kpNotSureTitle"),
-                subtitle: t("sellerApp_kpNotSureSub"),
-                icon: "mdi:help-circle-outline",
-                points: [],
-              },
-            ] as const
-          ).map((option) => {
-            const selected = form.watch("kitchenPreference") === option.value;
-            return (
-              <label
-                key={option.value}
-                data-testid={`seller-kitchen-preference-${option.value}`}
-                className={`relative flex cursor-pointer flex-col items-center justify-center rounded-2xl border p-5 sm:p-6 transition-all duration-300 min-h-[240px] ${
-                  selected
-                    ? "border-primary bg-primary/5 ring-1 ring-primary shadow-sm"
-                    : "border-border hover:border-primary/40 hover:bg-muted/30"
-                }`}
-              >
-                <RadioGroupItem value={option.value} aria-label={option.title} className="sr-only" />
-                  
-                <span className={`mb-4 flex size-12 shrink-0 items-center justify-center rounded-full border transition-colors ${
-                  selected ? "border-primary/30 bg-primary/10 text-primary" : "border-border bg-muted/40 text-muted-foreground"
-                }`}>
-                  <Icon icon={option.icon} className="size-6" aria-hidden />
-                </span>
-                
-                <div className={`${option.points.length > 0 ? "mb-5" : "mb-0"} text-center`}>
-                  <p className={`text-base font-semibold ${selected ? "text-primary" : "text-foreground"}`}>{option.title}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{option.subtitle}</p>
-                </div>
-                
-                {option.points.length > 0 && (
-                  <div className="mt-auto flex w-full justify-center">
-                    <ul className="inline-flex flex-col space-y-2">
-                      {option.points.map((point) => (
-                        <li key={point} className="flex items-start text-xs text-muted-foreground">
-                          <span className={`mr-2.5 mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full transition-colors ${
-                            selected ? "bg-primary/60" : "bg-muted-foreground/40"
-                          }`}></span>
-                          <span className="leading-snug">{point}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </label>
-            );
-          })}
-        </RadioGroup>
-
-        {form.formState.errors.kitchenPreference && (
-          <p className="text-sm font-medium text-destructive">{t("sellerApp_kpSelectRequired")}</p>
-        )}
-
-        <ApplicationStepFooter
-          showPrevious
-          continueLabel={t("sellerApp_continue")}
-          continueTestId="seller-application-continue"
-        />
-      </form>
-    </Form>
+    <form data-testid="seller-application-step-2" className="space-y-6" onSubmit={(event) => {
+      event.preventDefault();
+      if (!setting.kitchenPreference) { setError(true); return; }
+      updateFormData(setting);
+      goToNextStep();
+    }}>
+      <KitchenSettingFields value={setting} onChange={(next) => { setSetting(next); setError(false); }} error={error} />
+      <ApplicationStepFooter showPrevious continueLabel={t("sellerApp_continue")} continueTestId="seller-application-continue" />
+    </form>
   );
 }

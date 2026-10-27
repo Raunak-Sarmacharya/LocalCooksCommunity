@@ -10,7 +10,6 @@ import type { AdminSection } from "@/components/admin/layout/AdminSidebar";
 import { KitchenLicenseApprovalSection } from "@/components/admin/sections/KitchenLicenseApprovalSection";
 import { AdminKitchenApplicationsStep1Section } from "@/components/admin/sections/AdminKitchenApplicationsStep1Section";
 import { AdminTourRequestsSection } from "@/components/admin/sections/AdminTourRequestsSection";
-import { ApplicationProgressTracker } from "@/components/admin/ApplicationProgressTracker";
 import { PlatformSettingsSection } from "@/components/admin/sections/PlatformSettingsSection";
 import { PlatformRequirementsSection } from "@/components/admin/sections/PlatformRequirementsSection";
 import { ManagerRevenuesSection } from "@/components/admin/sections/ManagerRevenuesSection";
@@ -74,6 +73,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
+import { SellerApplicationReview, SellerApplicationSummary } from "@/components/admin/SellerApplicationReview";
 import { AdminOverviewSection } from "@/components/admin/sections/AdminOverviewSection";
 import { SecuritySettingsSection } from "@/components/admin/sections/SecuritySettingsSection";
 import { AlertCircle, AlertTriangle, CalendarDays, CheckCircle, Clock, ExternalLink, RefreshCw, Search, Shield, User as UserIcon, XCircle, Check, Building2, Loader2, MailCheck, Eye, KeyRound, Copy } from "lucide-react";
@@ -371,6 +371,13 @@ function AdminDashboard() {
         verificationEmailSentAt: app.verification_email_sent_at || app.verificationEmailSentAt,
         shopName: app.shop_name || app.shopName || '',
         shopAddress: app.shop_address || app.shopAddress || '',
+        contactMethod: app.contactMethod ?? null,
+        contactTime: app.contactTime ?? null,
+        commercialKitchen: app.commercialKitchen ?? null,
+        foodTypes: app.foodTypes ?? [],
+        documentsRequested: app.documentsRequested ?? [],
+        documentsRequestNote: app.documentsRequestNote ?? null,
+        documentsRequestedAt: app.documentsRequestedAt ?? null,
       }));
 
       logger.info('Admin: Normalized application data', normalizedData);
@@ -542,8 +549,6 @@ function AdminDashboard() {
         slong: details?.slong,
       };
       
-      console.log('Sending create-shop payload:', payload);
-
       const response = await fetch(`/api/applications/${id}/create-shop`, {
         method: 'POST',
         headers: {
@@ -567,13 +572,12 @@ function AdminDashboard() {
 
       return response.json();
     },
-    onSuccess: async () => {
-      // Force comprehensive refresh
+    onSuccess: async (_data, id) => {
+      // The dialog stays open: show the shop as created right away.
+      setSelectedApplication(prev => prev && prev.id === id ? { ...prev, phpShopCreated: true } : prev);
       await forceAdminRefresh();
-      
       await queryClient.invalidateQueries({ queryKey: ["/api/applications"] });
-      
-      toast.success("Shop Profile Created", {
+      toast.success("Shop created", {
         description: "The chef's shop has been successfully created and linked."
       });
     },
@@ -776,56 +780,6 @@ function AdminDashboard() {
     updateDocumentStatusMutation.mutate({ id, field, status });
   };
 
-  // Helper function to get the correct CTA button for each application
-  const getCtaButton = (app: Application) => {
-    // Cancelled applications cannot be modified
-    if (app.status === "cancelled") {
-      return (
-        <Button
-          size="sm"
-          variant="outline"
-          disabled
-          className="text-gray-400 border-gray-200 text-xs px-3 py-1.5 h-auto cursor-not-allowed"
-        >
-          <XCircle className="h-3 w-3 mr-1" />
-          Cancelled
-        </Button>
-      );
-    }
-
-    // Quick Approve: User said yes to both and uploaded documents
-    if (app.status !== "approved" &&
-      app.foodSafetyLicenseUrl &&
-      app.foodEstablishmentCertUrl) {
-      return (
-        <Button
-          size="sm"
-          onClick={() => handleStatusChange(app.id, "approved")}
-          className="text-xs px-3 py-1.5 h-auto"
-        >
-          <CheckCircle className="h-3 w-3 mr-1" />
-          Quick Approve
-        </Button>
-      );
-    }
-
-    // Regular Approve: For other cases where user said yes to at least one cert
-    if (app.status !== "approved" && app.status !== "rejected") {
-      return (
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => handleStatusChange(app.id, "approved")}
-          className="text-blue-600 border-blue-200 hover:bg-blue-50 text-xs px-3 py-1.5 h-auto"
-        >
-          <CheckCircle className="h-3 w-3 mr-1" />
-          Approve
-        </Button>
-      );
-    }
-
-    return null;
-  };
 
   // Helper function to get certification status icons
   const getCertificationIcon = (status: string) => {
@@ -1403,60 +1357,15 @@ function AdminDashboard() {
                           )}
                         </div>
 
-                        {/* Certification Status Indicators */}
-                        <div className="flex flex-wrap gap-1.5 sm:gap-3">
-                          <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 rounded-md sm:rounded-lg bg-gray-50 border">
-                            {getCertificationIcon(app.foodSafetyLicenseUrl ? "yes" : app.foodSafetyLicense)}
-                            <span className="text-xs sm:text-sm font-medium">
-                              <span className="hidden sm:inline">Food Safety: </span>
-                              <span className="sm:hidden">FSL: </span>
-                              {app.foodSafetyLicenseUrl ? "Uploaded" : formatCertificationStatus(app.foodSafetyLicense)}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 rounded-md sm:rounded-lg bg-gray-50 border">
-                            {getCertificationIcon(app.foodEstablishmentCertUrl ? "yes" : app.foodEstablishmentCert)}
-                            <span className="text-xs sm:text-sm font-medium">
-                              <span className="hidden lg:inline">Establishment: </span>
-                              <span className="lg:hidden">Est: </span>
-                              {app.foodEstablishmentCertUrl ? "Uploaded" : formatCertificationStatus(app.foodEstablishmentCert)}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 rounded-md sm:rounded-lg bg-gray-50 border">
-                            <span className="text-xs sm:text-sm font-medium">
-                              <span className="hidden sm:inline">Kitchen: </span>
-                              <span className="sm:hidden">Kit: </span>
-                              {formatKitchenPreference(app.kitchenPreference)}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Pipeline Progress Tracker */}
-                        <ApplicationProgressTracker
-                          status={app.status}
-                          createdAt={app.createdAt}
-                          foodSafetyLicenseUrl={app.foodSafetyLicenseUrl}
-                          foodSafetyLicenseStatus={app.foodSafetyLicenseStatus}
-                          foodEstablishmentCertUrl={app.foodEstablishmentCertUrl}
-                          foodEstablishmentCertStatus={app.foodEstablishmentCertStatus}
-                          documentsReviewedAt={app.documentsReviewedAt}
-                          phpShopCreated={app.phpShopCreated}
-                          verificationEmailSentAt={app.verificationEmailSentAt}
-                          className="py-2 px-1 bg-muted/30 rounded-lg border border-muted-foreground/10"
-                        />
+                        <SellerApplicationSummary application={app} />
                       </div>
 
                       {/* Right side: Action buttons */}
                       <div className="flex sm:flex-col items-center sm:items-end gap-2 sm:gap-3 w-full sm:w-auto">
                         <div className="flex items-center gap-1.5 sm:gap-2 flex-1 sm:flex-none">
-                          {getCtaButton(app)}
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setSelectedApplication(app)}
-                            className="h-8 w-8 sm:h-9 sm:w-9 rounded-lg sm:rounded-xl hover:bg-gray-100 flex-shrink-0"
-                            title="View Details"
-                          >
-                            <Eye className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                          {/* Decisions happen on the review screen, never one tap from the list. */}
+                          <Button size="sm" variant={app.status === "inReview" ? "default" : "outline"} onClick={() => setSelectedApplication(app)} data-testid={`seller-app-review-${app.id}`}>
+                            Review
                           </Button>
                         </div>
 
@@ -1580,171 +1489,25 @@ function AdminDashboard() {
                     </div>
                   )}
 
-                  {/* Contact Information */}
-                  <div className="p-4 bg-white rounded-lg border">
-                    <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                      <UserIcon className="h-4 w-4 text-blue-600" />
-                      Contact Information
-                    </h4>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div>
-                        <span className="text-xs text-gray-500">Email</span>
-                        <p className="text-sm font-medium">{selectedApplication.email}</p>
-                      </div>
-                      <div>
-                        <span className="text-xs text-gray-500">Phone</span>
-                        <p className="text-sm font-medium">{selectedApplication.phone || 'Not provided'}</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Certifications */}
-                  <div className="p-4 bg-white rounded-lg border">
-                    <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                      <Shield className="h-4 w-4 text-green-600" />
-                      Certifications & Preferences
-                    </h4>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
-                        <h5 className="text-xs font-medium text-blue-800">Food Safety License</h5>
-                        <p className="text-sm font-semibold text-blue-900">{selectedApplication.foodSafetyLicenseUrl ? "Uploaded" : formatCertificationStatus(selectedApplication.foodSafetyLicense)}</p>
-                      </div>
-                      <div className="p-3 bg-muted/40 rounded-lg border">
-                        <h5 className="text-xs font-medium text-foreground">Food Establishment Cert</h5>
-                        <div className="flex flex-col gap-2 mt-1">
-                          <p className="text-sm font-semibold">{selectedApplication.foodEstablishmentCertUrl ? "Uploaded" : formatCertificationStatus(selectedApplication.foodEstablishmentCert)}</p>
-                          {!selectedApplication.foodEstablishmentCertUrl && selectedApplication.foodEstablishmentCert !== 'yes' && (
-                            <Button 
-                              size="sm" 
-                              variant="outline" 
-                              className="w-full text-xs"
-                              onClick={() => {
-                                updateDocumentStatusMutation.mutate({
-                                  id: selectedApplication.id,
-                                  field: 'foodEstablishmentCert',
-                                  status: 'yes'
-                                });
-                                // Optimistically update selected application
-                                setSelectedApplication({
-                                  ...selectedApplication,
-                                  foodEstablishmentCert: 'yes'
-                                });
-                              }}
-                              disabled={updateDocumentStatusMutation.isPending}
-                            >
-                              {updateDocumentStatusMutation.isPending ? 'Updating...' : 'Make Required'}
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                      <div className="p-3 bg-purple-50 rounded-lg border border-purple-200">
-                        <h5 className="text-xs font-medium text-purple-800">Kitchen Preference</h5>
-                        <p className="text-sm font-semibold text-purple-900">{formatKitchenPreference(selectedApplication.kitchenPreference)}</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Show submitted documents before and after the application decision. */}
-                  {(selectedApplication.foodSafetyLicenseUrl || selectedApplication.foodEstablishmentCertUrl) && (
-                    <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-lg">
-                      <h4 className="text-sm font-semibold mb-3 text-indigo-800 flex items-center gap-2">
-                        <Shield className="h-4 w-4" />
-                        Document Verification
-                      </h4>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        {/* FSL */}
-                        <div className="bg-white p-3 rounded border">
-                          <h5 className="text-xs font-medium text-gray-700 mb-2">Food Safety License</h5>
-                          {selectedApplication.foodSafetyLicenseUrl ? (
-                            <div className="space-y-2">
-                              <a
-                                href={presignedUrls[selectedApplication.foodSafetyLicenseUrl] || getR2ProxyUrl(selectedApplication.foodSafetyLicenseUrl)}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-xs text-blue-600 hover:underline flex items-center gap-1"
-                                onClick={async (e) => {
-                                  const url = selectedApplication.foodSafetyLicenseUrl;
-                                  const isPrivateR2Url = url ? (url.includes('r2.cloudflarestorage.com') || url.includes('files.localcooks.ca')) : false;
-                                  if (url && !presignedUrls[url] && isPrivateR2Url) {
-                                    e.preventDefault();
-                                    const presignedUrl = await getPresignedUrl(url);
-                                    window.open(presignedUrl, '_blank');
-                                  }
-                                }}
-                              >
-                                <ExternalLink className="h-3 w-3" />
-                                View Document
-                              </a>
-                              {getDocumentStatusBadge(selectedApplication.foodSafetyLicenseStatus)}
-                              {selectedApplication.foodSafetyLicenseStatus === "pending" && (
-                                <div className="flex gap-2">
-                                  <Button size="sm" onClick={() => { handleDocumentStatusUpdate(selectedApplication.id, 'foodSafetyLicenseStatus', 'approved'); setSelectedApplication(null); }} className="text-xs h-7">
-                                    <CheckCircle className="h-3 w-3 mr-1" /> Approve
-                                  </Button>
-                                  <Button size="sm" variant="outline" onClick={() => { handleDocumentStatusUpdate(selectedApplication.id, 'foodSafetyLicenseStatus', 'rejected'); setSelectedApplication(null); }} className="text-xs h-7 text-red-600 border-red-200">
-                                    <XCircle className="h-3 w-3 mr-1" /> Reject
-                                  </Button>
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            <p className="text-xs text-gray-500">No document uploaded</p>
-                          )}
-                        </div>
-                        {/* FEC */}
-                        <div className="bg-white p-3 rounded border">
-                          <h5 className="text-xs font-medium text-gray-700 mb-2">Food Establishment Cert</h5>
-                          {selectedApplication.foodEstablishmentCertUrl ? (
-                            <div className="space-y-2">
-                              <a
-                                href={presignedUrls[selectedApplication.foodEstablishmentCertUrl] || getR2ProxyUrl(selectedApplication.foodEstablishmentCertUrl)}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-xs text-blue-600 hover:underline flex items-center gap-1"
-                                onClick={async (e) => {
-                                  const url = selectedApplication.foodEstablishmentCertUrl;
-                                  const isPrivateR2Url = url ? (url.includes('r2.cloudflarestorage.com') || url.includes('files.localcooks.ca')) : false;
-                                  if (url && !presignedUrls[url] && isPrivateR2Url) {
-                                    e.preventDefault();
-                                    const presignedUrl = await getPresignedUrl(url);
-                                    window.open(presignedUrl, '_blank');
-                                  }
-                                }}
-                              >
-                                <ExternalLink className="h-3 w-3" />
-                                View Document
-                              </a>
-                              {getDocumentStatusBadge(selectedApplication.foodEstablishmentCertStatus)}
-                              {selectedApplication.foodEstablishmentCertStatus === "pending" && (
-                                <div className="flex gap-2">
-                                  <Button size="sm" onClick={() => { handleDocumentStatusUpdate(selectedApplication.id, 'foodEstablishmentCertStatus', 'approved'); setSelectedApplication(null); }} className="text-xs h-7">
-                                    <CheckCircle className="h-3 w-3 mr-1" /> Approve
-                                  </Button>
-                                  <Button size="sm" variant="outline" onClick={() => { handleDocumentStatusUpdate(selectedApplication.id, 'foodEstablishmentCertStatus', 'rejected'); setSelectedApplication(null); }} className="text-xs h-7 text-red-600 border-red-200">
-                                    <XCircle className="h-3 w-3 mr-1" /> Reject
-                                  </Button>
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            <p className="text-xs text-gray-500">No document uploaded</p>
-                          )}
-                        </div>
-                      </div>
-
+                  <SellerApplicationReview
+                    application={selectedApplication}
+                    onChanged={(updated) => { setSelectedApplication(prev => prev ? { ...prev, ...updated } : prev); void queryClient.invalidateQueries({ queryKey: ["/api/applications"] }); }}
+                    onOpenDocument={async (url) => {
+                      const isPrivateR2Url = url.includes('r2.cloudflarestorage.com') || url.includes('files.localcooks.ca');
+                      window.open(isPrivateR2Url ? await getPresignedUrl(url) : (presignedUrls[url] || getR2ProxyUrl(url)), '_blank', 'noopener,noreferrer');
+                    }}
+                    onDocumentStatus={(field, status) => { handleDocumentStatusUpdate(selectedApplication.id, field, status); setSelectedApplication({ ...selectedApplication, [field]: status }); }}
+                    onStatus={(status) => { handleStatusChange(selectedApplication.id, status); setSelectedApplication(null); }}
+                    statusBusy={updateStatusMutation.isPending}
+                    shopSection={
+                      <>
                       {/* Shop Creation Section */}
                       {(() => {
-                        const fslApproved = selectedApplication.foodSafetyLicenseStatus === "approved";
-                        const fecApproved = !selectedApplication.foodEstablishmentCertUrl || selectedApplication.foodEstablishmentCertStatus === "approved";
-                        const allApproved = fslApproved && fecApproved;
-
-                        if (allApproved && selectedApplication.status === 'approved' && !selectedApplication.phpShopCreated) {
+                        // Approval no longer waits on documents (owner, Oct 27).
+                        if (selectedApplication.status === 'approved' && !selectedApplication.phpShopCreated) {
                           return (
                             <div className="mt-4 space-y-3">
-                              <div className="flex items-center gap-2 text-sm font-medium text-emerald-700 bg-emerald-50 px-3 py-2 rounded">
-                                <CheckCircle className="h-4 w-4" />
-                                All documents verified - Ready to create shop
-                              </div>
+                              <h3 className="text-sm font-semibold">Set up their shop</h3>
                               <FormLegend />
                               <div className="space-y-2">
                                 <div>
@@ -1789,11 +1552,11 @@ function AdminDashboard() {
                               <Button 
                                 size="sm" 
                                 className="w-full"
-                                onClick={() => { createShopMutation.mutate(selectedApplication.id); setSelectedApplication(null); }}
+                                onClick={() => createShopMutation.mutate(selectedApplication.id)}
                                 disabled={createShopMutation.isPending || !(shopDetails[selectedApplication.id]?.shopName?.trim()) || !(shopDetails[selectedApplication.id]?.shopAddress?.trim())}
                               >
                                 {createShopMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Building2 className="h-4 w-4 mr-2" />}
-                                Create PHP Shop Profile
+                                Create shop
                               </Button>
                             </div>
                           );
@@ -1803,7 +1566,7 @@ function AdminDashboard() {
                             <div className="mt-4 space-y-3">
                               <div className="flex items-center gap-2 text-xs font-semibold text-emerald-600 bg-emerald-50 px-3 py-2 rounded border border-emerald-100">
                                 <Check className="h-3 w-3" />
-                                Shop Profile Active
+                                Shop created
                               </div>
                               <Button
                                 size="sm"
@@ -1814,54 +1577,26 @@ function AdminDashboard() {
                                 className="w-full"
                               >
                                 <KeyRound className="h-4 w-4 mr-2" />
-                                View Shop Credentials
+                                View shop sign-in
                               </Button>
                               <Button
                                 size="sm"
                                 variant="outline"
                                 onClick={() => sendVerificationEmailMutation.mutate(selectedApplication.id)}
                                 disabled={sendVerificationEmailMutation.isPending}
-                                className="w-full bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100"
+                                className="w-full"
                               >
                                 {sendVerificationEmailMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <MailCheck className="h-4 w-4 mr-2" />}
-                                {selectedApplication.verificationEmailSentAt ? "Resend Credentials Email" : "Send Credentials Email"}
+                                {selectedApplication.verificationEmailSentAt ? "Resend sign-in email" : "Send sign-in email"}
                               </Button>
                             </div>
                           );
                         }
                         return null;
                       })()}
-                    </div>
-                  )}
-
-                  {/* Feedback */}
-                  {selectedApplication.feedback && (
-                    <div className="p-4 bg-gray-50 rounded-lg border">
-                      <h4 className="text-sm font-semibold mb-2">Feedback/Questions</h4>
-                      <p className="text-sm">{selectedApplication.feedback}</p>
-                    </div>
-                  )}
-
-                  {/* Status Change */}
-                  <div className="pt-4 border-t flex justify-between items-center">
-                    <span className="text-xs text-gray-500">Application ID: #{selectedApplication.id}</span>
-                    {selectedApplication.status !== "cancelled" && (
-                      <Select
-                        defaultValue={selectedApplication.status}
-                        onValueChange={(value) => { handleStatusChange(selectedApplication.id, value); setSelectedApplication(null); }}
-                      >
-                        <SelectTrigger className="h-8 w-[140px]">
-                          <SelectValue placeholder="Update Status" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="inReview">In Review</SelectItem>
-                          <SelectItem value="approved">Approve</SelectItem>
-                          <SelectItem value="rejected">Reject</SelectItem>
-                          <SelectItem value="cancelled">Cancel</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    )}
-                  </div>
+                      </>
+                    }
+                  />
                 </div>
               </>
             )}

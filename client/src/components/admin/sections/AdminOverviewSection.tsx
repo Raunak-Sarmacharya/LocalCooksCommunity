@@ -44,7 +44,7 @@ export function AdminOverviewSection({
     queryKey: ["/api/firebase/admin/applications", "overview-counts"],
     queryFn: async () => {
       const token = await getFirebaseToken();
-      const response = await fetch("/api/firebase/admin/applications", {
+      const response = await fetch("/api/applications", {
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",

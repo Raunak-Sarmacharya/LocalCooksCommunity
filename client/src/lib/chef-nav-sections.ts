@@ -66,7 +66,7 @@ export const chefNavSections: ChefNavSection[] = [
         members: [{ id: "storage", labelKey: "shellStorage", icon: "mdi:warehouse" }],
       },
       {
-        id: "applications", labelKey: "shellSelling", icon: "mdi:storefront-outline", tabLabelKey: "tabApplication",
+        id: "applications", labelKey: "shellSelling", icon: "mdi:storefront-outline", tabLabelKey: "sell_tabGettingStarted",
         members: [
           { id: "training", labelKey: "shellTraining", icon: "mdi:school-outline" },
           { id: "seller-revenue", labelKey: "shellMyEarnings", icon: "mdi:cash-multiple" },

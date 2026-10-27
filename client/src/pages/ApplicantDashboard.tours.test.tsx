@@ -20,7 +20,6 @@ vi.mock('@/components/booking/ChefBookingsView', () => ({ default: () => null })
 vi.mock('@/components/chef/ChefCommandPalette', () => ({ default: () => null }));
 vi.mock('@/components/training/TrainingOverviewPanel', () => ({ default: () => null }));
 vi.mock('@/components/application/ApplicationFormPanel', () => ({ default: () => null }));
-vi.mock('@/components/document-verification/DocumentUpload', () => ({ DocumentManagementModal: () => null }));
 vi.mock('@/components/application/ApplicationFormContext', () => ({ leaveSellerApplication: () => {} }));
 vi.mock('@/components/chef/ChefSupportPage', () => ({ default: () => null }));
 vi.mock('@/components/chef/IssuesAndRefunds', () => ({ IssuesAndRefunds: () => null }));

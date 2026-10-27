@@ -1,163 +1,110 @@
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ApplicationFormProvider } from "./ApplicationFormContext";
+import { useEffect } from "react";
+import { ApplicationFormProvider, useApplicationForm } from "./ApplicationFormContext";
 import CertificationsForm from "./CertificationsForm";
 import KitchenPreferenceForm from "./KitchenPreferenceForm";
 import { ApplicationStepFooter } from "./ApplicationStepFooter";
+import type { ApplicationFormData } from "@/lib/applicationSchema";
 import copy from "@shared/i18n/locales/en-CA/chef.json";
 
 const mocks = vi.hoisted(() => ({ upload: vi.fn(), toast: vi.fn(), navigate: vi.fn() }));
-vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => (copy as Record<string, string>)[key] || key }) }));
-vi.mock("@/hooks/use-auth", () => ({ useFirebaseAuth: () => ({ user: { uid: "chef-test" } }) }));
+vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string, vars?: Record<string, unknown>) =>
+  ((copy as Record<string, string>)[key] || key).replace(/\{(\w+)\}/g, (_, name) => String(vars?.[name] ?? "")) }) }));
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: mocks.toast }) }));
 vi.mock("@/lib/firebase", () => ({ auth: { currentUser: { getIdToken: async () => "test-token" } } }));
 vi.mock("@/lib/logger", () => ({ logger: { info: vi.fn(), error: vi.fn() } }));
-vi.mock("wouter", () => ({ useLocation: () => ["/apply", mocks.navigate] }));
+vi.mock("wouter", () => ({ useLocation: () => ["/dashboard", mocks.navigate] }));
 vi.mock("@/hooks/useFileUpload", () => ({ useFileUpload: () => ({ uploadFile: mocks.upload, uploadProgress: 45, isUploading: false, error: null }) }));
 
-function mount(children = <CertificationsForm />) {
-  return render(<QueryClientProvider client={new QueryClient({ defaultOptions: { mutations: { retry: false } } })}><ApplicationFormProvider>{children}</ApplicationFormProvider></QueryClientProvider>);
+function Seed({ data }: { data: Partial<ApplicationFormData> }) {
+  const { updateFormData } = useApplicationForm();
+  useEffect(() => { updateFormData(data); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  return null;
 }
+const sent = (data: Partial<ApplicationFormData>, children = <CertificationsForm />) => render(
+  <QueryClientProvider client={new QueryClient({ defaultOptions: { mutations: { retry: false } } })}>
+    <ApplicationFormProvider><Seed data={{ fullName: "Sam Seller", email: "sam@example.com", phone: "+17095550188", contactMethod: "text", ...data }} />{children}</ApplicationFormProvider>
+  </QueryClientProvider>);
+const rows = () => screen.getAllByRole("button", { name: copy.sell_upload });
+const body = (fetchMock: ReturnType<typeof vi.fn>) => JSON.parse(fetchMock.mock.calls[0][1].body);
 
-async function openUpload(index = 0) {
-  fireEvent.click(screen.getAllByRole("radio", { name: copy.sellerApp_yes })[index]);
-  return screen.findByRole("dialog");
-}
-
-beforeEach(() => {
-  vi.clearAllMocks();
-  vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
-  vi.stubGlobal("PointerEvent", MouseEvent);
-});
+beforeEach(() => { vi.clearAllMocks(); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
-describe("seller certifications", () => {
-  it.each([0, 1])("reverts Yes when upload %s is dismissed outside without a document", async (index) => {
-    mount();
-    await openUpload(index);
-    // Radix installs its outside-pointer listener on the next task.
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
-    fireEvent.pointerDown(document.body, { pointerType: "mouse", button: 0 });
-    fireEvent.click(document.body);
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    expect(screen.getAllByRole("radio", { name: copy.sellerApp_yes })[index]).toHaveAttribute("aria-checked", "false");
+describe("documents step", () => {
+  it("asks for the documents of the kitchen setting; a Local Cooks kitchen's licence is not needed", async () => {
+    sent({ kitchenPreference: "commercial", commercialKitchen: "localcooks" });
+    expect(await screen.findByText(copy.sell_doc_foodSafetyTraining)).toBeInTheDocument();
+    expect(screen.getByText(copy.sell_doc_establishmentLicence)).toBeInTheDocument();
+    expect(screen.getByText(copy.sell_notNeeded)).toBeInTheDocument();
+    expect(rows()).toHaveLength(1);
+    expect(screen.getByRole("link", { name: copy.sell_docApprovedCourses })).toHaveAttribute("href", expect.stringContaining("gov.nl.ca"));
   });
 
-  it.each([
-    [copy.sellerApp_aboutFoodSafety, 'Visit SkillsPass NL', 'https://skillspassnl.com'],
-    [copy.sellerApp_aboutFoodEst, 'Visit Gov.nl.ca Food Safety', 'https://www.gov.nl.ca/dgsnl/licences/env-health/food/'],
-  ])("keeps %s help concise with an official resource link", async (title, label, href) => {
-    mount();
-    fireEvent.click(screen.getByRole("button", { name: title }));
-    const dialog = await screen.findByRole("dialog");
-    const link = within(dialog).getByRole("link", { name: label });
-    expect(link).toHaveAttribute("href", href);
-    expect(link).toHaveAttribute("target", "_blank");
-    expect(link).toHaveAttribute("rel", "noopener noreferrer");
-    const sentences = Array.from(dialog.querySelectorAll("p")).flatMap(p => p.textContent?.match(/[^.!?]+[.!?]+/g) || []);
-    expect(sentences.length).toBeLessThanOrEqual(3);
+  it("home: Service NL registration and a recommended food safety certificate", async () => {
+    sent({ kitchenPreference: "home" });
+    expect(await screen.findByText(copy.sell_doc_homeRegistration)).toBeInTheDocument();
+    expect(screen.getByText(copy.sell_docRecommendedHome)).toBeInTheDocument();
+    expect(rows()).toHaveLength(2);
   });
 
-  it("shows real upload progress, blocks dismissal while uploading, and retains completed uploads", async () => {
-    let finish!: (result: { success: boolean; url: string }) => void;
-    mocks.upload.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
-    mount();
-    const dialog = await openUpload();
-    fireEvent.change(dialog.querySelector('input[type="file"]')!, { target: { files: [new File(["pdf"], "license.pdf", { type: "application/pdf" })] } });
-    expect(mocks.upload).toHaveBeenCalledTimes(1);
-    expect(await screen.findByRole("progressbar")).toHaveAttribute("aria-valuenow", "45");
-    expect(screen.getByRole("button", { name: copy.sellerApp_back, hidden: true })).toBeDisabled();
-    expect(within(dialog).getByRole('button', { name: 'Remove', exact: true })).toBeDisabled();
-    expect(within(dialog).getByRole('button', { name: 'Done', exact: true })).toBeDisabled();
-    fireEvent.keyDown(dialog, { key: "Escape" });
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
-    await act(async () => finish({ success: true, url: "https://example.com/license.pdf" }));
-    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Done", exact: true }));
-    expect(within(screen.getByTestId("seller-food-safety-yes")).getByRole("radio")).toHaveAttribute("aria-checked", "true");
-  });
-
-  it("reverts a failed upload on dismissal", async () => {
-    mocks.upload.mockResolvedValue(null);
-    mount();
-    const dialog = await openUpload(1);
-    fireEvent.change(dialog.querySelector('input[type="file"]')!, { target: { files: [new File(["pdf"], "certificate.pdf", { type: "application/pdf" })] } });
-    await waitFor(() => expect(mocks.upload).toHaveBeenCalled());
-    await waitFor(() => expect(screen.queryByRole("progressbar")).not.toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: "Done", exact: true }));
-    expect(screen.getAllByRole("radio", { name: copy.sellerApp_yes })[1]).toHaveAttribute("aria-checked", "false");
-  });
-
-  it("does not retain Yes when an upload returns a whitespace-only document URL", async () => {
-    mocks.upload.mockResolvedValue({ success: true, url: '   ' });
-    mount();
-    const dialog = await openUpload();
-    fireEvent.change(dialog.querySelector('input[type="file"]')!, { target: { files: [new File(['pdf'], 'license.pdf', { type: 'application/pdf' })] } });
-    await waitFor(() => expect(screen.getByText('license.pdf')).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: "Done", exact: true }));
-    expect(screen.getAllByRole("radio", { name: copy.sellerApp_yes })[0]).toHaveAttribute("aria-checked", "false");
-  });
-
-  it.each(["yes", "no"])("submits uploaded files once and respects the final %s answer", async (answer) => {
-    mocks.upload.mockResolvedValue({ success: true, url: "https://example.com/license.pdf" });
-    const submit = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 1 }) });
-    vi.stubGlobal("fetch", submit);
-    mount();
-    const dialog = await openUpload();
-    fireEvent.change(dialog.querySelector('input[type="file"]')!, { target: { files: [new File(["pdf"], "license.pdf", { type: "application/pdf" })] } });
-    await waitFor(() => expect(screen.getByText("license.pdf")).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: "Done", exact: true }));
-    const noRadios = screen.getAllByRole("radio", { name: copy.sellerApp_no });
-    if (answer === "no") fireEvent.click(noRadios[0]);
-    fireEvent.click(noRadios[1]);
+  it("each row needs an upload or 'I don't have it yet'; then it sends without documents", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 1 }) });
+    vi.stubGlobal("fetch", fetchMock);
+    sent({ kitchenPreference: "notSure", foodTypes: ["baked"] });
+    fireEvent.click(await screen.findByTestId("seller-application-submit"));
+    expect(await screen.findByRole("alert")).toHaveTextContent(copy.sell_answerEachDocument);
+    expect(fetchMock).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("checkbox", { name: copy.sell_dontHaveYet }));
+    expect(screen.getByText(copy.sell_missingIsFine)).toBeInTheDocument();
     fireEvent.click(screen.getByTestId("seller-application-submit"));
-    await waitFor(() => expect(submit).toHaveBeenCalledOnce());
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    expect(body(fetchMock)).toMatchObject({ kitchenPreference: "notSure", contactMethod: "text", foodTypes: ["baked"], foodSafetyLicense: "no", foodSafetyLicenseUrl: "" });
+    await waitFor(() => expect(mocks.navigate).toHaveBeenCalledWith("/dashboard?view=applications&sent=1"));
+  });
+
+  it("an uploaded file is sent once, by its uploaded address", async () => {
+    mocks.upload.mockResolvedValue({ success: true, url: "https://files.example/documents/7_cert.pdf" });
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 1 }) });
+    vi.stubGlobal("fetch", fetchMock);
+    const { container } = sent({ kitchenPreference: "notSure" });
+    await screen.findByText(copy.sell_doc_foodSafety);
+    fireEvent.change(container.querySelector('input[type="file"]')!, { target: { files: [new File(["pdf"], "cert.pdf", { type: "application/pdf" })] } });
+    expect(await screen.findByText("cert.pdf")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("seller-application-submit"));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
     expect(mocks.upload).toHaveBeenCalledOnce();
-    expect(JSON.parse(submit.mock.calls[0][1].body)).toMatchObject({ foodSafetyLicense: answer, foodSafetyLicenseUrl: answer === "yes" ? "https://example.com/license.pdf" : "", foodEstablishmentCertUrl: "" });
+    expect(body(fetchMock)).toMatchObject({ foodSafetyLicense: "yes", foodSafetyLicenseUrl: "https://files.example/documents/7_cert.pdf" });
   });
 
-  it("re-enables submission after a server error", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, json: async () => ({ error: "Unavailable" }) }));
-    mount();
-    screen.getAllByRole("radio", { name: copy.sellerApp_no }).forEach(radio => fireEvent.click(radio));
+  it("a server error says so and lets them try again", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, json: async () => ({ message: "Unavailable" }) }));
+    sent({ kitchenPreference: "notSure" });
+    fireEvent.click(await screen.findByRole("checkbox", { name: copy.sell_dontHaveYet }));
     fireEvent.click(screen.getByTestId("seller-application-submit"));
-    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith(expect.objectContaining({ variant: "destructive" })));
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith(expect.objectContaining({ variant: "destructive", description: "Unavailable" })));
     await waitFor(() => expect(screen.getByTestId("seller-application-submit")).toBeEnabled());
-    expect(screen.getByRole("button", { name: copy.sellerApp_back })).toBeEnabled();
-  });
-
-  it("gives all certification choices uniform rounded dimensions", () => {
-    mount();
-    screen.getAllByRole("radio").forEach(radio => {
-      expect(radio.closest("label")).toHaveClass("h-11", "w-full", "rounded-xl");
-    });
-  });
-
-  it("disables Back and Submit until submission completes and navigates to success", async () => {
-    let finish!: (response: Response) => void;
-    vi.stubGlobal("fetch", vi.fn(() => new Promise(resolve => { finish = resolve; })));
-    mount();
-    screen.getAllByRole("radio", { name: copy.sellerApp_no }).forEach(radio => fireEvent.click(radio));
-    fireEvent.click(screen.getByTestId("seller-application-submit"));
-    expect(await screen.findByRole("status")).toHaveTextContent(copy.sellerApp_certSubmitting);
-    expect(screen.getByRole("button", { name: copy.sellerApp_back })).toBeDisabled();
-    expect(screen.getByTestId("seller-application-submit")).toBeDisabled();
-    await act(async () => finish({ ok: true, json: async () => ({ id: 1 }) } as Response));
-    await waitFor(() => expect(mocks.navigate).toHaveBeenCalledWith("/success"));
   });
 });
 
-it("uses named site radio controls for kitchen settings", () => {
-  mount(<KitchenPreferenceForm />);
-  const radio = screen.getByRole("radio", { name: copy.sellerApp_kpHomeTitle });
-  fireEvent.click(radio);
-  expect(radio).toHaveAttribute("aria-checked", "true");
-  expect(radio).toHaveClass("rounded-full");
+describe("kitchen step", () => {
+  it("needs a choice; commercial asks which kitchen", async () => {
+    sent({}, <KitchenPreferenceForm />);
+    fireEvent.click(await screen.findByTestId("seller-application-continue"));
+    expect(screen.getByRole("alert")).toHaveTextContent(copy.sell_kitchenRequired);
+    fireEvent.click(screen.getByRole("radio", { name: new RegExp(copy.sell_kitchenCommercial) }));
+    expect(screen.getByRole("radio", { name: copy.sell_kitchenLocalCooks })).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(screen.getByRole("button", { name: copy.sell_foodBaked }));
+    expect(screen.getByRole("button", { name: copy.sell_foodBaked })).toHaveAttribute("aria-pressed", "true");
+  });
 });
 
-it("keeps Cancel out of the form footer and rounds both actions", () => {
-  mount(<ApplicationStepFooter showPrevious continueLabel="Continue" />);
+it("puts Back on the left and the main action on the right", () => {
+  sent({}, <ApplicationStepFooter showPrevious continueLabel="Continue" />);
+  const [back, next] = screen.getAllByRole("button");
+  expect(back).toHaveTextContent(copy.sellerApp_back);
+  expect(next).toHaveTextContent("Continue");
   expect(screen.queryByTestId("seller-application-cancel")).not.toBeInTheDocument();
-  screen.getAllByRole("button").forEach(button => expect(button).toHaveClass("rounded-xl"));
 });

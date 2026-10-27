@@ -46,6 +46,10 @@ export const ApplicationFormProvider: React.FC<{
     feedback: "",
     foodSafetyLicenseUrl: "",
     foodEstablishmentCertUrl: "",
+    contactMethod: undefined,
+    contactTime: undefined,
+    commercialKitchen: undefined,
+    foodTypes: [],
   });
 
   const updateFormData = (data: Partial<ApplicationFormData>) => {

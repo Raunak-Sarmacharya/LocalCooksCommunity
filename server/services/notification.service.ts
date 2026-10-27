@@ -856,13 +856,11 @@ async function notifySellerApplicationSubmitted(data: { chefId: number; applicat
     chefId: data.chefId,
     type: 'application_pending',
     priority: 'normal',
-    title: 'Seller application received',
-    message: data.hasDocuments
-      ? 'We received your seller application and documents. Track its review in My Applications.'
-      : 'We received your seller application. Upload your documents in My Applications to complete it.',
+    title: 'Seller application sent',
+    message: "We got your application. We'll get in touch within 24–48 hours to talk through next steps.",
     metadata: { applicationId: data.applicationId, workflow: 'seller' },
-    actionUrl: chefDashboardView('applications', data.hasDocuments ? undefined : { action: 'documents' }),
-    actionLabel: data.hasDocuments ? 'Track application' : 'Upload documents',
+    actionUrl: chefDashboardView('applications'),
+    actionLabel: 'See next steps',
   });
 }
 
@@ -873,11 +871,11 @@ async function notifySellerApplicationDecision(data: { chefId: number; applicati
     priority: 'high',
     title: data.status === 'approved' ? 'Seller application approved' : 'Seller application not approved',
     message: data.status === 'approved'
-      ? 'Your seller application was approved. Open Food Safety Training for your next step.'
-      : 'Your seller application was not approved. Open My Applications to review its status.',
+      ? "You're approved to sell on Local Cooks. Next, we set up your shop and email you how to sign in."
+      : "We can't approve your seller application right now. Open Selling for details.",
     metadata: { applicationId: data.applicationId, workflow: 'seller' },
-    actionUrl: chefDashboardView(data.status === 'approved' ? 'training' : 'applications'),
-    actionLabel: data.status === 'approved' ? 'Start training' : 'View application',
+    actionUrl: chefDashboardView('applications'),
+    actionLabel: data.status === 'approved' ? 'See next steps' : 'View application',
   });
 }
 
@@ -887,10 +885,23 @@ async function notifySellerDocumentRejected(data: { chefId: number; applicationI
     type: 'application_pending',
     priority: 'high',
     title: 'Seller document needs replacement',
-    message: `${data.documentName} was not approved.${data.feedback ? ` Feedback: ${data.feedback}` : ''} Upload a replacement in My Applications.`,
+    message: `${data.documentName} wasn't accepted.${data.feedback ? ` ${data.feedback}` : ''} Upload another file in Selling.`,
     metadata: { applicationId: data.applicationId, workflow: 'seller', documentName: data.documentName },
-    actionUrl: chefDashboardView('applications', { action: 'documents' }),
-    actionLabel: 'Replace document',
+    actionUrl: chefDashboardView('applications'),
+    actionLabel: 'Upload another file',
+  });
+}
+
+async function notifySellerDocumentsRequested(data: { chefId: number; applicationId: number; documentNames: string[]; note?: string | null }) {
+  return createChefNotification({
+    chefId: data.chefId,
+    type: 'application_pending',
+    priority: 'high',
+    title: 'Documents requested',
+    message: `Local Cooks asked for: ${data.documentNames.join(', ')}.${data.note ? ` ${data.note}` : ''}`,
+    metadata: { applicationId: data.applicationId, workflow: 'seller' },
+    actionUrl: chefDashboardView('applications'),
+    actionLabel: 'Upload',
   });
 }
 
@@ -1448,6 +1459,7 @@ export const notificationService = {
   notifySellerApplicationSubmitted,
   notifySellerApplicationDecision,
   notifySellerDocumentRejected,
+  notifySellerDocumentsRequested,
   broadcastChefAnnouncement,
   
   // Storage Checkout

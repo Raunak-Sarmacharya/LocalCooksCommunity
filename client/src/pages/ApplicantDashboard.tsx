@@ -30,7 +30,6 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import KitchenDiscovery from "@/components/kitchen-application/KitchenDiscovery";
 import TrainingOverviewPanel from "@/components/training/TrainingOverviewPanel";
 import ApplicationFormPanel from "@/components/application/ApplicationFormPanel";
-import { DocumentManagementModal } from "@/components/document-verification/DocumentUpload";
 import { leaveSellerApplication } from "@/components/application/ApplicationFormContext";
 import ChefSupportPage from "@/components/chef/ChefSupportPage";
 import { IssuesAndRefunds } from "@/components/chef/IssuesAndRefunds";
@@ -60,10 +59,6 @@ export default function ApplicantDashboard() {
   const user = authUser as UserWithFlags | null;
   const [showVendorPortalPopup, setShowVendorPortalPopup] = useState(false);
   const [showChatDialog, setShowChatDialog] = useState(false);
-  const journeyDocumentModalPendingRef = useRef(
-    window.sessionStorage.getItem("localcooks:seller-journey-result") === "submitted" ||
-      new URLSearchParams(window.location.search).get("journey") === "submitted"
-  );
 
   useEffect(() => {
     const result = window.sessionStorage.getItem("localcooks:seller-journey-result");
@@ -120,10 +115,8 @@ export default function ApplicantDashboard() {
     }
   };
 
-  // Application form state. Document management stays on the list and opens as a modal.
-  const [applicationViewMode, setApplicationViewMode] = useState<'list' | 'form' | 'documents'>(() =>
-    journeyDocumentModalPendingRef.current ? "documents" : "list"
-  );
+  // Selling shows the tracker ("list") or the application form; documents upload on the tracker itself.
+  const [applicationViewMode, setApplicationViewMode] = useState<'list' | 'form'>("list");
   const applicationLeaveRef = useRef<(() => void) | null>(null);
   const [applicationLeaveOpen, setApplicationLeaveOpen] = useState(false);
   const [applicationBusy, setApplicationBusy] = useState(false);
@@ -191,16 +184,8 @@ export default function ApplicantDashboard() {
 
         // If navigating to applications with action=new, open the form
         if (view === 'applications') {
-          if (action === 'new') {
-            setApplicationViewMode('form');
-          } else if (action === 'documents') {
-            setApplicationViewMode('documents');
-          } else if (journeyDocumentModalPendingRef.current) {
-            journeyDocumentModalPendingRef.current = false;
-            setApplicationViewMode('documents');
-          } else {
-            setApplicationViewMode('list');
-          }
+          // Old links (?action=documents, ?sent=1 after sending) land on the tracker.
+          setApplicationViewMode(action === 'new' ? 'form' : 'list');
         }
       } else if (!view) {
         // No ?view param — user is on the bare /dashboard URL (e.g. after
@@ -490,17 +475,8 @@ export default function ApplicantDashboard() {
    * - Receive login credentials via email
    * - Start selling on the platform
    */
-  const isSellerApplicationFullyApproved = useMemo(() => {
-    const mostRecentApp = getMostRecentApplication();
-    if (!mostRecentApp) return false;
-
-    const app = mostRecentApp as Application;
-
-    const fslApproved = app.foodSafetyLicenseStatus === "approved";
-    const fecApproved = !app.foodEstablishmentCertUrl || app.foodEstablishmentCertStatus === "approved";
-
-    return app.status === "approved" && fslApproved && fecApproved;
-  }, [getMostRecentApplication]);
+  // Approval no longer waits on documents (owner, Oct 27): Local Cooks may approve first and ask for them later.
+  const isSellerApplicationFullyApproved = getMostRecentApplication()?.status === "approved";
 
   // Shop status to verify if shop is created in case application flag is out of sync
   const { data: shopStatus } = useShopStatus(isSellerApplicationFullyApproved);
@@ -680,6 +656,8 @@ export default function ApplicantDashboard() {
     />
   );
 
+  // A second application can't start while one is open: "New application" links show the tracker instead.
+  const hasActiveSellerApplication = (userDisplayInfo.applications || []).some((app: Application) => app.status === "inReview" || app.status === "approved");
   const applicationsTabContent = userDisplayInfo.isLoading ? (
     <div role="status" className="flex min-h-48 items-center justify-center gap-3 rounded-xl border p-6">
       <Loader2 className="size-5 animate-spin" aria-hidden />
@@ -690,22 +668,16 @@ export default function ApplicantDashboard() {
       <p>{userDisplayInfo.error.message}</p>
       <Button className="rounded-xl" variant="outline" onClick={() => refetchApplications()}>Retry</Button>
     </div>
-  ) : applicationViewMode === "form" ? (
+  ) : applicationViewMode === "form" && !hasActiveSellerApplication ? (
     <ApplicationFormPanel onBack={() => requestLeaveApplication(() => setApplicationViewMode("list"))} onBusyChange={setApplicationBusy} />
   ) : (
     <SellerApplicationTabContent
       applications={userDisplayInfo.applications || []}
-      kitchenApplications={typedKitchenApplications}
-      publicKitchens={publicKitchens}
+      showKitchenCard={typedKitchenApplications.length === 0}
       onStartApplication={() => setApplicationViewMode("form")}
-      onManageDocuments={() => setApplicationViewMode("documents")}
       onCancelApplication={handleCancelApplication}
-      onDiscoverKitchens={() => {
-        setActiveTab("discover-kitchens");
-      }}
-      onBookKitchen={(locationId) => {
-        openBookingPage(locationId);
-      }}
+      onDiscoverKitchens={() => setActiveTab("discover-kitchens")}
+      onOpenAccounts={() => setActiveTab("my-account")}
     />
   );
 
@@ -878,7 +850,7 @@ export default function ApplicantDashboard() {
           onClick: () => guardedApplicationNavigate(() => setApplicationViewMode('list')),
           navId: "applications" as const,
         },
-        { label: t("shellNewApplication") },
+        { label: t("sell_crumbApplication") },
       ];
     }
 
@@ -1057,19 +1029,6 @@ export default function ApplicantDashboard() {
         </DialogContent>
       </Dialog>
 
-      <DocumentManagementModal
-        open={applicationViewMode === "documents"}
-        onOpenChange={(open) => {
-          if (open) {
-            setApplicationViewMode("documents");
-            return;
-          }
-          setApplicationViewMode("list");
-          const url = new URL(window.location.href);
-          url.searchParams.delete("action");
-          window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
-        }}
-      />
 
       {/* Global Modals for Chat */}
       <Dialog open={showChatDialog} onOpenChange={setShowChatDialog}>

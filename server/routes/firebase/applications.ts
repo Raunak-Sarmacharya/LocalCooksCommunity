@@ -18,6 +18,7 @@ import { fromZodError } from 'zod-validation-error';
 import { insertApplicationSchema } from '@shared/schema';
 import { requireFirebaseAuthWithUser } from '../../firebase-auth-middleware';
 import { upload, uploadToBlob } from '../../fileUpload';
+import { isOwnDocumentUpload } from '../../r2-storage';
 import { applicationService } from '../../domains/applications/application.service';
 import { CreateApplicationDTO } from '../../domains/applications/application.types';
 import { DomainError } from '../../shared/errors/domain-error';
@@ -28,14 +29,25 @@ import { eq, and, isNotNull, ne } from 'drizzle-orm';
 import { notificationService } from '../../services/notification.service';
 import {
     sendEmail,
-    generateApplicationWithDocumentsEmail,
-    generateApplicationWithoutDocumentsEmail,
+    generateSellerApplicationSentEmail,
     generateStatusChangeEmail,
     generateNewSellerApplicationAdminEmail,
     getSubdomainUrl,
 } from '../../email';
 
 const router = Router();
+
+/** A document already uploaded through /api/firebase/upload-file: accepted only if it is this chef's own upload. */
+function ownDocumentUrls(body: Record<string, unknown>, userId: number): { foodSafetyLicenseUrl?: string; foodEstablishmentCertUrl?: string } | null {
+    const urls: { foodSafetyLicenseUrl?: string; foodEstablishmentCertUrl?: string } = {};
+    for (const key of ['foodSafetyLicenseUrl', 'foodEstablishmentCertUrl'] as const) {
+        const value = typeof body[key] === 'string' ? (body[key] as string).trim() : '';
+        if (!value) continue;
+        if (!isOwnDocumentUpload(value, userId)) return null;
+        urls[key] = value;
+    }
+    return urls;
+}
 
 async function notifyAdminsAboutSellerDocuments(application: { id: number; fullName: string | null; email: string | null }) {
     const admins = await db.select({ id: users.id, email: users.username }).from(users)
@@ -105,15 +117,20 @@ router.post('/firebase/applications',
                 });
             }
 
-            // Build application data
+            // Build application data. The email is the verified sign-in email, never one typed into the form.
+            const commercial = parsedData.data.kitchenPreference === 'commercial';
             const applicationData: CreateApplicationDTO = {
                 userId: userId,
                 fullName: parsedData.data.fullName,
-                email: parsedData.data.email,
+                email: req.firebaseUser?.email || parsedData.data.email,
                 phone: normalizePhoneForStorage(parsedData.data.phone) || parsedData.data.phone,
                 foodSafetyLicense: parsedData.data.foodSafetyLicense,
                 foodEstablishmentCert: parsedData.data.foodEstablishmentCert,
                 kitchenPreference: parsedData.data.kitchenPreference,
+                commercialKitchen: commercial ? parsedData.data.commercialKitchen : undefined,
+                contactMethod: parsedData.data.contactMethod,
+                contactTime: parsedData.data.contactTime,
+                foodTypes: parsedData.data.foodTypes ?? [],
                 feedback: parsedData.data.feedback,
                 foodSafetyLicenseUrl: undefined,
                 foodEstablishmentCertUrl: undefined
@@ -135,7 +152,7 @@ router.post('/firebase/applications',
                         logger.info(`✅ Food safety license uploaded: ${applicationData.foodSafetyLicenseUrl}`);
                     } catch (uploadError) {
                         logger.error('❌ Failed to upload food safety license:', uploadError);
-                        // Continue without the file - don't fail the entire submission
+                        return res.status(502).json({ error: 'UPLOAD_FAILED', message: 'We couldn’t upload your food safety certificate. Please try again.' });
                     }
                 }
 
@@ -151,17 +168,15 @@ router.post('/firebase/applications',
                         logger.info(`✅ Food establishment cert uploaded: ${applicationData.foodEstablishmentCertUrl}`);
                     } catch (uploadError) {
                         logger.error('❌ Failed to upload food establishment cert:', uploadError);
+                        return res.status(502).json({ error: 'UPLOAD_FAILED', message: 'We couldn’t upload your kitchen document. Please try again.' });
                     }
                 }
             }
 
-            // Handle URL inputs from form (fallback if no files uploaded)
-            if (req.body.foodSafetyLicenseUrl && !applicationData.foodSafetyLicenseUrl) {
-                applicationData.foodSafetyLicenseUrl = req.body.foodSafetyLicenseUrl;
-            }
-            if (req.body.foodEstablishmentCertUrl && !applicationData.foodEstablishmentCertUrl) {
-                applicationData.foodEstablishmentCertUrl = req.body.foodEstablishmentCertUrl;
-            }
+            const uploadedUrls = ownDocumentUrls(req.body, userId);
+            if (!uploadedUrls) return res.status(400).json({ error: 'INVALID_DOCUMENT', message: 'Upload documents with the upload button.' });
+            applicationData.foodSafetyLicenseUrl ||= uploadedUrls.foodSafetyLicenseUrl;
+            applicationData.foodEstablishmentCertUrl ||= uploadedUrls.foodEstablishmentCertUrl;
 
             // Create the application via Service
             const application = await applicationService.submitApplication(applicationData);
@@ -331,13 +346,9 @@ router.patch('/firebase/applications/:id/documents',
                 }
             }
 
-            // Handle URL inputs from JSON body
-            if (req.body.foodSafetyLicenseUrl && !updates.foodSafetyLicenseUrl) {
-                updates.foodSafetyLicenseUrl = req.body.foodSafetyLicenseUrl;
-            }
-            if (req.body.foodEstablishmentCertUrl && !updates.foodEstablishmentCertUrl) {
-                updates.foodEstablishmentCertUrl = req.body.foodEstablishmentCertUrl;
-            }
+            const uploadedUrls = ownDocumentUrls(req.body, userId);
+            if (!uploadedUrls) return res.status(400).json({ error: 'Upload documents with the upload button.' });
+            for (const [key, value] of Object.entries(uploadedUrls)) if (!updates[key]) updates[key] = value;
 
             if (Object.keys(updates).length === 0) {
                 return res.status(400).json({ error: 'No documents provided for update' });
@@ -380,6 +391,32 @@ router.patch('/firebase/applications/:id/documents',
         }
     }
 );
+
+/**
+ * PATCH /api/firebase/applications/:id/details
+ * While Local Cooks is still reviewing: change how and when to reach them, the kitchen setting and what they sell.
+ */
+const detailsSchema = insertApplicationSchema.pick({ contactMethod: true, contactTime: true, kitchenPreference: true, commercialKitchen: true, foodTypes: true }).partial();
+router.patch('/firebase/applications/:id/details', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
+    try {
+        const applicationId = parseInt(req.params.id);
+        const parsed = detailsSchema.safeParse(req.body);
+        if (isNaN(applicationId) || !parsed.success) return res.status(400).json({ error: 'Invalid request' });
+        const application = await applicationService.getApplicationById(applicationId);
+        if (application.userId !== req.neonUser!.id) return res.status(404).json({ error: 'Application not found' });
+        if (application.status !== 'inReview') return res.status(409).json({ error: 'This application can no longer be changed.' });
+        const kitchenPreference = parsed.data.kitchenPreference ?? application.kitchenPreference;
+        const updated = await applicationService.updateApplication(applicationId, {
+            ...parsed.data,
+            commercialKitchen: kitchenPreference === 'commercial' ? (parsed.data.commercialKitchen ?? application.commercialKitchen) : null,
+        });
+        res.json(updated);
+    } catch (error) {
+        logger.error('❌ Error updating application details:', error);
+        if (error instanceof DomainError) return res.status(error.statusCode).json({ error: error.code, message: error.message });
+        res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Failed to update application' });
+    }
+});
 
 /**
  * PATCH /api/firebase/applications/:id/cancel
@@ -470,40 +507,12 @@ function cleanupUploadedFiles(req: Request): void {
     }
 }
 
-/**
- * Helper: Send appropriate email notification for new application
- */
-async function sendApplicationEmail(application: { 
-    id: number; 
-    email?: string | null; 
-    fullName?: string | null; 
-    foodSafetyLicenseUrl?: string | null; 
-    foodEstablishmentCertUrl?: string | null; 
-}): Promise<void> {
+/** Helper: tell the chef the application arrived and how we'll reach them. */
+async function sendApplicationEmail(application: { id: number; email?: string | null; fullName?: string | null; contactMethod?: string | null; contactTime?: string | null }): Promise<void> {
     try {
         if (!application.email) return;
-
-        const hasDocuments = !!(application.foodSafetyLicenseUrl || application.foodEstablishmentCertUrl);
-
-        if (hasDocuments) {
-            const emailContent = generateApplicationWithDocumentsEmail({
-                fullName: application.fullName || 'Applicant',
-                email: application.email
-            });
-
-            await sendEmail(emailContent, {
-                trackingId: `app_with_docs_${application.id}_${Date.now()}`
-            });
-        } else {
-            const emailContent = generateApplicationWithoutDocumentsEmail({
-                fullName: application.fullName || 'Applicant',
-                email: application.email
-            });
-
-            await sendEmail(emailContent, {
-                trackingId: `app_no_docs_${application.id}_${Date.now()}`
-            });
-        }
+        await sendEmail(generateSellerApplicationSentEmail({ fullName: application.fullName || 'there', email: application.email,
+            contactMethod: application.contactMethod, contactTime: application.contactTime }), { trackingId: `app_sent_${application.id}_${Date.now()}` });
     } catch (emailError) {
         logger.error('Error sending application email:', emailError);
     }

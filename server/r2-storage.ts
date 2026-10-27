@@ -34,6 +34,15 @@ function getR2PublicUrl(): string {
   return '';
 }
 
+/** True only for a document this user uploaded through our upload route (R2, or the dev disk fallback). */
+export function isOwnDocumentUpload(url: string, userId: number): boolean {
+  const own = `documents/${userId}_`;
+  const base = getR2PublicUrl().replace(/\/$/, '');
+  if (url.includes("..")) return false;
+  if (base && url.startsWith(`${base}/${own}`)) return true;
+  return url.startsWith(`/api/files/${own}`);
+}
+
 // R2 endpoint (Cloudflare R2 uses a custom endpoint)
 function getR2Endpoint(): string {
   const config = getR2Config();

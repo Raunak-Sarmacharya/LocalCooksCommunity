@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { phoneNumberSchema } from "@shared/phone-validation";
+import { SELLER_COMMERCIAL_KITCHENS, SELLER_CONTACT_METHODS, SELLER_CONTACT_TIMES, SELLER_FOOD_TYPES } from "@shared/schema";
 
 // Create a schema for the application form
 export const applicationSchema = z.object({
@@ -19,6 +20,11 @@ export const applicationSchema = z.object({
   // Document URL fields (optional)
   foodSafetyLicenseUrl: z.string().optional(),
   foodEstablishmentCertUrl: z.string().optional(),
+  // For the call after applying, and what they plan to sell (never blocking)
+  contactMethod: z.enum(SELLER_CONTACT_METHODS).optional(),
+  contactTime: z.enum(SELLER_CONTACT_TIMES).optional(),
+  commercialKitchen: z.enum(SELLER_COMMERCIAL_KITCHENS).optional(),
+  foodTypes: z.array(z.enum(SELLER_FOOD_TYPES)).optional(),
 });
 
 export type ApplicationFormData = z.infer<typeof applicationSchema>;

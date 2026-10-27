@@ -136,7 +136,7 @@
   "kitchenCount": "{count, plural, =0 {No kitchens} one {# kitchen} other {# kitchens}}",
   "logoAlt": "{name} logo",
   "viewAvailability": "View Availability",
-  "sellerStep1Title": "Apply in about 10 minutes",
+  "sellerStep1Title": "Apply in about 5 minutes",
   "sellerStep1Detail": "Personal details, kitchen setting, and certifications.",
   "sellerStep2Title": "We review within 24–48 hours",
   "sellerStep2Detail": "Most reviews finish quickly. We email you when status changes.",

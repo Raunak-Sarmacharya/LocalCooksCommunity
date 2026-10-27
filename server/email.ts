@@ -1111,7 +1111,7 @@ export const generateStatusChangeEmail = (
   const getMessage = (status: string) => {
     switch (status) {
       case 'approved':
-        return 'Your application has been approved. You now have full access to the Local Cooks platform, including our food safety training program.';
+        return 'You&#8217;re approved to sell on Local Cooks. Next, we set up your shop and email you how to sign in to it.';
       case 'rejected':
         return 'Thank you for your application. After careful review, we are unable to move forward at this time. We appreciate your interest in Local Cooks.';
       case 'cancelled':
@@ -1164,25 +1164,7 @@ export const generateStatusChangeEmail = (
         ${getStatusBadge(applicationData.status)}
       </div>
       ${applicationData.status === 'approved' ? `
-      <p class="message" style="margin-top: 24px; margin-bottom: 8px; font-weight: 600; color: #1e293b;">Your next step:</p>
-      <p class="message" style="margin-bottom: 10px;">Complete your food safety training to unlock all features. From your dashboard you can:</p>
-      <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0 0 24px 4px;">
-        <tr>
-          <td style="padding: 6px 10px 6px 0; vertical-align: top; width: 16px; color: hsl(347, 91%, 55%); font-size: 16px; line-height: 24px;">&#8226;</td>
-          <td style="padding: 6px 0; font-size: 15px; line-height: 1.65; color: #475569;">Access all 22 food safety training videos</td>
-        </tr>
-        <tr>
-          <td style="padding: 6px 10px 6px 0; vertical-align: top; width: 16px; color: hsl(347, 91%, 55%); font-size: 16px; line-height: 24px;">&#8226;</td>
-          <td style="padding: 6px 0; font-size: 15px; line-height: 1.65; color: #475569;">Earn your Local Cooks certification and HACCP fundamentals</td>
-        </tr>
-        <tr>
-          <td style="padding: 6px 10px 6px 0; vertical-align: top; width: 16px; color: hsl(347, 91%, 55%); font-size: 16px; line-height: 24px;">&#8226;</td>
-          <td style="padding: 6px 0; font-size: 15px; line-height: 1.65; color: #475569;">Build customer trust with a verified status on your profile</td>
-        </tr>
-      </table>
-      <div style="margin: 16px 0 0 0; text-align: center;">
-        <a href="${getDashboardUrl()}?view=training" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Start Food Safety Training</a>
-      </div>` : ''}${applicationData.status === 'rejected' ? `
+      <div style="margin: 24px 0 0; text-align: center;"><a href="${getDashboardUrl()}?view=applications" class="cta-button">See next steps</a></div>` : ''}${applicationData.status === 'rejected' ? `
       <div style="margin: 24px 0 0; text-align: center;"><a href="${getDashboardUrl()}?view=applications" class="cta-button">View Application</a></div>` : ''}${applicationData.status === 'cancelled' ? `
       <p class="message" style="margin-top: 24px; margin-bottom: 20px;">You can submit a new application anytime when you&#8217;re ready to join Local Cooks.</p>
       <div style="margin: 16px 0 0 0; text-align: center;">
@@ -1210,13 +1192,7 @@ ${getMessage(applicationData.status).replace(/&#8217;/g, "'")}
 
 Status: ${statusLabel}
 
-${applicationData.status === 'approved' ? `Your next step: Complete your food safety training to unlock all features.
-
-• Access all 22 food safety training videos
-• Earn your Local Cooks certification and HACCP fundamentals
-• Build customer trust with a verified status
-
-Start training: ${getDashboardUrl()}?view=training` : ''}${applicationData.status === 'rejected' ? `View your application: ${getDashboardUrl()}?view=applications` : ''}${applicationData.status === 'cancelled' ? `You can submit a new application anytime: ${getWebsiteUrl()}/apply` : ''}
+${applicationData.status === 'approved' ? `See next steps: ${getDashboardUrl()}?view=applications` : ''}${applicationData.status === 'rejected' ? `View your application: ${getDashboardUrl()}?view=applications` : ''}${applicationData.status === 'cancelled' ? `You can submit a new application anytime: ${getWebsiteUrl()}/apply` : ''}
 
 If you have any questions, contact us at support@localcooks.ca
 
@@ -1355,152 +1331,6 @@ The Local Cooks Team
     }
   };
 };
-
-// Generate application submission email for applications WITH documents
-export const generateApplicationWithDocumentsEmail = (
-  applicationData: {
-    fullName: string;
-    email: string;
-  }
-): EmailContent => {
-  const firstName = applicationData.fullName.split(' ')[0];
-
-  const html = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Application and Documents Received</title>
-  ${getUniformEmailStyles()}
-</head>
-<body>
-  <div class="email-container">
-    <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
-    </div>
-    <div class="content">
-      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
-      <p class="message" style="margin-bottom: 20px;">Thank you for submitting your application to Local Cooks. We&#8217;ve received both your application and supporting documents.</p>
-      <p class="message" style="margin-bottom: 20px;">Our team will review everything together. You&#8217;ll receive another email once the review is complete, typically within 2&#8211;3 business days.</p>
-      <div style="margin: 16px 0 4px 0; text-align: center;">
-        <span style="display: inline-block; padding: 4px 12px; background: #fffbeb; color: #d97706; border: 1px solid #fef3c7; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">&#9679; Under Review</span>
-      </div>
-      <div style="margin: 16px 0 0; text-align: center;"><a href="${getDashboardUrl()}?view=applications" class="cta-button">Track Application</a></div>
-      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
-      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
-        <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
-        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
-      </div>
-    </div>
-    <div class="footer">
-      <div class="divider"></div>
-      <p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks</p>
-    </div>
-  </div>
-</body>
-</html>`;
-
-  const text = `
-Hi ${firstName},
-
-Thank you for submitting your application to Local Cooks. We've received both your application and supporting documents.
-
-Our team will review everything together. You'll receive another email once the review is complete, typically within 2–3 business days.
-
-Status: Under Review
-
-Track your application: ${getDashboardUrl()}?view=applications
-
-If you have any questions, contact us at support@localcooks.ca
-
-Best,
-The Local Cooks Team
-
-© ${new Date().getFullYear()} Local Cooks
-  `.trim();
-
-  return {
-    to: applicationData.email,
-    subject: 'Application and Documents Received',
-    text,
-    html: prepareEmailHtml(html)
-  };
-};
-
-// Generate application submission email for applications WITHOUT documents
-export const generateApplicationWithoutDocumentsEmail = (
-  applicationData: {
-    fullName: string;
-    email: string;
-  }
-): EmailContent => {
-  const firstName = applicationData.fullName.split(' ')[0];
-
-  const html = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Application Received - Next Steps</title>
-  ${getUniformEmailStyles()}
-</head>
-<body>
-  <div class="email-container">
-    <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
-    </div>
-    <div class="content">
-      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
-      <p class="message" style="margin-bottom: 20px;">Thank you for submitting your application to Local Cooks. We&#8217;ve received it and it will be reviewed soon.</p>
-      <p class="message" style="margin-bottom: 8px; font-weight: 600; color: #1e293b;">Next step:</p>
-      <p class="message" style="margin-bottom: 20px;">Please visit your dashboard to upload the required documents to complete your application.</p>
-      <div style="margin: 16px 0 4px 0; text-align: center;">
-        <span style="display: inline-block; padding: 4px 12px; background: #fffbeb; color: #d97706; border: 1px solid #fef3c7; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">&#9679; Documents Required</span>
-      </div>
-      <div style="margin: 16px 0 0 0; text-align: center;">
-        <a href="${getDashboardUrl()}?view=applications&amp;action=documents" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Upload Documents</a>
-      </div>
-      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
-      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
-        <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
-        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
-      </div>
-    </div>
-    <div class="footer">
-      <div class="divider"></div>
-      <p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks</p>
-    </div>
-  </div>
-</body>
-</html>`;
-
-  const text = `
-Hi ${firstName},
-
-Thank you for submitting your application to Local Cooks. We've received it and it will be reviewed soon.
-
-Next step: Please visit your dashboard to upload the required documents to complete your application.
-
-Upload documents: ${getDashboardUrl()}?view=applications&action=documents
-
-If you have any questions, contact us at support@localcooks.ca
-
-Best,
-The Local Cooks Team
-
-© ${new Date().getFullYear()} Local Cooks
-  `.trim();
-
-  return {
-    to: applicationData.email,
-    subject: 'Application Received - Next Steps',
-    text,
-    html: prepareEmailHtml(html)
-  };
-};
-
 
 // Generate document verification status change email with unified design
 export const generateDocumentStatusChangeEmail = (
@@ -4511,6 +4341,21 @@ export const generateTourRejectedChefEmail = (data: TourRequestEmailDetails & { 
       ...(data.managerNotes ? [{ label: 'Manager notes', value: data.managerNotes }] : [])],
     actionLabel: 'View your tour', actionUrl: getSubdomainUrl('chef') + '/dashboard?view=viewings&viewing=' + data.tourId,
     note: data.cancelled ? 'Saved calendar events do not update automatically; remove the cancelled tour from your calendar.' : undefined });
+
+const SELLER_CONTACT_WORDS: Record<string, string> = { call: 'call you', text: 'text you', email: 'email you' };
+const SELLER_TIME_WORDS: Record<string, string> = { morning: ', in the morning,', afternoon: ', in the afternoon,', evening: ', in the evening,' };
+
+/** Seller application sent (owner, Oct 27): the next step is a call, so say how and when we'll reach them. */
+export const generateSellerApplicationSentEmail = (data: { fullName: string; email: string; contactMethod?: string | null; contactTime?: string | null }): EmailContent =>
+  renderTransactionalEmail({ to: data.email, recipientName: data.fullName.split(' ')[0] || data.fullName, subject: 'Application sent',
+    message: `Thanks for applying to sell on Local Cooks. We'll ${SELLER_CONTACT_WORDS[data.contactMethod || ''] || 'get in touch'} within 24–48 hours${SELLER_TIME_WORDS[data.contactTime || ''] || ''} to talk about your food, your kitchen and what happens next.`,
+    facts: [], actionLabel: 'See next steps', actionUrl: `${getDashboardUrl()}?view=applications` });
+
+/** Local Cooks asked for documents after the call. */
+export const generateSellerDocumentsRequestedEmail = (data: { fullName: string; email: string; documentNames: string[]; note?: string | null }): EmailContent =>
+  renderTransactionalEmail({ to: data.email, recipientName: data.fullName.split(' ')[0] || data.fullName, subject: 'Documents for your Local Cooks application',
+    message: `To set up your shop, please upload:\n${data.documentNames.map(name => `• ${name}`).join('\n')}${data.note ? `\n\n${data.note}` : ''}`,
+    facts: [], actionLabel: 'Upload documents', actionUrl: `${getDashboardUrl()}?view=applications` });
 
 const LOCAL_COOKS_COMMUNICATION_NOTE = 'For your safety, always communicate through Local Cooks so you can refer back to your messages and arrangements.';
 

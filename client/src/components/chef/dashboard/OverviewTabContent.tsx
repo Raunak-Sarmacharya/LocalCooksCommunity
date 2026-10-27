@@ -11,7 +11,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { Check } from "lucide-react";
 import { openChefShopHome, useEarningsSummary, useShopStatus } from "@/components/chef/seller-revenue/hooks/useSellerRevenue";
-import { documentToneFromLabel, getKitchenDisplayStatus, isActiveKitchenApplication } from "@/components/chef/applications/status";
+import { getKitchenDisplayStatus, isActiveKitchenApplication } from "@/components/chef/applications/status";
+import { InfoChip } from "@/components/chef/info-chip";
+import { sellerProgress } from "@shared/seller-application";
 import { KitchenAccessTracker } from "@/components/chef/applications/KitchenAccessTracker";
 import type {
   AnyApplication,
@@ -38,7 +40,7 @@ interface OverviewTabContentProps {
   getApplicationStatus: () => string | null;
   getDocumentStatus: () => string;
   onSetActiveTab: (tab: string) => void;
-  onSetApplicationViewMode: (mode: "list" | "form" | "documents") => void;
+  onSetApplicationViewMode: (mode: "list" | "form") => void;
   isSellerApplicationFullyApproved?: boolean;
   isShopCreated?: boolean;
   /** True while applications, kitchen access or bookings are still loading; shows skeletons instead of empty states. */
@@ -135,31 +137,6 @@ export default function OverviewTabContent({
         cta: t('ovReviewTour'), onClick: () => navigate(`/dashboard?view=viewings&viewing=${tour.id}`) });
     }
 
-    const docTone = documentToneFromLabel(documentStatus);
-    if (latestApp && docTone === "danger") {
-      items.push({
-        id: "docs-rejected",
-        title: t("ovDocsRejectedTitle"),
-        description: t("ovDocsRejectedDesc"),
-        cta: t("ovUpdateCta"),
-        onClick: () => {
-          onSetApplicationViewMode("documents");
-          onSetActiveTab("applications");
-        },
-      });
-    } else if (latestApp && docTone === "warning") {
-      items.push({
-        id: "docs-needed",
-        title: t("ovDocsNeededTitle"),
-        description: documentStatus,
-        cta: t("ovUploadCta"),
-        onClick: () => {
-          onSetApplicationViewMode("documents");
-          onSetActiveTab("applications");
-        },
-      });
-    }
-
     kitchenDisplays
       .filter((item) => item.display.actionKind === "complete-step")
       .slice(0, 2)
@@ -172,16 +149,6 @@ export default function OverviewTabContent({
           onClick: () => navigate(`/dashboard?view=kitchen-requests&application=${app.id}`),
         });
       });
-
-    if (showSellerAccount && shopStatus && !shopStatus.linked) {
-      items.push({
-        id: "stripe",
-        title: t("ovLinkStripeTitle"),
-        description: t("ovLinkStripeDesc"),
-        cta: t("ovLinkCta"),
-        onClick: () => onSetActiveTab("my-account"),
-      });
-    }
 
     return items
       .filter((item) => item.id !== "training" && !/train/i.test(item.title));
@@ -302,17 +269,20 @@ export default function OverviewTabContent({
       waiting: !hasApprovedKitchen && kitchenDisplays.some(({ display }) => display.actionKind === "wait") && !kitchenDisplays.some(({ display }) => display.actionKind === "complete-step") },
     { done: (enrichedBookings?.length ?? 0) > 0, title: t("homeStepBook"), hint: t("homeStepBookHint") },
   ];
-  const sellerApproved = latestApp?.status === "approved";
-  const sellingSteps = [
-    { done: Boolean(latestApp), title: t("homeStepApply"), hint: t("homeStepApplyHint"), action: { label: t("homeStartApplication"), onClick: () => { onSetApplicationViewMode("form"); onSetActiveTab("applications"); } } },
-    { done: sellerApproved, title: t("homeStepApproved"), hint: t("homeStepApprovedHint") },
-    { optional: true, done: trainingStatusLabel === "Completed" || trainingStatusLabel === "trainingCompleted", title: t("homeStepTraining"), hint: t("homeStepTrainingHint"), action: { label: t("homeOpenTraining"), onClick: () => onSetActiveTab("training") } },
-  ];
+  // Selling: the same six steps as Selling › Getting started (owner mock, Oct 27); this card shows where they are.
+  const sellerApp = latestApp && latestApp.status !== "cancelled" ? latestApp : null;
+  const selling = sellerApp ? sellerProgress(sellerApp, { stripeConnected: Boolean(shopStatus?.phpShopStripeAccountId) }) : null;
+  const st = t as unknown as (key: string, options?: Record<string, unknown>) => string;
+  const openSelling = () => { onSetApplicationViewMode("list"); onSetActiveTab("applications"); };
+  const sellingCard = !wantsSelling || selling?.outcome === "rejected" || selling?.current === "open" ? null
+    : !selling ? { chip: null, line: t("sell_homeApply"), action: { label: t("sell_startApplication"), onClick: () => { onSetApplicationViewMode("form"); onSetActiveTab("applications"); } } }
+    : selling.current === "documents" && selling.owed.length ? { chip: t("sell_homeChip_owed"), line: st("sell_homeOwed", { documents: selling.owed.map((doc) => st(`sell_doc_${doc.kind}`)).join(", ") }), action: { label: t("sell_upload"), onClick: openSelling } }
+    : selling.current === "paid" ? { chip: t("sell_homeChip_paid"), line: t("sell_paid_noteCurrent"), action: { label: t("sell_paid_cta"), onClick: () => onSetActiveTab("my-account") } }
+    : { chip: st(`sell_homeChip_${selling.current}`), line: st(`sell_lede_${selling.current}`), action: { label: t("sell_seeNextSteps"), onClick: openSelling, quiet: true } };
   // One checklist per path (owner, Oct 25): each closes on its own once its required steps are done.
   const checklists = [
     ...(wantsKitchens || !wantsSelling ? [{ id: "kitchen", title: t("homeSetupKitchens"), steps: kitchenSteps }] : []),
-    ...(wantsSelling ? [{ id: "selling", title: t("homeSetupSelling"), steps: sellingSteps }] : []),
-  ].filter((list) => list.steps.some((step) => !step.done && !("optional" in step && step.optional)));
+  ].filter((list) => list.steps.some((step) => !step.done));
   // Once something real is happening, setup shrinks to one line under it and can be hidden (Shopify setup guide pattern).
   const hasActivity = Boolean(nextBooking) || tourRows.length > 0 || kitchenApplications.length > 0 || Boolean(latestApp) || currentRentals.length > 0;
   const hideKey = (id: string) => `lc-home-hide-setup-${authUser?.uid}-${id}`;
@@ -397,7 +367,7 @@ export default function OverviewTabContent({
           </HomePanel>
         ) : null}
 
-        {showSellerAccount && (
+        {showSellerAccount && selling?.current === "open" && (
           <HomePanel className={cn(nextBooking ? "lg:col-span-6" : "lg:col-span-12")} title={t("homeYourShop")} link={shopStatus?.linked ? { label: t("homeOpenShop"), onClick: openShop } : undefined}>
             {shopStatus?.linked && weekEarnings ? (
               <>
@@ -414,6 +384,19 @@ export default function OverviewTabContent({
             ) : (
               <HomeRow title={t("homeFinishShopSetup")} sub={t("homeFinishShopSetupHint")} onClick={() => onSetActiveTab("my-account")} end={<span className="text-sm font-semibold underline underline-offset-[3px]">{t("homeOpenAccounts")}</span>} />
             )}
+          </HomePanel>
+        )}
+
+        {sellingCard && (
+          <HomePanel className="lg:col-span-12" title={t("homeSetupSelling")} aside={sellingCard.chip ? <InfoChip tone={selling?.owed.length ? "warning" : "progress"}>{sellingCard.chip}</InfoChip> : undefined}>
+            <div className="mb-3 grid grid-cols-6 gap-1" aria-hidden>
+              {(selling?.steps ?? []).map((step) => <i key={step.id} className={cn("h-[5px] rounded-full", step.state === "done" ? "bg-foreground" : step.state === "current" ? "bg-primary" : "bg-border")} />)}
+              {!selling && Array.from({ length: 6 }, (_, i) => <i key={i} className={cn("h-[5px] rounded-full", i === 0 ? "bg-primary" : "bg-border")} />)}
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+              <p className="min-w-0 flex-1 basis-64 text-sm">{sellingCard.line}</p>
+              <Button size="sm" variant={"quiet" in sellingCard.action ? "outline" : "default"} className="rounded-full px-4" onClick={sellingCard.action.onClick}>{sellingCard.action.label}</Button>
+            </div>
           </HomePanel>
         )}
 

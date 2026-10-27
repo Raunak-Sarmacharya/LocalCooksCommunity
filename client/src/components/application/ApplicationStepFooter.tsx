@@ -24,28 +24,14 @@ export function ApplicationStepFooter({
   const { goToPreviousStep, isBusy } = useApplicationForm();
 
   return (
-    <div className="flex flex-wrap items-center justify-end gap-2 border-t pt-4">
-
+    <div className="flex items-center justify-between gap-2 border-t pt-5">
       {showPrevious ? (
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="shrink-0 rounded-xl"
-          disabled={isBusy || continueDisabled}
-          onClick={goToPreviousStep}
-        >
+        <Button type="button" variant="ghost" className="shrink-0 rounded-xl" disabled={isBusy || continueDisabled} onClick={goToPreviousStep}>
           <Icon icon="mdi:arrow-left" className="size-4" aria-hidden />
           {t("sellerApp_back")}
         </Button>
-      ) : null}
-      <Button
-        type="submit"
-        size="sm"
-        className="min-w-[7.5rem] rounded-xl"
-        disabled={isBusy || continueDisabled}
-        data-testid={continueTestId}
-      >
+      ) : <span />}
+      <Button type="submit" className="min-w-[8rem] rounded-xl" disabled={isBusy || continueDisabled} data-testid={continueTestId}>
         {continueLabel}
         {showContinueArrow ? <Icon icon="mdi:arrow-right" className="size-4" aria-hidden /> : null}
       </Button>
