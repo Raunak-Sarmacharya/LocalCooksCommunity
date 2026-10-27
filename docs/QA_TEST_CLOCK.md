@@ -26,6 +26,8 @@ closed tour gets no reminder, just as in real time.
 - **Emails and notifications send for real** to whoever is on the tour or booking. `@localcooks.test` addresses never receive email
   (in-app notifications still arrive); use accounts with inboxes you can read.
 - Times move in whole 5-minute steps, so a step runs up to 5 minutes after its due time.
+- Clock times change with the move: a 9 a.m. booking jumped 10 h 15 min shows 10:45 p.m. the night before, and a full day can
+  read as an overnight span ("20:15–13:15"). The steps still line up; only the wall-clock look is odd.
 - If a jump crosses many steps it may stop early to stay inside the server time limit. The card says so; jump again.
 
 ## What it does not move
