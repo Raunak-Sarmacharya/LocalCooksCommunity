@@ -87,24 +87,27 @@ export async function sweepBookingFeedback(limit = 3, now = new Date()) {
     gt(kitchenBookings.feedbackRequestedAt, new Date(now.getTime() - feedbackWindowMs))))
     .orderBy(asc(kitchenBookings.feedbackRequestedAt), asc(kitchenBookings.id)).limit(limit);
   let reminded = 0;
-  if (rows.length) await ensureServerI18n();
-  for (const row of rows) await db.transaction(async tx => {
-    const [booking] = await tx.select().from(kitchenBookings).where(eq(kitchenBookings.id, row.id)).for('update');
-    if (!booking || !feedbackDue(booking, now)) return;
+  for (const row of rows) if (await remindBookingFeedback(row.id, now)) reminded++;
+  return { processed: rows.length, reminded };
+}
+
+/** The day-3 reminder for one booking (the sweep's per-row step; also the QA test clock's). True when someone was reminded. */
+export async function remindBookingFeedback(bookingId: number, now = new Date()) {
+  await ensureServerI18n();
+  return db.transaction(async tx => {
+    const [booking] = await tx.select().from(kitchenBookings).where(eq(kitchenBookings.id, bookingId)).for('update');
+    if (!booking || !feedbackDue(booking, now)) return false;
     const [place] = await tx.select({ managerId: locations.managerId, kitchenName: kitchens.name }).from(kitchens)
       .innerJoin(locations, eq(locations.id, kitchens.locationId)).where(eq(kitchens.id, booking.kitchenId)).limit(1);
     const responses = await tx.select({ respondentRole: bookingFeedbackResponses.respondentRole }).from(bookingFeedbackResponses)
-      .where(eq(bookingFeedbackResponses.bookingId, row.id));
+      .where(eq(bookingFeedbackResponses.bookingId, bookingId));
     const recipientIds = [!responses.some(r => r.respondentRole === 'chef') ? booking.chefId : null,
       !responses.some(r => r.respondentRole === 'manager') ? place?.managerId : null].filter((id): id is number => id != null);
-    if (recipientIds.length) {
-      await queueBookingLifecycleEvent(tx, row.id, 'feedback_requested', tEmail('en-CA', 'bookingFeedbackTitle'),
-        tEmail('en-CA', 'bookingFeedbackReminder', { kitchen: place?.kitchenName || '' }), undefined, { recipientPolicy: 'participants', recipientIds });
-      reminded++;
-    }
-    await tx.update(kitchenBookings).set({ feedbackRemindedAt: now }).where(eq(kitchenBookings.id, row.id));
+    if (recipientIds.length) await queueBookingLifecycleEvent(tx, bookingId, 'feedback_requested', tEmail('en-CA', 'bookingFeedbackTitle'),
+      tEmail('en-CA', 'bookingFeedbackReminder', { kitchen: place?.kitchenName || '' }), undefined, { recipientPolicy: 'participants', recipientIds });
+    await tx.update(kitchenBookings).set({ feedbackRemindedAt: now }).where(eq(kitchenBookings.id, bookingId));
+    return recipientIds.length > 0;
   });
-  return { processed: rows.length, reminded };
 }
 
 export function bookingFeedbackNoticeCopy(kind: string, kitchen: string, locale?: string | null) {

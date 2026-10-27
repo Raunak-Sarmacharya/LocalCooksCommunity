@@ -305,7 +305,7 @@ export function AdminTourRequestsSection() {
                     setOutcomeReason(''); setOutcomeNotes('');
                   }}>{needsOutcome(request) ? 'Record outcome' : 'Correct outcome'}</Button>}
                 </div>
-                <aside className="min-w-0 space-y-4">{testClock && request.viewing.id === linkedTourId && <TestClockCard tourId={request.viewing.id} timezone={request.locationTimezone || "America/St_Johns"} onMoved={() => void queryClient.invalidateQueries({ queryKey: ["/api/viewings/admin"] })} />}<TourHistoryPanel id={request.viewing.id} version={request.viewing.updatedAt} role="admin" /></aside>
+                <aside className="min-w-0 space-y-4">{testClock && request.viewing.id === linkedTourId && <TestClockCard kind="tour" id={request.viewing.id} timezone={request.locationTimezone || "America/St_Johns"} onMoved={() => void queryClient.invalidateQueries({ queryKey: ["/api/viewings/admin"] })} />}<TourHistoryPanel id={request.viewing.id} version={request.viewing.updatedAt} role="admin" /></aside>
               </CardContent>
             </Card>
           ))}

@@ -1490,3 +1490,22 @@ State Oct 18 (evening): multi-day + single-day booking cycle verified end to end
   - KitchenBookingFlow.change-request flake, 4th time under load (passes alone) → profile.
 - **Bookings checkpoint mapped (read-only):** local wall-clock fields (booking_date/start_time/selected_slots/visit_date) in the location zone; cancellation-snapshot trigger (only `sessions` may change); dated-quote hash in payment_transactions.metadata; booking_feedback immutable; visit-date unique index; app-level kitchen-day advisory locks; Stripe-calling deadlines (request expiry, closeout transfer, change/extension expiry). Design to the owner before building.
 - Tests: qa-test-clock PGlite 5, shared tour timers/decision 9; full client 9,100, server 4,365, tsc clean.
+
+## Oct 27 (late night): QA test clock, checkpoint 2 (bookings, single- and multi-day)
+
+- **Owner decisions:** single-day and multi-day together; Stripe sandbox calls during jumps are fine.
+- **Built** (`server/services/qa-test-clock-booking.ts`, card under "Take action" on admin Booking support):
+  - Local date/"HH:MM" fields are moved through the location zone (Nov 1 DST-correct, overnight order kept): booking, slots, visit rows (earliest first for the unique index), the saved closeout clock and its keys, changes and their holds.
+  - Instants move schema-driven as for tours. Unsent reminders are carried to their moved key.
+  - Not touched: the cancellation snapshot except `sessions` (trigger), booking feedback, support actions, booking documents, and `metadata.datedQuote` (hash; acceptance matches it by date, so a moved multi-day request fails safe).
+  - Refusals: a multi-day request can jump only to its answer deadline; a move onto another booking or hold from today on (checkout's kitchen-day locks); money in flight (payment decision, change or extension payment pending).
+  - Runs per step: the existing expiries (request, closeout, change, extension), payout release (single and per-day; each day re-checks eligibility under lock), feedback day-3 (`remindBookingFeedback`, shared with the sweep), due reminders and notices for that booking only.
+  - Walk budget is 8 s per call for tours and bookings.
+- **Lead review fix:** per-day payouts were listed as a step but only released as a side effect of closeout. The payout step now calls `releaseBookingDayPayouts` when a day is due (test added).
+- **Walked locally** (fork): #237/#238 request expiry (sandbox PI canceled, kitchen 12 h/2 h reminders); #217 prep → instructions → arrival → check-in → no-check-in → end → auto-close → $55.43 sandbox transfer; #219 two-day across the Nov 1 change, "Day 1 of 2" on both sides.
+- **Not walked live:** day-3 feedback (the attendance picker couldn't be driven), change/extension deadlines (wired, no live run). Unpaid cancellation-request expiry has only a global sweep, so jumps don't run it.
+- **Gaps:**
+  - The verify skill's `journey book-request` date selector is stale.
+  - After day 1 of a multi-day booking ends, the kitchen page still shows that day's large check-in code.
+  - Moved pending requests show off-grid times (5-minute steps).
+- Tests: booking test clock PGlite 9 (DST, overnight, snapshot trigger, visit-date uniqueness, overlap refusal, multi-day request rule, reminder carry-over, window crossing midnight, step coverage, per-day payout); tours 5. Fork's full run: client 9,100, server 4,373, tsc clean.

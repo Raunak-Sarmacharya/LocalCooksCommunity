@@ -36,9 +36,11 @@ export function shiftInstantsInText(text: string, ms: number, withEpoch = false)
   return withEpoch ? shifted.replace(epochMs, value => String(Number(value) - ms)) : shifted;
 }
 
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 /** Columns are read from the schema, so a timestamp added later moves too. `keep` holds delivery mechanics (leases, retries). */
-async function shiftRows(tx: Tx, table: PgTable, where: SQL, ms: number, { keep = [] as string[], keys = [] as string[], texts = [] as string[] } = {}) {
+/** Booking JSON also carries local operating dates ("2026-10-30"); `dates` maps each old one to its moved date. */
+export const remapDates = (text: string, dates?: Map<string, string>) => dates?.size ? text.replace(/"(\d{4}-\d{2}-\d{2})"/g, (whole, day) => dates.has(day) ? `"${dates.get(day)}"` : whole) : text;
+export async function shiftRows(tx: Tx, table: PgTable, where: SQL, ms: number, { keep = [] as string[], keys = [] as string[], texts = [] as string[], dates = undefined as Map<string, string> | undefined } = {}) {
   const columns = Object.entries(getTableColumns(table)) as Array<[string, { name: string; columnType: string }]>;
   const moved = columns.filter(([key, column]) => ['PgTimestamp', 'PgTimestampString'].includes(column.columnType) && column.name !== 'updated_at' && !keep.includes(key));
   const sets = moved.map(([, column]) => sql`${sql.identifier(column.name)} = ${sql.identifier(column.name)} - make_interval(secs => ${ms / 1000})`);
@@ -53,7 +55,7 @@ async function shiftRows(tx: Tx, table: PgTable, where: SQL, ms: number, { keep 
     for (const [key, column] of rewritten) {
       const value = row[key];
       if (value == null) continue;
-      const next = column.columnType === 'PgJsonb' ? JSON.parse(shiftInstantsInText(JSON.stringify(value), ms)) : shiftInstantsInText(String(value), ms, keys.includes(key));
+      const next = column.columnType === 'PgJsonb' ? JSON.parse(remapDates(shiftInstantsInText(JSON.stringify(value), ms), dates)) : shiftInstantsInText(String(value), ms, keys.includes(key));
       if (JSON.stringify(next) !== JSON.stringify(value)) changes[key] = next;
     }
     if (Object.keys(changes).length) await tx.update(table).set(changes).where(eq(idColumn, row.id));
@@ -118,7 +120,7 @@ export async function readTourClock(id: number, now = new Date()) {
 
 const logKey = 'qa_test_clock_log';
 /** Who moved what, kept in the database (Vercel Hobby keeps runtime logs for an hour). Last 200 jumps. */
-async function recordJump(tx: Tx, entry: Record<string, unknown>) {
+export async function recordJump(tx: Tx, entry: Record<string, unknown>) {
   const [saved] = await tx.execute(sql`SELECT value FROM platform_settings WHERE key = ${logKey} FOR UPDATE`).then(result => result.rows as Array<{ value: string }>);
   const log = [entry, ...(saved ? JSON.parse(saved.value) as unknown[] : [])].slice(0, 200);
   await tx.execute(sql`INSERT INTO platform_settings (key, value, description) VALUES (${logKey}, ${JSON.stringify(log)}, 'QA test clock jumps (dev only)')
@@ -127,7 +129,7 @@ async function recordJump(tx: Tx, entry: Record<string, unknown>) {
 
 /** Walks a tour to `to` one step at a time, as real time would: an earlier step (24 h auto-close) runs before a later one
  * (day-3 reminder) and can cancel it. Stops early inside the Vercel time limit; jumping again continues. */
-export async function jumpTour(id: number, to: Date, actorId: number, expectedUpdatedAt: string, budgetMs = 12_000) {
+export async function jumpTour(id: number, to: Date, actorId: number, expectedUpdatedAt: string, budgetMs = 8_000) {
   const started = Date.now();
   let target = to.getTime(), version: string | null = expectedUpdatedAt, movedMs = 0, reached: string | null = null;
   const notices: Array<{ kind: string; sent: boolean }> = [], reminders: Array<{ kind: string; role: string; channel: string }> = [];

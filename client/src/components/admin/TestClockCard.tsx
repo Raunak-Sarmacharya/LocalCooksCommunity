@@ -7,12 +7,12 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { formatTourWhen } from '@/lib/chef-viewing-display';
 
 type Step = { key: string; label: string; at: string };
-type Clock = { reference: string; status: string; updatedAt: string; now: string; steps: Step[] };
+type Clock = { reference: string; status: string; updatedAt: string; now: string; steps: Step[]; multiDay?: boolean };
 type Jump = { movedMs: number; notices: Array<{ kind: string; sent: boolean }>; reminders: Array<{ kind: string; role: string; channel: string }>; clock: Clock; stoppedAt?: string | null };
 const noticeNames: Record<string, string> = { expired: 'Request expired', request_escalation: 'Overdue or urgent alert', reconfirmation_requested: '"Still coming?" check',
   reconfirmation_escalated: 'No reply · staff alert', reconfirmation_reminder: 'Reply reminder to the visitor', feedback_requested: 'Feedback request',
-  feedback_reminder: 'Feedback reminder', status: 'Status update' };
-const noticeName = (kind: string) => noticeNames[kind] || kind.replace(/_/g, ' ');
+  feedback_reminder: 'Feedback reminder', status: 'Status update', cancelled: 'Cancelled or expired notice' };
+const noticeName = (kind: string) => noticeNames[kind] || kind.charAt(0).toUpperCase() + kind.slice(1).replace(/_/g, ' ');
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   const token = await auth.currentUser?.getIdToken();
@@ -34,21 +34,22 @@ export function untilLabel(ms: number) {
   return days ? `${days} d${hours ? ` ${hours} h` : ''}` : hours ? `${hours} h${rest ? ` ${rest} min` : ''}` : `${rest} min`;
 }
 
-// A jump can move the tour to another tab, which remounts this card; keep the last result per tour.
-const lastJumps = new Map<number, { step: Step; result: Jump }>();
+// A jump can move the record to another tab, which remounts this card; keep the last result per record.
+const lastJumps = new Map<string, { step: Step; result: Jump }>();
 
-/** QA only: jump a tour to one of its upcoming automatic steps instead of waiting for it. */
-export function TestClockCard({ tourId, timezone, onMoved }: { tourId: number; timezone: string; onMoved?: () => void }) {
+/** QA only: jump a tour or booking to one of its upcoming automatic steps instead of waiting for it. */
+export function TestClockCard({ kind, id, timezone, onMoved }: { kind: 'tour' | 'booking'; id: number; timezone: string; onMoved?: () => void }) {
+  const key = `${kind}:${id}`, path = `/api/admin/test-clock/${kind}/${id}`;
   const queryClient = useQueryClient();
   const [confirming, setConfirming] = useState<Step | null>(null);
-  const [last, setLast] = useState(() => lastJumps.get(tourId) ?? null);
-  const clock = useQuery({ queryKey: ['/api/admin/test-clock/tour', tourId], queryFn: () => call<Clock>(`/api/admin/test-clock/tour/${tourId}`) });
+  const [last, setLast] = useState(() => lastJumps.get(key) ?? null);
+  const clock = useQuery({ queryKey: [path], queryFn: () => call<Clock>(path) });
   const jump = useMutation({
-    mutationFn: (step: Step) => call<Jump>(`/api/admin/test-clock/tour/${tourId}/jump`, { method: 'POST',
+    mutationFn: (step: Step) => call<Jump>(`${path}/jump`, { method: 'POST',
       body: JSON.stringify({ to: step.at, expectedUpdatedAt: clock.data!.updatedAt }) }),
     onSuccess: (result, step) => {
-      lastJumps.set(tourId, { step, result }); setLast({ step, result }); setConfirming(null);
-      queryClient.setQueryData(['/api/admin/test-clock/tour', tourId], result.clock);
+      lastJumps.set(key, { step, result }); setLast({ step, result }); setConfirming(null);
+      queryClient.setQueryData([path], result.clock);
       onMoved?.();
     },
     onError: () => { setConfirming(null); void clock.refetch(); },
@@ -59,7 +60,7 @@ export function TestClockCard({ tourId, timezone, onMoved }: { tourId: number; t
     <Card className="min-w-0">
       <CardHeader className="pb-3">
         <CardTitle className="text-base">Test clock</CardTitle>
-        <CardDescription>Dev only. Jumping moves this tour's saved times earlier so the step is due now, then runs it. Emails and notifications send for real.</CardDescription>
+        <CardDescription>Dev only. Jumping moves this {kind}'s saved times earlier so the step is due now, then runs it. Emails and notifications send for real.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
         {last && <div role="status" className="space-y-1 rounded-md bg-muted p-3">
@@ -68,14 +69,17 @@ export function TestClockCard({ tourId, timezone, onMoved }: { tourId: number; t
           {!last.result.notices.length && !last.result.reminders.length ? <p className="text-muted-foreground">Nothing was sent: no message was due at this step.</p>
             : <ul className="list-disc pl-5">
               {last.result.notices.map((notice, index) => <li key={`n${index}`}>{noticeName(notice.kind)}{notice.sent ? ' · sent' : ' · still sending (the worker retries it)'}</li>)}
-              {last.result.reminders.map((reminder, index) => <li key={`r${index}`}>{reminder.kind === 'arrival' ? 'Arrival reminder' : noticeName(reminder.kind)} to the {reminder.role === 'manager' ? 'kitchen' : 'visitor'} · {reminder.channel === 'email' ? 'email' : 'in-app'} sent</li>)}
+              {last.result.reminders.map((reminder, index) => <li key={`r${index}`}>{reminder.kind === 'arrival' ? 'Arrival reminder' : noticeName(reminder.kind)} to the {reminder.role === 'manager' ? 'kitchen' : kind === 'tour' ? 'visitor' : 'customer'} · {reminder.channel === 'email' ? 'email' : 'in-app'} sent</li>)}
             </ul>}
         </div>}
-        {clock.data && ['pending', 'pending_local_cooks'].includes(clock.data.status) && <p className="text-muted-foreground">Approve and confirm before jumping: a moved request usually can't be confirmed, because its time no longer matches the kitchen's tour slots.</p>}
+        {clock.data && ['pending', 'pending_local_cooks'].includes(clock.data.status) && <p className="text-muted-foreground">{kind === 'tour'
+          ? "Approve and confirm before jumping: a moved request usually can't be confirmed, because its time no longer matches the kitchen's tour slots."
+          : clock.data.multiDay ? "Accept or decline before jumping. A multi-day request can only jump to its answer deadline: its paid quote is locked to the original dates."
+          : 'Accept or decline before jumping to test what happens after; jump to the answer deadline to test an unanswered request.'}</p>}
         {jump.isError && <p role="alert" className="text-destructive">{jump.error.message}</p>}
         {clock.isLoading ? <div className="space-y-2" aria-label="Loading test clock">{[0, 1, 2].map(row => <Skeleton key={row} className="h-11 w-full" />)}</div>
           : clock.isError ? <div role="alert" className="space-y-2"><p>{clock.error.message}</p><Button variant="outline" onClick={() => void clock.refetch()}>Try again</Button></div>
-          : !clock.data!.steps.length ? <p className="text-muted-foreground">Nothing else is scheduled for this tour ({clock.data!.status.replace(/_/g, ' ')}).</p>
+          : !clock.data!.steps.length ? <p className="text-muted-foreground">Nothing else is scheduled for this {kind} ({clock.data!.status.replace(/_/g, ' ')}).</p>
           : <ol className="divide-y">{clock.data!.steps.map(step => (
             <li key={`${step.key}:${step.at}`} className="py-2">
               <div className="flex min-w-0 items-center justify-between gap-3">

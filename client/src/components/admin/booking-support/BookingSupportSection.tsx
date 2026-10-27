@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { fmtOperatingDate } from "./format";
 import { loadCase, searchBookings, type TokenGetter } from "./api";
 import { ActionDialog } from "./ActionDialog";
+import { TestClockCard, useTestClockEnabled } from "../TestClockCard";
 import { ActionPanel, CaseHeader, Chronology, DeadlinesCard, FeedbackCard, MoneyCard, PaymentEvidenceCard, VisitCodesCard } from "./CaseView";
 import type { AvailableSupportAction, SearchRow, SupportCase } from "./types";
 import { FrozenCancellationPolicy } from './FrozenCancellationPolicy';
@@ -32,6 +33,7 @@ function setBookingParam(id: number | null) {
 }
 
 export function BookingSupportSection({ getFirebaseToken }: { getFirebaseToken: TokenGetter }) {
+  const testClock = useTestClockEnabled();
   const t = useSupportT();
   const queryClient = useQueryClient();
   const [bookingId, setBookingId] = useState<number | null>(readBookingParam);
@@ -121,8 +123,9 @@ export function BookingSupportSection({ getFirebaseToken }: { getFirebaseToken: 
       <ExtraTimeDisputes bookingId={c.bookingId} currency={c.money.currency} getFirebaseToken={getFirebaseToken} />
       <KitchenChangeRecovery bookingId={c.bookingId} getFirebaseToken={getFirebaseToken} />
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_20rem] xl:items-start">
-        <div className="order-1 md:col-span-2 xl:order-3 xl:col-span-1">
+        <div className="order-1 space-y-4 md:col-span-2 xl:order-3 xl:col-span-1">
           <ActionPanel actions={c.availableActions} supportActions={c.supportActions} onChoose={(action) => { setDoneLabel(null); setChosen(action); }} />
+          {testClock && <TestClockCard kind="booking" id={c.bookingId} timezone={c.schedule.timezone} onMoved={() => void caseQuery.refetch()} />}
         </div>
         <div className="order-2 space-y-4 xl:order-1">
           <FrozenCancellationPolicy snapshot={c.cancellationPolicySnapshot} />

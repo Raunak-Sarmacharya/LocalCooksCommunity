@@ -1,6 +1,7 @@
 import { Router, type Response } from 'express';
 import { requireFirebaseAuthWithUser, requireAdmin } from '../firebase-auth-middleware';
 import { TestClockError, jumpTour, readTourClock, testClockEnabled } from '../services/qa-test-clock';
+import { jumpBooking, readBookingClock } from '../services/qa-test-clock-booking';
 import { logger } from '../logger';
 
 /** QA test clock (dev only). Answers 404 everywhere it is off, so production has no such surface. */
@@ -14,16 +15,17 @@ function failure(res: Response, error: unknown) {
   return res.status(503).json({ error: 'The test clock could not finish. Refresh to see what moved.' });
 }
 router.get('/admin/test-clock/status', (_req, res) => res.json({ enabled: true }));
-router.get('/admin/test-clock/tour/:id', async (req, res) => {
-  const id = idOf(req.params.id);
-  if (!id) return res.status(400).json({ error: 'Choose a valid tour.' });
-  try { return res.json(await readTourClock(id)); } catch (error) { return failure(res, error); }
+const kinds = { tour: { read: readTourClock, jump: jumpTour, label: 'tour' }, booking: { read: readBookingClock, jump: jumpBooking, label: 'booking' } } as const;
+router.get('/admin/test-clock/:kind/:id', async (req, res) => {
+  const kind = Object.prototype.hasOwnProperty.call(kinds, req.params.kind) ? kinds[req.params.kind as keyof typeof kinds] : null, id = idOf(req.params.id);
+  if (!kind || !id) return res.status(400).json({ error: 'Choose a valid tour or booking.' });
+  try { return res.json(await kind.read(id)); } catch (error) { return failure(res, error); }
 });
-router.post('/admin/test-clock/tour/:id/jump', async (req, res) => {
-  const id = idOf(req.params.id);
+router.post('/admin/test-clock/:kind/:id/jump', async (req, res) => {
+  const kind = Object.prototype.hasOwnProperty.call(kinds, req.params.kind) ? kinds[req.params.kind as keyof typeof kinds] : null, id = idOf(req.params.id);
   const { to, expectedUpdatedAt } = req.body ?? {};
-  if (!id || typeof to !== 'string' || typeof expectedUpdatedAt !== 'string' || !Number.isFinite(Date.parse(to)))
-    return res.status(400).json({ error: 'Choose a tour and a time to jump to.' });
-  try { return res.json(await jumpTour(id, new Date(to), req.neonUser!.id, expectedUpdatedAt)); } catch (error) { return failure(res, error); }
+  if (!kind || !id || typeof to !== 'string' || typeof expectedUpdatedAt !== 'string' || !Number.isFinite(Date.parse(to)))
+    return res.status(400).json({ error: `Choose a ${kind?.label ?? 'record'} and a time to jump to.` });
+  try { return res.json(await kind.jump(id, new Date(to), req.neonUser!.id, expectedUpdatedAt)); } catch (error) { return failure(res, error); }
 });
 export default router;
