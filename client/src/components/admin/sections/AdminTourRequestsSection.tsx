@@ -8,7 +8,8 @@ import { TourHistoryPanel } from '@/components/tour/TourHistoryPanel';
 import { TourChatButton } from '@/components/chat/TourChatButton';
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useSearch } from "wouter";
+import { Link, useSearch } from "wouter";
+import { TestClockCard, useTestClockEnabled } from "../TestClockCard";
 import { useTourClock } from "@/hooks/use-tour-clock";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CalendarDays, Check, Loader2, Mail, MapPin, Phone, X } from "lucide-react";
@@ -98,6 +99,7 @@ export function AdminTourRequestsSection() {
   }, onSuccess: () => { setTakeover(null); void queryClient.invalidateQueries({ queryKey: ['/api/viewings/admin'] }); },
     onError: (error: Error) => { void queryClient.invalidateQueries({ queryKey: ['/api/viewings/admin'] }); void takeoverContext.refetch(); toast({ title: 'Confirmation failed', description: error.message, variant: 'destructive' }); } });
   const linkedTourId = Number(new URLSearchParams(useSearch()).get('viewing'));
+  const testClock = useTestClockEnabled();
   const openedLink = useRef<number | null>(null);
   const [outcomeTour, setOutcomeTour] = useState<TourRequest | null>(null);
   const [outcome, setOutcome] = useState<'completed' | 'no_show' | 'disrupted' | 'unknown'>('completed');
@@ -263,7 +265,7 @@ export function AdminTourRequestsSection() {
                   {stage.startedAt && <p>{t('tourDecisionAge', { hours: Math.max(0, Math.floor((Date.now() - Date.parse(stage.startedAt)) / 3_600_000)), defaultValue: 'Waiting {hours} hours' })}</p>}
                   {stage.overdue && <p className="font-medium text-destructive">{t('tourDecisionOverdue', 'Decision overdue')}</p>}
                 </div>; })()}
-                <div><span className="font-medium">Tour reference:</span> TOUR-{request.viewing.id}</div>
+                <div><span className="font-medium">Tour reference:</span> TOUR-{request.viewing.id}{testClock && !linkedTourId && <> · <Link className="text-primary hover:underline" href={`/admin?section=tour-requests&viewing=${request.viewing.id}`}>Test clock</Link></>}</div>
                 <div><span className="font-medium">Submitted:</span> {formatTourWhen(request.viewing.createdAt, null, request.locationTimezone || "America/St_Johns")}</div>
                 <div className="flex items-center gap-2"><CalendarDays className="h-4 w-4 shrink-0 text-muted-foreground" />{formatTourWhen(request.viewing.scheduledAt, request.viewing.durationMinutes, request.locationTimezone || "America/St_Johns")} · {request.viewing.durationMinutes} min</div>
                 <div className="flex items-center gap-2"><MapPin className="h-4 w-4 shrink-0 text-muted-foreground" />{request.locationName || "Kitchen"}{request.locationAddress ? ` · ${request.locationAddress}` : ""}</div>
@@ -303,7 +305,7 @@ export function AdminTourRequestsSection() {
                     setOutcomeReason(''); setOutcomeNotes('');
                   }}>{needsOutcome(request) ? 'Record outcome' : 'Correct outcome'}</Button>}
                 </div>
-                <aside className="min-w-0"><TourHistoryPanel id={request.viewing.id} version={request.viewing.updatedAt} role="admin" /></aside>
+                <aside className="min-w-0 space-y-4">{testClock && request.viewing.id === linkedTourId && <TestClockCard tourId={request.viewing.id} timezone={request.locationTimezone || "America/St_Johns"} onMoved={() => void queryClient.invalidateQueries({ queryKey: ["/api/viewings/admin"] })} />}<TourHistoryPanel id={request.viewing.id} version={request.viewing.updatedAt} role="admin" /></aside>
               </CardContent>
             </Card>
           ))}

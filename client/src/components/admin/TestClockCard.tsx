@@ -1,0 +1,99 @@
+import { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { auth } from '@/lib/firebase';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
+import { formatTourWhen } from '@/lib/chef-viewing-display';
+
+type Step = { key: string; label: string; at: string };
+type Clock = { reference: string; status: string; updatedAt: string; now: string; steps: Step[] };
+type Jump = { movedMs: number; notices: Array<{ kind: string; sent: boolean }>; reminders: Array<{ kind: string; role: string; channel: string }>; clock: Clock; stoppedAt?: string | null };
+const noticeNames: Record<string, string> = { expired: 'Request expired', request_escalation: 'Overdue or urgent alert', reconfirmation_requested: '"Still coming?" check',
+  reconfirmation_escalated: 'No reply · staff alert', reconfirmation_reminder: 'Reply reminder to the visitor', feedback_requested: 'Feedback request',
+  feedback_reminder: 'Feedback reminder', status: 'Status update' };
+const noticeName = (kind: string) => noticeNames[kind] || kind.replace(/_/g, ' ');
+
+async function call<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = await auth.currentUser?.getIdToken();
+  const response = await fetch(path, { ...init, credentials: 'include',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) } });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw Object.assign(new Error(body.error || 'The test clock is unavailable.'), { status: response.status });
+  return body as T;
+}
+
+/** On only where the server enables it (dev); a 404 hides every test clock control. */
+export function useTestClockEnabled() {
+  return useQuery({ queryKey: ['/api/admin/test-clock/status'], retry: false, staleTime: Infinity,
+    queryFn: () => call<{ enabled: boolean }>('/api/admin/test-clock/status').then(body => body.enabled, () => false) }).data === true;
+}
+
+export function untilLabel(ms: number) {
+  const minutes = Math.max(1, Math.round(ms / 60_000)), days = Math.floor(minutes / 1440), hours = Math.floor(minutes % 1440 / 60), rest = minutes % 60;
+  return days ? `${days} d${hours ? ` ${hours} h` : ''}` : hours ? `${hours} h${rest ? ` ${rest} min` : ''}` : `${rest} min`;
+}
+
+// A jump can move the tour to another tab, which remounts this card; keep the last result per tour.
+const lastJumps = new Map<number, { step: Step; result: Jump }>();
+
+/** QA only: jump a tour to one of its upcoming automatic steps instead of waiting for it. */
+export function TestClockCard({ tourId, timezone, onMoved }: { tourId: number; timezone: string; onMoved?: () => void }) {
+  const queryClient = useQueryClient();
+  const [confirming, setConfirming] = useState<Step | null>(null);
+  const [last, setLast] = useState(() => lastJumps.get(tourId) ?? null);
+  const clock = useQuery({ queryKey: ['/api/admin/test-clock/tour', tourId], queryFn: () => call<Clock>(`/api/admin/test-clock/tour/${tourId}`) });
+  const jump = useMutation({
+    mutationFn: (step: Step) => call<Jump>(`/api/admin/test-clock/tour/${tourId}/jump`, { method: 'POST',
+      body: JSON.stringify({ to: step.at, expectedUpdatedAt: clock.data!.updatedAt }) }),
+    onSuccess: (result, step) => {
+      lastJumps.set(tourId, { step, result }); setLast({ step, result }); setConfirming(null);
+      queryClient.setQueryData(['/api/admin/test-clock/tour', tourId], result.clock);
+      onMoved?.();
+    },
+    onError: () => { setConfirming(null); void clock.refetch(); },
+  });
+  const now = clock.data ? Date.parse(clock.data.now) : Date.now();
+
+  return (
+    <Card className="min-w-0">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base">Test clock</CardTitle>
+        <CardDescription>Dev only. Jumping moves this tour's saved times earlier so the step is due now, then runs it. Emails and notifications send for real.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3 text-sm">
+        {last && <div role="status" className="space-y-1 rounded-md bg-muted p-3">
+          <p>{'stoppedAt' in last.result ? `Stopped early${last.result.stoppedAt ? ` after "${last.result.stoppedAt}"` : ''} to stay inside the time limit. Jump again to continue.`
+            : `Jumped to "${last.step.label}" (${untilLabel(last.result.movedMs)} earlier), running each step on the way in order.`}</p>
+          {!last.result.notices.length && !last.result.reminders.length ? <p className="text-muted-foreground">Nothing was sent: no message was due at this step.</p>
+            : <ul className="list-disc pl-5">
+              {last.result.notices.map((notice, index) => <li key={`n${index}`}>{noticeName(notice.kind)}{notice.sent ? ' · sent' : ' · still sending (the worker retries it)'}</li>)}
+              {last.result.reminders.map((reminder, index) => <li key={`r${index}`}>{reminder.kind === 'arrival' ? 'Arrival reminder' : noticeName(reminder.kind)} to the {reminder.role === 'manager' ? 'kitchen' : 'visitor'} · {reminder.channel === 'email' ? 'email' : 'in-app'} sent</li>)}
+            </ul>}
+        </div>}
+        {clock.data && ['pending', 'pending_local_cooks'].includes(clock.data.status) && <p className="text-muted-foreground">Approve and confirm before jumping: a moved request usually can't be confirmed, because its time no longer matches the kitchen's tour slots.</p>}
+        {jump.isError && <p role="alert" className="text-destructive">{jump.error.message}</p>}
+        {clock.isLoading ? <div className="space-y-2" aria-label="Loading test clock">{[0, 1, 2].map(row => <Skeleton key={row} className="h-11 w-full" />)}</div>
+          : clock.isError ? <div role="alert" className="space-y-2"><p>{clock.error.message}</p><Button variant="outline" onClick={() => void clock.refetch()}>Try again</Button></div>
+          : !clock.data!.steps.length ? <p className="text-muted-foreground">Nothing else is scheduled for this tour ({clock.data!.status.replace(/_/g, ' ')}).</p>
+          : <ol className="divide-y">{clock.data!.steps.map(step => (
+            <li key={`${step.key}:${step.at}`} className="py-2">
+              <div className="flex min-w-0 items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-medium">{step.label}</p>
+                  <p className="text-xs text-muted-foreground">{formatTourWhen(step.at, null, timezone)} · <span className="whitespace-nowrap">in {untilLabel(Date.parse(step.at) - now)}</span></p>
+                </div>
+                {confirming?.at !== step.at && <Button variant="outline" size="sm" className="min-h-9 shrink-0" disabled={jump.isPending} onClick={() => setConfirming(step)}>Jump here</Button>}
+              </div>
+              {confirming?.at === step.at && <div className="mt-2 space-y-2 rounded-md bg-muted p-3">
+                <p>Move {clock.data!.reference} {untilLabel(Date.parse(step.at) - now)} earlier and run what's due? This can't be undone.</p>
+                <div className="flex gap-2">
+                  <Button size="sm" className="min-h-9" disabled={jump.isPending} onClick={() => jump.mutate(step)}>{jump.isPending ? 'Jumping…' : 'Jump'}</Button>
+                  <Button size="sm" variant="ghost" className="min-h-9" disabled={jump.isPending} onClick={() => setConfirming(null)}>Cancel</Button>
+                </div>
+              </div>}
+            </li>))}</ol>}
+      </CardContent>
+    </Card>
+  );
+}

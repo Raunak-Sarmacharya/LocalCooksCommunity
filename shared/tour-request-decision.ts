@@ -7,7 +7,9 @@ export function tourRequestDecision(tour: RequestTour, now = Date.now()) {
   const started = stage === 'triage' ? tour.createdAt : stage === 'chef_offer' ? tour.rescheduleProposedAt : stage === 'change_manager' ? tour.rescheduleRequestedAt : tour.adminReviewedAt || tour.createdAt;
   const startedAt = started ? new Date(started).getTime() : NaN;
   const start = new Date(tour.scheduledAt).getTime();
-  const due = stage === 'chef_offer' ? start : startedAt + tourRequestStageHours * 60 * 60 * 1000;
+  // A short-notice request is due by the tour start, never after it (owner, Oct 27; Airbnb/Peerspace cap the reply at the start).
+  const window = startedAt + tourRequestStageHours * 60 * 60 * 1000;
+  const due = stage === 'chef_offer' ? start : Number.isFinite(window) && Number.isFinite(start) ? Math.min(window, start) : window;
   const open = start > now;
   return { stage, change, startedAt: Number.isFinite(startedAt) ? new Date(startedAt).toISOString() : null,
     dueAt: Number.isFinite(due) ? new Date(due).toISOString() : null,

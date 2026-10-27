@@ -19,6 +19,9 @@ it('uses one decision key for SLA and urgent overlapping notices and permits ove
   const short = { ...request, scheduledAt: '2026-10-01T03:00:00Z' };
   expect(tourRequestEscalationDue(short, Date.parse(created))).toBe(true);
   expect(tourRequestEscalationDue(short, Date.parse(short.scheduledAt))).toBe(false);
+  // Shown deadline never falls after the tour: 12 h from the request would be 12:00, the tour is at 03:00.
+  expect(tourRequestDecision(short, Date.parse(created))?.dueAt).toBe('2026-10-01T03:00:00.000Z');
+  expect(tourRequestDecision(request, Date.parse(created))?.dueAt).toBe('2026-10-01T12:00:00.000Z');
   expect(tourRequestDecision({ ...request, requestExpiredAt: created })).toBeNull();
 });
 it('keeps offers chef-owned until original start without inventing a12hour chef SLA', () => {

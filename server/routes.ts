@@ -1135,6 +1135,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // All manager routes are now handled in ./routes/manager.ts
   app.use("/api", (await import("./routes/booking-attendance")).default);
   app.use("/api", (await import("./routes/admin-booking-support")).default);
+  app.use("/api", (await import("./routes/admin-test-clock")).default);
   app.use("/api", (await import("./routes/booking-feedback")).default);
   app.use("/api", (await import("./routes/booking-documents")).default);
   app.use("/api", (await import("./routes/kitchen-invitations")).default);

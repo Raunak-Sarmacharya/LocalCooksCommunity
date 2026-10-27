@@ -13,10 +13,11 @@ describe('tour timer next-due instant', () => {
     expect(next(pending, start - 5 * hour)).toBe(new Date(start).toISOString());
     expect(next(pending, start)).toBeNull();
   });
-  it('confirmed tour: 24h reconfirmation, then end, end + 24h, then end + 3 days', () => {
+  it('confirmed tour: 24h reconfirmation, its no-reply alert and reminder, then end, end + 24h, then end + 3 days', () => {
     const confirmed = { status: 'confirmed' };
     expect(next(confirmed, start - 48 * hour)).toBe(new Date(start - 24 * hour).toISOString());
-    expect(next(confirmed, start - 23 * hour)).toBe(new Date(start + hour).toISOString());
+    expect(next(confirmed, start - 23 * hour)).toBe(new Date(start - 12 * hour).toISOString());
+    expect(next(confirmed, start - 11 * hour)).toBe(new Date(start + hour).toISOString());
     expect(next(confirmed, start + 2 * hour)).toBe(new Date(start + 25 * hour).toISOString());
     expect(next(confirmed, start + 25 * hour)).toBe(new Date(start + 73 * hour).toISOString());
     expect(next(confirmed, start + 73 * hour)).toBeNull();

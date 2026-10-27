@@ -1467,3 +1467,26 @@ State Oct 18 (evening): multi-day + single-day booking cycle verified end to end
 - Tailwind: named `wide` screen (1440px); arbitrary `min-[…]` variants don't work with this config's max-width screens.
 - **Home setup guide (owner report):** the one-line guide now expands to its steps, Hide can be undone ("Show '…'" at the foot of Home), and a chef who toured gets "Request to apply" for that kitchen as the next step.
 - Flake watch: KitchenBookingFlow.change-request failed again under full-suite load (3rd time), passes alone.
+
+## Oct 27 (night): QA test clock, checkpoint 1 (tours)
+
+- **Owner ask:** QA must test time-based booking and tour behaviour on dev without waiting hours or days. **Owner decisions:** an admin card (not on chef/kitchen screens); any dev record may be moved (no allowlist); real emails; build in checkpoints, tours → bookings → the rest; production must always refuse.
+- **Research:** Stripe Test Clocks advance a clock attached to one test customer. Temporal skips time globally, but only inside an isolated test server. Inngest can't skip a sleep. Our dev DB is shared and time comes from two places (JS `Date` and SQL `now()`, about 79 server files), so a global fake clock isn't possible. Built the Stripe model scoped to one record: move every saved instant of that record earlier by the gap, then run the existing handlers.
+- **Built:** `server/services/qa-test-clock.ts`, route `server/routes/admin-test-clock.ts`, card `client/src/components/admin/TestClockCard.tsx` in admin Tour Requests ("Test clock" link → tour view), `docs/QA_TEST_CLOCK.md`.
+  - Gate: `QA_TEST_CLOCK_ENABLED=true` (Vercel: preview, `development` branch only, added Oct 27). Refused if `VERCEL_ENV` or `LIFECYCLE_ENVIRONMENT` is production or the Stripe key is live. Admin only; 404 when off. Jumps logged in `platform_settings.qa_test_clock_log` (last 200).
+  - Timestamp columns are read from the schema, so new ones move too. ISO/epoch instants inside JSON, event keys and reminder text move by the same amount, so nothing is sent twice. Reminders are re-planned after each move.
+  - Tour visit evidence is immutable (trigger); the trigger is lifted inside the jump transaction only.
+  - A jump walks every step on the way, in order, as real time would; 12 s budget, then "stopped early, jump again". Moves are whole 5-minute steps. The card reports what actually went out, read from the DB.
+- **Walked locally:** TOUR-100 (6 h alert de-duplicated against the earlier overdue alert, then expiry). TOUR-94 (day 3 → auto-closed at 24 h, no reminder, correct). TOUR-105 fixture ("Still coming?" → no-reply alert → arrival reminders both sides → end/feedback ask → kitchen "They came" → day-3 reminder; evidence still "ready"). Fixtures TOUR-104/105 are labelled "QA test clock fixture".
+- **Rule for QA:** do the people steps (approve, confirm, reschedule, "They came") first, then jump. A moved request can't be confirmed because its time is off the kitchen's slot grid.
+- **Owner-approved fixes in the same batch:**
+  - "Still coming?" staff alert and the visitor's reply reminder now have exact timers (they waited for the 30/15-min tick).
+  - A tour decision deadline is never later than the tour start; short-notice requests showed the kitchen a due time after the tour. Display and escalation timing are otherwise unchanged.
+- **Gaps flagged:**
+  - Production still has no `INNGEST_*`/`LIFECYCLE_*` env (re-checked Oct 27).
+  - JS vs DB clock: this PC is 3 s behind Supabase, so locally a notice queued in the same second waits for the next pass.
+  - Admin shows "Disrupted" for auto-closed unrecorded tours.
+  - The kitchen tour page still shows Departure notes.
+  - KitchenBookingFlow.change-request flake, 4th time under load (passes alone) → profile.
+- **Bookings checkpoint mapped (read-only):** local wall-clock fields (booking_date/start_time/selected_slots/visit_date) in the location zone; cancellation-snapshot trigger (only `sessions` may change); dated-quote hash in payment_transactions.metadata; booking_feedback immutable; visit-date unique index; app-level kitchen-day advisory locks; Stripe-calling deadlines (request expiry, closeout transfer, change/extension expiry). Design to the owner before building.
+- Tests: qa-test-clock PGlite 5, shared tour timers/decision 9; full client 9,100, server 4,365, tsc clean.

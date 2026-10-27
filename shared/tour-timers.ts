@@ -16,7 +16,12 @@ export function tourDueInstants(tour: TimerTour, now = Date.now()): number[] {
     const decision = tourRequestDecision(tour, now);
     if (decision) { if (decision.stage !== 'chef_offer' && decision.dueAt) due.push(Date.parse(decision.dueAt)); due.push(start - 6 * hour); }
   }
-  if (tour.status === 'confirmed') due.push(start - 24 * hour, end, end + 24 * hour);
+  if (tour.status === 'confirmed') {
+    due.push(start - 24 * hour, end, end + 24 * hour);
+    // "Still coming?" staff alert and the visitor's reply reminder go at their own times, not on the next worker tick.
+    const reconfirmation = tourReconfirmation(tour, null, now);
+    for (const at of [reconfirmation.escalateAt, reconfirmation.remindAt]) if (at) due.push(Date.parse(at));
+  }
   // Feedback stays open after the kitchen records "They came", so the day-3 reminder still needs a timer.
   if (['confirmed', 'completed'].includes(tour.status)) due.push(end + tourFeedbackReminderMs);
   return due.filter(Number.isFinite);
