@@ -436,7 +436,12 @@ router.get("/:id", async (req: Request, res: Response) => {
             return res.status(400).json({ message: "Invalid application ID" });
         }
 
+        if (!req.neonUser) return res.status(401).json({ message: "Not authenticated" });
         const application = await appService.getApplicationById(id);
+        // Name, contact details and document links: only the applicant or an admin.
+        if (application.userId !== req.neonUser.id && req.neonUser.role !== "admin") {
+            return res.status(404).json({ message: "Application not found" });
+        }
 
         return res.status(200).json(application);
     } catch (error) {

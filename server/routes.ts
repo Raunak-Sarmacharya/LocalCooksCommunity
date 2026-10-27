@@ -1234,9 +1234,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
 
 
-  // Analytics Routes
-  app.use("/api/analytics", (await import("./routes/analytics")).default);
-
   // Chef Routes
   app.use("/api/chef", (await import("./routes/chef")).default);
 

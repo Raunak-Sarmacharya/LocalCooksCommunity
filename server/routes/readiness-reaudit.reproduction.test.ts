@@ -28,7 +28,6 @@ vi.mock('../fileUpload', () => ({ upload: {} }));
 vi.mock('../alwaysFoodSafeAPI', () => ({ isAlwaysFoodSafeConfigured: () => false, submitToAlwaysFoodSafe: vi.fn() }));
 vi.mock('../services/notification.service', () => ({ notificationService: { notifyChefMessage: audit.notifyChef } }));
 
-import analytics from './analytics';
 import microlearning from './microlearning';
 import portal from './portal';
 import managerNotifications from './notifications';
@@ -48,15 +47,6 @@ describe('readiness re-audit: real route handlers with isolated DB/network/auth 
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ heatmap: ['private-audit-data'] }) }));
   });
   afterEach(() => vi.unstubAllGlobals());
-
-  it.each([undefined, caller])('reproduces seller analytics access for caller %j', async neonUser => {
-    const stack = route(analytics, 'get', '/seller/:uid');
-    expect(stack).toHaveLength(1); // No route auth/ownership middleware.
-    const res = response();
-    await stack[0].handle({ params: { uid: 'other-seller-uid' }, neonUser }, res);
-    expect(fetch).toHaveBeenCalledWith('https://stagingwebapp.localcook.shop/app/seller_analytics_api.php?sid=55');
-    expect(res.json).toHaveBeenCalledWith({ heatmap: ['private-audit-data'] });
-  });
 
   it('rejects anonymous microlearning progress updates', async () => {
     const res = response();

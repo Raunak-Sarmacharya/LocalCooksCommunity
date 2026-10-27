@@ -24,5 +24,3 @@ export function getVendorOnboardingUrl(): string {
   return `${base}/app/shop/index.php?redirect=${encodeURIComponent(`${base}/app/shop/vendor_onboarding.php`)}`;
 }
 
-export const getSellerAnalyticsApiUrl = (shopId: string | number) =>
-  `${getShopBaseUrl()}/app/seller_analytics_api.php?sid=${encodeURIComponent(String(shopId))}`;
