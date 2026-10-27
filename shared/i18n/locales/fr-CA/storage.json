@@ -676,5 +676,8 @@
   "stNextStep_taken_back_reserved": "La libérer rend l’unité de nouveau disponible.",
   "stNextStep_taken_back_active": "Enregistrez le départ quand {chef} part.",
   "stChipTakenBack": "Reprise",
-  "stDateNeededBackBy": "Reprise le {date}"
+  "stDateNeededBackBy": "Reprise le {date}",
+  "stcRentMoreAt": "Louer plus d’entreposage à {kitchen}",
+  "stcBlockedTitle": "Vous ne pouvez pas louer d’entreposage ici pour le moment",
+  "stcBlockedAction": "Voir ce qu’il faut"
 }

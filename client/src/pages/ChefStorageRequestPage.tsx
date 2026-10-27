@@ -22,7 +22,7 @@ import { addDays, localDayStart, localToday, MAX_LEAD_DAYS } from "@shared/stora
 import { cn } from "@/lib/utils"
 
 const QUICK_DAYS = [7, 14, 30] as const
-type Failure = Error & { code?: string }
+type Failure = Error & { code?: string; refusal?: { message?: string; actionUrl?: string; applicationStatus?: string } }
 
 export default function ChefStorageRequestPage() {
   const { t: tt, i18n } = useTranslation("storage")
@@ -60,6 +60,8 @@ export default function ChefStorageRequestPage() {
   const policy = useQuery<PolicyResponse>({ queryKey: ["cancellation-policy", kitchenId], queryFn: () => apiGet(`/kitchens/${kitchenId}/cancellation-policy`, false), enabled: valid })
   const q = quote.data && quote.data.startOn === startOn && quote.data.days === days && !quote.isFetching ? quote.data : null
   const approvalNeeded = quote.error?.code === "approval_required"
+  // Approved before, but something blocks new bookings now (a document to renew, the kitchen paused): say that, not "apply".
+  const refusal = approvalNeeded && quote.error?.refusal?.applicationStatus && quote.error.refusal.applicationStatus !== "application_required" ? quote.error.refusal : null
   const kitchen = listing?.kitchenName || t("stcTheKitchen")
   const payLabel = q ? t("stcRequestPay", { amount: cad(q.totalCents, locale) }) : t("stcRequest")
 
@@ -121,11 +123,12 @@ export default function ChefStorageRequestPage() {
       </section>
 
       {approvalNeeded ? <section className="space-y-3 rounded-2xl border p-5" data-testid="storage-apply-first">
-        <h2 className="text-base font-semibold">{t("stcApplyTitle")}</h2>
-        <p className="text-sm leading-relaxed">{t("stcApplyBody", { kitchen })}</p>
+        <h2 className="text-base font-semibold">{refusal ? t("stcBlockedTitle") : t("stcApplyTitle")}</h2>
+        <p className="text-sm leading-relaxed">{refusal?.message || t("stcApplyBody", { kitchen })}</p>
         <p className="text-sm text-muted-foreground">{t("stcDiscNoAuto")} {t("stcDiscDays")}</p>
         <PublishedCancellationPolicySummary kitchenId={kitchenId} />
-        <Button className="min-h-12 w-full sm:w-auto" onClick={() => navigate(listing.locationId ? `/apply-kitchen/${listing.locationId}?kitchenId=${kitchenId}` : "/dashboard?view=discover-kitchens")}>{t("stcApply")}</Button>
+        {refusal ? (refusal.actionUrl && <Button className="min-h-12 w-full sm:w-auto" onClick={() => navigate(refusal.actionUrl!)}>{t("stcBlockedAction")}</Button>)
+          : <Button className="min-h-12 w-full sm:w-auto" onClick={() => navigate(listing.locationId ? `/apply-kitchen/${listing.locationId}?kitchenId=${kitchenId}` : "/dashboard?view=discover-kitchens")}>{t("stcApply")}</Button>}
       </section> : step === 1 ? <>
         <fieldset className="space-y-3 rounded-2xl border p-4 sm:p-5">
           <legend className="px-1 text-base font-semibold">{t("stcStartLabel")}</legend>

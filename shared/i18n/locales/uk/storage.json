@@ -676,5 +676,8 @@
   "stNextStep_taken_back_reserved": "Звільнення робить місце знову доступним для оренди.",
   "stNextStep_taken_back_active": "Зафіксуйте виїзд, коли {chef} піде.",
   "stChipTakenBack": "Повернуто",
-  "stDateNeededBackBy": "Повернуто {date}"
+  "stDateNeededBackBy": "Повернуто {date}",
+  "stcRentMoreAt": "Орендувати більше місця в {kitchen}",
+  "stcBlockedTitle": "Зараз ви не можете орендувати тут місце",
+  "stcBlockedAction": "Що потрібно"
 }

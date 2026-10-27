@@ -118,7 +118,7 @@ export function StorageRentCta({ kitchenId, canBook, onApply, compact = false, l
           : <div className="flex items-center justify-between gap-3 py-3">
             <StorageListingDetails row={row} compact />
             {canBook && row.availability.state !== "full"
-              ? <Button asChild size="sm" className="min-h-11 shrink-0"><Link href={rentHref(kitchenId, row)} aria-label={t("stcRentNamed", { listing: row.name })}>{t("stcRent")}</Link></Button> : null}
+              ? <Button asChild size="sm" variant="outline" className="min-h-11 shrink-0"><Link href={rentHref(kitchenId, row)} aria-label={t("stcRentNamed", { listing: row.name })}>{t("stcRent")}</Link></Button> : null}
           </div>}
       </li>)}
     </ul>

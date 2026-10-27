@@ -28,11 +28,14 @@ import { unavailableUnitRanges } from './storage-availability';
 import { assertBookingMoneyWritable, BookingMoneyFrozen } from './booking-money-guard';
 import { storageSettings } from './storage-settings';
 import { readVisitDuties } from '@shared/visit-duties';
+import { bookingRefusalBody } from '@shared/location-booking-eligibility';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type Reader = Tx | typeof db;
 export const STORAGE_DISCLOSURE_VERSION = 'storage-v1';
 export class StorageRentalError extends Error {
+  /** For a booking refusal: the same body kitchen booking sends (reason, message, next-step link). */
+  refusal?: Record<string, unknown>;
   constructor(public code: string, public status = 409) { super(code); }
 }
 function fail(code: string, status = 409): never { throw new StorageRentalError(code, status); }
@@ -60,7 +63,9 @@ async function context(listingId: number, reader: Reader, existingRental = false
   return { listing, ...place, timezone: place.location.timezone || 'America/St_Johns' };
 }
 async function eligible(chefId: number, ctx: Awaited<ReturnType<typeof context>>) {
-  if (!(await chefService.getApplicationStatusForBooking(chefId, ctx.location.id, ctx.kitchen.id)).canBook) fail('approval_required', 403);
+  const access = await chefService.getApplicationStatusForBooking(chefId, ctx.location.id, ctx.kitchen.id);
+  // Say why (expired document, kitchen paused…), not just "apply first", so the chef sees the real next step.
+  if (!access.canBook) throw Object.assign(new StorageRentalError('approval_required', 403), { refusal: bookingRefusalBody(access) });
   if ((await readClaimBookingHold(chefId)).held) fail('claim_hold', 403);
   if (await hasChefUnpaidPenalties(chefId)) fail('unpaid_holdover', 403);
 }

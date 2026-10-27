@@ -50,7 +50,8 @@ export function endpoint(run: (req: Request) => Promise<unknown>) {
       // Provider exceptions may contain request details; keep them out of API responses and logs.
       if (status === 500) logger.error('[StorageRental] Operation failed', { path: req.path });
       await ensureServerI18n();
-      res.status(status).json({ code, error: tLocale(req.neonUser?.preferredLocale, `stError_${code}`, { ns: 'storage' }) });
+      res.status(status).json({ code, error: tLocale(req.neonUser?.preferredLocale, `stError_${code}`, { ns: 'storage' }),
+        ...(error instanceof StorageRentalError && error.refusal ? { refusal: error.refusal } : {}) });
     }
   };
 }

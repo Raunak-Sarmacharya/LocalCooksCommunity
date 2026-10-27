@@ -676,5 +676,8 @@
   "stNextStep_taken_back_reserved": "Releasing it makes the unit free to rent again.",
   "stNextStep_taken_back_active": "Record the move-out when {chef} leaves.",
   "stChipTakenBack": "Taken back",
-  "stDateNeededBackBy": "Taken back {date}"
+  "stDateNeededBackBy": "Taken back {date}",
+  "stcRentMoreAt": "Rent more storage at {kitchen}",
+  "stcBlockedTitle": "You can’t rent storage here right now",
+  "stcBlockedAction": "See what’s needed"
 }

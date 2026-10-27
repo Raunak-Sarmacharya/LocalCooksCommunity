@@ -79,6 +79,8 @@ export default function ChefStoragePage() {
         <ul className="space-y-3">{current.map(rental => <li key={rental.id}><RentalCard rental={rental} /></li>)}</ul></section>}
       {past.length > 0 && <section className="space-y-3" aria-labelledby="storage-past"><h2 id="storage-past" className="text-base font-semibold">{t("stcPast")}</h2>
         <ul className="space-y-3">{past.map(rental => <li key={rental.id}><RentalCard rental={rental} /></li>)}</ul></section>}
+      {/* More storage where they already rent first (the usual case), then anywhere else. */}
+      {(current[0] ?? past[0]) && <Button asChild variant="outline" className="min-h-11 w-full sm:w-auto"><Link href={`/storage/new?kitchenId=${(current[0] ?? past[0]).kitchen.id}`}>{t("stcRentMoreAt", { kitchen: (current[0] ?? past[0]).kitchen.name })}</Link></Button>}
       <p><Link className="text-sm underline underline-offset-2" href="/dashboard?view=discover-kitchens">{t("stcRentMore")}</Link></p>
     </>}
   </StoragePageShell>
