@@ -1,4 +1,3 @@
-import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { ChatAvatar } from "@/components/ui/chat/chat-avatar";
@@ -7,6 +6,9 @@ import { Timestamp } from "firebase/firestore";
 import { Archive, ArchiveRestore, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useTranslation } from "react-i18next";
+import { resolveImageUrl } from "@/lib/resolve-image-url";
+import { itemStatus, itemTag } from "./chat-context-format";
+import { StatusChip } from "./ChatContextPanel";
 
 export type ApplicationStatus = 'inReview' | 'step1_approved' | 'step2_review' | 'fully_approved' | 'rejected' | 'unknown';
 
@@ -41,20 +43,19 @@ export function ConversationItem({
   archiveBusy = false,
   onToggleArchive,
 }: ConversationItemProps) {
-  const { t } = useTranslation('chef');
+  const { t, i18n } = useTranslation('chef');
   const lastMessageDate = conversation.lastMessageAt instanceof Date
     ? conversation.lastMessageAt
     : conversation.lastMessageAt instanceof Timestamp
       ? conversation.lastMessageAt.toDate()
       : new Date();
 
-  // Anything under a minute reads as "now" rather than date-fns's wordy
-  // "less than a minute", which is both long for this column and clashes with
-  // the terse "3 minutes" / "2 days" style of the older entries.
+  // Inbox clock: "11:48" today, "Mon" this week, "Oct 18" before that.
   const isJustNow = Date.now() - lastMessageDate.getTime() < 60_000;
-  const relativeTime = isJustNow
-    ? t("timeNow")
-    : formatDistanceToNow(lastMessageDate, { addSuffix: false }).replace('about ', '');
+  const ageDays = (Date.now() - lastMessageDate.getTime()) / 86_400_000;
+  const relativeTime = isJustNow ? t("timeNow")
+    : new Intl.DateTimeFormat(i18n.language, lastMessageDate.toDateString() === new Date().toDateString() ? { hour: "numeric", minute: "2-digit" }
+      : ageDays < 6 ? { weekday: "short" } : { month: "short", day: "numeric" }).format(lastMessageDate);
 
   // Determine unread count based on the viewer's role
   // Chef sees unreadChefCount (messages from manager they haven't read)
@@ -104,79 +105,51 @@ export function ConversationItem({
 
   const statusBadge = getStatusBadge();
 
+  // Chef side leads with the kitchen and its photo; the kitchen side leads with the customer.
+  const title = viewerRole === 'chef' ? partnerLocation || partnerName : partnerName;
+  const subtitle = viewerRole === 'chef' ? (partnerLocation ? partnerName : '') : partnerLocation;
+  const next = conversation.summary?.next;
+  const nextStatus = next ? itemStatus(next, t as unknown as (key: string, options?: Record<string, unknown>) => string) : null;
   return (
-    <div className="relative">
+    <div className="group relative">
     <button
       onClick={onClick}
+      aria-current={isSelected ? "true" : undefined}
       className={cn(
-        "w-full flex flex-col gap-2 p-3 pr-10 rounded-lg transition-all text-left",
-        "hover:bg-accent hover:text-accent-foreground",
-        isSelected ? "bg-accent text-accent-foreground" : "bg-background"
+        "grid w-full grid-cols-[44px_1fr_auto] items-start gap-3 rounded-xl p-3 pr-3 text-left transition-colors",
+        isSelected ? "bg-primary/[0.07] shadow-[inset_3px_0_0_hsl(var(--primary))]" : "hover:bg-muted/60",
       )}
     >
-      <div className="flex items-center gap-3 w-full">
-        <ChatAvatar
-          fallback={partnerName[0]}
-          className={cn("shrink-0", unavailable && "opacity-50 grayscale")}
-        />
-        
-        <div className="flex-1 overflow-hidden grid grid-cols-12 gap-2">
-          <div className="col-span-8 flex flex-col min-w-0">
-            <span className={cn(
-              "font-medium truncate text-sm",
-              unavailable && "text-muted-foreground"
-            )}>
-              {partnerName}
-            </span>
-            <span
-              className={cn(
-                "text-xs truncate",
-                unavailable
-                  ? "text-muted-foreground/80 italic"
-                  : unreadCount > 0 ? "font-medium text-foreground" : "text-muted-foreground"
-              )}
-            >
-              {unavailable
-                // Overrides the last-message preview: the more useful fact about
-                // a dormant thread is that it is dormant, not what was last said.
-                ? t("chatUnavailableShort", "Account deleted — no longer available")
-                : conversation.lastMessageText?.trim() ||
-                  partnerLocation ||
-                  t("chatCooksCommunity")}
-            </span>
-          </div>
-          
-          <div className="col-span-4 flex flex-col items-end justify-between py-0.5">
-            <span className="text-xs text-muted-foreground whitespace-nowrap mr-2">
-              {relativeTime}
-            </span>
-            {unreadCount > 0 && (
-              <Badge variant="destructive" className="flex items-center justify-center">
-                {unreadCount}
-              </Badge>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Application Status Badge - Enterprise indicator */}
-      {unavailable && (
-        <div className="ml-11"><Badge variant="outline" className="bg-muted text-muted-foreground border-border font-normal text-xs">{t('chatInactive', 'Inactive')}</Badge></div>
-      )}
-      {statusBadge && !unavailable && (
-        <div className="flex items-center gap-1.5 ml-11">
-          <Badge 
-            variant="outline" 
-            className={cn(
-              "text-xs px-2 py-0.5 font-medium flex items-center gap-1 whitespace-nowrap",
-              statusBadge.className
-            )}
-          >
-            <statusBadge.icon className="h-3 w-3 shrink-0" />
-            {statusBadge.label}
-          </Badge>
-        </div>
-      )}
+      <ChatAvatar
+        src={viewerRole === 'chef' ? resolveImageUrl(conversation.summary?.imageUrl) ?? undefined : undefined}
+        fallback={(title || '?')[0]}
+        className={cn("size-11 shrink-0", viewerRole === 'chef' && "rounded-xl", unavailable && "opacity-50 grayscale")}
+      />
+      <span className="min-w-0">
+        <span className={cn("block truncate text-sm font-semibold", unavailable && "text-muted-foreground")}>{title}</span>
+        {subtitle && <span className="block truncate text-xs text-muted-foreground">{subtitle}</span>}
+        {(unavailable || conversation.lastMessageText?.trim()) && (
+          <span className={cn("mt-0.5 block truncate text-[13px]",
+            unavailable ? "italic text-muted-foreground/80" : unreadCount > 0 ? "font-semibold text-foreground" : "text-muted-foreground")}>
+            {unavailable
+              // Overrides the last-message preview: the more useful fact about
+              // a dormant thread is that it is dormant, not what was last said.
+              ? t("chatUnavailableShort", "Account deleted — no longer available")
+              : conversation.lastMessageText!.trim()}
+          </span>
+        )}
+        {(next || statusBadge || unavailable) && (
+          <span className="mt-1.5 flex flex-wrap gap-1.5">
+            {unavailable && <Badge variant="outline" className="bg-muted text-xs font-normal text-muted-foreground">{t('chatInactive', 'Inactive')}</Badge>}
+            {next && nextStatus && !unavailable && <StatusChip tone={nextStatus.tone}>{itemTag(next, t as unknown as (key: string, options?: Record<string, unknown>) => string, i18n.language)}</StatusChip>}
+            {statusBadge && !unavailable && !next && <StatusChip tone="wait">{statusBadge.label}</StatusChip>}
+          </span>
+        )}
+      </span>
+      <span className="flex flex-col items-end gap-1.5 pt-0.5">
+        <span className="whitespace-nowrap text-xs text-muted-foreground">{relativeTime}</span>
+        {unreadCount > 0 && <span className="grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1.5 text-[11px] font-semibold text-primary-foreground" aria-label={t("chatUnreadCount", { count: unreadCount })}>{unreadCount}</span>}
+      </span>
     </button>
     {onToggleArchive && !unavailable && (
       <Button
@@ -187,7 +160,7 @@ export function ConversationItem({
         onClick={onToggleArchive}
         aria-label={archived ? t('chatRestore', 'Restore chat') : t('chatArchive', 'Archive chat')}
         title={archived ? t('chatRestore', 'Restore chat') : t('chatArchive', 'Archive chat')}
-        className="absolute right-1.5 top-1.5 size-7 text-muted-foreground hover:text-foreground"
+        className="absolute bottom-2 right-2 size-7 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
       >
         {archived ? <ArchiveRestore className="size-4" /> : <Archive className="size-4" />}
       </Button>

@@ -12,6 +12,8 @@ export default {
         'lg': '1024px',
         'xl': '1280px',
         '2xl': '1536px',
+        // Wide enough for the dashboard sidebar plus a three-pane view (Messages side panel).
+        'wide': '1440px',
         // Mobile-first breakpoints
         'mobile': { 'max': '640px' },
         'tablet': { 'min': '641px', 'max': '1024px' },

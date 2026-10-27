@@ -54,7 +54,23 @@ export interface Conversation {
   unavailableAt?: Timestamp | Date;
   archivedChefAt?: Timestamp | Date;
   archivedManagerAt?: Timestamp | Date;
+  /** Inbox tag and filters: the next booking, tour or storage rental, and which kinds this thread has. */
+  summary?: { next: ChatContextItem | null; kinds: ChatContextItem['kind'][]; imageUrl: string | null } | null;
 }
+
+export type ChatContextItem = {
+  kind: 'booking' | 'tour' | 'storage'; id: number; status: string;
+  date?: string; startTime?: string; endTime?: string; at?: string; from?: string; to?: string; label?: string; href: string;
+};
+export type ChatContextEvent = { kind: ChatContextItem['kind']; id: number; action: 'requested' | 'confirmed' | 'cancelled'; at: string; item: ChatContextItem };
+export type ChatContext = {
+  kitchen: { name: string; address: string | null; imageUrl: string | null; timezone: string };
+  access: 'approved' | 'inReview' | null;
+  upcoming: ChatContextItem[];
+  past: { count: number; latest: ChatContextItem[] };
+  customer?: { since: string | null; completedBookings: number; noShows: number };
+  events: ChatContextEvent[];
+};
 
 
 export async function chatRequest(path: string, init?: RequestInit) {
@@ -107,6 +123,9 @@ export async function sendMessage(id: string, _senderId: number, _role: 'chef' |
 export async function sendSystemMessage(_id: string, _content: string): Promise<string> {
   throw Error('System messages are server-owned');
 }
+export async function getConversationContext(id: string): Promise<ChatContext> {
+  return chatRequest(threadPath(id) + '/context');
+}
 export async function getMessages(id: string, _limit = 50): Promise<ChatMessage[]> {
   return (await chatRequest(threadPath(id) + '/messages')).map(dates);
 }
@@ -155,7 +174,7 @@ export async function getAllConversations(_userId: number, _role: 'chef' | 'mana
   return conversations.map((row: any) => dates({ ...row.conversation, id: row.conversationId,
     chefId: row.chefId, managerId: row.managerId, locationId: row.locationId,
     applicationId: row.linkedApplicationIds[0], linkedApplicationIds: row.linkedApplicationIds,
-    eligibleViewingIds: row.eligibleViewingIds, locationName: row.locationName, chefName: row.chefName, managerName: row.managerName }))
+    eligibleViewingIds: row.eligibleViewingIds, locationName: row.locationName, chefName: row.chefName, managerName: row.managerName, summary: row.summary ?? null }))
     .sort((a: Conversation, b: Conversation) => Number(b.lastMessageAt) - Number(a.lastMessageAt));
 }
 export async function getUnreadCount(id: number, role: 'chef' | 'manager'): Promise<number> {

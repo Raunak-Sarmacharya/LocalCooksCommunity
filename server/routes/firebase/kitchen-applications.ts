@@ -27,6 +27,7 @@ import { KitchenService } from '../../domains/kitchens/kitchen.service';
 import { ApplicationRepository } from '../../domains/applications/application.repository';
 import { ApplicationService } from '../../domains/applications/application.service';
 
+import { chatContext, chatSummaries } from '../../services/chat-context';
 import { getAdminDb, initializeConversation, initializeSharedConversation, sendSystemNotification, notifyTierTransition } from '../../chat-service';
 import { isChatParticipant, participantChatRelationships, sharedChatEligibility, tourGrantsChat } from '../../services/shared-chat-access';
 import { FieldValue } from 'firebase-admin/firestore';
@@ -1665,12 +1666,11 @@ async function participantConversation(actor: NonNullable<Request['neonUser']>, 
     if (!location || !isChatParticipant(actor, chefId, location.managerId)) return null;
     const eligible = await sharedChatEligibility(chefId, locationId);
     if (!eligible) return null;
-    const conversationId = await initializeSharedConversation(chefId, locationId);
+    const conversationId = await initializeSharedConversation(chefId, locationId, eligible);
     if (!conversationId) throw new Error('CHAT_UNAVAILABLE');
-    const snapshot = await (await getAdminDb()).collection('conversations').doc(conversationId).get();
-    if (!snapshot.exists) throw new Error('CHAT_UNAVAILABLE');
     const [metadata, chefName, managerName] = await Promise.all([
-        withParticipantChat(actor, actor.firebaseUid!, conversationId, async ({ ref, live }) => serializeChat({ id: ref.id, ...(await ref.get()).data(), unavailable: !live })),
+        // withParticipantChat reads the conversation (404 if missing) and re-checks access; its data is reused here.
+        withParticipantChat(actor, actor.firebaseUid!, conversationId, async ({ ref, data, live }) => serializeChat({ id: ref.id, ...data, unavailable: !live })),
         getUserDisplayName(chefId, 'chef'), getUserDisplayName(location.managerId!, 'manager')]);
     return { id: conversationId, conversationId, chefId, locationId, managerId: location.managerId,
         locationName: location.name, chefName, managerName,
@@ -1690,6 +1690,14 @@ router.get(participantPath, requireFirebaseAuthWithUser, async (req, res) => {
             async ({ ref, managerId, live, applicationIds }) => serializeChat({ id: ref.id, ...(await ref.get()).data(),
                 managerId, applicationId: applicationIds[0], linkedApplicationIds: applicationIds, unavailable: !live }));
         return res.json(result);
+    } catch (error) { return participantRequestError(res, error); }
+});
+// What the thread is about: kitchen, upcoming and past bookings, tours, storage, and their events for the timeline.
+router.get(`${participantPath}/context`, requireFirebaseAuthWithUser, async (req, res) => {
+    try {
+        const scope = await withParticipantChat(req.neonUser!, req.firebaseUser!.uid, req.params.conversationId,
+            async ({ data, role }) => ({ chefId: Number(data.chefId), locationId: Number(data.locationId), role }));
+        return res.json(await chatContext(scope.chefId, scope.locationId, scope.role));
     } catch (error) { return participantRequestError(res, error); }
 });
 router.get(`${participantPath}/messages`, requireFirebaseAuthWithUser, async (req, res) => {
@@ -1749,6 +1757,10 @@ router.get('/firebase/chat/conversations', requireFirebaseAuthWithUser, async (r
         });
         const missing = pairs.filter(pair => !conversations.some(row => row.chefId === pair.chefId && row.locationId === pair.locationId));
         conversations.push(...(await inBatches(missing, pair => participantConversation(req.neonUser!, pair.chefId, pair.locationId))).filter(Boolean));
+        // Row tag and filters ("Booking · Nov 16", Bookings/Tours/Storage); the inbox still works without them.
+        const summaries = await chatSummaries(conversations.map(row => ({ chefId: row.chefId, locationId: row.locationId })), req.neonUser!.role as 'chef' | 'manager')
+            .catch(error => { logger.warn('[chat] inbox summaries unavailable', error); return null; });
+        for (const row of conversations) row.summary = summaries?.get(`${row.chefId}:${row.locationId}`) ?? null;
         return res.json({ conversations });
     } catch (error) { return sharedChatError(res, error); }
 });

@@ -45,9 +45,11 @@ export async function initializeConversation(applicationData: { id: number; chef
 }
 
 /** Server-owned mapping serializes tour/application opens without merging histories. */
-export async function initializeSharedConversation(chefId: number, locationId: number): Promise<string | null> {
+export async function initializeSharedConversation(chefId: number, locationId: number,
+  known?: Awaited<ReturnType<typeof sharedChatEligibility>>): Promise<string | null> {
   try {
-    const eligibility = await sharedChatEligibility(chefId, locationId);
+    // Callers that just checked eligibility pass it in (the inbox does this for every thread).
+    const eligibility = known ?? await sharedChatEligibility(chefId, locationId);
     if (!eligibility) return null;
     const { location, applications } = eligibility;
     const managerId = location.managerId!;

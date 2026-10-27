@@ -3,24 +3,20 @@ import { cn } from "@/lib/utils";
 
 interface MessageBubbleContentProps {
   text?: string;
-  files?: Array<{ name: string; url: string }>;
   isSent: boolean;
+  /** Grouped bubbles keep the tail corner only on the last one. */
+  first?: boolean;
+  last?: boolean;
   children?: ReactNode;
 }
 
-export function MessageBubbleContent({
-  text,
-  files,
-  isSent,
-  children
-}: MessageBubbleContentProps) {
+export function MessageBubbleContent({ text, isSent, first = true, last = true, children }: MessageBubbleContentProps) {
   return (
     <div
       className={cn(
-        "text-sm text-accent-foreground bg-accent px-4 py-2.5 rounded-2xl break-words max-w-[100%]",
-        isSent
-          ? "bg-primary text-primary-foreground rounded-br-sm" // Shadboard uses rounded-se-none (start-end), keeping consistent with direction
-          : "bg-muted text-foreground rounded-bl-sm"
+        "max-w-full break-words rounded-2xl px-3.5 py-2 text-[14.5px] leading-relaxed",
+        isSent ? "bg-primary text-primary-foreground" : "bg-muted text-foreground",
+        isSent ? [!first && "rounded-tr-md", !last && "rounded-br-md", last && "rounded-br-sm"] : [!first && "rounded-tl-md", !last && "rounded-bl-md", last && "rounded-bl-sm"],
       )}
     >
       {text}

@@ -47,10 +47,20 @@ export function ConversationList({
   const { t } = useTranslation('chef');
   const [searchQuery, setSearchQuery] = useState("");
   const [archivedOpen, setArchivedOpen] = useState(false);
+  type Filter = 'all' | 'unread' | 'booking' | 'tour' | 'storage';
+  const [filter, setFilter] = useState<Filter>('all');
+  const unread = (c: Conversation) => (viewerRole === 'chef' ? c.unreadChefCount : c.unreadManagerCount) > 0;
+  const kinds = (['booking', 'tour', 'storage'] as const).filter(kind => conversations.some(c => c.summary?.kinds.includes(kind)));
+  const filters: { id: Filter; label: string; count?: number }[] = [
+    { id: 'all', label: t('chatFilterAll') },
+    { id: 'unread', label: t('chatFilterUnread'), count: conversations.filter(unread).length },
+    ...kinds.map(kind => ({ id: kind, label: t(`chatFilter_${kind}`) })),
+  ];
 
-  const filteredConversations = conversations.filter(c => 
-    getPartnerName(c).toLowerCase().includes(searchQuery.toLowerCase()) ||
-    getPartnerLocation(c).toLowerCase().includes(searchQuery.toLowerCase())
+  const query = searchQuery.trim().toLowerCase();
+  const filteredConversations = conversations.filter(c =>
+    (filter === 'all' || (filter === 'unread' ? unread(c) : !!c.summary?.kinds.includes(filter)))
+    && (!query || [getPartnerName(c), getPartnerLocation(c), c.lastMessageText ?? ''].some(text => text.toLowerCase().includes(query)))
   );
   const isArchived = (c: Conversation) => viewerRole === 'chef' ? !!c.archivedChefAt : !!c.archivedManagerAt;
   const isInactive = (c: Conversation) => isConversationUnavailable?.(c) ?? (c.unavailable === true);
@@ -90,6 +100,17 @@ export function ConversationList({
             className="pl-9 bg-muted/50"
           />
         </div>
+        {conversations.length > 1 && (
+          <div className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-0.5 [scrollbar-width:none]" role="group" aria-label={t('chatFilters')}>
+            {filters.map(item => (
+              <button key={item.id} type="button" aria-pressed={filter === item.id} onClick={() => setFilter(item.id)}
+                className={filter === item.id ? "shrink-0 rounded-full bg-foreground px-2.5 py-1 text-xs font-medium text-background"
+                  : "shrink-0 rounded-full px-2.5 py-1 text-xs font-medium shadow-[inset_0_0_0_1px_hsl(var(--border))] hover:bg-muted"}>
+                {item.label}{item.count ? <span className={filter === item.id ? "ml-1" : "ml-1 text-primary"}>{item.count}</span> : null}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
       
       <ScrollArea className="flex-1">
@@ -99,8 +120,8 @@ export function ConversationList({
           ) : filteredConversations.length === 0 ? (
             <div className="flex flex-col items-center px-4 py-10 text-center text-muted-foreground">
               <MessageCircle className="mb-3 size-6 text-primary/50" />
-              <p className="text-sm font-medium text-foreground">{t(searchQuery ? "chatNoSearchResults" : "chatNoConversations")}</p>
-              {searchQuery && <button type="button" className="mt-2 text-xs font-medium text-primary hover:underline" onClick={() => setSearchQuery("")}>{t("chatClearSearch")}</button>}
+              <p className="text-sm font-medium text-foreground">{t(searchQuery || filter !== 'all' ? "chatNoSearchResults" : "chatNoConversations")}</p>
+              {(searchQuery || filter !== 'all') && <button type="button" className="mt-2 text-xs font-medium text-primary hover:underline" onClick={() => { setSearchQuery(""); setFilter('all'); }}>{t("chatClearSearch")}</button>}
             </div>
           ) : (
             <>

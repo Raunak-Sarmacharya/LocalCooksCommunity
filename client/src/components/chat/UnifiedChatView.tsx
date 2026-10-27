@@ -5,7 +5,8 @@ import { AlertCircle, MessageCircle } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { auth } from "@/lib/firebase";
-import { getAllConversations, getLiveChatParticipants, setConversationArchived, resolveTourConversation, type Conversation } from "@/services/chat-service";
+import { getAllConversations, getConversationContext, getLiveChatParticipants, setConversationArchived, resolveTourConversation, type Conversation } from "@/services/chat-service";
+import ChatContextPanel from "./ChatContextPanel";
 import { useToast } from "@/hooks/use-toast";
 import ChatPanel from './ChatPanel';
 import { ConversationList } from "./ConversationList";
@@ -13,6 +14,7 @@ import { ConversationListSkeleton } from "./ConversationItemSkeleton";
 import { ApplicationStatus } from "./ConversationItem";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
+import { resolveImageUrl } from "@/lib/resolve-image-url";
 
 interface ApplicationDetails {
   id: number;
@@ -105,6 +107,14 @@ export default function UnifiedChatView({ userId, role, initialConversationId, i
         throw Error('This tour link no longer matches its shared conversation. Reopen messaging from My Tours.');
       return result;
     }, retry: false,
+  });
+  const threadContext = useQuery({
+    queryKey: ['chat-context', selectedConversation?.id],
+    queryFn: () => getConversationContext(selectedConversation!.id),
+    enabled: !!selectedConversation,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+    retry: 1,
   });
   const appliedContext = useRef<string | null>(null);
   const contextKey = initialConversationId + ':' + (initialTourId || '');
@@ -420,6 +430,9 @@ export default function UnifiedChatView({ userId, role, initialConversationId, i
             availabilityPending={!participantsResolved}
             onUnreadCountUpdate={handleUnreadCountUpdate}
             embedded={true}
+            context={threadContext.data}
+            onBack={hideConversationList ? undefined : () => setIsMobileListVisible(true)}
+            partnerImage={resolveImageUrl(threadContext.data?.kitchen.imageUrl ?? selectedConversation.summary?.imageUrl)}
           />
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center px-6 py-12 text-center">
@@ -432,6 +445,13 @@ export default function UnifiedChatView({ userId, role, initialConversationId, i
           </div>
         )}
       </div>
+
+      {/* What the thread is about; on narrower screens the next item is pinned in the thread instead. */}
+      {selectedConversation && !hideConversationList && (
+        <aside className="hidden w-[280px] shrink-0 overflow-y-auto border-l bg-muted/20 wide:block" aria-label={t("chatAboutThread")}>
+          <ChatContextPanel context={threadContext.data} role={role} partnerName={getPartnerNameLabel(selectedConversation)} isLoading={threadContext.isLoading} />
+        </aside>
+      )}
     </Card>
   );
 }

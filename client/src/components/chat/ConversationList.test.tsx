@@ -64,3 +64,18 @@ describe("ConversationList archive", () => {
     expect(screen.getByText("Manager 1")).toBeInTheDocument();
   });
 });
+
+describe("ConversationList filters", () => {
+  it("offers only the kinds threads have, and filters by unread and by kind", () => {
+    const rows = [conversation("1", { unreadManagerCount: 2, summary: { next: null, kinds: ["booking"], imageUrl: null } }),
+      conversation("2", { summary: { next: null, kinds: ["tour"], imageUrl: null } })];
+    render(<ConversationList conversations={rows} viewerRole="manager" onSelect={vi.fn()} getPartnerName={c => `Chef ${c.id}`} getPartnerLocation={() => "Kitchen"} />);
+    expect(screen.queryByRole("button", { name: "chatFilter_storage" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /chatFilterUnread/ }));
+    expect(screen.getByText("Chef 1")).toBeInTheDocument();
+    expect(screen.queryByText("Chef 2")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "chatFilter_tour" }));
+    expect(screen.getByText("Chef 2")).toBeInTheDocument();
+    expect(screen.queryByText("Chef 1")).toBeNull();
+  });
+});

@@ -56,7 +56,7 @@ describe('participant shared chat routes', () => {
   });
   it.each([{ id: 3, role: 'chef' }, { id: 2, role: 'manager' }])('opens the exact approved tour for $role with server labels and exact return', async actor => {
     const response = await open(exact, actor);
-    expect(state.provision).toHaveBeenCalledWith(3, 5);
+    expect(state.provision).toHaveBeenCalledWith(3, 5, expect.objectContaining({ viewingIds: [20] }));
     expect(response.json).toHaveBeenCalledWith(expect.objectContaining({ conversationId: 'history', viewingId: 20,
       locationName: 'Real location', chefName: 'Participant 3', linkedApplicationIds: [],
       path: `${actor.role === 'manager' ? '/manager' : ''}/dashboard?view=messages&conversation=history&tour=20` }));
