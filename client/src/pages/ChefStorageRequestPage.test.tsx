@@ -27,7 +27,7 @@ beforeAll(async () => {
   await i18n.changeLanguage("en-CA")
 })
 beforeEach(() => {
-  Object.assign(state, { approved: true, refusal: undefined, quoteTotal: 3500, calls: [] })
+  Object.assign(state, { approved: true, refusal: undefined, fits: undefined, quoteTotal: 3500, calls: [] })
   window.history.pushState({}, "", "/storage/new?kitchenId=1&listingId=4")
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
     const body = init?.body ? JSON.parse(String(init.body)) : undefined
@@ -35,6 +35,7 @@ beforeEach(() => {
     if (url.endsWith("/storage-availability")) return { ok: true, json: async () => [listing] }
     if (url.endsWith("/quote")) {
       if (!state.approved) return { ok: false, json: async () => ({ code: "approval_required", error: "Apply to this kitchen first.", refusal: (state as any).refusal }) }
+      if ((state as any).fits !== undefined && body.days > (state as any).fits) return { ok: false, json: async () => ({ code: "full", error: "This storage is full for those dates.", fitsDays: (state as any).fits }) }
       return { ok: true, json: async () => ({ ...body, endOn: addDay(body.startOn, body.days - 1), dailyPriceCents: 500, subtotalCents: body.days * 500, taxCents: 0,
         serviceFeeCents: 0, totalCents: state.quoteTotal * body.days / 7, maxTermDays: 30, taxRatePercent: 0, quotedAt: new Date().toISOString(),
         acceptedTermsVersion: "storage-v1", disclosureVersion: "d1", cancellationPolicy: { version: 2, noticeHours: 48, lateChargePercent: 50 } }) }
@@ -102,6 +103,15 @@ describe("rent storage stepper", () => {
     fireEvent.click(button)
     expect(await screen.findByRole("alert")).toHaveTextContent("The price is now $42.00. Check it, then tap the button again.")
     expect(state.calls.some(([url]) => url === "/api/chef/storage-rentals")).toBe(false)
+  })
+
+  it("full for the chosen span: says how many days fit and sets them in one tap", async () => {
+    Object.assign(state, { fits: 3 })
+    show()
+    expect(await screen.findByText(/Only 3 days are free from this start/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Rent for 3 days" }))
+    await waitFor(() => expect(screen.queryByText(/days are free from this start/)).toBeNull())
+    expect(state.calls.some(([url, body]) => url.endsWith("/quote") && body?.days === 3)).toBe(true)
   })
 
   it("an approved chef blocked by an expired document sees why and the way to fix it, never 'apply first'", async () => {

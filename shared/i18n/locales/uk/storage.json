@@ -679,5 +679,8 @@
   "stDateNeededBackBy": "Повернуто {date}",
   "stcRentMoreAt": "Орендувати більше місця в {kitchen}",
   "stcBlockedTitle": "Зараз ви не можете орендувати тут місце",
-  "stcBlockedAction": "Що потрібно"
+  "stcBlockedAction": "Що потрібно",
+  "stcFitsDays": "З цієї дати вільно лише {count, plural, one {# день} few {# дні} many {# днів} other {# дня}} (до {end}).",
+  "stcUseFitsDays": "Орендувати на {count, plural, one {# день} few {# дні} many {# днів} other {# дня}}",
+  "stcFullFromStart": "З цієї дати нічого не вільно. Оберіть пізнішу дату початку."
 }

@@ -110,7 +110,8 @@ export function availabilityPhrase(unitCount: number, occupied: UnitRange[], tod
     let day: string | null = today;
     while (day) {
       const from: string = day;
-      const covering = occupied.find(item => item.unitIndex === unit && rangesOverlap(item, { from, to: addDays(from, 1) }));
+      // A start is usable only if the shortest rental (1 day plus its grace days) fits before the next one.
+      const covering = occupied.find(item => item.unitIndex === unit && rangesOverlap(item, { from, to: addDays(from, GRACE_DAYS + 1) }));
       if (!covering) break;
       day = covering.to;
     }

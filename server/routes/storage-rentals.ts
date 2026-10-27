@@ -51,7 +51,8 @@ export function endpoint(run: (req: Request) => Promise<unknown>) {
       if (status === 500) logger.error('[StorageRental] Operation failed', { path: req.path });
       await ensureServerI18n();
       res.status(status).json({ code, error: tLocale(req.neonUser?.preferredLocale, `stError_${code}`, { ns: 'storage' }),
-        ...(error instanceof StorageRentalError && error.refusal ? { refusal: error.refusal } : {}) });
+        ...(error instanceof StorageRentalError && error.refusal ? { refusal: error.refusal } : {}),
+        ...(error instanceof StorageRentalError && error.fitsDays !== undefined ? { fitsDays: error.fitsDays } : {}) });
     }
   };
 }

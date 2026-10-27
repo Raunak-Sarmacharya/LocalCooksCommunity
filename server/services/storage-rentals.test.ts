@@ -93,6 +93,17 @@ async function checkout(suffix = 'a', chef = 3) {
 async function rental() { const session = await checkout(); const result = await fulfillRentalCheckout(session, provider); return result.rentalId!; }
 
 describe('standalone storage request and Checkout', () => {
+  it('a full span says how many days fit from that start', async () => {
+    const id = await rental();
+    await h.db.update(storageBookings).set({ termStart: '2026-10-25', paidThrough: '2026-10-27' }).where(eq(storageBookings.id, id)); // the only unit, later
+    const full = await quoteRental(3, { ...input, startOn: '2026-10-16', days: 10 }, now).catch(error => error);
+    expect(full).toMatchObject({ code: 'full' });
+    // The suggestion really fits (grace days after it included), and one more day would not.
+    expect(full.fitsDays).toBeGreaterThan(0);
+    await expect(quoteRental(3, { ...input, startOn: '2026-10-16', days: full.fitsDays }, now)).resolves.toMatchObject({ days: full.fitsDays });
+    await expect(quoteRental(3, { ...input, startOn: '2026-10-16', days: full.fitsDays + 1 }, now)).rejects.toMatchObject({ code: 'full' });
+    await expect(quoteRental(3, { ...input, startOn: '2026-10-25', days: 2 }, now)).rejects.toMatchObject({ code: 'full', fitsDays: 0 });
+  });
   it('computes the daily quote and rejects price/policy/disclosure tampering before provider I/O', async () => {
     expect(await quoteRental(3, input, now)).toMatchObject({ subtotalCents: 3000, taxCents: 450, serviceFeeCents: 100, totalCents: 3550, maxTermDays: 30 });
     for (const patch of [{ expectedTotalCents: 1 }, { cancellationPolicyVersion: 2 }, { disclosureVersion: 'old' }, { acceptedTermsVersion: 'old' }])

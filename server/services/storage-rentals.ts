@@ -36,6 +36,8 @@ export const STORAGE_DISCLOSURE_VERSION = 'storage-v1';
 export class StorageRentalError extends Error {
   /** For a booking refusal: the same body kitchen booking sends (reason, message, next-step link). */
   refusal?: Record<string, unknown>;
+  /** "full" on a quote: the most days that do fit from the chosen start (0 = none). */
+  fitsDays?: number;
   constructor(public code: string, public status = 409) { super(code); }
 }
 function fail(code: string, status = 409): never { throw new StorageRentalError(code, status); }
@@ -98,7 +100,13 @@ async function quote(chefId: number, input: RentalInput, reader: Reader, now: Da
   if (!Number.isInteger(input.days) || input.days < 1 || input.days > maxTermDays || input.startOn < today || input.startOn > addDays(today, MAX_LEAD_DAYS)) fail('invalid_details', 400);
   const unitIndex = await freeUnit(reader, input.listingId, ctx.listing.unitCount,
     { rentalState: 'requested', termStart: input.startOn, paidThrough: endOn }, today);
-  if (!unitIndex) fail('full');
+  if (!unitIndex) {
+    // Say how much does fit from that start, so the chef isn't left guessing dates.
+    let fitsDays = 0;
+    for (let days = input.days - 1; days >= 1 && !fitsDays; days--)
+      if (await freeUnit(reader, input.listingId, ctx.listing.unitCount, { rentalState: 'requested', termStart: input.startOn, paidThrough: addDays(input.startOn, days - 1) }, today)) fitsDays = days;
+    throw Object.assign(new StorageRentalError('full'), { fitsDays });
+  }
   const policy = await publishedCancellationPolicy(ctx.kitchen.id, reader);
   const taxRatePercent = Number(ctx.kitchen.taxRatePercent ?? 0);
   const price = await termPrice({ days: input.days, dailyPriceCents: Number(ctx.listing.basePrice), taxRatePercent,

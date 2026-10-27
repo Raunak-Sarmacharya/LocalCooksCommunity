@@ -22,7 +22,7 @@ import { addDays, localDayStart, localToday, MAX_LEAD_DAYS } from "@shared/stora
 import { cn } from "@/lib/utils"
 
 const QUICK_DAYS = [7, 14, 30] as const
-type Failure = Error & { code?: string; refusal?: { message?: string; actionUrl?: string; applicationStatus?: string } }
+type Failure = Error & { code?: string; fitsDays?: number; refusal?: { message?: string; actionUrl?: string; applicationStatus?: string } }
 
 export default function ChefStorageRequestPage() {
   const { t: tt, i18n } = useTranslation("storage")
@@ -112,7 +112,7 @@ export default function ChefStorageRequestPage() {
       <Button asChild variant="outline" className="min-h-11"><Link href="/storage">{t("stcBackToStorage")}</Link></Button>
     </div> : !listing ? <div role="status" aria-label={t("stcLoading")} className="space-y-3"><Skeleton className="h-20 w-full rounded-2xl" /><Skeleton className="h-64 w-full rounded-2xl" /></div> : <>
       <header className="space-y-1">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("stcStep", { step, label: t(step === 1 ? "stcStepDates" : "stcStepReview") })}</p>
+        {!approvalNeeded && <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("stcStep", { step, label: t(step === 1 ? "stcStepDates" : "stcStepReview") })}</p>}
         <h1 className="text-2xl font-semibold tracking-tight">{listing.name}</h1>
         <p className="text-sm text-muted-foreground">{t("stcAtKitchenPrice", { kitchen, amount: cad(listing.dailyPriceCents, locale) })}</p>
       </header>
@@ -154,7 +154,12 @@ export default function ChefStorageRequestPage() {
         </fieldset>
         <section className="space-y-3 rounded-2xl border p-4 sm:p-5" aria-live="polite">
           {startOn && <p className="text-[15px] font-medium">{storageDay(startOn, locale)} – {storageDay(addDays(startOn, days - 1), locale, true)}</p>}
-          {quote.error ? <p role="alert" className="text-sm">{quote.error.message}</p> : q ? summary : <p role="status" className="text-sm text-muted-foreground">{t("stcQuoting")}</p>}
+          {quote.error?.code === "full" ? <div role="alert" className="space-y-3">
+              {/* Full for the whole span: say what does fit from this start, or to pick a later one. */}
+              <p className="text-sm">{quote.error.fitsDays ? t("stcFitsDays", { count: quote.error.fitsDays, end: storageDay(addDays(startOn!, quote.error.fitsDays - 1), locale) }) : t("stcFullFromStart")}</p>
+              {!!quote.error.fitsDays && <Button type="button" variant="outline" className="min-h-11" onClick={() => choose(quote.error!.fitsDays!)}>{t("stcUseFitsDays", { count: quote.error.fitsDays })}</Button>}
+            </div>
+            : quote.error ? <p role="alert" className="text-sm">{quote.error.message}</p> : q ? summary : <p role="status" className="text-sm text-muted-foreground">{t("stcQuoting")}</p>}
         </section>
         <div className="sticky bottom-0 -mx-1 bg-background/95 px-1 py-3 backdrop-blur sm:static sm:p-0">
           <Button className="min-h-12 w-full text-base sm:w-auto sm:min-w-[12rem]" disabled={!q} onClick={() => { setStep(2); window.scrollTo?.({ top: 0 }) }}>{t("stcContinue")}</Button>

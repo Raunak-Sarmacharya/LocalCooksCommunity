@@ -37,7 +37,7 @@ export type ExtensionResult = { paid?: boolean; rental?: StorageRental; requires
 async function call<T>(url: string, method: "GET" | "POST" = "GET", body?: unknown): Promise<T> {
   const response = await fetch(url, { method, headers: await getAuthHeaders(), credentials: "include", ...(body ? { body: JSON.stringify(body) } : {}) })
   const result = await response.json().catch(() => ({}))
-  if (!response.ok) throw Object.assign(new Error(typeof result?.error === "string" ? result.error : "Something went wrong. Nothing was charged."), { code: result?.code, refusal: result?.refusal })
+  if (!response.ok) throw Object.assign(new Error(typeof result?.error === "string" ? result.error : "Something went wrong. Nothing was charged."), { code: result?.code, refusal: result?.refusal, fitsDays: result?.fitsDays })
   return result as T
 }
 const base = "/api/chef/storage-rentals"

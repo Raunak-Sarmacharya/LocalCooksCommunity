@@ -679,5 +679,8 @@
   "stDateNeededBackBy": "Reprise le {date}",
   "stcRentMoreAt": "Louer plus d’entreposage à {kitchen}",
   "stcBlockedTitle": "Vous ne pouvez pas louer d’entreposage ici pour le moment",
-  "stcBlockedAction": "Voir ce qu’il faut"
+  "stcBlockedAction": "Voir ce qu’il faut",
+  "stcFitsDays": "Seulement {count, plural, one {# jour est libre} other {# jours sont libres}} à partir de ce début (jusqu’au {end}).",
+  "stcUseFitsDays": "Louer {count, plural, one {# jour} other {# jours}}",
+  "stcFullFromStart": "Rien n’est libre à partir de cette date. Choisissez un début plus tard."
 }

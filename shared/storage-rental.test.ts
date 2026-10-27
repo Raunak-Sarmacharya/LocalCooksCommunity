@@ -94,6 +94,11 @@ describe('occupancy', () => {
     expect(availabilityPhrase(3, occupied, '2026-10-10')).toBe('now');
     expect(availabilityPhrase(1, [{ unitIndex: 1, from: '2026-10-01', to: null }], '2026-10-10')).toBe('full');
   });
+  it('"now" only when a 1-day rental and its grace days fit before the next one', () => {
+    // Next rental starts Oct 13; a rental starting today (Oct 10) would hold the unit through its grace into Oct 16.
+    expect(availabilityPhrase(1, [{ unitIndex: 1, from: '2026-10-13', to: '2026-10-20' }], '2026-10-10')).toEqual({ from: '2026-10-20' });
+    expect(availabilityPhrase(1, [{ unitIndex: 1, from: '2026-10-20', to: '2026-10-25' }], '2026-10-10')).toBe('now');
+  });
 });
 
 describe('extensionLimit', () => {

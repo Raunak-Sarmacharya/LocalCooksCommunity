@@ -679,5 +679,8 @@
   "stDateNeededBackBy": "Taken back {date}",
   "stcRentMoreAt": "Rent more storage at {kitchen}",
   "stcBlockedTitle": "You can’t rent storage here right now",
-  "stcBlockedAction": "See what’s needed"
+  "stcBlockedAction": "See what’s needed",
+  "stcFitsDays": "Only {count, plural, one {# day is} other {# days are}} free from this start (through {end}).",
+  "stcUseFitsDays": "Rent for {count, plural, one {# day} other {# days}}",
+  "stcFullFromStart": "Nothing is free from this start. Pick a later start date."
 }
