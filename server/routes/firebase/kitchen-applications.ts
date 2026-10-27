@@ -1743,7 +1743,12 @@ function sharedChatError(res: Response, error: unknown) {
 router.get('/firebase/chat/conversations', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
     try {
         if (!['chef', 'manager'].includes(req.neonUser!.role || '')) return res.status(403).json({ error: 'Participant access required' });
+        // Server-Timing: which phase of the inbox load is slow, readable in the browser's network panel.
+        const started = Date.now(), timing: string[] = [];
+        const mark = (name: string, since: number) => timing.push(`${name};dur=${Date.now() - since}`);
+        let phase = Date.now();
         const [pairs, conversations] = await Promise.all([participantChatRelationships(req.neonUser!), orphanChatHistory(req.neonUser!, req.firebaseUser!.uid)]);
+        mark('relationships', phase); phase = Date.now();
         // Threads load in small parallel batches (one at a time took ~20 s for a manager with 20 customers); order is kept.
         const inBatches = async <T, R>(items: T[], load: (item: T) => Promise<R>) => {
             const out: R[] = [];
@@ -1755,12 +1760,16 @@ router.get('/firebase/chat/conversations', requireFirebaseAuthWithUser, async (r
                 getUserDisplayName(row.chefId, 'chef'), row.managerId ? getUserDisplayName(row.managerId, 'manager') : 'Manager account unavailable']);
             Object.assign(row, { locationName: location.name, chefName, managerName });
         });
+        mark('history', phase); phase = Date.now();
         const missing = pairs.filter(pair => !conversations.some(row => row.chefId === pair.chefId && row.locationId === pair.locationId));
         conversations.push(...(await inBatches(missing, pair => participantConversation(req.neonUser!, pair.chefId, pair.locationId))).filter(Boolean));
+        mark(`threads-${missing.length}`, phase); phase = Date.now();
         // Row tag and filters ("Booking · Nov 16", Bookings/Tours/Storage); the inbox still works without them.
         const summaries = await chatSummaries(conversations.map(row => ({ chefId: row.chefId, locationId: row.locationId })), req.neonUser!.role as 'chef' | 'manager')
             .catch(error => { logger.warn('[chat] inbox summaries unavailable', error); return null; });
         for (const row of conversations) row.summary = summaries?.get(`${row.chefId}:${row.locationId}`) ?? null;
+        mark('summaries', phase); mark('total', started);
+        res.setHeader?.('Server-Timing', timing.join(', '));
         return res.json({ conversations });
     } catch (error) { return sharedChatError(res, error); }
 });
