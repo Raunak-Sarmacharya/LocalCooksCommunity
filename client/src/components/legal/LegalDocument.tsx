@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 /**
@@ -17,6 +17,13 @@ export function LegalDocument({ title, updated, effective, intro, summary, secti
   sections: LegalSection[];
   variant?: "page" | "reader";
 }) {
+  // Opened from a link like /terms#storage-and-equipment: land on that section (the page renders after the route's own scroll).
+  useEffect(() => {
+    const id = decodeURIComponent(window.location.hash.slice(1));
+    if (variant !== "page" || !id) return;
+    const timer = window.setTimeout(() => document.getElementById(id)?.scrollIntoView({ block: "start" }), 50);
+    return () => window.clearTimeout(timer);
+  }, [variant]);
   const contents = (
     <nav aria-label="Contents">
       <p className="text-xs font-semibold text-slate-500">Contents</p>
