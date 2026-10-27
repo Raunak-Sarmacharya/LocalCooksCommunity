@@ -88,7 +88,17 @@ export async function orphanChatHistory(actor: ChatActor, uid: string) {
     ? [await firestore.collection('conversations').where('chefId', '==', actor.id).get()]
     : await Promise.all(ownedLocations.map(location => firestore.collection('conversations').where('locationId', '==', location.id).get()));
   const rows: any[] = [];
-  const history = snapshots.flatMap(snapshot => snapshot.docs).sort((a, b) =>
+  const all = snapshots.flatMap(snapshot => snapshot.docs);
+  // Only threads whose other person is gone become history. Both people still active means the full check below
+  // would skip the thread anyway, so one batched read rules those out instead of a locked check per thread (~4 s for a
+  // kitchen with 30 customers). This only removes candidates; every remaining one still gets the full check.
+  const docLocations = Array.from(new Set(all.map(doc => doc.data().locationId).filter(Number.isSafeInteger)));
+  const managers = docLocations.length ? await db.select({ id: locations.id, managerId: locations.managerId }).from(locations).where(inArray(locations.id, docLocations)) : [];
+  const managerOf = new Map(managers.map(row => [row.id, row.managerId]));
+  const people = Array.from(new Set([...all.map(doc => doc.data().chefId), ...managers.map(row => row.managerId)].filter(Number.isSafeInteger))) as number[];
+  const accounts = people.length ? await db.select({ id: users.id, role: users.role, firebaseUid: users.firebaseUid }).from(users).where(inArray(users.id, people)) : [];
+  const active = (id: unknown, role: string) => accounts.some(user => user.id === id && user.role === role && !!user.firebaseUid);
+  const history = all.filter(doc => !(active(doc.data().chefId, 'chef') && active(managerOf.get(doc.data().locationId), 'manager'))).sort((a, b) =>
     (a.data().createdAt?.toMillis?.() || 0) - (b.data().createdAt?.toMillis?.() || 0) || a.id.localeCompare(b.id));
   for (const snapshot of history) {
     try {
