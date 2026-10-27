@@ -87,6 +87,14 @@ export default function UnifiedChatView({ userId, role, initialConversationId, i
     retryDelay: 1000,
   });
 
+  // A thread opened from a booking, tour or storage page can be newer than the cached inbox: fetch once before saying it's unavailable.
+  const missingRequested = !!initialConversationId && !isLoading && !conversations.some(c => c.id === initialConversationId);
+  const [freshCheckedFor, setFreshCheckedFor] = useState<string | null>(null);
+  useEffect(() => {
+    if (missingRequested && freshCheckedFor !== initialConversationId) void refetch().finally(() => setFreshCheckedFor(initialConversationId!));
+  }, [missingRequested, freshCheckedFor, initialConversationId, refetch]);
+  const openingRequested = missingRequested && freshCheckedFor !== initialConversationId;
+
   const exactTour = useQuery({
     queryKey: ['chat-exact-tour', initialTourId, initialConversationId],
     enabled: !!initialTourId,
@@ -302,7 +310,7 @@ export default function UnifiedChatView({ userId, role, initialConversationId, i
   // layout never collapses to a bare spinner or an empty box.
   const isListLoading = isLoading || !hasResolvedDetails;
 
-  if (isLoading) {
+  if (isLoading || openingRequested) {
     // Skeleton shaped like the real two-pane layout, so the panel settles in
     // place rather than flashing a centred spinner and reflowing.
     return (
@@ -325,6 +333,7 @@ export default function UnifiedChatView({ userId, role, initialConversationId, i
           <div className="h-16 w-16 rounded-full bg-muted animate-pulse" />
           <div className="h-4 w-40 rounded bg-muted animate-pulse" />
           <div className="h-3 w-56 rounded bg-muted/70 animate-pulse" />
+          {(initialConversationId || initialTourId) && <p role="status" className="text-sm text-muted-foreground">{t("chatOpening")}</p>}
         </div>
       </Card>
     );
@@ -340,11 +349,12 @@ export default function UnifiedChatView({ userId, role, initialConversationId, i
     );
   }
 
-  if (initialTourId && exactTour.isPending) return <div role="status" className="p-8">Opening tour messaging…</div>;
-  if (exactTour.error || (initialConversationId && !conversations.some(c => c.id === initialConversationId))) {
-    return <div role="alert" className="p-8 space-y-3">
-      <p>{exactTour.error?.message || 'This conversation is unavailable for your current account. Reopen messaging from your tour or application.'}</p>
-      <Button onClick={() => { void refetch(); if (initialTourId) void exactTour.refetch(); }}>Retry</Button>
+  if (initialTourId && exactTour.isPending) return <div role="status" className="p-8 text-sm text-muted-foreground">{t("chatOpening")}</div>;
+  if (exactTour.error || missingRequested) {
+    return <div role="alert" className="flex flex-col items-center justify-center gap-3 p-10 text-center">
+      <AlertCircle className="size-8 text-muted-foreground" aria-hidden />
+      <p className="max-w-sm text-sm text-muted-foreground">{exactTour.error?.message || t("chatOpenFailed")}</p>
+      <Button variant="outline" onClick={() => { setFreshCheckedFor(null); if (initialTourId) void exactTour.refetch(); }}>{t("chatRetry")}</Button>
     </div>;
   }
 

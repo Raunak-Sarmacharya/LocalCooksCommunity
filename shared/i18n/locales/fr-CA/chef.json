@@ -4412,5 +4412,7 @@
   "res_guide_checklist": "Votre liste de lancement",
   "res_guide_checklistNote": "De l’idée à la première vente, semaine par semaine.",
   "res_tab_commercial": "Commerciale",
-  "res_tab_home": "Maison"
+  "res_tab_home": "Maison",
+  "chatOpening": "Ouverture de votre conversation…",
+  "chatOpenFailed": "Impossible d’ouvrir cette conversation. Elle appartient peut-être à un autre compte. Réessayez, ou ouvrez-la depuis votre réservation, visite ou location d’entreposage."
 }

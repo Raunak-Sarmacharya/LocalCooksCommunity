@@ -4412,5 +4412,7 @@
   "res_guide_checklist": "Your launch checklist",
   "res_guide_checklistNote": "From idea to first sale, week by week.",
   "res_tab_commercial": "Commercial",
-  "res_tab_home": "Home"
+  "res_tab_home": "Home",
+  "chatOpening": "Opening your conversation…",
+  "chatOpenFailed": "We couldn’t open this conversation. It may belong to another account. Try again, or open it from your booking, tour or storage rental."
 }

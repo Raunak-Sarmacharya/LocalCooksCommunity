@@ -78,7 +78,6 @@ export default function ApplicantDashboard() {
 
   const { hasAnyItems: hasResolutionItems, pendingDamageClaims, pendingPenalties } = useChefResolutionCenter();
   const sidebarHiddenItems = useChefSidebarHiddenItems();
-  const hasKitchenMessages = !sidebarHiddenItems.includes("messages");
   const [chatApplication, setChatApplication] = useState<any | null>(null);
   const [chatConversationId, setChatConversationId] = useState<string | null>(null);
   const subdomain = useSubdomain();
@@ -769,9 +768,7 @@ export default function ApplicantDashboard() {
       case "resources":
         return <div className="space-y-8 animate-in fade-in-50 duration-500">{resourcesTabContent}</div>;
       case "messages":
-        if (!hasKitchenMessages) {
-          return <div className="space-y-8 animate-in fade-in-50 duration-500">{overviewTabContent}</div>;
-        }
+        // Always the inbox: while conversations load (or before the first one) it shows its own skeleton or empty state.
         return <div className="animate-in fade-in-50 duration-500">{messagesTabContent}</div>;
       case "support":
         return (

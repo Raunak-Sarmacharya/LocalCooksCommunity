@@ -1669,10 +1669,11 @@ async function participantConversation(actor: NonNullable<Request['neonUser']>, 
     if (!conversationId) throw new Error('CHAT_UNAVAILABLE');
     const snapshot = await (await getAdminDb()).collection('conversations').doc(conversationId).get();
     if (!snapshot.exists) throw new Error('CHAT_UNAVAILABLE');
-    const metadata = await withParticipantChat(actor, actor.firebaseUid!, conversationId, async ({ ref, live }) => serializeChat({ id: ref.id, ...(await ref.get()).data(), unavailable: !live }));
+    const [metadata, chefName, managerName] = await Promise.all([
+        withParticipantChat(actor, actor.firebaseUid!, conversationId, async ({ ref, live }) => serializeChat({ id: ref.id, ...(await ref.get()).data(), unavailable: !live })),
+        getUserDisplayName(chefId, 'chef'), getUserDisplayName(location.managerId!, 'manager')]);
     return { id: conversationId, conversationId, chefId, locationId, managerId: location.managerId,
-        locationName: location.name, chefName: await getUserDisplayName(chefId, 'chef'),
-        managerName: await getUserDisplayName(location.managerId!, 'manager'),
+        locationName: location.name, chefName, managerName,
         linkedApplicationIds: eligible.applications.map(application => application.id),
         eligibleViewingIds: eligible.viewingIds, conversation: metadata };
 }
@@ -1734,19 +1735,20 @@ function sharedChatError(res: Response, error: unknown) {
 router.get('/firebase/chat/conversations', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
     try {
         if (!['chef', 'manager'].includes(req.neonUser!.role || '')) return res.status(403).json({ error: 'Participant access required' });
-        const pairs = await participantChatRelationships(req.neonUser!);
-        const conversations = await orphanChatHistory(req.neonUser!, req.firebaseUser!.uid);
-        for (const row of conversations) {
-            const location = await locationService.getLocationById(row.locationId);
-            row.locationName = location.name;
-            row.chefName = await getUserDisplayName(row.chefId, 'chef');
-            row.managerName = row.managerId ? await getUserDisplayName(row.managerId, 'manager') : 'Manager account unavailable';
-        }
-        for (const pair of pairs) {
-            if (conversations.some(row => row.chefId === pair.chefId && row.locationId === pair.locationId)) continue;
-            const conversation = await participantConversation(req.neonUser!, pair.chefId, pair.locationId);
-            if (conversation) conversations.push(conversation);
-        }
+        const [pairs, conversations] = await Promise.all([participantChatRelationships(req.neonUser!), orphanChatHistory(req.neonUser!, req.firebaseUser!.uid)]);
+        // Threads load in small parallel batches (one at a time took ~20 s for a manager with 20 customers); order is kept.
+        const inBatches = async <T, R>(items: T[], load: (item: T) => Promise<R>) => {
+            const out: R[] = [];
+            for (let i = 0; i < items.length; i += 6) out.push(...await Promise.all(items.slice(i, i + 6).map(load)));
+            return out;
+        };
+        await inBatches(conversations, async row => {
+            const [location, chefName, managerName] = await Promise.all([locationService.getLocationById(row.locationId),
+                getUserDisplayName(row.chefId, 'chef'), row.managerId ? getUserDisplayName(row.managerId, 'manager') : 'Manager account unavailable']);
+            Object.assign(row, { locationName: location.name, chefName, managerName });
+        });
+        const missing = pairs.filter(pair => !conversations.some(row => row.chefId === pair.chefId && row.locationId === pair.locationId));
+        conversations.push(...(await inBatches(missing, pair => participantConversation(req.neonUser!, pair.chefId, pair.locationId))).filter(Boolean));
         return res.json({ conversations });
     } catch (error) { return sharedChatError(res, error); }
 });

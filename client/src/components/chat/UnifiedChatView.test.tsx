@@ -50,7 +50,7 @@ describe('shared inbox and exact selection', () => {
     show({ initialConversationId: 'original-5', initialTourId: '20' });
     expect(await screen.findByRole('alert')).toHaveTextContent('no longer matches');
     expect(screen.queryByTestId('thread')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    fireEvent.click(screen.getByRole('button', { name: /retry/i }));
     await waitFor(() => expect(state.resolve).toHaveBeenCalledTimes(2));
   });
   it('uses the same thread with approved application permissions when real context arrives', async () => {
@@ -61,7 +61,7 @@ describe('shared inbox and exact selection', () => {
   });
   it('reports unavailable old IDs and keeps existing booking context on an authorized exact thread', async () => {
     const old = show({ initialConversationId: 'missing' });
-    expect(await screen.findByRole('alert')).toHaveTextContent('unavailable'); old.unmount();
+    expect(await screen.findByRole('alert')).toHaveTextContent(/chatOpenFailed|couldn’t open/); old.unmount();
     window.history.replaceState({}, '', '/dashboard?view=messages&conversation=original-5&booking=10');
     show({ initialConversationId: 'original-5' }); await screen.findByTestId('thread');
     expect(state.panel).toHaveBeenLastCalledWith(expect.objectContaining({ bookingId: 10 }));
@@ -79,5 +79,21 @@ describe('opening the inbox with nothing selected', () => {
     await screen.findByText('Kitchen 5');
     expect(screen.queryByTestId('thread')).toBeNull();
     vi.unstubAllGlobals(); vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+  });
+});
+
+describe('opening a thread newer than the cached inbox (Message kitchen / customer from a booking, tour or storage)', () => {
+  it('fetches the inbox again and opens the new thread instead of an error or another thread', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(['chef-conversations', 3], state.rows);
+    state.rows = [...state.rows, { ...state.rows[0], id: 'brand-new', locationId: 9, locationName: 'Kitchen 9' }];
+    render(<QueryClientProvider client={client}><UnifiedChatView userId={3} role="chef" initialConversationId="brand-new" /></QueryClientProvider>);
+    expect(await screen.findByTestId('thread')).toHaveTextContent('brand-new');
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+  it('says it cannot open a thread that is still missing after a fresh fetch, and never shows another one', async () => {
+    show({ initialConversationId: 'not-mine' });
+    expect(await screen.findByRole('alert')).toHaveTextContent(/chatOpenFailed|couldn’t open/);
+    expect(screen.queryByTestId('thread')).toBeNull();
   });
 });
