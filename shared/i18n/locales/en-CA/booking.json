@@ -1570,5 +1570,6 @@
   "historyExt_gave_early_chef": "The kitchen let you start {minutes} minutes early, free",
   "historyExt_gave_early_manager": "You let {chef} start {minutes} minutes early, free",
   "historyExt_paid_early_chef": "You paid {amount} for the earlier start",
-  "historyExt_paid_early_manager": "{chef} paid {amount} for the earlier start"
+  "historyExt_paid_early_manager": "{chef} paid {amount} for the earlier start",
+  "cpShortStorage": "This rental starts within {hours} hours. Once the kitchen accepts, you pay {charge} if you cancel. You can withdraw while the request is pending; your card hold is released."
 }

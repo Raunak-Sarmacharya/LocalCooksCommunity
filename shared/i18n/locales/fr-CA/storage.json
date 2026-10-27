@@ -686,5 +686,8 @@
   "stcNotYetTitle": "Aucune disponibilité dans les {count} prochains jours",
   "stcNotYetFrom": "La prochaine disponibilité commence le {date}. Vous pourrez la demander à partir du {opens}.",
   "stcNotYetFull": "Toutes les unités sont prises pour l’instant. Revenez plus tard ou demandez à la cuisine.",
-  "stcOtherStorageHere": "Voir d’autres espaces ici"
+  "stcOtherStorageHere": "Voir d’autres espaces ici",
+  "stcPoliciesLink": "Règles et politiques d’entreposage",
+  "stcPoliciesTitle": "Politiques",
+  "stcCancelBy": "Annulez avant le {deadline} pour un remboursement, moins les frais de traitement de la carte."
 }

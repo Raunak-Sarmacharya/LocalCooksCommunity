@@ -686,5 +686,8 @@
   "stcNotYetTitle": "No opening in the next {count} days",
   "stcNotYetFrom": "The next opening starts {date}. You can request it from {opens}.",
   "stcNotYetFull": "Every unit is taken for now. Check back later or ask the kitchen.",
-  "stcOtherStorageHere": "See other storage here"
+  "stcOtherStorageHere": "See other storage here",
+  "stcPoliciesLink": "Storage rules and policies",
+  "stcPoliciesTitle": "Policies",
+  "stcCancelBy": "Cancel by {deadline} for a refund, minus the card processing fee."
 }

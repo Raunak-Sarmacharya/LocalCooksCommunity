@@ -189,9 +189,11 @@ export default function ChefStorageRequestPage() {
             <li>{t("stcDiscCancel", { kitchen })}</li>
             <li>{t("stcDiscCardSaved")}</li>
           </ul>
+          {/* The full rules (extra days, removal, damage, take-back, own risk) live on the policies page, as top platforms do. */}
+          <a href="/terms#storage-and-equipment" target="_blank" rel="noopener noreferrer" className="inline-block text-sm font-medium underline underline-offset-4">{t("stcPoliciesLink")}</a>
         </section>
         <CheckoutCancellationDisclosure policy={policy.data} startAt={startOn ? localDayStart(startOn, timezone).toISOString() : undefined}
-          detailsOpen={policyOpen} onDetailsOpenChange={setPolicyOpen} detailsId="storage-cancellation-details" />
+          detailsOpen={policyOpen} onDetailsOpenChange={setPolicyOpen} detailsId="storage-cancellation-details" storage />
         {payError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-900">{payError}</p>}
         <div className="space-y-3">
           <div className="grid grid-cols-[auto,1fr] gap-2 sm:flex">

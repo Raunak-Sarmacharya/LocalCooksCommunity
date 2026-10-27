@@ -83,3 +83,18 @@ describe("a unit the kitchen took back", () => {
     expect(screen.getByTestId("rental-refunded")).toHaveTextContent("−$10.98")
   })
 })
+
+describe("rental Policies card", () => {
+  it("before the start: cancel-by line, ending early, and the full storage rules link", async () => {
+    show({ state: "reserved", phase: "current", startOn: "2099-01-10", paidThrough: "2099-01-16",
+      rentalTerms: { ...base.rentalTerms, cancellationPolicySnapshot: { timezone: "America/St_Johns", noticeHours: 48 } } })
+    const card = await screen.findByTestId("rental-policies")
+    expect(card).toHaveTextContent(/^PoliciesCancel by .+ for a refund, minus the card processing fee\.Ending early isn’t refunded\./)
+    expect(screen.getByRole("link", { name: "Storage rules and policies" })).toHaveAttribute("href", "/terms#storage-and-equipment")
+  })
+  it("once started: no cancel line", async () => {
+    show({})
+    const card = await screen.findByTestId("rental-policies")
+    expect(card).not.toHaveTextContent("Cancel by")
+  })
+})

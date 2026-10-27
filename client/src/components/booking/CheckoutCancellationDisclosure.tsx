@@ -8,8 +8,9 @@ import { freeCancelResponseCap } from '@shared/booking-response-deadline';
  * always visible, and the full timeline behind "Details". Consent is given by selecting Checkout (see CheckoutConsentNotice);
  * the wording shown here is disclosure food-corridor-v3.
  */
-export function CheckoutCancellationDisclosure({ policy, startAt, detailsOpen, onDetailsOpenChange, detailsId, bare = false }: {
+export function CheckoutCancellationDisclosure({ policy, startAt, detailsOpen, onDetailsOpenChange, detailsId, bare = false, storage = false }: {
   policy?: PolicyResponse; startAt?: string; detailsOpen?: boolean; onDetailsOpenChange?: (open: boolean) => void; detailsId?: string;
+  /** A storage rental: "rental" wording, no session-only lines (no-shows, several days). */ storage?: boolean;
   /** Inside another card (the checkout price card): no box of its own, the card's type scale. */ bare?: boolean;
 }) {
   const { t, i18n } = useTranslation('booking');
@@ -29,7 +30,7 @@ export function CheckoutCancellationDisclosure({ policy, startAt, detailsOpen, o
     {!policy ? <p role="alert" className="text-sm">{t('cpError')}</p> : <>
       {/* One headline for single and multi-day, in the sidebar's words with the real deadline. */}
       {shortNotice
-        ? <p className={warning} data-testid="cancel-short-notice">{t('cpShort', { hours: policy.policy.noticeHours, charge })}</p>
+        ? <p className={warning} data-testid="cancel-short-notice">{t(storage ? 'cpShortStorage' : 'cpShort', { hours: policy.policy.noticeHours, charge })}</p>
         : <p className={bare ? 'text-sm leading-relaxed text-gray-600' : 'text-sm leading-relaxed'} data-testid="cancel-headline">{startAt
           ? t(policy.policy.lateChargePercent === 50 ? 'cpCheckoutHeadlineHalf' : 'cpCheckoutHeadline', { deadline: cancellationDeadlineLabel(startAt, policy.policy.noticeHours, policy.timezone, i18n.language) })
           : t(policy.policy.lateChargePercent === 50 ? 'cpSidebarSummaryHalf' : 'cpSidebarSummary', { hours: policy.policy.noticeHours })}</p>}
@@ -38,7 +39,7 @@ export function CheckoutCancellationDisclosure({ policy, startAt, detailsOpen, o
         onClick={() => setOpen(!open)}>{t(open ? 'cpHideDetails' : 'cpDetails')}</button>
       {/* The same timeline as the kitchen page and the policy dialog (no-show, kitchen-cancels and multi-day rules included). */}
       {open && <div id={panelId} className="space-y-3 border-t pt-3" data-testid="cancel-details">
-        <CancellationPolicyTimeline policy={policy.policy} startAt={startAt} timezone={policy.timezone} />
+        <CancellationPolicyTimeline policy={policy.policy} startAt={startAt} timezone={policy.timezone} storage={storage} />
         {!shortNotice && !nearDeadline && <p className="text-sm leading-relaxed text-muted-foreground">{t('cpResponseBefore')}</p>}
       </div>}
     </>}

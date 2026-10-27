@@ -159,9 +159,12 @@ const sections: LegalSection[] = [
         <li><strong>Storage</strong> is priced per day and rented for 1 to 30 days, starting within 14 days. It never renews automatically. To keep your space, extend it in the app and pay; you can extend once 14 days or fewer remain.</li>
         <li>Cancelling storage before it starts follows the kitchen's cancellation policy. Ending a rental early is not refunded, though the kitchen may refund unused days.</li>
         <li>After a rental ends you have 5 days to extend at the same price or move out. After that the kitchen may charge a holdover fee at the daily price, which you can pay or dispute within 72 hours.</li>
-        <li>If items stay 15 days or more past the end, Local Cooks reviews the rental and contacts you. After our final notice, the kitchen may dispose of perishable items after 48 hours and other items after 7 days, with photos and a list, and never sell them.</li>
+        <li>If items stay 20 days or more past the end (15 days after those 5), Local Cooks reviews the rental and contacts you. After our final notice, the kitchen may dispose of perishable items after 48 hours and other items after 7 days, with photos and a list, and never sell them.</li>
         <li>A kitchen may ask you to move out early with 7 days' notice for rentals longer than 7 days, and refunds the unused days.</li>
-        <li>Store only what the kitchen allows. Nothing illegal, hazardous or alive.</li>
+        <li>If you don't move in within 7 days of the start, the kitchen may release the unit. That isn't refunded.</li>
+        <li>After you move out, the kitchen can report damage or extra cleaning the same way as after a visit (section 10): within 72 hours, up to $250, reviewed by Local Cooks first.</li>
+        <li>Your items are stored at your own risk. Neither Local Cooks nor the kitchen insures them, so use your own business insurance. If the kitchen's storage fails or can't be used, you get the unused days back.</li>
+        <li>Store only food and kitchen supplies the kitchen allows, sealed and labelled with your name and date. Keep anything that must stay cold in cold or freezer storage. Nothing illegal, hazardous or alive.</li>
       </ul>
     </>,
   },

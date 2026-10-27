@@ -76,6 +76,11 @@ describe("rent storage stepper", () => {
     expect(disclosure).toHaveTextContent("Ending early isn’t refunded.")
     expect(screen.getByText("Free cancellation until 48 hours before")).toBeInTheDocument()
     expect(screen.getByTestId("consent")).toHaveTextContent("By tapping Request and hold $35.00, you agree")
+    // The full rules are one link away; the cancellation details carry no session-only lines.
+    expect(within(disclosure).getByRole("link", { name: "Storage rules and policies" })).toHaveAttribute("href", "/terms#storage-and-equipment")
+    const details = screen.queryByRole("button", { name: "Details" }); if (details) fireEvent.click(details)
+    expect(screen.queryByText("No-shows aren’t refunded.")).toBeNull()
+    expect(screen.queryByText(/Booking several days\?/)).toBeNull()
   })
 
   it("re-quotes silently right before posting, then opens Checkout", async () => {

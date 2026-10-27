@@ -29,7 +29,7 @@ export function PublishedCancellationPolicySummary({ kitchenId, headline = false
  * The whole policy as a timeline (Airbnb's cancellation modal): what happens before the kitchen accepts, up to the
  * deadline, and after it, then the no-show, kitchen-cancels and multi-day rules. Built from the kitchen's own policy.
  */
-export function CancellationPolicyTimeline({ policy, startAt, timezone }: { policy: Pick<PublishedPolicy, 'noticeHours' | 'lateChargePercent'>; startAt?: string; timezone?: string }) {
+export function CancellationPolicyTimeline({ policy, startAt, timezone, storage = false }: { policy: Pick<PublishedPolicy, 'noticeHours' | 'lateChargePercent'>; startAt?: string; timezone?: string; storage?: boolean }) {
   const { t, i18n } = useTranslation('booking');
   // Once the start is known, real deadlines (Airbnb shows dates once you've picked them).
   const deadline = startAt && timezone ? cancellationDeadlineLabel(startAt, policy.noticeHours, timezone, i18n.language) : null;
@@ -48,9 +48,9 @@ export function CancellationPolicyTimeline({ policy, startAt, timezone }: { poli
       </li>)}
     </ol>
     <ul className="space-y-1.5 border-t border-gray-100 pt-3 text-sm text-gray-600">
-      <li>{t('cpNoShow')}</li>
+      {!storage && <li>{t('cpNoShow')}</li>}
       <li>{t('cptKitchenCancels')}</li>
-      <li>{t('cptMultiDay', { hours: policy.noticeHours })}</li>
+      {!storage && <li>{t('cptMultiDay', { hours: policy.noticeHours })}</li>}
     </ul>
   </div>;
 }

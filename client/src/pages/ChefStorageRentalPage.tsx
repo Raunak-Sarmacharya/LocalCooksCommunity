@@ -20,7 +20,8 @@ import { PendingOverstayPenalties } from "@/components/chef/PendingOverstayPenal
 import { StorageDamageClaims } from "@/components/booking/DamageClaimCards"
 import { STORAGE_LIST_KEY } from "@/pages/ChefStoragePage"
 import { TONE_CLASS, cad, can, readRental, rentalStatus, rentalTimezone, storageDay, withdrawRental, type StorageRental } from "@/lib/storage-rentals"
-import { localToday } from "@shared/storage-rental"
+import { localDayStart, localToday } from "@shared/storage-rental"
+import { cancellationDeadlineLabel } from "@/components/booking/CancellationPolicySummary"
 import { cn } from "@/lib/utils"
 
 export default function ChefStorageRentalPage() {
@@ -85,6 +86,17 @@ export default function ChefStorageRentalPage() {
             {t("stcDiscExtend", { end: storageDay(rental.paidThrough, locale), kitchen: rental.kitchen.name, daily: cad(rental.rentalTerms.dailyPriceCents, locale) })}</p>}
           {rental.declineReason && <p className="mt-3 text-sm">{t("stcDeclineReason", { reason: rental.declineReason })}</p>}
         </section>
+
+        {/* Like a session booking's Policies card: the lines that still apply, then the full rules. */}
+        {["requested", "reserved", "active", "move_out_requested"].includes(rental.state) && <section className="rounded-2xl border p-4 sm:p-5" aria-labelledby="rental-policies" data-testid="rental-policies">
+          <h2 id="rental-policies" className="mb-2 text-base font-semibold">{t("stcPoliciesTitle")}</h2>
+          <ul className="space-y-1.5 text-sm leading-relaxed">
+            {rental.state === "reserved" && rental.startOn > localToday(new Date(), rentalTimezone(rental)) && rental.rentalTerms?.cancellationPolicySnapshot?.noticeHours != null
+              && <li>{t("stcCancelBy", { deadline: cancellationDeadlineLabel(localDayStart(rental.startOn, rentalTimezone(rental)).toISOString(), rental.rentalTerms.cancellationPolicySnapshot.noticeHours, rentalTimezone(rental), locale) })}</li>}
+            <li>{t("stcDiscEarly")}</li>
+          </ul>
+          <a href="/terms#storage-and-equipment" target="_blank" rel="noopener noreferrer" className="mt-3 inline-block text-sm font-medium underline underline-offset-4">{t("stcPoliciesLink")}</a>
+        </section>}
 
         {rental.phase === "holdover" && <PendingOverstayPenalties title={t("stcHoldoverTitle")} />}
 

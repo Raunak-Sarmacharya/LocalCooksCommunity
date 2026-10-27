@@ -686,5 +686,8 @@
   "stcNotYetTitle": "Немає вільних місць у найближчі {count} днів",
   "stcNotYetFrom": "Наступне вільне місце з {date}. Подати запит можна з {opens}.",
   "stcNotYetFull": "Усі місця зараз зайняті. Перевірте пізніше або запитайте кухню.",
-  "stcOtherStorageHere": "Інші місця тут"
+  "stcOtherStorageHere": "Інші місця тут",
+  "stcPoliciesLink": "Правила та політика зберігання",
+  "stcPoliciesTitle": "Правила",
+  "stcCancelBy": "Скасуйте до {deadline}, щоб отримати повернення без комісії за обробку картки."
 }
