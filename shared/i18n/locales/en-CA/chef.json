@@ -2639,7 +2639,7 @@
   "tourSummary": "Tour summary",
   "tourNextInvitation": "Review the offered times and choose whether to accept the invitation or keep your original time.",
   "tourNextChangePending": "You asked for a new time. Your current time stays confirmed until the kitchen answers.",
-  "tourNextCompleted": "Your tour is complete. To book this kitchen, request to apply when you’re ready.",
+  "tourNextCompleted": "Your tour is complete. Your next step with this kitchen is below.",
   "tourNextCheckedIn": "You’re checked in. Follow the departure notes and check out when your kitchen tour ends.",
   "tourNextEnded": "The scheduled tour time has ended. Review your visit details and shared notes, or contact Support if something is incorrect.",
   "tourNextClosed": "Review the tour outcome and shared notes. Contact Support if something is incorrect, or discover kitchens to request another tour.",

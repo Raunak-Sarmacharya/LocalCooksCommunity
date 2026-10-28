@@ -1553,3 +1553,14 @@ State Oct 18 (evening): multi-day + single-day booking cycle verified end to end
   - Walked locally (fork): ask for new copy → chef uploads in the row → kitchen verifies → chef can book (`book-steps` reaches Confirm).
   - Note: phase0-chef's Business licence now points to a locally stored copy, so View may fail on deployed dev until it's re-uploaded there.
 - Tests (fork's full run): client 9,252, server 4,386, tsc clean.
+
+## Oct 28: QA reports triaged (all 7 real bugs; none caused by the test clock)
+Checked on dev against QA's own records (TOUR-103, KB-TASH8T #239, KB-Z856HK #241), read-only via custom token.
+- Chef tour history used kitchen wording ("Customer is still coming") → chef reads "You confirmed you're still coming" etc. (`TourHistoryPanel`, `tourHistoryChef_*`).
+- Kitchen asked for tour feedback already sent → Customers counted kitchen feedback only on `confirmed` tours; "They came" makes them `completed` (`manager-customers.ts`).
+- "Add as customer" on a tour for an existing customer, and no way from the tour to the customer → `/api/viewings/manager` returns `isCustomer` (access request inReview/approved here); tour shows "View customer", hides "Add as customer", next step "{name} is already your customer".
+- Booking Confirm step left an empty strip on the right (`max-w-5xl` left-aligned) → full width.
+- Confirmation email/notice printed "Open your visit: <url>" → line removed (button opens the booking).
+- "Show code" outline overlapped the words → `Button` `link` variant is a plain text link (was a pill border on hover; also fixed "Show all", "Change").
+- Also: outcome emails (claims, payouts) began "Recorded outcome notice… Historical money evidence…" on every send → only a late re-send gets one plain line; action label "View details". Customer page "No bookings yet" for past customers → "No upcoming bookings". Chef completed-tour next step no longer says "request to apply" to approved chefs.
+- Open (asked owner): 5 of QA's real emails on Oct 28 are held as "SMTP acceptance is uncertain" (timeouts); they don't auto-resend by design.
