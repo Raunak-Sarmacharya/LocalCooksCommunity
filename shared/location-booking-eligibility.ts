@@ -4,6 +4,8 @@ import { DEFAULT_TIMEZONE, formatInTimezone } from './timezone-utils';
 export type BuiltInDocumentKey = 'foodSafetyLicense' | 'foodEstablishmentCert' | 'insurance';
 /** A built-in document, or one the kitchen added to its booking requirements ("custom:<field id>"). */
 export type DocumentKey = BuiltInDocumentKey | `custom:${string}`;
+/** Why a document blocks booking, so the chef is told the right next step (upload it, re-upload it, or wait). */
+export type DocumentBlockReason = 'missing' | 'rejected' | 'pending' | 'needs_expiry';
 export const DOCUMENT_KEYS: BuiltInDocumentKey[] = ['foodSafetyLicense', 'foodEstablishmentCert', 'insurance'];
 export const DOCUMENT_LABELS: Record<BuiltInDocumentKey, string> = { foodSafetyLicense: 'Food Safety Certificate', foodEstablishmentCert: 'Food Establishment Licence', insurance: 'Insurance' };
 
@@ -117,7 +119,7 @@ const friendlyExpiry = (expiry: string | null | undefined) => expiry ? new Date(
 export const documentRenewalHref = (locationId: number) => `/dashboard?view=kitchen-requests&renewLocation=${locationId}`;
 
 export function locationBookingEligibility(app: AccessApplication | null | undefined, hasAccess: boolean, requirements: AccessRequirements, locationId: number, timezone = DEFAULT_TIMEZONE, now = new Date(), renewals: AccessRenewal[] = []) {
-  const result = (status: string, message: string, canBook = false, actionUrl?: string, document?: { key: RequiredDocument['key']; label: string; expiry: string | null }) =>
+  const result = (status: string, message: string, canBook = false, actionUrl?: string, document?: { key: RequiredDocument['key']; label: string; expiry: string | null; reason?: DocumentBlockReason }) =>
     ({ hasApplication: !!app, status, message, canBook, actionUrl, document });
   if (!app) return result('application_required', 'Please apply to this location and wait for final approval before booking.');
   if (app.status === 'rejected' || app.status === 'cancelled') return result(app.status, 'Your application is not approved. Please contact the kitchen manager or Local Cooks about your next step.');
@@ -131,7 +133,7 @@ export function locationBookingEligibility(app: AccessApplication | null | undef
     if (doc.url && doc.status === 'approved' && days !== null && days > 0) continue;
     // A document without an expiry date is good once the kitchen approves it.
     if (!doc.hasExpiry && doc.url && doc.status === 'approved') continue;
-    if (!doc.url) return result('document_review_required', `This kitchen needs your ${doc.label} before new bookings. Upload it and wait for the kitchen to approve it. Existing bookings are unaffected.`, false, documentRenewalHref(locationId), detail);
+    if (!doc.url) return result('document_review_required', `This kitchen needs your ${doc.label} before new bookings. Upload it and wait for the kitchen to approve it. Existing bookings are unaffected.`, false, documentRenewalHref(locationId), { ...detail, reason: 'missing' });
     if (days !== null && days <= 0) {
       if (renewals.some(renewal => renewal.key === doc.key && renewal.status === 'pending'))
         return result('renewal_under_review', `Your renewal is under review. You can make new bookings once the kitchen approves your renewed ${doc.label}. Existing bookings are unaffected.`, false, documentRenewalHref(locationId), detail);
@@ -140,8 +142,8 @@ export function locationBookingEligibility(app: AccessApplication | null | undef
     }
     if (!doc.hasExpiry) return result('document_review_required', doc.status === 'rejected'
       ? `The kitchen asked for a new copy of your ${doc.label}. Upload it to book again. Existing bookings are unaffected.`
-      : `Your ${doc.label} is waiting for the kitchen's approval. You can make new bookings once it's approved. Existing bookings are unaffected.`, false, documentRenewalHref(locationId), detail);
-    return result('document_review_required', `Your ${doc.label} needs a valid expiry date and approval. Please upload a renewed document and wait for review before making new bookings. Existing bookings are unaffected.`, false, documentRenewalHref(locationId), detail);
+      : `Your ${doc.label} is waiting for the kitchen's approval. You can make new bookings once it's approved. Existing bookings are unaffected.`, false, documentRenewalHref(locationId), { ...detail, reason: doc.status === 'rejected' ? 'rejected' : 'pending' });
+    return result('document_review_required', `Your ${doc.label} needs a valid expiry date and approval. Please upload a renewed document and wait for review before making new bookings. Existing bookings are unaffected.`, false, documentRenewalHref(locationId), { ...detail, reason: 'needs_expiry' });
   }
   return result('approved', 'Your access is approved. You can book kitchens at this location.', true);
 }

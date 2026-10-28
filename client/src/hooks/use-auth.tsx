@@ -1107,7 +1107,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
     if (!res.ok) {
       const body = await res.json().catch(() => null);
-      const message = res.status === 429 ? 'too-many-requests' : body?.error || 'Unable to send a sign-in code. Please try again.';
+      // The hourly code limit says how long to wait; other 429s are the general request limit.
+      const message = res.status === 429 && body?.error === 'too-many-codes' ? `too-many-codes:${Math.ceil((Number(body.retryAfterSeconds) || 3600) / 60)}`
+        : res.status === 429 ? 'too-many-requests' : body?.error || 'Unable to send a sign-in code. Please try again.';
       setError(message);
       throw new Error(message);
     }

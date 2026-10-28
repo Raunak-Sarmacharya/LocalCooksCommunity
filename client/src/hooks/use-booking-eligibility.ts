@@ -6,7 +6,7 @@ export type BookingEligibility = {
   status: string;
   message?: string;
   actionUrl?: string;
-  document?: { key: string; label: string; expiry: string | null } | null;
+  document?: { key: string; label: string; expiry: string | null; reason?: 'missing' | 'rejected' | 'pending' | 'needs_expiry' } | null;
 };
 
 /** Reads whether this chef may start a NEW booking at the location. Unknown (loading, failed, odd payload) never blocks: the server still decides. */

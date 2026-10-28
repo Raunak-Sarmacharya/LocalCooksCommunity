@@ -1520,3 +1520,21 @@ State Oct 18 (evening): multi-day + single-day booking cycle verified end to end
   - Locally the email-code send returns 500 for `.test` addresses (never handed to SMTP), and the sign-in page then reloads with no error instead of showing "Sign In Failed".
   - `phase0-chef`'s block shows the food-safety-certificate message although that certificate is approved until 2027.
   - `bounded-smtp` real-socket test failed once under full-suite load (passes 3/3 alone).
+
+## Oct 27 (late night): sign-in and document investigations (owner: investigate thoroughly)
+- **Sign-in: no regression.** The "Sign In Failed" dialog still shows when a code email fails. The "reload" was the locale router turning `/auth` into `/en-CA/auth` on first load. A 500 for `@localcooks.test` is expected (reserved domains never reach SMTP). "Try another way" shows only when the account has an alternative (password set by the user, Google, verified phone).
+  - **Fixed (owner chose "say so + when"):** the hourly limit of 5 codes answered "sent" and sent nothing. It now answers 429 `too-many-codes` with the minutes left: "You've asked for several codes. Use the latest code we sent, or ask for a new one in N min." The limit counts every address, with or without an account, so the answer reveals nothing (verify still needs the account). Limit unchanged.
+- **Documents:** the server's eligibility was right; the chef banner was wrong.
+  - It named every document except the establishment licence "Food Safety Certificate" and used renewal wording. Now it uses the kitchen's own document name and the case the server tags (`missing` / `rejected` / `pending` / `needs_expiry`); en/fr/uk.
+  - Only phase0-chef was affected on dev, but any chef blocked on insurance or a kitchen's own document would have been.
+  - HACCP at location 47 is a plain file question, not a document; owner: leave it to the kitchen.
+- **phase0-chef can book again:** the Business licence and Signed house rules were uploaded and approved through the app (chef upload → kitchen Verify). `book-steps` reaches Confirm on desktop and phone.
+- **Document flow gaps found on that walk (to the owner, not built):**
+  - Banner names only the first missing document.
+  - Upload screen worded as a renewal on a first upload; lists already-verified documents; no Required marker; doesn't reset after submit.
+  - Date picker has no year jump and allows past dates.
+  - Kitchen page said "Can book" while the chef was blocked.
+  - "Booking requirements: Approved Oct 13" looks stale.
+  - Stale "Access ended" feedback on the request page.
+  - Expiry date formats differ in the kitchen dialog.
+- Tests: client 9,119, server 4,375, tsc clean.

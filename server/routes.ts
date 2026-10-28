@@ -574,15 +574,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const email = signInCodeEmail(req.body);
     if (!email) return res.status(400).json({ error: "Email is required" });
     try {
+      // The hourly limit counts every address, with or without an account, so "too many codes" reveals nothing;
+      // a code issued for an unknown address is never sent and can't sign anyone in (verify needs the account).
+      const { issueSignInCode, signInCodeRetryAt } = await import('./sign-in-codes');
+      const query = (text: string, params: unknown[]) => pool.query(text, params as any[]);
+      const code = await issueSignInCode(query, email);
+      if (!code) {
+        const retryAfterSeconds = Math.ceil(((await signInCodeRetryAt(query, email)).getTime() - Date.now()) / 1000);
+        res.setHeader('Retry-After', String(Math.max(1, retryAfterSeconds)));
+        return res.status(429).json({ error: 'too-many-codes', retryAfterSeconds: Math.max(1, retryAfterSeconds) });
+      }
       const account = await signInCodeAccount(email);
       if (!account) {
         logger.warn(`Sign-in code request suppressed for an unlinked or unknown account`);
-        return res.json({ success: true });
-      }
-      const { issueSignInCode } = await import('./sign-in-codes');
-      const code = await issueSignInCode((text, params) => pool.query(text, params as any[]), email);
-      if (!code) {
-        logger.warn(`Sign-in code request over the hourly limit for user ${account.user.id}`);
         return res.json({ success: true });
       }
       const { sendEmail, generateSignInCodeEmail } = await import('./email');

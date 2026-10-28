@@ -171,7 +171,13 @@ export default function EnhancedLoginForm({
         "errSignInGeneric",
         "Unable to send sign-in email at this time. Please try again later."
       );
-      if (message.includes("too-many-requests")) {
+      const codesWait = message.match(/^too-many-codes:(\d+)$/);
+      if (codesWait) {
+        errorMessage = t("errTooManyCodes", {
+          minutes: Number(codesWait[1]),
+          defaultValue: "You've asked for several codes. Use the latest code we sent, or ask for a new one in {minutes} min.",
+        });
+      } else if (message.includes("too-many-requests")) {
         errorMessage = t(
           "errTooManyAttempts",
           "Too many attempts. Please wait a few minutes before trying again."

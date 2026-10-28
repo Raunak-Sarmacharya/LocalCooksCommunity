@@ -28,6 +28,14 @@ describe('location booking eligibility', () => {
     expect(accessDocuments({ ...app, ...expired }, { food_establishment_cert_tracked: true }).map(doc => [doc.key, doc.mode]))
       .toEqual([['foodSafetyLicense', 'required'], ['foodEstablishmentCert', 'track']]);
   });
+  it('says why a document blocks booking, so the chef gets the right next step', () => {
+    const house = { tier2_custom_fields: [{ id: 'rules', label: 'Signed house rules', type: 'file', document: true, required: true }] };
+    const rules = (data: object) => ({ tier_data: { tier2_custom_fields_data: { rules: '/rules.pdf' }, ...data } });
+    expect(eligible({}, true, house).document).toMatchObject({ label: 'Signed house rules', reason: 'missing' });
+    expect(eligible(rules({}), true, house).document).toMatchObject({ reason: 'pending' });
+    expect(eligible(rules({ customDocumentStatus: { rules: 'rejected' } }), true, house).document).toMatchObject({ reason: 'rejected' });
+    expect(eligible({ foodSafetyLicenseExpiry: null }).document).toMatchObject({ key: 'foodSafetyLicense', reason: 'needs_expiry' });
+  });
   it('required insurance needs an approved, unexpired document', () => {
     const requirements = { tier2_insurance_document_required: true };
     expect(eligible({}, true, requirements)).toMatchObject({ canBook: false, status: 'document_review_required', document: { key: 'insurance' } });

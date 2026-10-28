@@ -31,6 +31,13 @@ export async function issueSignInCode(query: Query, email: string, now = new Dat
   return rows.length ? code : null;
 }
 
+/** When this address can ask for a code again (the hour window started by its first send), for the "too many codes" answer. */
+export async function signInCodeRetryAt(query: Query, email: string, now = new Date()): Promise<Date> {
+  const { rows } = await query(`SELECT window_started_at FROM sign_in_codes WHERE email = $1`, [email]);
+  if (!rows[0]?.window_started_at) return now;
+  return new Date(Math.max(now.getTime(), new Date(rows[0].window_started_at).getTime() + 60 * 60 * 1000));
+}
+
 export type CodeCheck = "ok" | "wrong" | "expired";
 
 /** Checks and, when right, uses up the code. "expired" covers no code, too old, and too many wrong tries. */

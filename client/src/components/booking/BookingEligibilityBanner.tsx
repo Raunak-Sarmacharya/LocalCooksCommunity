@@ -16,9 +16,11 @@ export function BookingEligibilityBanner({ eligibility, locationName }: { eligib
   if (!eligibility || eligibility.canBook) return null;
 
   const document = eligibility.document;
+  // Built-in documents are translated; a kitchen's own documents use the name the kitchen gave them.
   const documentName = !document ? '' : document.key === 'foodEstablishmentCert'
     ? t('accessDocumentFoodEstablishmentCert', { defaultValue: 'Food Establishment Licence' })
-    : t('accessDocumentFoodSafetyLicense', { defaultValue: 'Food Safety Certificate' });
+    : document.key === 'foodSafetyLicense' ? t('accessDocumentFoodSafetyLicense', { defaultValue: 'Food Safety Certificate' })
+    : document.key === 'insurance' ? t('accessDocumentInsurance', { defaultValue: 'Insurance' }) : document.label;
   const date = document?.expiry
     ? new Intl.DateTimeFormat(i18n.language, { dateStyle: 'long', timeZone: 'UTC' }).format(new Date(`${document.expiry}T00:00:00Z`))
     : '';
@@ -51,8 +53,18 @@ export function BookingEligibilityBanner({ eligibility, locationName }: { eligib
       actions = go(renewPath, t('accessActionRenewalStatus', { defaultValue: 'See renewal status' }));
       break;
     case 'document_review_required':
-      title = t('accessBlockedDocumentReview', { document: documentName, defaultValue: 'Your {document} needs a valid expiry date and approval before you can book. Upload a renewed one and we will let you know when it has been reviewed.' });
-      actions = go(renewPath, renewLabel);
+      if (document?.reason === 'missing' || document?.reason === 'rejected') {
+        title = document.reason === 'missing'
+          ? t('accessBlockedDocumentMissing', { document: documentName, location, defaultValue: '{location} needs your {document} before you can book. Upload it and you can book once {location} approves it.' })
+          : t('accessBlockedDocumentRejected', { document: documentName, location, defaultValue: '{location} asked for a new copy of your {document}. Upload it to book again.' });
+        actions = go(renewPath, t('accessActionUpload', { document: documentName, defaultValue: 'Upload your {document}' }));
+      } else if (document?.reason === 'pending') {
+        title = t('accessBlockedDocumentPending', { document: documentName, location, defaultValue: 'Your {document} is waiting for approval from {location}. You can book once it is approved.' });
+        actions = go(renewPath, t('accessActionDocumentStatus', { defaultValue: 'See document status' }));
+      } else {
+        title = t('accessBlockedDocumentReview', { document: documentName, defaultValue: 'Your {document} needs a valid expiry date and approval before you can book. Upload a renewed one and we will let you know when it has been reviewed.' });
+        actions = go(renewPath, renewLabel);
+      }
       break;
     case 'access_ended':
       title = t('accessBlockedEnded', { location, defaultValue: 'Your access to {location} has ended. Contact {location} or Local Cooks if you would like to book here again.' });
