@@ -74,6 +74,8 @@ export type ChangeNoticeOptions = { only?: Audience; actorId?: number; message?:
 
 export async function queueChangeNotices(tx: Tx, change: Change, event: ChangeNoticeEvent, options: ChangeNoticeOptions = {}) {
   await ensureServerI18n();
+  // The kitchen gets the same 12 h / 2 h reminders as for a new request (owner, Oct 28).
+  if (event === 'requested') await (await import('./advance-reminders')).scheduleAdvanceReminders(tx as never, 'manager_decision', change.bookingId);
   const [row] = await tx.select({ booking: kitchenBookings, kitchenName: kitchens.name, locationName: locations.name, address: locations.address,
     timezone: locations.timezone, managerId: locations.managerId }).from(kitchenBookings).innerJoin(kitchens, eq(kitchens.id, kitchenBookings.kitchenId))
     .innerJoin(locations, eq(locations.id, kitchens.locationId)).where(eq(kitchenBookings.id, change.bookingId)).limit(1);

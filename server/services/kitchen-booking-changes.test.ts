@@ -541,7 +541,8 @@ describe('the kitchen approves', () => {
     expect(Number(booking.durationHours)).toBe(2);
     // Side effects on the time: closeout timers, reminders and instruction release, kitchen payout date.
     expect(h.calls.closeout).toEqual([10]);
-    expect(h.calls.reminders).toEqual([['booking', 10], ['booking_review', 10]]);
+    // The request armed the kitchen's 12 h / 2 h answer reminders (owner, Oct 28); approval re-plans the visit reminders.
+    expect(h.calls.reminders).toEqual([['manager_decision', 10], ['booking', 10], ['booking_review', 10]]);
     expect(h.calls.payout).toEqual([10]);
     expect(h.calls.documents).toEqual(['10:change_applied']);
     // The held time is released (the booking itself now owns it) and nothing was charged or refunded.

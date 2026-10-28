@@ -1579,3 +1579,5 @@ Checked on dev against QA's own records (TOUR-103, KB-TASH8T #239, KB-Z856HK #24
 - Unpaid cancellation-request auto-accept is unreachable (unpaid items cancel at once): documented as untestable by design, no clock step.
 - Document reminders stay 45/14/3 + day of (owner: already built, keep).
 - docs/QA_TEST_CLOCK.md: worker button, walkthroughs, can't-test-by-design, not-on-clock-yet.
+- Owner Oct 28: a customer's time-change request reminds the kitchen at 12 h and 2 h before its answer deadline, like a new request
+  (`manager-decision-reminders.ts`, armed when the change becomes "requested"; stale ones suppress at send). Operational only: no policy/Terms change.
