@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -28,12 +28,15 @@ export interface SettingChangePreviewProps {
   align?: 'start' | 'end';
   /** Extra actions rendered before the save (e.g. Discard), only while the save is live. */
   secondaryAction?: ReactNode;
+  /** Bump to open the confirmation from outside (e.g. "Save" in a leave-page dialog). */
+  openSignal?: number;
 }
 
 export function SettingChangePreview(props: SettingChangePreviewProps) {
   const { t } = useTranslation('manager');
   const [open, setOpen] = useState(false), [acknowledged, setAcknowledged] = useState(false);
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
+  useEffect(() => { if (props.openSignal && props.confirm && props.onSave) { setAcknowledged(false); setOpen(true); } }, [props.openSignal]);
   const when = props.appliesTo === 'now' ? t('scpNow') : props.appliesTo === 'new_bookings' ? t('scpNewBookings')
     : props.appliesTo === 'scheduled' ? t('scpScheduled') : props.appliesTo;
   const rightNow = props.impactError ? t('scpCountFailed') : props.rightNow ?? (props.impactFetching ? t('scpChecking') : !props.impact ? t('scpCountFailed') : props.impact.upcoming === 0 ? t('scpNone')

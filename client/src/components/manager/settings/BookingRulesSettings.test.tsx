@@ -1,6 +1,7 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { createRef } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import BookingRulesSettings from "./BookingRulesSettings";
+import BookingRulesSettings, { type BookingPoliciesHandle } from "./BookingRulesSettings";
 
 vi.mock("@/i18n/manager", () => ({
   mt: (key: string) =>
@@ -108,7 +109,6 @@ describe("BookingRulesSettings", () => {
         defaultDailyBookingLimit: null,
         minimumBookingWindowHours: 48,
         taxRatePercent: null,
-        checkinWindowMinutesBefore: null,
       });
     });
   });
@@ -121,6 +121,23 @@ describe("BookingRulesSettings", () => {
     expect(screen.getByText("bpTaxValue")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Save booking rules" }));
     expect(onRequestSave).toHaveBeenCalledOnce();
+  });
+
+  it("rules and arrival timing save separately; a leave-page save opens timing's confirmation instead of failing silently (QA Oct 28)", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const ref = createRef<BookingPoliciesHandle>();
+    render(<BookingRulesSettings ref={ref} location={baseLocation} onSave={onSave} onRequestSave={vi.fn()} hideHeader hideTerms />);
+    fireEvent.change(screen.getByRole("textbox", { name: "bpNoticeLabel" }), { target: { value: "48" } });
+    fireEvent.change(document.getElementById("checkin-window")!, { target: { value: "30" } });
+    // Timing has its own save in its own card.
+    expect(within(screen.getByTestId("arrival-timing-section")).getByRole("button", { name: "Save changes" })).toBeInTheDocument();
+    let saved: boolean | undefined;
+    await act(async () => { saved = await ref.current!.saveAllChanges(); });
+    expect(saved).toBe(false);
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(onSave.mock.calls[0][0]).toMatchObject({ minimumBookingWindowHours: 48 });
+    expect(onSave.mock.calls[0][0]).not.toHaveProperty("checkinWindowMinutesBefore");
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
   });
 
   it("surfaces the uploaded document instead of a bare dropzone", () => {

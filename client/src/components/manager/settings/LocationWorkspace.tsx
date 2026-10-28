@@ -144,7 +144,7 @@ export default function LocationWorkspace({ location, onSaveLocation, onRefresh,
         description={mt("locationUnsavedChangesDescription")}
         isSaving={savingBeforeSwitch}
         onDiscard={() => { const next = pendingSection; setPendingSection(null); if (section === "details") setDetailsDirty(false); if (section === "booking") setBookingDirty(false); if (section === "requirements") setRequirementsDirty(false); if (next) go(next); }}
-        onSave={async () => { setSavingBeforeSwitch(true); const saved = await saveCurrent(); setSavingBeforeSwitch(false); if (saved && pendingSection) { const next = pendingSection; setPendingSection(null); go(next); } }}
+        onSave={async () => { setSavingBeforeSwitch(true); const saved = await saveCurrent(); setSavingBeforeSwitch(false); const next = pendingSection; setPendingSection(null); if (saved && next) go(next); }}
       />
     </div>
   );

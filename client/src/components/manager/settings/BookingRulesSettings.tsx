@@ -299,41 +299,50 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
         ...(!isKitchenMode ? {
           taxRatePercent: taxRate.trim() === "" ? null : Number(taxRate),
         } : {}),
-        // null clears the per-location override so the platform default applies.
-        checkinWindowMinutesBefore: checkinWindow,
       });
-      // The timings are served by the check-in/check-out endpoint, so refresh that
-      // cache too or the page would keep rendering the pre-save values.
-      queryClient.invalidateQueries({ queryKey: ["checkin-checkout-settings", location.id] });
     }, [
       onSave, location.id, cancellationHours, effectiveDailyLimit, minimumBookingWindowHours, minimumBookingHours,
       minimumDuration, hasWindow, windowDays, hasBuffer, bufferMinutes, hasMultiDay, allowMultiDay, maxBookingDays,
-      hasWeeklyLimit, effectiveWeeklyLimit, checkinWindow, queryClient, isKitchenMode, taxRate,
+      hasWeeklyLimit, effectiveWeeklyLimit, isKitchenMode, taxRate,
     ]);
+
+    const saveTiming = useCallback(async () => {
+      // null clears the per-location override so the platform default applies.
+      await onSave({ locationId: location.id, checkinWindowMinutesBefore: checkinWindow });
+      // The timings are served by the check-in/check-out endpoint, so refresh that cache too.
+      await queryClient.invalidateQueries({ queryKey: ["checkin-checkout-settings", location.id] });
+    }, [onSave, location.id, checkinWindow, queryClient]);
+    const [confirmTiming, setConfirmTiming] = useState(0);
 
     const saveRulesAction = useStatusButton(saveRules);
     const timingPreview = <SettingChangePreview
       whatChanges={<>{checkinWindow !== (arrivalSettings?.timeWindowSettings?.checkinWindowMinutesBefore ?? null) && <span className="block">{mt('scpWindowWhat', { minutes: checkinWindow ?? arrivalSettings?.platformDefaults?.checkinWindowMinutesBefore, current: arrivalSettings?.timeWindowSettings?.checkinWindowMinutesBefore ?? arrivalSettings?.platformDefaults?.checkinWindowMinutesBefore })}</span>}</>}
       appliesTo={mt('scpTimingWhen', { kitchen: kitchenName || location.name })} impact={impact} impactFetching={impactFetching} impactError={impactError}
       rightNow={impact ? mt(impact.upcoming ? 'scpTimingImpact' : 'scpNone', { upcoming: impact.upcoming }) : undefined}
-      undo={mt('scpTimingUndo')} confirm actionLabel={mt('scpSave')} disabled={saveRulesAction.status === 'loading'} onSave={saveRulesAction.execute} />;
+      undo={mt('scpTimingUndo')} confirm actionLabel={mt('scpSave')} onSave={saveTiming} openSignal={confirmTiming}
+      align="end" secondaryAction={<Button variant="ghost" className="min-h-11" onClick={() => setCheckinWindow(arrivalSettings?.timeWindowSettings?.checkinWindowMinutesBefore ?? null)}>{mt("bpDiscard")}</Button>} />;
 
     // Used by the unsaved-changes guard to save before leaving.
     useImperativeHandle(ref, () => ({
       saveAllChanges: async () => {
-        if (timingChanged) return false;
         try {
           await saveRules();
-          return true;
         } catch {
           return false;
         }
+        // Timing changes affect booked visits and need their own confirmation: open it rather than skip it or fail silently.
+        if (timingChanged) {
+          document.querySelector('[data-testid="arrival-timing-section"]')?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+          setConfirmTiming(count => count + 1);
+          return false;
+        }
+        return true;
       },
     }), [saveRules, timingChanged]);
 
     // Keep the header action mounted through its success animation, even after the
     // refetched location clears the dirty flag.
-    const showSaveAction = isRulesDirty || saveRulesAction.status !== "idle";
+    const showSaveAction = rulesChanged || saveRulesAction.status !== "idle";
 
     /** Kitchen: "Location default · Change for this kitchen" or "Set for this kitchen · Use the location's rule". */
     const scopeNote = (field: ResettablePolicyField) => {
@@ -430,7 +439,6 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
 
     return (
       <div className="space-y-8">
-        {timingChanged && timingPreview}
         {!hideHeader && <ChefPageHeader
           title={mt("navBookingRules")}
           description={mt("bpPageDescription")}
@@ -438,7 +446,7 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
             // One save for the whole page, in a stable spot near the title and
             // only while something is unsaved — the page spans several sections,
             // so an in-card action would sit next to only one of them.
-            showSaveAction && !timingChanged ? (
+            showSaveAction ? (
               <StatusButton
                 status={saveRulesAction.status}
                 onClick={saveRulesAction.execute}
@@ -553,7 +561,7 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
         {!hideArrivalTimings && (
           /* Arrival timing. Also on the check-in/check-out page, which is intentional —
              both pages read and write the same query-cached field. */
-          <PolicySection title={mt("arrivalTiming")} testId="arrival-timing-section" description={mt("arrivalTimingDescription")}>
+          <PolicySection title={mt("arrivalTiming")} testId="arrival-timing-section" description={mt("arrivalTimingDescription")} footer={timingChanged ? timingPreview : undefined}>
             <div className="divide-y divide-border">
               <SettingsRow id="checkin-window" label={mt("checkinOpensLabel")}
                 hint={arrivalSettings?.platformDefaults ? mt("platformDefaultIs", { minutes: mt("minutesShort", { count: arrivalSettings.platformDefaults.checkinWindowMinutesBefore }) }) : undefined}

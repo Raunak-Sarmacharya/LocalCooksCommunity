@@ -690,6 +690,8 @@ export default function ManagerBookingDashboard() {
     const saved = await locationSaveRef.current?.saveAllChanges();
     setIsSavingBeforeLeave(false);
     if (saved) continueFromLocation();
+    // Not saved (an error toast, or arrival timing waiting for its confirmation): stay and show it.
+    else { setPendingLocationView(null); setPendingLocationHistory(null); }
   };
 
   const continueFromKitchens = (destination: KitchenNavigationDestination) => {
