@@ -2,6 +2,7 @@ import { Router, type Response } from 'express';
 import { requireFirebaseAuthWithUser, requireAdmin } from '../firebase-auth-middleware';
 import { TestClockError, jumpTour, readTourClock, testClockEnabled } from '../services/qa-test-clock';
 import { jumpBooking, readBookingClock } from '../services/qa-test-clock-booking';
+import { jumpStorage, readStorageClock } from '../services/qa-test-clock-storage';
 import { logger } from '../logger';
 
 /** QA test clock (dev only). Answers 404 everywhere it is off, so production has no such surface. */
@@ -28,10 +29,11 @@ router.post('/admin/test-clock/worker', async (req, res) => {
     return res.json({ ran: true, deferred: !!result.deferred, failures });
   } catch (error) { return failure(res, error); }
 });
-const kinds = { tour: { read: readTourClock, jump: jumpTour, label: 'tour' }, booking: { read: readBookingClock, jump: jumpBooking, label: 'booking' } } as const;
+const kinds = { tour: { read: readTourClock, jump: jumpTour, label: 'tour' }, booking: { read: readBookingClock, jump: jumpBooking, label: 'booking' },
+  storage: { read: readStorageClock, jump: jumpStorage, label: 'storage rental' } } as const;
 router.get('/admin/test-clock/:kind/:id', async (req, res) => {
   const kind = Object.prototype.hasOwnProperty.call(kinds, req.params.kind) ? kinds[req.params.kind as keyof typeof kinds] : null, id = idOf(req.params.id);
-  if (!kind || !id) return res.status(400).json({ error: 'Choose a valid tour or booking.' });
+  if (!kind || !id) return res.status(400).json({ error: 'Choose a valid tour, booking or storage rental.' });
   try { return res.json(await kind.read(id)); } catch (error) { return failure(res, error); }
 });
 router.post('/admin/test-clock/:kind/:id/jump', async (req, res) => {

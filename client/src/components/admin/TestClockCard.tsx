@@ -11,7 +11,9 @@ type Clock = { reference: string; status: string; updatedAt: string; now: string
 type Jump = { movedMs: number; notices: Array<{ kind: string; sent: boolean }>; reminders: Array<{ kind: string; role: string; channel: string }>; clock: Clock; stoppedAt?: string | null };
 const noticeNames: Record<string, string> = { expired: 'Request expired', request_escalation: 'Overdue or urgent alert', reconfirmation_requested: '"Still coming?" check',
   reconfirmation_escalated: 'No reply · staff alert', reconfirmation_reminder: 'Reply reminder to the visitor', feedback_requested: 'Feedback request',
-  feedback_reminder: 'Feedback reminder', status: 'Status update', cancelled: 'Cancelled or expired notice' };
+  feedback_reminder: 'Feedback reminder', status: 'Status update', cancelled: 'Cancelled or expired notice', move_in_due: 'Move-in reminder', not_moved_in: 'Not moved in notice',
+  ending: 'Ending reminder', grace_started: 'Grace period notice', holdover_started: 'Holdover notice', removal_review: 'Removal review opened', auto_cleared: 'Move-out cleared on its own',
+  payout_scheduled: 'Payout scheduled', payout_released: 'Payout released' };
 const noticeName = (kind: string) => noticeNames[kind] || kind.charAt(0).toUpperCase() + kind.slice(1).replace(/_/g, ' ');
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
@@ -37,9 +39,9 @@ export function untilLabel(ms: number) {
 // A jump can move the record to another tab, which remounts this card; keep the last result per record.
 const lastJumps = new Map<string, { step: Step; result: Jump }>();
 
-/** QA only: jump a tour or booking to one of its upcoming automatic steps instead of waiting for it. */
-export function TestClockCard({ kind, id, timezone, onMoved }: { kind: 'tour' | 'booking'; id: number; timezone: string; onMoved?: () => void }) {
-  const key = `${kind}:${id}`, path = `/api/admin/test-clock/${kind}/${id}`;
+/** QA only: jump a tour, booking or storage rental to one of its upcoming automatic steps instead of waiting for it. */
+export function TestClockCard({ kind, id, timezone, onMoved }: { kind: 'tour' | 'booking' | 'storage'; id: number; timezone: string; onMoved?: () => void }) {
+  const key = `${kind}:${id}`, noun = kind === 'storage' ? 'storage rental' : kind, path = `/api/admin/test-clock/${kind}/${id}`;
   const queryClient = useQueryClient();
   const [confirming, setConfirming] = useState<Step | null>(null);
   const [last, setLast] = useState(() => lastJumps.get(key) ?? null);
@@ -64,7 +66,7 @@ export function TestClockCard({ kind, id, timezone, onMoved }: { kind: 'tour' | 
     <Card className="min-w-0">
       <CardHeader className="pb-3">
         <CardTitle className="text-base">Test clock</CardTitle>
-        <CardDescription>Dev only. Jumping moves this {kind}'s saved times earlier so the step is due now, then runs it. Emails and notifications send for real.</CardDescription>
+        <CardDescription>Dev only. Jumping moves this {noun}'s saved times earlier so the step is due now, then runs it. Emails and notifications send for real.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
         {last && <div role="status" className="space-y-1 rounded-md bg-muted p-3">
@@ -76,14 +78,15 @@ export function TestClockCard({ kind, id, timezone, onMoved }: { kind: 'tour' | 
               {last.result.reminders.map((reminder, index) => <li key={`r${index}`}>{reminder.kind === 'arrival' ? 'Arrival reminder' : noticeName(reminder.kind)} to the {reminder.role === 'manager' ? 'kitchen' : kind === 'tour' ? 'visitor' : 'customer'} · {reminder.channel === 'email' ? 'email' : 'in-app'} sent</li>)}
             </ul>}
         </div>}
-        {clock.data && ['pending', 'pending_local_cooks'].includes(clock.data.status) && <p className="text-muted-foreground">{kind === 'tour'
+        {clock.data && ['pending', 'pending_local_cooks', 'requested'].includes(clock.data.status) && <p className="text-muted-foreground">{kind === 'tour'
           ? "Approve and confirm before jumping: a moved request usually can't be confirmed, because its time no longer matches the kitchen's tour slots."
+          : kind === 'storage' ? 'Accept or decline before jumping. An unanswered request can only jump to its answer deadline: its held payment is quoted for the original dates.'
           : clock.data.multiDay ? "Accept or decline before jumping. A multi-day request can only jump to its answer deadline: its paid quote is locked to the original dates."
           : 'Accept or decline before jumping to test what happens after; jump to the answer deadline to test an unanswered request.'}</p>}
         {jump.isError && <p role="alert" className="text-destructive">{jump.error.message}</p>}
         {clock.isLoading ? <div className="space-y-2" aria-label="Loading test clock">{[0, 1, 2].map(row => <Skeleton key={row} className="h-11 w-full" />)}</div>
           : clock.isError ? <div role="alert" className="space-y-2"><p>{clock.error.message}</p><Button variant="outline" onClick={() => void clock.refetch()}>Try again</Button></div>
-          : !clock.data!.steps.length ? <p className="text-muted-foreground">Nothing else is scheduled for this {kind} ({clock.data!.status.replace(/_/g, ' ')}).</p>
+          : !clock.data!.steps.length ? <p className="text-muted-foreground">Nothing else is scheduled for this {noun} ({clock.data!.status.replace(/_/g, ' ')}).</p>
           : <ol className="divide-y">{clock.data!.steps.map(step => (
             <li key={`${step.key}:${step.at}`} className="py-2">
               <div className="flex min-w-0 items-center justify-between gap-3">

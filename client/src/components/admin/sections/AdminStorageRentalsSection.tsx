@@ -10,6 +10,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { Eye } from "@/components/ui/manager-icons";
 import { auth } from "@/lib/firebase";
 import { formatBookingDate, formatCurrency } from "@/lib/formatters";
+import { TestClockCard, useTestClockEnabled } from "../TestClockCard";
 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -179,6 +180,7 @@ export function AdminStorageRentalsSection() {
 
 function AdminStorageTools({ id, onDone }: { id: number; onDone: () => void }) {
   const { t } = useTranslation('storage');
+  const testClock = useTestClockEnabled();
   const detail = useQuery<Record<string, any>>({ queryKey: ['/api/admin/storage-rentals', id], queryFn: () => adminFetch(`/api/admin/storage-rentals/${id}`) });
   const [type, setType] = useState('');
   const [reason, setReason] = useState('');
@@ -222,6 +224,7 @@ function AdminStorageTools({ id, onDone }: { id: number; onDone: () => void }) {
         {(row.payoutDate || row.createdAt || row.deadline) && <p>{formatBookingDate(row.payoutDate || row.createdAt || row.deadline)}</p>}
       </div>) : <p className="text-sm text-muted-foreground">{t('stNone')}</p>}
     </section>)}
+    {testClock && <TestClockCard kind="storage" id={id} timezone={data.timezone || 'America/St_Johns'} onMoved={() => { void detail.refetch(); onDone(); }} />}
     <div onChange={() => setPreview(null)} className="space-y-3">
       <Label htmlFor="admin-storage-action">{t('stAdminAction')}</Label>
       <Select value={type === "" ? EMPTY : type} onValueChange={value => { setType(value === EMPTY ? "" : value); setOperationKey(crypto.randomUUID()); }}>

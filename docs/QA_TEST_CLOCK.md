@@ -6,8 +6,9 @@ Test reminders, deadlines and other timed steps without waiting for them.
 Dev admin (`dev-admin.localcooks.ca`):
 - **Tours:** Tour Requests → "Test clock" next to a tour's reference. The tour opens with a Test clock card beside its history.
 - **Bookings:** Booking support → find the booking → the Test clock card sits under "Take action". Single-day and multi-day.
+- **Storage rentals:** Storage rentals → "View" on a rental → the Test clock card sits between the history sections and the action picker.
 
-The card lists every automatic step still ahead for that tour or booking, with its time. "Jump here" moves its saved times
+The card lists every automatic step still ahead for that tour, booking or storage rental, with its time. "Jump here" moves its saved times
 earlier so that step is due now, then runs it the same way the live system would. Every step between now and the one you
 picked runs first, in order. For example, jumping to the day-3 feedback reminder first runs the 24-hour auto-close, and a
 closed tour gets no reminder, just as in real time.
@@ -18,6 +19,9 @@ closed tour gets no reminder, just as in real time.
 - **Bookings:** accept or decline first. A pending single-day request can jump anywhere, but test acceptance before moving
   it. A multi-day request can only jump to its answer deadline, because its paid quote is locked to the original dates.
   A move that would land on another booking in that kitchen is refused; so is a jump while a payment is still finishing.
+- **Storage rentals:** accept or decline first. An unanswered request can only jump to its answer deadline (its held payment is
+  quoted for the original dates). A move that would land on another rental of the same unit is refused, so is a jump while a
+  payment is still finishing, and so is a jump if someone else changed the rental since the card loaded.
 - **Money is real Stripe sandbox money.** Jumping past the answer deadline cancels the card hold; jumping past payout
   sends the kitchen's test-account transfer; time-change and extra-time deadlines refund or cancel as they would live.
 - **"Free cancellation ends"** has no automatic action. It is there so you can test a late cancellation right after it.
@@ -52,13 +56,33 @@ records, not just this one.
   Paid cancellation requests wait for the kitchen; their reminder is on the card.
 - **Card holds expiring after 7 days:** Stripe's real clock. Test an unanswered request with the answer-deadline jump instead.
 
+## Storage rentals
+Steps depend on the rental's state. Date-based steps fall due at the start of the kitchen-local day, as the real sweep does.
+- **Request:** kitchen answer deadline (expires the request and releases the card hold).
+- **Reserved:** move-in reminders on days 1 and 3, "Not moved in" on day 7 (the kitchen can then release the unit).
+- **Active:** ending reminders 14, 7, 2 days before the end and on the last paid day (none in the first half of a short term),
+  "Paid time ends" with the day-1 grace notice, grace notices on days 3 and 5, "Holdover starts", and "Removal review opens"
+  after 15 days of holdover.
+- **Move-out requested:** the inspection window end (clears on its own if the kitchen doesn't answer) and its reminder.
+- **Payouts and reminders:** the kitchen payout release for each paid term, and the start-day, inspection and holdover-dispute
+  reminders once they exist.
+- **No automatic action (informational):** the holdover pay-or-dispute window end (the customer pays on-session) and the times
+  after which the kitchen may record removal of perishables and of other items (a manual kitchen action).
+
+A jump moves every saved time of the rental (the rental, its paid terms, payments, holdover records and scheduled reminders)
+earlier. Local dates (term start, paid-through, reclaim and release days, the dates inside "notice already sent" markers and
+holdover keys) move by the number of calendar days the jump crosses, so a reminder that already went out is not sent again,
+and the unit's booked days are recomputed. Delivered notices and emails are history and stay as they were. Then, for this rental
+only: the request expiry or lifecycle sweep, the move-out auto-clear, due payouts, due reminders and the queued emails run.
+
 ## Not on the clock yet
-Storage rentals, damage claims, kitchen invitations and document expiry reminders (45, 14 and 3 days before, and on the day)
+Damage claims, kitchen invitations and document expiry reminders (45, 14 and 3 days before, and on the day)
 still run on real time. They're the next checkpoints.
 
 ## What it does not move
 - Card holds in Stripe (still 7 real days).
 - Booking documents, feedback answers, support actions and the accepted cancellation terms (only their session times move).
+- Storage: notices and emails already sent, support actions, and the held card payment of an unanswered request.
 - The multi-day quote stored with the payment (receipts show the quoted dates).
 - Chat message times.
 

@@ -126,6 +126,9 @@ async function sweepOne(id: number, now: Date) {
   });
 }
 
+/** One rental's sweep (the QA test clock runs it for a single record). */
+export const sweepStorageRental = sweepOne;
+
 /** Cursor-paged: at most 3 rentals per tick; only rentals whose dates can have something due are selected. */
 export async function sweepStorageRentals(limit = 3, now = new Date()) {
   const key = 'storageRentals', size = Math.min(3, limit), utc = localToday(now, 'UTC');

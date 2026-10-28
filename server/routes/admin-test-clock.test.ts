@@ -1,8 +1,9 @@
 import { beforeEach, expect, it, vi } from 'vitest';
-const state = vi.hoisted(() => ({ enabled: true, worker: vi.fn(), auth: vi.fn(), admin: vi.fn() }));
+const state = vi.hoisted(() => ({ enabled: true, worker: vi.fn(), auth: vi.fn(), admin: vi.fn(), readStorage: vi.fn(), jumpStorage: vi.fn() }));
 vi.mock('../firebase-auth-middleware', () => ({ requireFirebaseAuthWithUser: state.auth, requireAdmin: state.admin }));
 vi.mock('../services/qa-test-clock', () => ({ TestClockError: class extends Error {}, jumpTour: vi.fn(), readTourClock: vi.fn(), testClockEnabled: () => state.enabled }));
 vi.mock('../services/qa-test-clock-booking', () => ({ jumpBooking: vi.fn(), readBookingClock: vi.fn() }));
+vi.mock('../services/qa-test-clock-storage', () => ({ jumpStorage: state.jumpStorage, readStorageClock: state.readStorage }));
 vi.mock('../services/recurring-worker', () => ({ runRecurringWorker: state.worker }));
 vi.mock('../services/scheduled-cancellations', () => ({ processExpiredCancellationRequests: vi.fn() }));
 vi.mock('../logger', () => ({ logger: { info: vi.fn(), error: vi.fn() } }));
@@ -35,4 +36,21 @@ it('runs the background worker and says plainly what happened (QA Oct 28)', asyn
     await worker({ neonUser: { id: 1 } }, res);
     expect(res.json).toHaveBeenCalledWith(expected);
   }
+});
+
+it('serves storage rentals under the same routes as tours and bookings', async () => {
+  const read = layers.find((layer: any) => layer.route?.path === '/admin/test-clock/:kind/:id' && layer.route.methods.get).route.stack.at(-1).handle;
+  const jump = layers.find((layer: any) => layer.route?.path === '/admin/test-clock/:kind/:id/jump' && layer.route.methods.post).route.stack.at(-1).handle;
+  state.readStorage.mockResolvedValueOnce({ kind: 'storage' });
+  let res = response();
+  await read({ params: { kind: 'storage', id: '5' } }, res);
+  expect(state.readStorage).toHaveBeenCalledWith(5);
+  expect(res.json).toHaveBeenCalledWith({ kind: 'storage' });
+  state.jumpStorage.mockResolvedValueOnce({ movedMs: 1 });
+  res = response();
+  await jump({ params: { kind: 'storage', id: '5' }, body: { to: '2026-11-01T00:00:00.000Z', expectedUpdatedAt: 'v' }, neonUser: { id: 9 } }, res);
+  expect(state.jumpStorage).toHaveBeenCalledWith(5, new Date('2026-11-01T00:00:00.000Z'), 9, 'v');
+  res = response();
+  await read({ params: { kind: 'nope', id: '5' } }, res);
+  expect(res.status).toHaveBeenCalledWith(400);
 });
