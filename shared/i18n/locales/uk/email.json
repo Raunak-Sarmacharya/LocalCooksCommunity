@@ -43,6 +43,7 @@
   "tourVisitCompletedBody": "Local Cooks підтвердив, що тур кухнею для {visitor} у {kitchen} відбувся. Відкрийте тур, щоб переглянути спільні нотатки та наступні кроки. Зверніться до підтримки, якщо щось не так.",
   "tourCompletionApply": "Подати запит",
   "tourCompletionContinue": "Продовжити заявку",
+  "tourCompletionBook": "Забронювати час на кухні",
   "tourCompletionViewApplication": "Переглянути заявку",
   "tourCompletionViewAccess": "Переглянути доступ до кухні",
   "tourCompletionApplyBody": "Подайте запит, коли будете готові. Перед надсиланням можна переглянути відповіді.",

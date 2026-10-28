@@ -69,14 +69,15 @@ describe('authorized current completion application next step', () => {
     expect((await resolve()).action).toBe('unavailable');
   });
   it.each([
-    ['inReview', 1, null, 'view'], ['approved', 1, null, 'continue'], ['approved', 3, now, 'view'],
+    ['inReview', 1, null, 'view'], ['approved', 1, null, 'continue'], ['approved', 3, now, 'book'],
     ['rejected', 1, null, 'continue'], ['cancelled', 1, null, 'continue'], ['inReview', 2, null, 'continue'],
   ])('resolves existing %s tier %i application without duplicating', async (status, current_tier, tier2_completed_at, action) => {
     rows.chef_kitchen_applications = [{ id: 100, status, current_tier, tier2_completed_at }];
-    expect(await resolve()).toMatchObject({ action, applicationId: 100, href: '/apply-kitchen/4?tourId=83&kitchenId=40' });
+    // Approved with documents sent: the next step is booking that kitchen (QA Oct 28).
+    expect(await resolve()).toMatchObject({ action, applicationId: 100, href: action === 'book' ? '/book/4?kitchenId=40' : '/apply-kitchen/4?tourId=83&kitchenId=40' });
   });
   it('shows existing access without inviting another application', async () => {
-    rows.chef_location_access = [{ id: 5 }]; expect(await resolve()).toMatchObject({ action: 'view', applicationId: null });
+    rows.chef_location_access = [{ id: 5 }]; expect(await resolve()).toMatchObject({ action: 'book', applicationId: null, href: '/book/4?kitchenId=40' });
   });
   it('keeps completion eligible through an explained result correction without inventing arrival', async () => {
     rows.tour_visit_events.push({ ...result(), id: 2, supersedesId: 1, sharedExplanation: 'Corrected shared result details' });

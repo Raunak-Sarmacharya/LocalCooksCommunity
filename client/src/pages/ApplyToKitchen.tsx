@@ -231,7 +231,7 @@ export default function ApplyToKitchen() {
         </AlertDescription>
       </Alert>
     );
-    if (tourNextStep?.action === 'view') return <ApplicationSubmissionSummary kitchenName={location.name}
+    if (tourNextStep?.action === 'view' || tourNextStep?.action === 'book') return <ApplicationSubmissionSummary kitchenName={location.name}
       title={t('tourApplicationViewTitle', { defaultValue: 'Your kitchen application' })}
       description={t('tourApplicationViewHelp', { defaultValue: 'You already have an application or kitchen access. View its current status and next step.' })}
       nextStep={t('tourApplicationViewNext', { defaultValue: 'Continue through your existing kitchen request.' })}

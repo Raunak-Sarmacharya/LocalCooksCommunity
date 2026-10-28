@@ -43,7 +43,7 @@ type EventInput = { kind: TourEventKind; before: Tour; after: Tour; actorId?: nu
 type Recipient = { id: number; email: string | null; name: string; available?: boolean; locale?: string | null; phone?: string | null };
 type Payload = EventInput & { chef: Recipient; manager: Recipient | null; admins: Recipient[];
   locationName: string; kitchenName: string; address: string; arrivalNotes?: string | null; departureNotes?: string | null;
-  completionNextStep?: { action: 'apply' | 'continue' | 'view' | 'unavailable'; href?: string | null; applicationId?: number | null } };
+  completionNextStep?: { action: 'apply' | 'continue' | 'view' | 'book' | 'unavailable'; href?: string | null; applicationId?: number | null } };
 type Email = Parameters<typeof sendEmail>[0];
 type Message = { key: string; notification?: CreateNotificationParams; email?: Email; recovery?: string };
 
@@ -209,7 +209,7 @@ export function tourEventMessages(saved: Payload, calendarSequence = 0): Message
     href: `/apply-kitchen/${after.locationId}?tourId=${id}${after.targetedKitchenId ? `&kitchenId=${after.targetedKitchenId}` : ''}` } : null;
   const applicationAction = completionStep && completionStep.action !== 'unavailable' && completionStep.href
     ? { label: tEmail(chef.locale, completionStep.action === 'apply' ? kind === 'feedback_requested' ? 'tourFeedbackApply' : 'tourCompletionApply' : completionStep.action === 'continue' ? 'tourCompletionContinue'
-      : completionStep.applicationId === null ? 'tourCompletionViewAccess' : 'tourCompletionViewApplication'),
+      : completionStep.action === 'book' ? 'tourCompletionBook' : completionStep.applicationId === null ? 'tourCompletionViewAccess' : 'tourCompletionViewApplication'),
       url: `${getSubdomainUrl('chef')}${completionStep.href}` } : undefined;
   const adminPath = `/admin?section=tour-requests&viewing=${id}`;
   const evidence = (value: Date | string | null | undefined) => value && Number.isFinite(new Date(value).getTime()) ? `Recorded at ${formatTourDate(new Date(value))}, ${formatTourClock(new Date(value))} Newfoundland time` : 'Not recorded';

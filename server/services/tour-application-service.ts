@@ -41,14 +41,17 @@ export async function resolveTourApplicationNextStep(connection: Connection, tou
     eq(chefKitchenApplications.chefId, chef.id), eq(chefKitchenApplications.locationId, current.locationId))).limit(1);
   const [access] = await connection.select().from(chefLocationAccess).where(and(
     eq(chefLocationAccess.chefId, chef.id), eq(chefLocationAccess.locationId, current.locationId))).limit(1);
+  // Approved with documents sent (or let in directly) means the next step is booking, not the application (QA Oct 28).
   const action = application
     ? ['rejected', 'cancelled'].includes(application.status) || application.status === 'approved' && (application.current_tier ?? 1) < 3
-      || application.status === 'inReview' && (application.current_tier ?? 1) >= 2 && !application.tier2_completed_at ? 'continue' : 'view'
-    : access ? 'view' : 'apply';
+      || application.status === 'inReview' && (application.current_tier ?? 1) >= 2 && !application.tier2_completed_at ? 'continue'
+      : application.status === 'approved' ? 'book' : 'view'
+    : access ? 'book' : 'apply';
   const intake = (current.intakeData && typeof current.intakeData === 'object' ? current.intakeData : {}) as Record<string, unknown>;
   const answer = (key: string) => typeof intake[key] === 'string' ? (intake[key] as string).trim() : '';
   return { action, outcomeVerified, applicationId: application?.id || null, sourceTourId: current.id, locationId: current.locationId, kitchenId: current.targetedKitchenId,
-    href: `/apply-kitchen/${current.locationId}?tourId=${current.id}${current.targetedKitchenId ? `&kitchenId=${current.targetedKitchenId}` : ''}`,
+    href: action === 'book' ? `/book/${current.locationId}${current.targetedKitchenId ? `?kitchenId=${current.targetedKitchenId}` : ''}`
+      : `/apply-kitchen/${current.locationId}?tourId=${current.id}${current.targetedKitchenId ? `&kitchenId=${current.targetedKitchenId}` : ''}`,
     prefill: { intendedUse: answer('intendedUse'), estimatedWeeklyHours: answer('estimatedWeeklyHours'),
       hasLicense: typeof intake.hasLicense === 'boolean' ? intake.hasLicense : null, targetStartDate: answer('targetStartDate'),
       chefNotes: current.chefNotes || '', sharedManagerNotes: current.sharedManagerNotes || '', additionalInfo: answer('additionalInfo') } };

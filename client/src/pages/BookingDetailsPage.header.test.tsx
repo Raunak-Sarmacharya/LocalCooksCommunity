@@ -109,6 +109,18 @@ const cases: Case[] = [
 beforeEach(() => { h.claims = []; vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(h.booking)))); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
+it("the kitchen's menu has no payout statement before a payout is sent (QA Oct 28)", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(START - 86_400_000);
+  h.manager = true;
+  h.booking = { ...base(), status: "confirmed", paymentStatus: "paid", checkinStatus: "not_checked_in" };
+  render(<BookingDetailsPage />);
+  const more = within(await screen.findByTestId("booking-header")).getByRole("button", { name: "More actions" });
+  fireEvent.pointerDown(more, { button: 0, ctrlKey: false }); fireEvent.click(more);
+  const items = (await screen.findAllByRole("menuitem")).map(item => item.textContent);
+  expect(items.join(" ")).not.toMatch(/payout/i);
+});
+
 describe.each(["chef", "manager"] as const)("booking details header (%s)", role => {
   it.each(cases)("$name: who, when, one status, one next step, at most one primary", async ({ now, booking, pill, next, primary, message }) => {
     vi.useFakeTimers({ toFake: ["Date"] });

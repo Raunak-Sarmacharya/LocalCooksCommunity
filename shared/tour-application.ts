@@ -9,7 +9,8 @@ export type TourApplicationReference = {
 };
 
 export type TourApplicationNextStep = {
-  action: 'apply' | 'continue' | 'view' | 'unavailable';
+  /** book: approved with documents sent, or given access directly (a tour can only come before that). */
+  action: 'apply' | 'continue' | 'view' | 'book' | 'unavailable';
   href: string;
   applicationId: number | null;
   sourceTourId: number;

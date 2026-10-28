@@ -1409,7 +1409,9 @@ export default function BookingDetailsPage() {
     && canCancelOrChange({ status: booking.status, phase, arrivalRecorded: hasArrival });
   const managerCanManage = isManagerView && !!booking && (canCancelOrChange({ status: booking.status, phase, arrivalRecorded: hasArrival, manager: true })
     || (booking.status === 'cancelled' && !!bookingForManagement?.transactionId && ['paid', 'succeeded', 'partially_refunded'].includes(booking.paymentStatus || '')));
-  const canDownload = !!booking && booking.paymentDecision?.state !== 'pending' && ['paid', 'partially_refunded', 'refunded'].includes(booking.paymentStatus || '');
+  // The kitchen's payout documents exist only once a payout is sent; before that the action led to an empty list (QA Oct 28).
+  const canDownload = !!booking && booking.paymentDecision?.state !== 'pending' && ['paid', 'partially_refunded', 'refunded'].includes(booking.paymentStatus || '')
+    && (!isManagerView || (bookingDocuments ? bookingDocuments.documents.length > 0 : booking.status === 'completed'));
   const showRefundReview = !!booking && !(booking.status === 'cancelled' && booking.paymentStatus === 'failed') && (['cancelled', 'cancellation_requested'].includes(booking.status)
     || [...(booking.storageBookings || []), ...(booking.equipmentBookings || [])].some(item => ['cancelled', 'cancellation_requested', 'removal_required'].includes(item.status)));
   const inspectionVisitId = booking?.visits?.length === 1 ? booking.visits[0].id

@@ -43,6 +43,7 @@
   "tourVisitCompletedBody": "Local Cooks has confirmed that the kitchen tour for {visitor} at {kitchen} took place. Open the tour for the shared notes and next steps. Contact Support if something looks wrong.",
   "tourCompletionApply": "Request to apply",
   "tourCompletionContinue": "Continue application",
+  "tourCompletionBook": "Book kitchen time",
   "tourCompletionViewApplication": "View application",
   "tourCompletionViewAccess": "View kitchen access",
   "tourCompletionApplyBody": "Request to apply when you’re ready. You can review your answers before sending.",
