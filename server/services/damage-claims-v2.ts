@@ -253,6 +253,17 @@ export async function disputeDamageClaim(claimId: number, chefId: number, raw: u
     return { success: true };
   });
 }
+/** One claim, under its own lock: true when it moved to Local Cooks review. Shared by the sweep and the QA test clock. */
+export async function escalateDamageClaim(id: number, now = new Date()) {
+  return db.transaction(async tx => {
+    const claim = await lockClaim(id, tx);
+    if (claim.status !== 'submitted' || now < claim.chefResponseDeadline) return false;
+    // A live payment can still finish: webhook reconciliation accepts under_review for its exact saved intent.
+    await tx.update(damageClaims).set({ status: 'under_review', updatedAt: now }).where(eq(damageClaims.id, id));
+    await claimHistory(tx, claim, 'under_review', 'escalated_to_admin', 'system');
+    return true;
+  });
+}
 /** Fixed-size keyset page even outside the recurring-worker context. Silence never approves or charges. */
 export async function escalateDamageClaims(now = new Date(), limit = 3) {
   assertWorkerTime();
@@ -264,14 +275,7 @@ export async function escalateDamageClaims(now = new Date(), limit = 3) {
   for (const row of due) {
     await workerRecord('claims', row.id);
     try {
-      const done = await db.transaction(async tx => {
-        const claim = await lockClaim(row.id, tx);
-        if (claim.status !== 'submitted' || now < claim.chefResponseDeadline) return false;
-        // A live payment can still finish: webhook reconciliation accepts under_review for its exact saved intent.
-        await tx.update(damageClaims).set({ status: 'under_review', updatedAt: now }).where(eq(damageClaims.id, row.id));
-        await claimHistory(tx, claim, 'under_review', 'escalated_to_admin', 'system');
-        return true;
-      });
+      const done = await escalateDamageClaim(row.id, now);
       if (done) results.push({ claimId: row.id, chefId: row.chefId, managerId: row.managerId, previousStatus: row.status, action: 'escalated_to_admin' });
     } catch (error) { if (isWorkerBudgetError(error)) throw error; (await import('../logger')).logger.error('Claim escalation needs retry', { claimId: row.id }); }
   }
@@ -306,13 +310,17 @@ export async function notifyDamageClaimBookingHolds(now = new Date()) {
   if (!due.length) return;
   for (const row of due) {
     await workerRecord('claimHolds', row.id);
-    await db.transaction(async tx => {
-      const claim = await lockClaim(row.id, tx);
-      if (claim.bookingHoldNotifiedAt || !claimBookingHeld(claim, now)) return;
-      await tx.update(damageClaims).set({ bookingHoldNotifiedAt: now }).where(eq(damageClaims.id, row.id));
-      await claimHistory(tx, claim, claim.status, 'booking_hold_started', 'system');
-    });
+    await notifyDamageClaimBookingHold(row.id, now);
   }
+}
+/** One claim's once-only hold notice, under its own lock. Shared by the sweep and the QA test clock. */
+export async function notifyDamageClaimBookingHold(id: number, now = new Date()) {
+  await db.transaction(async tx => {
+    const claim = await lockClaim(id, tx);
+    if (claim.bookingHoldNotifiedAt || !claimBookingHeld(claim, now)) return;
+    await tx.update(damageClaims).set({ bookingHoldNotifiedAt: now }).where(eq(damageClaims.id, id));
+    await claimHistory(tx, claim, claim.status, 'booking_hold_started', 'system');
+  });
 }
 export async function decideDamageClaim(bookingId: number, adminId: number, raw: unknown, kind: 'booking' | 'storage' = 'booking') {
   const parsed = claimSupportInput.safeParse(raw);

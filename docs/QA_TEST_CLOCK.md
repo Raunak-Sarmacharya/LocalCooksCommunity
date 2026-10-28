@@ -7,6 +7,7 @@ Dev admin (`dev-admin.localcooks.ca`):
 - **Tours:** Tour Requests → "Test clock" next to a tour's reference. The tour opens with a Test clock card beside its history.
 - **Bookings:** Booking support → find the booking → the Test clock card sits under "Take action". Single-day and multi-day.
 - **Storage rentals:** Storage rentals → "View" on a rental → the Test clock card sits between the history sections and the action picker.
+- **Damage claims:** Booking support → the booking's claim panel (kitchen bookings), or Storage rentals → "View" (storage claims).
 
 The card lists every automatic step still ahead for that tour, booking or storage rental, with its time. "Jump here" moves its saved times
 earlier so that step is due now, then runs it the same way the live system would. Every step between now and the one you
@@ -75,14 +76,31 @@ holdover keys) move by the number of calendar days the jump crosses, so a remind
 and the unit's booked days are recomputed. Delivered notices and emails are history and stay as they were. Then, for this rental
 only: the request expiry or lifecycle sweep, the move-out auto-clear, due payouts, due reminders and the queued emails run.
 
+## Damage claims
+Where: Booking support → the booking's claim panel (kitchen bookings), or Storage rentals → "View" (storage claims). The steps depend on the claim's state:
+- **Waiting for Local Cooks review (first review, or after the customer disputes):** no steps. Those are people steps: send, ask for
+  information, uphold or close at the real time. The card says so.
+- **Sent to the customer (waiting for pay or dispute):** the reminder to the customer before the deadline, then the deadline itself.
+  At the deadline an unanswered claim moves to Local Cooks review (never approved or charged on its own).
+- **Upheld and unpaid:** "7 days unpaid", when the customer's new bookings pause. The customer gets the notice once (the kitchen does not).
+  Paying or a release by Local Cooks removes the step.
+
+A jump moves every saved time of the claim (its filing and decision times, history, evidence and scheduled reminder) earlier, then
+runs, for this claim only: the escalation if due, the booking-pause notice if due, due reminders and the queued emails. The booking
+or rental the claim belongs to does not move. It is refused while the customer's payment is being set up or cancelled, or while a
+payment to the kitchen or a withdrawal is still finishing (try again in a minute), and if someone else changed the claim since
+the card loaded. A payment the customer left open stays payable. Pay and dispute are the customer's own actions: do them at
+the real time, before jumping.
+
 ## Not on the clock yet
-Damage claims, kitchen invitations and document expiry reminders (45, 14 and 3 days before, and on the day)
+Kitchen invitations and document expiry reminders (45, 14 and 3 days before, and on the day)
 still run on real time. They're the next checkpoints.
 
 ## What it does not move
 - Card holds in Stripe (still 7 real days).
 - Booking documents, feedback answers, support actions and the accepted cancellation terms (only their session times move).
 - Storage: notices and emails already sent, support actions, and the held card payment of an unanswered request.
+- Damage claims: notices and emails already sent, support actions, and the payment record of a paid claim.
 - The multi-day quote stored with the payment (receipts show the quoted dates).
 - Chat message times.
 
