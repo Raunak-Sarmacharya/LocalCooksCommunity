@@ -4,12 +4,12 @@ import { drizzle } from 'drizzle-orm/pglite';
 import { getTableConfig, type PgTable } from 'drizzle-orm/pg-core';
 import * as schema from '@shared/schema';
 
-const holder = vi.hoisted(() => ({ db: null as any, conflict: false, deadline: null as Date | null, expired: [] as string[], reminders: [] as any[], dayReleases: [] as number[] }));
+const holder = vi.hoisted(() => ({ db: null as any, conflict: false, excludedHolds: [] as unknown[], deadline: null as Date | null, expired: [] as string[], reminders: [] as any[], dayReleases: [] as number[] }));
 vi.mock('../db', () => ({ get db() { return holder.db; } }));
 vi.mock('./advance-reminders', () => ({ scheduleAdvanceReminders: async () => {}, currentReminders: async (_tx: unknown, source: string) => holder.reminders.filter(r => r.source === source),
   dispatchAdvanceReminders: async () => ({ accepted: 0 }), reminderKey: (r: any, channel: string) => `advance:${r.source}:${r.reservationId}:${r.resource}:${r.kind}:${r.recipientId}:${channel}:${r.revision}` }));
 vi.mock('./booking-response-deadline', () => ({ getBookingResponseDeadline: async () => holder.deadline }));
-vi.mock('./kitchen-checkout-holds', () => ({ lockKitchenInventory: async () => {}, hasInventoryConflict: async () => holder.conflict }));
+vi.mock('./kitchen-checkout-holds', () => ({ lockKitchenInventory: async () => {}, hasInventoryConflict: async (...args: unknown[]) => { holder.excludedHolds.push(args[4]); return holder.conflict; } }));
 vi.mock('./clock-closeout', () => ({ closeoutTiming: async () => ({ serviceEndGraceMinutes: 15, inspectionAutoCloseHours: 24, checkinWindowMinutesBefore: 15 }) }));
 vi.mock('./lifecycle-settings', () => ({ getLifecycleSettings: async () => ({ preparationReminderHours: 48 }) }));
 vi.mock('./visit-duties', () => ({ bookingInstructionRelease: () => ({ instructionsReleaseAt: '' }) }));
@@ -120,6 +120,21 @@ describe('booking jump', () => {
     const [event] = (await pg.query<any>('SELECT metadata FROM booking_lifecycle_events')).rows;
     expect(event.metadata.clockKey).toBe(saved.visits[0].key);
     expect(holder.expired).toContain('closeout');
+  });
+
+  it("a pending extra-time request's own hold never blocks the jump, and moves with the booking (QA walk Oct 28)", async () => {
+    const version = await seed('confirmed', 'paid');
+    await pg.exec('DELETE FROM kitchen_booking_extensions; DELETE FROM kitchen_checkout_holds;');
+    await pg.query(`INSERT INTO kitchen_booking_extensions(id, booking_id, kind, status, original_end_at, end_at, original_end_time, end_time, expires_at, created_at, updated_at)
+      VALUES (33, 1, 'chef_request', 'requested', $1, $2, '11:00', '11:30', $3, now(), now())`,
+      [new Date(start2 + 2 * hour).toISOString(), new Date(start2 + 2.5 * hour).toISOString(), new Date(Date.now() + 15 * 60_000).toISOString()]);
+    await pg.query(`INSERT INTO kitchen_checkout_holds(id, kitchen_id, chef_id, operating_date, window_start_time, selected_slots, expires_at, created_at)
+      VALUES ('session-extension:33', 54, 380, $1, '06:00', '[{"startTime":"11:00","endTime":"11:30"}]', '9999-12-31', now())`, [day2]);
+    holder.excludedHolds = [];
+    await jumpBooking(1, new Date(Date.now() + day - 2 * jumpGraceMs), 9, version);
+    expect(holder.excludedHolds.every(value => Array.isArray(value) && value.includes('session-extension:33'))).toBe(true);
+    const [hold] = (await pg.query<any>(`SELECT operating_date FROM kitchen_checkout_holds WHERE id = 'session-extension:33'`)).rows;
+    expect(String(hold.operating_date.toISOString?.().slice(0, 10) ?? hold.operating_date)).toBe(day1);
   });
 
   it('jumps a booking whose reminder email failed: the send attempt keeps plain email text, not reminder JSON (QA walk Oct 28)', async () => {

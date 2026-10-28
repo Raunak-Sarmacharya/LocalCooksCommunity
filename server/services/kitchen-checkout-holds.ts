@@ -92,7 +92,7 @@ const expiredHolds = (kitchenId: number, operatingDates: string[]) => and(
  * `bufferMinutes` is the candidate's own saved buffer (default: the kitchen's current one); a trusted kitchen override waives spacing only.
  */
 export async function hasInventoryConflict(
-  kitchenId: number, operatingDate: string, slots: OperatingSlot[], windowStartTime: string, excludeHoldId?: string,
+  kitchenId: number, operatingDate: string, slots: OperatingSlot[], windowStartTime: string, excludeHoldId?: string | string[],
   /** A pending request the chef is replacing: its own slots do not block the replacement. */
   excludeBookingId?: number,
   reader: Reader = db,

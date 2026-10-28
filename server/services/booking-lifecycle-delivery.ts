@@ -1,3 +1,4 @@
+import { isReservedTestRecipient } from '../email-recipient-policy';
 import { DEFAULT_TIMEZONE } from '@shared/timezone-utils';
 import { bookingInstructionRelease } from './visit-duties';
 import { getLifecycleSettings } from './lifecycle-settings';
@@ -329,7 +330,9 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
     const noticeDay = metadata.noticeDay as { date?: string; startTime?: string; endTime?: string } | undefined;
     const eventDay = typeof metadata.visitId === 'number' ? days.find(day => day.id === metadata.visitId) : undefined;
     const affectedVisitIds = (metadata.dayCancellation as { visitIds?: number[] } | undefined)?.visitIds;
-    const affectedDays = affectedVisitIds?.length ? days.filter(day => affectedVisitIds.includes(day.id)) : noticeDay?.date ? days.filter(day => day.date === noticeDay.date) : eventDay ? [eventDay] : days;
+    const affectedDays = affectedVisitIds?.length ? days.filter(day => affectedVisitIds.includes(day.id)) : noticeDay?.date ? days.filter(day => day.date === noticeDay.date) : eventDay ? [eventDay]
+      // A whole-booking notice lists the days still booked, not ones cancelled earlier (QA walk Oct 28: "2 days" for a 1-day booking).
+      : days.filter(day => !day.cancelled);
     const datedSummary = affectedDays.length ? bookingDaysSummary(affectedDays, person.locale || 'en-CA') + (datedPayment ? ` · ${tEmail(person.locale, 'bookingWholeTotal')}: CAD $${(Number(datedPayment.amount) / 100).toFixed(2)}` : '') : '';
     const whenDate = noticeDay?.date ? new Date(`${noticeDay.date}T12:00:00Z`) : context.bookingDate, whenTime = noticeDay?.startTime || context.startTime;
     const visitWhen = () => `${new Intl.DateTimeFormat(person.locale || 'en-CA', { timeZone: 'UTC', dateStyle: 'medium' }).format(whenDate)}, ${emailClock(whenTime, person.locale || 'en-CA')}`;
@@ -607,7 +610,9 @@ export async function deliverBookingLifecycleEvents(limit = 10, budgetMs = 20_00
           }
         }
         if (!sent && !await sendEmail(content,
-          { trackingId, emailType: 'booking', durableDelivery: true, reportDeliveryFailure: true })) throw new Error('Email not accepted');
+          { trackingId, emailType: 'booking', durableDelivery: true, reportDeliveryFailure: true }))
+          // Reserved test addresses (synthetic QA accounts) are refused by policy and never will be accepted.
+          throw Object.assign(new Error('Email not accepted'), { reservedTestRecipient: isReservedTestRecipient(email.to) });
         // A recovered SMTP receipt acknowledges what was actually sent, even if release happened since then.
         if (chefConfirmation && !historical && (sent ? sent.textBody : content.text)?.includes('Arrival instructions:')) await db.transaction(tx =>
           import('./advance-reminders').then(({ acknowledgeConfirmationReminders }) => acknowledgeConfirmationReminders(tx, event.bookingId, Number(email.key), 'email', sent?.createdAt || renderedAt)));
@@ -619,6 +624,8 @@ export async function deliverBookingLifecycleEvents(limit = 10, budgetMs = 20_00
         // A bad address can never succeed: record it (the failed email_logs row is the
         // evidence), raise recovery once below, and stop retrying this recipient.
         if (isPermanentRecipientRejection(error)) { if (!undeliverable.includes(email.key)) undeliverable.push(email.key); recipientRejected = true; }
+        // No retries and no recovery alert for them: their in-app notice is the delivery.
+        else if ((error as { reservedTestRecipient?: boolean }).reservedTestRecipient) { if (!undeliverable.includes(email.key)) undeliverable.push(email.key); }
         else failed = true;
       }
     }

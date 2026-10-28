@@ -727,7 +727,8 @@ describe('Edge Cases', () => {
     const endDate = new Date(today);
     endDate.setDate(endDate.getDate() + 5); // Ends in 5 days
     
-    const daysOverdue = Math.floor((today.getTime() - endDate.getTime()) / (1000 * 60 * 60 * 24));
+    // Whole calendar days: round, because a daylight-saving change inside the window makes one day 23 or 25 hours.
+    const daysOverdue = Math.round((today.getTime() - endDate.getTime()) / (1000 * 60 * 60 * 24));
     
     expect(daysOverdue).toBe(-5);
     expect(daysOverdue <= 0).toBe(true); // Should be skipped

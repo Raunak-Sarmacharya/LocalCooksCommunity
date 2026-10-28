@@ -30,6 +30,32 @@ closed tour gets no reminder, just as in real time.
   read as an overnight span ("20:15–13:15"). The steps still line up; only the wall-clock look is odd.
 - If a jump crosses many steps it may stop early to stay inside the server time limit. The card says so; jump again.
 
+## Background worker
+Some work isn't on a timer of its own: retries of messages that didn't send, and the sweeps that close out old records.
+The background worker does it every 30 minutes on dev. If a jump's result says "not sent yet", or you're waiting on one of
+those sweeps, press **Run background worker now** at the bottom of the card instead of waiting. It runs everything due, for all
+records, not just this one.
+- "The worker is already running": the scheduled run is going; try again in a minute.
+- "Ran part of the work": it has a time limit; press it again.
+- "Ran, but N tasks failed": check Email logs (admin) or tell the developers.
+
+## Walkthroughs (checked on dev, Oct 28)
+- **Day-3 feedback reminder (booking):** a completed booking with no feedback → jump "Day 3 · feedback reminder" → "How did it go?"
+  reaches both sides.
+- **Time change not answered:** as the chef, booking → ⋯ → "Change date or time" → pick a new time → Send. On the admin card,
+  jump "Time change: kitchen answer deadline" → both sides get "Change request expired"; the booking keeps its old time.
+- **Extra time not answered:** jump the booking to "Booked time starts", check the chef in with the kitchen's code, then as the chef
+  "Need more time?" → pick a time. On the admin card jump "Extra time request expires" → the hold is released, nothing charged.
+
+## Can't be tested by design
+- **Unpaid cancellation requests auto-accepting:** unpaid items are cancelled at once, so a booking never waits in that state.
+  Paid cancellation requests wait for the kitchen; their reminder is on the card.
+- **Card holds expiring after 7 days:** Stripe's real clock. Test an unanswered request with the answer-deadline jump instead.
+
+## Not on the clock yet
+Storage rentals, damage claims, kitchen invitations and document expiry reminders (45, 14 and 3 days before, and on the day)
+still run on real time. They're the next checkpoints.
+
 ## What it does not move
 - Card holds in Stripe (still 7 real days).
 - Booking documents, feedback answers, support actions and the accepted cancellation terms (only their session times move).

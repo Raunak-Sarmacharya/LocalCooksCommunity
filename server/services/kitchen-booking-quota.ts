@@ -12,9 +12,10 @@ import { waivesWeeklyLimit } from './booking-rule-overrides';
 
 type Reader = Pick<typeof db, 'select'>;
 
-/** A hold id matches itself or, for a grouped checkout, every day of its group (the head's id is the group id). */
-export const holdExcluded = (hold: { id: string; groupId?: string | null }, excludeHoldId?: string) =>
-  !!excludeHoldId && (hold.id === excludeHoldId || hold.groupId === excludeHoldId);
+/** A hold id matches itself or, for a grouped checkout, every day of its group (the head's id is the group id). A list excludes each. */
+export const holdExcluded = (hold: { id: string; groupId?: string | null }, excludeHoldId?: string | string[]): boolean =>
+  Array.isArray(excludeHoldId) ? excludeHoldId.some(id => holdExcluded(hold, id))
+    : !!excludeHoldId && (hold.id === excludeHoldId || hold.groupId === excludeHoldId);
 
 export async function chefWeeklyMinutes(input: { kitchenId: number; chefId: number; excludeBookingId?: number; excludeHoldId?: string },
   reader: Reader = db, now = new Date()): Promise<Map<string, number>> {

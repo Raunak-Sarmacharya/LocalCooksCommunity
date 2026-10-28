@@ -236,9 +236,13 @@ async function jumpBookingOnce(id: number, to: Date, actorId: number, expectedUp
     await lockKitchenInventory(tx, booking.kitchenId, Array.from(dates.keys()).concat(Array.from(dates.values())));
     // Only days from today on can take availability from someone; a day moved into the past can sit beside old bookings.
     const today = localParts(Date.now(), timezone).date;
+    // The booking's own holds (an open time change, a pending extra-time request) move with it, so they never block it (QA walk Oct 28).
+    const ownHolds = [...(await tx.select({ holdId: kitchenBookingChanges.holdId }).from(kitchenBookingChanges).where(eq(kitchenBookingChanges.bookingId, id))).map(row => row.holdId),
+      ...(await tx.select({ id: kitchenBookingExtensions.id, holdId: kitchenBookingExtensions.holdId }).from(kitchenBookingExtensions).where(eq(kitchenBookingExtensions.bookingId, id)))
+        .map(row => row.holdId || `session-extension:${row.id}`)].filter((hold): hold is string => !!hold);
     if (['pending', 'confirmed', 'cancellation_requested'].includes(booking.status)) for (const [date, daySlots] of Array.from(movedDays).filter(([date]) => date >= today))
       if (await hasInventoryConflict(booking.kitchenId, date, daySlots, String((daySlots[0] as Slot).windowStartTime ?? day.windowStart ?? '00:00'),
-        undefined, id, tx, booking.bufferMinutesSnapshot))
+        ownHolds, id, tx, booking.bufferMinutesSnapshot))
         throw new TestClockError(409, `Moving this booking would put it on top of another booking in this kitchen on ${date}. Pick an earlier step, or a booking with a free day before it.`);
 
     await shiftRows(tx, kitchenBookings, eq(kitchenBookings.id, id), ms,
@@ -280,6 +284,13 @@ async function jumpBookingOnce(id: number, to: Date, actorId: number, expectedUp
       }
     }
     await shiftRows(tx, kitchenBookingExtensions, eq(kitchenBookingExtensions.bookingId, id), ms, { dates });
+    for (const extension of await tx.select({ id: kitchenBookingExtensions.id, holdId: kitchenBookingExtensions.holdId }).from(kitchenBookingExtensions).where(eq(kitchenBookingExtensions.bookingId, id)))
+      for (const hold of await tx.select().from(kitchenCheckoutHolds).where(eq(kitchenCheckoutHolds.id, extension.holdId || `session-extension:${extension.id}`))) {
+        const moved = shiftLocalDay(hold.operatingDate, hold.windowStartTime, (hold.selectedSlots as Slot[])?.[0]?.startTime ?? hold.windowStartTime, [], timezone, ms);
+        await shiftRows(tx, kitchenCheckoutHolds, eq(kitchenCheckoutHolds.id, hold.id), ms, { keep: ['selectedSlots', 'quoteSnapshot'] });
+        await tx.update(kitchenCheckoutHolds).set({ operatingDate: moved.date, windowStartTime: moved.windowStart ?? hold.windowStartTime,
+          selectedSlots: shiftSlots(hold.selectedSlots, hold.operatingDate, hold.windowStartTime, hold.windowStartTime, timezone, ms, new Map()) }).where(eq(kitchenCheckoutHolds.id, hold.id));
+      }
     for (const extension of await tx.select().from(kitchenBookingExtensions).where(eq(kitchenBookingExtensions.bookingId, id)))
       await tx.update(kitchenBookingExtensions).set({ originalEndTime: localParts(extension.originalEndAt.getTime(), timezone).time, endTime: localParts(extension.endAt.getTime(), timezone).time })
         .where(eq(kitchenBookingExtensions.id, extension.id));

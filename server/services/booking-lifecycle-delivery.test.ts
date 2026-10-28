@@ -87,8 +87,8 @@ describe('closeout notice delivery and recipients', () => {
   });
   it('targets only an unanswered participant with localized feedback copy and an anchor', async () => {
     state.rows = [[{ chefId: 3, managerId: 2, kitchenName: 'Harbour Kitchen' }], [
-      { id: 3, email: 'chef@example.test', role: 'chef', locale: 'en-CA' },
-      { id: 2, email: 'manager@example.test', role: 'manager', locale: 'fr-CA' },
+      { id: 3, email: 'chef@example.com', role: 'chef', locale: 'en-CA' },
+      { id: 2, email: 'manager@example.com', role: 'manager', locale: 'fr-CA' },
       { id: 1, email: 'admin@example.test', role: 'admin' }]];
     await queueBookingLifecycleEvent(tx, 10, 'feedback_requested', 'Queued title', 'Queued message', undefined,
       { recipientPolicy: 'participants', recipientIds: [2] });
@@ -100,7 +100,7 @@ describe('closeout notice delivery and recipients', () => {
   });
   it('routes concerning feedback only to the admin support case, with no answers in the notice shell', async () => {
     state.rows = [[{ chefId: 3, managerId: 2, kitchenName: 'Harbour Kitchen' }], [
-      { id: 3, email: 'chef@example.test', role: 'chef' }, { id: 2, email: 'manager@example.test', role: 'manager' },
+      { id: 3, email: 'chef@example.com', role: 'chef' }, { id: 2, email: 'manager@example.com', role: 'manager' },
       { id: 1, email: 'admin@example.test', role: 'admin', adminEmailNotifications: true, locale: 'en-CA' }]];
     await queueBookingLifecycleEvent(tx, 10, 'feedback_flagged', 'Concern', 'Concern', 3, { recipientPolicy: 'admins', supportCase: true });
     expect(state.notify.mock.calls.map(call => call[0].userId)).toEqual([1]);
@@ -110,8 +110,8 @@ describe('closeout notice delivery and recipients', () => {
   it('tells only the manager the chef is running late, in their language, linking straight to messaging', async () => {
     state.people = [{ id: 3, profile: { fullName: 'Maya Chen' } }];
     state.rows = [[{ chefId: 3, managerId: 2, kitchenName: 'Harbour Kitchen', timezone: 'America/St_Johns' }], [
-      { id: 3, email: 'chef@example.test', role: 'chef', locale: 'en-CA' },
-      { id: 2, email: 'manager@example.test', role: 'manager', locale: 'en-CA' },
+      { id: 3, email: 'chef@example.com', role: 'chef', locale: 'en-CA' },
+      { id: 2, email: 'manager@example.com', role: 'manager', locale: 'en-CA' },
       { id: 1, email: 'admin@example.test', role: 'admin', adminEmailNotifications: true, locale: 'en-CA' }]];
     await queueBookingLifecycleEvent(tx, 10, 'running_late', 'Maya Chen is running late', 'fallback', 3,
       { recipientPolicy: 'manager', minutes: 15, reportedAt: '2026-10-14T12:52:00.000Z', endsAt: '2026-10-14T17:30:00.000Z', note: 'Traffic is slow' });
@@ -127,48 +127,48 @@ describe('closeout notice delivery and recipients', () => {
   });
   it('drops an answered or expired feedback reminder at delivery time', async () => {
     state.event = { id: 95, bookingId: 10, kind: 'feedback_requested', title: 'Feedback', message: 'Queued', metadata: {},
-      emails: [{ key: '3', to: 'chef@example.test', url: 'https://chef.localcooks.test/booking/10#feedback' }], deliveredEmailKeys: [], completedAt: null };
+      emails: [{ key: '3', to: 'chef@example.com', url: 'https://chef.localcooks.test/booking/10#feedback' }], deliveredEmailKeys: [], completedAt: null };
     state.rows = [[{ ...state.event }]]; state.feedbackEmail.mockResolvedValue(null);
     expect(await deliverBookingLifecycleEvents(1)).toEqual({ completed: 1 });
-    expect(state.feedbackEmail).toHaveBeenCalledWith(10, 3, 'chef@example.test'); expect(state.send).not.toHaveBeenCalled();
+    expect(state.feedbackEmail).toHaveBeenCalledWith(10, 3, 'chef@example.com'); expect(state.send).not.toHaveBeenCalled();
   });
   it.each(['service_ended', 'inspection_auto_closed'])('renders %s from current state at delivery, not from the queued generic text', async kind => {
     state.event = { id: 90, bookingId: 10, kind, title: 'Visit finished', message: 'Queued generic text', metadata: { visitKey: '5' },
-      emails: [{ key: '2', to: 'manager@example.test', url: 'https://kitchen.localcooks.test/manager/booking/10' }], deliveredEmailKeys: [], completedAt: null };
+      emails: [{ key: '2', to: 'manager@example.com', url: 'https://kitchen.localcooks.test/manager/booking/10' }], deliveredEmailKeys: [], completedAt: null };
     state.rows = [[{ ...state.event }], []];
-    state.closeoutEmail.mockResolvedValue({ to: 'manager@example.test', subject: 'Rich closeout', text: 'Rich text', html: '<p>Rich</p>' });
+    state.closeoutEmail.mockResolvedValue({ to: 'manager@example.com', subject: 'Rich closeout', text: 'Rich text', html: '<p>Rich</p>' });
     expect(await deliverBookingLifecycleEvents(1)).toEqual({ completed: 1 });
-    expect(state.closeoutEmail).toHaveBeenCalledWith(10, kind, { visitKey: '5' }, 2, 'manager@example.test');
+    expect(state.closeoutEmail).toHaveBeenCalledWith(10, kind, { visitKey: '5' }, 2, 'manager@example.com');
     expect(state.send.mock.calls[0][0]).toMatchObject({ subject: 'Rich closeout', text: 'Rich text' });
     expect(state.send.mock.calls[0][0].html).not.toContain('Queued generic text');
   });
   it('sends nothing when the booking was cancelled or the notice is no longer relevant', async () => {
     state.event = { id: 91, bookingId: 10, kind: 'service_ended', title: 'Visit finished', message: 'Queued', metadata: {},
-      emails: [{ key: '3', to: 'chef@example.test', url: 'https://chef.localcooks.test/booking/10' }], deliveredEmailKeys: [], completedAt: null };
+      emails: [{ key: '3', to: 'chef@example.com', url: 'https://chef.localcooks.test/booking/10' }], deliveredEmailKeys: [], completedAt: null };
     state.rows = [[{ ...state.event }], []];
     state.closeoutEmail.mockResolvedValue(null);
     expect(await deliverBookingLifecycleEvents(1)).toEqual({ completed: 1 });
     expect(state.send).not.toHaveBeenCalled(); expect(state.event.completedAt).toBeInstanceOf(Date);
   });
   it('queues the inspection-closed notice for the manager only, in-app and email, and words visit-finished notices per role', async () => {
-    const people = () => [[{ chefId: 3, managerId: 2 }], [{ id: 3, email: 'chef@example.test', role: 'chef' },
-      { id: 2, email: 'manager@example.test', role: 'manager' }, { id: 1, email: 'support@example.test', role: 'admin', adminEmailNotifications: true }]];
+    const people = () => [[{ chefId: 3, managerId: 2 }], [{ id: 3, email: 'chef@example.com', role: 'chef' },
+      { id: 2, email: 'manager@example.com', role: 'manager' }, { id: 1, email: 'support@example.test', role: 'admin', adminEmailNotifications: true }]];
     state.rows = people();
     await queueBookingLifecycleEvent(tx, 10, 'inspection_auto_closed', 'Inspection window closed', 'Closed', undefined, { recipientPolicy: 'manager', visitKey: '5' });
     expect(state.notify.mock.calls.map(call => call[0].userId)).toEqual([2]);
-    expect(state.insert.mock.calls[0][0].emails.map((email: any) => email.to)).toEqual(['manager@example.test']);
+    expect(state.insert.mock.calls[0][0].emails.map((email: any) => email.to)).toEqual(['manager@example.com']);
     state.notify.mockClear(); state.insert.mockClear(); state.rows = people();
     await queueBookingLifecycleEvent(tx, 10, 'service_ended', 'Visit finished', 'Generic', undefined, { recipientPolicy: 'participants',
       roleText: { chef: { title: 'Your visit is complete', message: 'Chef text' }, manager: { title: 'A visit has ended', message: 'Manager text' } } });
     expect(state.notify.mock.calls.map(call => [call[0].userId, call[0].title, call[0].message])).toEqual([
       [3, 'Your visit is complete', 'Chef text'], [2, 'A visit has ended', 'Manager text']]);
-    expect(state.insert.mock.calls[0][0].emails.map((email: any) => email.to)).toEqual(['chef@example.test', 'manager@example.test']);
+    expect(state.insert.mock.calls[0][0].emails.map((email: any) => email.to)).toEqual(['chef@example.com', 'manager@example.com']);
   });
 });
 describe('booking lifecycle recipients and durable email evidence', () => {
   beforeEach(() => { vi.clearAllMocks(); state.adminEmailEnabled = true; vi.stubEnv('NODE_ENV', 'development'); state.rows = [
-    [{ chefId: 3, managerId: 2 }], [{ id: 3, email: 'chef@example.test', role: 'chef' },
-      { id: 2, email: 'manager@example.test', role: 'manager' }, { id: 1, email: 'support@example.test', role: 'admin', adminEmailNotifications: true }] ]; });
+    [{ chefId: 3, managerId: 2 }], [{ id: 3, email: 'chef@example.com', role: 'chef' },
+      { id: 2, email: 'manager@example.com', role: 'manager' }, { id: 1, email: 'support@example.test', role: 'admin', adminEmailNotifications: true }] ]; });
   it('records the R5 request deadline in both request emails and schedules decision reminders', async () => {
     state.rows[0] = [{ chefId: 3, managerId: 2, timezone: 'UTC', kitchenName: 'Harbour Kitchen', bookingDate: new Date('2026-10-14'), startTime: '20:00', endTime: '21:00' }];
     state.rows.push([{ booking: { id: 10, kitchenId: 4, chefId: 3, paymentIntentId: 'pi_fixture', status: 'pending', createdAt: new Date('2026-10-14T10:00:00Z'),
@@ -229,9 +229,9 @@ describe('booking lifecycle recipients and durable email evidence', () => {
   it('queues support notices to both parties and financial flags only to admins with a case link', async () => {
     await queueBookingLifecycleEvent(tx, 10, 'support_updated', 'Local Cooks support updated your booking', 'Shared update', 77, { recipientPolicy: 'participants' });
     expect(state.notify.mock.calls.map(call => call[0].userId)).toEqual([3, 2]);
-    expect(state.insert.mock.calls[0][0].emails.map((email: any) => email.to)).toEqual(['chef@example.test', 'manager@example.test']);
+    expect(state.insert.mock.calls[0][0].emails.map((email: any) => email.to)).toEqual(['chef@example.com', 'manager@example.com']);
     state.notify.mockClear(); state.insert.mockClear(); state.rows = [[{ chefId: 3, managerId: 2 }], [
-      { id: 3, email: 'chef@example.test', role: 'chef' }, { id: 2, email: 'manager@example.test', role: 'manager' },
+      { id: 3, email: 'chef@example.com', role: 'chef' }, { id: 2, email: 'manager@example.com', role: 'manager' },
       { id: 1, email: 'admin@example.test', role: 'admin', adminEmailNotifications: true }]];
     await queueBookingLifecycleEvent(tx, 10, 'support_flag_changed', 'Payment needs review', 'Shared flag', undefined, { recipientPolicy: 'admins', supportCase: true });
     expect(state.notify.mock.calls.map(call => call[0].userId)).toEqual([1]);
@@ -252,7 +252,7 @@ describe('booking lifecycle recipients and durable email evidence', () => {
     expect(state.notify.mock.calls[0][0]).toMatchObject({ title: 'You’ve been paid $27.32 · #10', actionLabel: 'View payout statement' });
     expect(state.notify.mock.calls[0][0].message).toContain('$27.32');
     const emails = state.insert.mock.calls[0][0].emails;
-    expect(emails.map((email: any) => email.to)).toEqual(['manager@example.test', 'support@example.test']);
+    expect(emails.map((email: any) => email.to)).toEqual(['manager@example.com', 'support@example.test']);
     expect(emails[1].content.subject).toMatch(/^Payout sent · /);
     expect(emails[0].content.text).toContain('your usual payout schedule');
     expect(emails[0].content.html).toContain('http://kitchen.localhost:5001/manager/booking/10#booking-payment-title');
@@ -292,7 +292,7 @@ describe('booking lifecycle recipients and durable email evidence', () => {
       { roleText: { chef: { title: 'The kitchen can’t host you on Thu, Nov 5', message: 'Your payment for that day, $250.10, is being refunded in full.' },
         manager: { title: 'You cancelled Thu, Nov 5', message: 'The chef receives a full refund of $250.10 for Thu, Nov 5.' } } });
     const emails = state.insert.mock.calls[0][0].emails;
-    const chef = emails.find((item: any) => item.to === 'chef@example.test'), manager = emails.find((item: any) => item.to === 'manager@example.test');
+    const chef = emails.find((item: any) => item.to === 'chef@example.com'), manager = emails.find((item: any) => item.to === 'manager@example.com');
     expect(chef.content.subject).toBe('The kitchen can’t host you on Thu, Nov 5');
     expect(manager.content.subject).toBe('You cancelled Thu, Nov 5');
     for (const email of [chef, manager]) expect(`${email.content.html} ${email.content.text}`).not.toMatch(/absorbs|kitchen payout −/);
@@ -302,7 +302,7 @@ describe('booking lifecycle recipients and durable email evidence', () => {
       { visitId: 5, recipientPolicy: 'participants', emailRecipientPolicy: 'manager' });
     expect(state.notify.mock.calls.map(call => call[0].userId)).toEqual([2]);
     expect(state.insert.mock.calls[0][0].emails).toHaveLength(1);
-    expect(state.insert.mock.calls[0][0].emails[0].to).toBe('manager@example.test');
+    expect(state.insert.mock.calls[0][0].emails[0].to).toBe('manager@example.com');
     expect(scheduleAdvanceReminders).toHaveBeenCalledWith(tx, 'booking', 10);
     expect(scheduleAdvanceReminders).toHaveBeenCalledWith(tx, 'booking_review', 10);
   });
@@ -325,8 +325,8 @@ describe('support recipient notice replay', () => {
     vi.stubEnv('INNGEST_EVENT_KEY', ''); inserted = null;
     original = { id: 88, bookingId: 10, kind: 'support_updated', title: 'Support update', message: 'Recorded message',
       metadata: { deliveryFailures: 1 }, deliveredEmailKeys: ['2'], completedAt: null,
-      emails: [{ key: '3', to: 'chef@example.test', url: 'http://chef.localhost:5001/booking/10' },
-        { key: '2', to: 'manager@example.test', url: 'http://kitchen.localhost:5001/manager/booking/10' }] };
+      emails: [{ key: '3', to: 'chef@example.com', url: 'http://chef.localhost:5001/booking/10' },
+        { key: '2', to: 'manager@example.com', url: 'http://kitchen.localhost:5001/manager/booking/10' }] };
     state.database = { select: () => {
       let table: any;
       const chain: any = { from: (value: any) => { table = value; return chain; }, where: () => chain, for: () => chain, limit: () => chain,
@@ -358,33 +358,33 @@ describe('current arrival notices', () => {
   const target = { targetKey: 'booking:10', visitId: null, revision: 2, mode: 'staffed' as const };
   beforeEach(() => {
     vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-01T12:00:00Z'));
-    state.noticeRow = { ...confirmed(), location: { timezone: 'UTC' }, chef: { username: 'chef@example.test' } };
+    state.noticeRow = { ...confirmed(), location: { timezone: 'UTC' }, chef: { username: 'chef@example.com' } };
     state.activeTargets = [target]; state.rows = [];
   });
   afterEach(() => vi.useRealTimers());
   it('mode changes always qualify for chef email; reissue emails only qualify near arrival or after failed attempts', async () => {
-    expect((await currentArrivalNotice(10, 'arrival_mode_changed', [target], 3, 'chef@example.test', false, tx))?.emailEligible).toBe(true);
-    const early = await currentArrivalNotice(10, 'arrival_code_reissued', [target], 3, 'chef@example.test', false, tx);
+    expect((await currentArrivalNotice(10, 'arrival_mode_changed', [target], 3, 'chef@example.com', false, tx))?.emailEligible).toBe(true);
+    const early = await currentArrivalNotice(10, 'arrival_code_reissued', [target], 3, 'chef@example.com', false, tx);
     expect(early?.emailEligible).toBe(false);
     expect(early?.message).toContain('ask for the current one');
-    expect((await currentArrivalNotice(10, 'arrival_code_reissued', [target], 3, 'chef@example.test', true, tx))?.emailEligible).toBe(true);
+    expect((await currentArrivalNotice(10, 'arrival_code_reissued', [target], 3, 'chef@example.com', true, tx))?.emailEligible).toBe(true);
     vi.setSystemTime(new Date('2026-10-07T07:00:00Z'));
-    expect((await currentArrivalNotice(10, 'arrival_code_reissued', [target], 3, 'chef@example.test', false, tx))?.emailEligible).toBe(true);
+    expect((await currentArrivalNotice(10, 'arrival_code_reissued', [target], 3, 'chef@example.com', false, tx))?.emailEligible).toBe(true);
   });
   it('skips cancelled, superseded, consumed, revoked and expired targets rather than sending queued content', async () => {
     state.noticeRow.booking.status = 'cancelled';
-    expect(await currentArrivalNotice(10, 'arrival_mode_changed', [target], 3, 'chef@example.test', false, tx)).toBeNull();
+    expect(await currentArrivalNotice(10, 'arrival_mode_changed', [target], 3, 'chef@example.com', false, tx)).toBeNull();
     state.noticeRow.booking.status = 'confirmed'; state.activeTargets = [];
-    expect(await currentArrivalNotice(10, 'arrival_mode_changed', [target], 3, 'chef@example.test', false, tx)).toBeNull();
+    expect(await currentArrivalNotice(10, 'arrival_mode_changed', [target], 3, 'chef@example.com', false, tx)).toBeNull();
     state.activeTargets = [target]; vi.setSystemTime(new Date('2026-10-08T12:00:00Z'));
-    expect(await currentArrivalNotice(10, 'arrival_mode_changed', [target], 3, 'chef@example.test', false, tx)).toBeNull();
+    expect(await currentArrivalNotice(10, 'arrival_mode_changed', [target], 3, 'chef@example.com', false, tx)).toBeNull();
   });
 });
 
 describe('real rich renderer at the persisted confirmation boundary', () => {
   afterEach(() => vi.useRealTimers());
   beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-06T12:00:00Z')); vi.clearAllMocks(); state.adminEmailEnabled = true; vi.stubEnv('NODE_ENV', 'development'); state.rows = [
-    [{ chefId: 3, managerId: 2 }], [{ id: 3, email: 'chef@example.test', role: 'chef' }, { id: 2, email: 'manager@example.test', role: 'manager' }],
+    [{ chefId: 3, managerId: 2 }], [{ id: 3, email: 'chef@example.com', role: 'chef' }, { id: 2, email: 'manager@example.com', role: 'manager' }],
     [confirmed()], [{ amount: '1220', tax: '150', fee: '70', payout: '1080' }],
     [{ name: 'Approved oven', item: { totalPrice: '200' } }],
     [], // declined equipment at approval (none here)
@@ -410,7 +410,7 @@ describe('real rich renderer at the persisted confirmation boundary', () => {
     expect(emails[0].content.text).toContain('Hi Sam Taylor,');
     expect(emails[0].content.text).not.toContain('Hi Chef,');
     expect(emails[0].content.text).toContain('Meet at side entrance');
-    expect(emails[0].content.text).toContain('manager@example.test');
+    expect(emails[0].content.text).toContain('manager@example.com');
     expect(emails[0].content.text).toContain('/booking/10');
     expect(emails[1].content.text).toContain('/manager/booking/10');
     expect(emails[0].content.text).toContain('Newfoundland Time');
@@ -446,11 +446,11 @@ describe('real rich renderer at the persisted confirmation boundary', () => {
   });
   it.each(['2026-10-01T12:00:00Z', '2026-10-06T12:00:00Z'])('refreshes older queued confirmations without structured inputs at %s', async instant => {
     vi.setSystemTime(new Date(instant));
-    const old = generateBookingConfirmationEmail({ chefEmail: 'chef@example.test', chefName: 'Alex', kitchenName: 'Fixture Kitchen',
+    const old = generateBookingConfirmationEmail({ chefEmail: 'chef@example.com', chefName: 'Alex', kitchenName: 'Fixture Kitchen',
       ...confirmed().booking, bookingId: 10, timezone: 'America/St_Johns', isStaff: false,
       totalCents: 1220, paymentSummary: 'Payment captured: CAD $12.20', arrivalInstructions: 'PRIVATE-LEGACY-SENTINEL' });
     state.event = { id: 99, bookingId: 10, kind: 'confirmed', title: 'Confirmed', message: 'Captured', metadata: {},
-      emails: [{ key: '3', to: 'chef@example.test', url: 'https://chef.example.test/booking/10', content: old }], deliveredEmailKeys: [] };
+      emails: [{ key: '3', to: 'chef@example.com', url: 'https://chef.example.test/booking/10', content: old }], deliveredEmailKeys: [] };
     state.database = tx; state.rows = [[state.event], []]; state.send.mockResolvedValue(true);
     expect(await deliverBookingLifecycleEvents(1)).toEqual({ completed: 1 });
     const content = state.send.mock.calls[0][0];
@@ -462,8 +462,8 @@ describe('real rich renderer at the persisted confirmation boundary', () => {
   it('replaces unrecognized legacy content with a safe body and a working booking button', async () => {
     vi.setSystemTime(new Date('2026-10-01T12:00:00Z'));
     state.event = { id: 99, bookingId: 10, kind: 'confirmed', title: 'Confirmed', message: 'Captured', metadata: {},
-      emails: [{ key: '3', to: 'chef@example.test', url: 'https://chef.example.test/booking/10',
-        content: { to: 'chef@example.test', subject: 'Confirmed', text: 'PRIVATE-LEGACY-SENTINEL', html: '<p>PRIVATE-LEGACY-SENTINEL</p>' } }], deliveredEmailKeys: [] };
+      emails: [{ key: '3', to: 'chef@example.com', url: 'https://chef.example.test/booking/10',
+        content: { to: 'chef@example.com', subject: 'Confirmed', text: 'PRIVATE-LEGACY-SENTINEL', html: '<p>PRIVATE-LEGACY-SENTINEL</p>' } }], deliveredEmailKeys: [] };
     state.database = tx; state.rows = [[state.event], []]; state.send.mockResolvedValue(true);
     expect(await deliverBookingLifecycleEvents(1)).toEqual({ completed: 1 });
     const content = state.send.mock.calls[0][0];
@@ -500,7 +500,7 @@ describe('real rich renderer at the persisted confirmation boundary', () => {
 
 describe('booking email retry policy', () => {
   const event = (metadata: Record<string, unknown> = {}) => ({ id: 77, bookingId: 10, kind: 'requested', title: 'Request received', message: 'Review request',
-    emails: [{ key: '3', to: 'chef@invalid.test', url: 'https://chef.example.test/booking/10' }], metadata, deliveredEmailKeys: [], completedAt: null });
+    emails: [{ key: '3', to: 'chef@example.com', url: 'https://chef.example.test/booking/10' }], metadata, deliveredEmailKeys: [], completedAt: null });
   beforeEach(() => { vi.clearAllMocks(); state.database = tx; state.adminEmailEnabled = true; });
   it('stops retrying an address the relay permanently refuses and raises recovery once', async () => {
     const { SmtpDeliveryError } = await import('./bounded-smtp');
@@ -513,6 +513,16 @@ describe('booking email retry policy', () => {
     expect(state.event.metadata.deliveryFailures).toBeUndefined();
     expect(state.notify).toHaveBeenCalledTimes(1);
     expect(state.send.mock.calls[0][1]).toMatchObject({ reportDeliveryFailure: true, durableDelivery: true });
+  });
+  it('completes for a reserved test address (synthetic QA account) with no retry and no admin alert (QA walk Oct 28)', async () => {
+    state.event = { ...event(), emails: [{ key: '3', to: 'phase0-chef@localcooks.test', url: 'https://chef.example.test/booking/10' }] };
+    state.rows = [[state.event], [], [{ id: 1 }]];
+    state.send.mockResolvedValueOnce(false);
+    expect(await deliverBookingLifecycleEvents(1)).toEqual({ completed: 1 });
+    expect(state.event.completedAt).toBeInstanceOf(Date);
+    expect(state.event.metadata).toMatchObject({ undeliverableEmailKeys: ['3'] });
+    expect(state.event.metadata.deliveryFailures).toBeUndefined();
+    expect(state.notify).not.toHaveBeenCalled();
   });
   it('classifies relay refusals: 5xx at RCPT or end of DATA is permanent; sender, auth and 4xx stay retryable', async () => {
     const { SmtpDeliveryError, isPermanentRecipientRejection } = await import('./bounded-smtp');
@@ -548,8 +558,8 @@ describe('booking email retry policy', () => {
 });
 
 describe('consolidated checkout and closeout notices', () => {
-  const people = [{ id: 3, email: 'chef@example.test', role: 'chef', locale: 'en-CA' },
-    { id: 2, email: 'manager@example.test', role: 'manager', locale: 'en-CA' }];
+  const people = [{ id: 3, email: 'chef@example.com', role: 'chef', locale: 'en-CA' },
+    { id: 2, email: 'manager@example.com', role: 'manager', locale: 'en-CA' }];
   const context = { chefId: 3, managerId: 2, kitchenName: 'Harbour Kitchen', bookingDate: new Date('2026-10-14'), startTime: '09:00', timezone: 'UTC' };
   beforeEach(() => { vi.clearAllMocks(); state.database = tx; state.payout = null; });
   it.each([true, false])('selects exactly one manager checkout notice (after closeout: %s)', async afterCloseout => {
@@ -558,7 +568,7 @@ describe('consolidated checkout and closeout notices', () => {
     await queueBookingLifecycleEvent(tx, 10, 'checkout_requested', 'Checked out', 'Review checkout', 3, { recipientPolicy: 'participants' });
     expect(state.notify).toHaveBeenCalledTimes(1);
     expect(state.notify.mock.calls[0][0].userId).toBe(2);
-    expect(state.insert.mock.calls[0][0].emails[0].to).toBe('manager@example.test');
+    expect(state.insert.mock.calls[0][0].emails[0].to).toBe('manager@example.com');
     expect(state.notify.mock.calls[0][0].title).toContain('checked out');
     expect(state.insert.mock.calls[0][0].emails).toHaveLength(1);
     expect(state.notify.mock.calls[0][0].message.includes('$27.32')).toBe(afterCloseout);
@@ -588,7 +598,7 @@ describe('claim-aware chef closeout delivery', () => {
     const claim = { id: 9, claimVersion: 2, chefVisibleAt: new Date(), kitchenBookingVisitId: 5, status,
       claimedAmountCents: 7000, finalAmountCents: 7000, chefResponseDeadline: new Date('2026-10-18T12:00:00Z') };
     state.rows = [[], [{ chefId: 3, managerId: 2, kitchenName: 'Harbour Kitchen', bookingDate: new Date('2026-10-14'), startTime: '09:00', timezone: 'UTC' }],
-      [{ id: 3, email: 'chef@example.test', role: 'chef', locale: 'en-CA' }], [claim]];
+      [{ id: 3, email: 'chef@example.com', role: 'chef', locale: 'en-CA' }], [claim]];
     await queueBookingLifecycleEvent(tx, 10, 'visit_closed', 'Visit complete', 'Fallback', 2,
       { visitId: 5, recipientPolicy: 'chef', inspectionOutcome: 'manager_cleared' });
     const notice = state.notify.mock.calls[0][0];
@@ -603,7 +613,7 @@ it.each([0, 5000])('cancellation delivers recipient copy and only retained kitch
   vi.clearAllMocks(); state.database = tx; state.payout = null;
   state.people = [{ id: 3, profile: { fullName: 'Sam' } }, { id: 2, profile: { fullName: 'Maya' } }];
   state.rows = [[{ chefId: 3, managerId: 2, kitchenName: 'Harbour Kitchen', bookingDate: new Date('2026-10-14'), startTime: '09:00', timezone: 'UTC' }],
-    [{ id: 3, email: 'chef@example.test', role: 'chef', locale: 'en-CA' }, { id: 2, email: 'manager@example.test', role: 'manager', locale: 'en-CA' }]];
+    [{ id: 3, email: 'chef@example.com', role: 'chef', locale: 'en-CA' }, { id: 2, email: 'manager@example.com', role: 'manager', locale: 'en-CA' }]];
   await queueBookingLifecycleEvent(tx, 10, 'cancelled', 'Fallback', 'Fallback', 3,
     { recipientPolicy: 'participants', cancellationNotice: { cause: 'chef', kitchenShareRetainedCents: retained } });
   expect(state.notify.mock.calls.map(call => call[0].userId)).toEqual([3, 2]);
@@ -613,7 +623,7 @@ it.each([0, 5000])('cancellation delivers recipient copy and only retained kitch
   expect(kitchen.message).toContain('that time is open again.');
   expect(kitchen.message.includes('$50.00')).toBe(retained > 0);
   const emails = state.insert.mock.calls[0][0].emails;
-  expect(emails.map((email: any) => email.to)).toEqual(['chef@example.test', 'manager@example.test']);
+  expect(emails.map((email: any) => email.to)).toEqual(['chef@example.com', 'manager@example.com']);
   expect(emails[1].content.text).toContain(kitchen.message);
   expect(emails[1].content.text).not.toContain('$0.00');
   expect(emails[0].content.text).not.toContain('that time is open again');
@@ -638,7 +648,7 @@ it('an add-on removal tells the chef about the refund, the kitchen about its pay
   vi.clearAllMocks(); state.database = tx; state.payout = null;
   state.people = [{ id: 3, profile: { fullName: 'Sam' } }, { id: 2, profile: { fullName: 'Maya' } }];
   state.rows = [[{ chefId: 3, managerId: 2, kitchenName: 'Harbour Kitchen', bookingDate: new Date('2026-10-14'), startTime: '09:00', timezone: 'UTC', referenceCode: 'KB-OVEN1' }],
-    [{ id: 3, email: 'chef@example.test', role: 'chef', locale: 'en-CA' }, { id: 2, email: 'manager@example.test', role: 'manager', locale: 'en-CA' },
+    [{ id: 3, email: 'chef@example.com', role: 'chef', locale: 'en-CA' }, { id: 2, email: 'manager@example.com', role: 'manager', locale: 'en-CA' },
       { id: 4, email: 'test_admin@localcooks.ca', role: 'admin', adminEmailNotifications: true, locale: 'en-CA' }]];
   await queueBookingLifecycleEvent(tx, 10, 'addon_removed', 'Commercial Oven removed', 'Commercial Oven was removed from KB-OVEN1.', 3,
     { itemKind: 'equipment', itemId: 31, addonRemoval: { state: 'removed', itemName: 'Commercial Oven', refundCents: 2055, kitchenRefundCents: 1933, feeCents: 67 } });
@@ -652,7 +662,7 @@ it('an add-on removal tells the chef about the refund, the kitchen about its pay
   for (const id of [2, 3]) expect(JSON.stringify(by(id))).not.toMatch(/#31|#10|pi_|re_|booking_cancelled/);
   expect(by(3).type).toBe('system_announcement');
   const emails = state.insert.mock.calls[0][0].emails;
-  expect(emails.map((email: any) => email.to)).toEqual(['chef@example.test', 'manager@example.test', 'test_admin@localcooks.ca']);
+  expect(emails.map((email: any) => email.to)).toEqual(['chef@example.com', 'manager@example.com', 'test_admin@localcooks.ca']);
   expect(emails[0].content.text).toContain('Your $20.55 refund for Harbour Kitchen'); expect(emails[1].content.text).toContain('Your payout changes by −$19.33.');
   expect(emails[2].content.text).toContain('Kitchen payout');
 });
@@ -661,7 +671,7 @@ it('CP6 L6: a multi-day item removal names the affected day, not the booking’s
   vi.clearAllMocks(); state.database = tx; state.payout = null;
   state.people = [{ id: 3, profile: { fullName: 'Sam' } }, { id: 2, profile: { fullName: 'Maya' } }];
   state.rows = [[{ chefId: 3, managerId: 2, kitchenName: 'Harbour Kitchen', bookingDate: new Date('2026-10-14'), startTime: '09:00', timezone: 'UTC', referenceCode: 'KB-OVEN1' }],
-    [{ id: 3, email: 'chef@example.test', role: 'chef', locale: 'en-CA' }, { id: 2, email: 'manager@example.test', role: 'manager', locale: 'en-CA' },
+    [{ id: 3, email: 'chef@example.com', role: 'chef', locale: 'en-CA' }, { id: 2, email: 'manager@example.com', role: 'manager', locale: 'en-CA' },
       { id: 4, email: 'test_admin@localcooks.ca', role: 'admin', adminEmailNotifications: true, locale: 'en-CA' }]];
   await queueBookingLifecycleEvent(tx, 10, 'addon_removed', 'Commercial Oven removed', 'Commercial Oven removed.', 3,
     { itemKind: 'equipment', itemId: 31, noticeDay: { date: '2026-10-16', startTime: '10:00', endTime: '14:00' },
