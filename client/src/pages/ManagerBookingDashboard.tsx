@@ -461,7 +461,8 @@ export default function ManagerBookingDashboard() {
     handleLocationChange();
     window.addEventListener('popstate', handleLocationChange);
     return () => window.removeEventListener('popstate', handleLocationChange);
-  }, [currentPath, locations]);
+    // currentSearch: a link that only changes ?view= ("Go to Customers" from Access requests) must switch the view too (QA Oct 28).
+  }, [currentPath, currentSearch, locations]);
 
   // Section changes within My Kitchens use replaceState; remember those too.
   useEffect(() => { acceptedHistoryUrl.current = window.location.href; });

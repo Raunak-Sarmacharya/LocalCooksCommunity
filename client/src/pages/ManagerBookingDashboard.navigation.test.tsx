@@ -49,6 +49,7 @@ vi.mock('@/components/manager/ManagerProfileSettings', () => ({ default: () => n
 vi.mock('@/components/manager/OnboardingStatusBanner', () => ({ OnboardingStatusBanner: () => null }));
 vi.mock('@/components/manager/NotificationCenter', () => ({ default: () => null }));
 vi.mock('@/components/manager/ManagerSupportPage', () => ({ default: () => null }));
+vi.mock('@/components/manager/customers/CustomersList', () => ({ CustomersList: () => <p>Customers list</p> }));
 import ManagerBookingDashboard from './ManagerBookingDashboard';
 beforeEach(() => { vi.clearAllMocks(); h.save.mockResolvedValue(true); h.kitchenDirty = false; h.setupDirty = false; h.selected = 2; window.history.replaceState({}, '', '/manager/dashboard?view=kitchens&kit=2&locationId=7&section=arrival-departure'); });
 afterEach(cleanup);
@@ -197,4 +198,14 @@ it('keeps a direct shared setup link without a kitchen usable and guarded on ret
   fireEvent.click(screen.getByText('Discard'));
   expect(new URLSearchParams(window.location.search).get('view')).toBe('kitchens');
   expect(new URLSearchParams(window.location.search).get('kit')).toBeNull();
+});
+
+it('switches the view when an in-app link changes only ?view= ("Go to Customers" from Access requests, QA Oct 28)', () => {
+  window.history.replaceState({}, '', '/manager/dashboard?view=applications');
+  const view = render(<ManagerBookingDashboard />);
+  expect(screen.queryByText('Customers list')).toBeNull();
+  // A wouter <Link> changes the query without a popstate event; the router re-renders with the new search.
+  act(() => { window.history.pushState({}, '', '/manager/dashboard?view=customers'); });
+  view.rerender(<ManagerBookingDashboard />);
+  expect(screen.getByText('Customers list')).toBeInTheDocument();
 });
