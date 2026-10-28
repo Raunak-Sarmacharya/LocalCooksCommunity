@@ -8,7 +8,7 @@ vi.mock('@/lib/api', () => ({ apiClient: {
   get: async (path: string) => new Response(JSON.stringify(path.includes('filing-context') ? state.context : path.includes('booking-hold')
     ? { held: true, claims: [{ id: 1, bookingId: 7, kitchenName: 'Maya’s kitchen' }] } : { claims: state.claims })),
   post: async (path: string, body: any) => { state.bodies.push({ path, body });
-    return new Response(JSON.stringify(path.endsWith('/pay') ? { clientSecret: 'mock_secret', hasSavedCard: true }
+    return new Response(JSON.stringify(path.endsWith('/pay') ? { clientSecret: 'mock_secret', hasSavedCard: true, card: { brand: 'visa', last4: '4242' } }
       : { success: true }), { status: 200 }); },
 } }));
 vi.mock('@stripe/stripe-js', () => ({ loadStripe: () => Promise.resolve({}) }));
@@ -109,8 +109,11 @@ describe('chef response and kitchen reply', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Send reply' }));
     await waitFor(() => expect(state.bodies[0].path).toBe('/manager/damage-claims/1/review-reply'));
   });
-  it('uses Stripe.js on-session confirmation and verifies on the server before lifting the banner', async () => {
+  it('names the saved card and charges nothing until Pay; then confirms on-session and verifies on the server', async () => {
     const paid = vi.fn(); mount(<DamageClaimPayment claim={claim()} onClose={vi.fn()} onPaid={paid} />);
+    const button = await screen.findByRole('button', { name: 'Pay $20.00 with Visa •••• 4242' });
+    expect(state.confirm).not.toHaveBeenCalled();
+    fireEvent.click(button);
     await waitFor(() => expect(paid).toHaveBeenCalled());
     expect(state.confirm).toHaveBeenCalledWith('mock_secret', {});
     expect(state.bodies.map(item => item.path)).toEqual(['/chef/damage-claims/1/pay', '/chef/damage-claims/1/sync']);
@@ -123,6 +126,7 @@ describe('chef response and kitchen reply', () => {
   it('lets the chef change cards on the payment screen after bank confirmation fails', async () => {
     state.confirm.mockResolvedValueOnce({ error: { message: 'Please use another card.' } });
     mount(<DamageClaimPayment claim={claim()} onClose={vi.fn()} onPaid={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Pay $20.00 with Visa •••• 4242' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Please use another card.');
     fireEvent.click(screen.getByRole('button', { name: 'Use another card' }));
     expect(await screen.findByText('Card entry')).toBeInTheDocument();

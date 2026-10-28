@@ -52,7 +52,7 @@ vi.mock('../db', () => {
     } }) }),
   }; return { db };
 });
-vi.mock('stripe', () => ({ default: class { paymentIntents = { create: state.create, retrieve: state.retrieve, cancel: state.cancel,
+vi.mock('stripe', () => ({ default: class { paymentMethods = { retrieve: async () => ({ customer: 'cus_platform', card: { brand: 'visa', last4: '4242' } }) }; paymentIntents = { create: state.create, retrieve: state.retrieve, cancel: state.cancel,
     list: () => ({ async *[Symbol.asyncIterator]() { for (const item of state.list) yield item; } }) };
   transfers = { create: state.transfer }; balance = { retrieve: state.balance }; refunds = { create: state.refund, retrieve: state.refund }; } }));
 vi.mock('../reference-code', () => ({ generateReferenceCode: async () => 'DC-TEST' }));
@@ -180,7 +180,8 @@ describe('review-first amendment', () => {
 });
 describe('explicit chef payments', () => {
   it('persists before creating an unconfirmed platform intent and reuses it on repeat taps', async () => {
-    await prepareClaimPayment(1, 5); await prepareClaimPayment(1, 5);
+    await prepareClaimPayment(1, 5);
+    expect((await prepareClaimPayment(1, 5)).card).toEqual({ brand: 'visa', last4: '4242' });
     expect(state.events.indexOf('commit')).toBeLessThan(state.events.indexOf('stripe:create'));
     expect(state.create).toHaveBeenCalledTimes(1);
     const [params, options] = state.create.mock.calls[0];

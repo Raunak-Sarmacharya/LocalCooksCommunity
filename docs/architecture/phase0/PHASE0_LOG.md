@@ -1589,3 +1589,15 @@ Checked on dev against QA's own records (TOUR-103, KB-TASH8T #239, KB-Z856HK #24
 - Found walking it: per-step day counting overshot (fixed, test); outcome notices to `.test` accounts looped retries/alerts (now skipped_policy);
   holdover charge now plans the chef's dispute reminder at once; storage start-day reminder uses the local start date and links to /storage/:id.
 - QA report: Access requests → "Go to Customers" changed the URL but not the screen (dashboard only re-read ?view= on path change) → fixed for every same-path link.
+
+## Oct 28 (night): QA checkpoint 3: damage claims on the test clock + saved-card decisions
+- Claim test clock card on every claim (booking + storage): chef reminder, pay-or-dispute deadline (escalates to admin), 7-day unpaid booking pause
+  (`qa-test-clock-claim.ts`; escalate/hold notices shared with the sweeps). Admin claims page is a Needs-you queue (in review, under review, escalated,
+  disputed) with waiting-on-others and history. Storage claims get the same admin review; visit picker is dated and skips cancelled days.
+- Walked live on #216 (DC-SU4NZZ $40): filed → sent → deadline escalated → upheld → pause shown on chef home/book/booking → chef paid → kitchen told.
+- Found walking it: kitchen and chef were told "disputed" when the deadline was simply missed → new "missed" wording (en/fr/uk, test).
+- Owner Oct 28 (saved cards): Stripe keeps the card (booking checkout `setup_future_usage: off_session`; others on_session); Stripe Checkout shows its
+  own "card saved for future payments" line; policy drafts already disclose it. Decisions: claim payment shows "Pay $X with Visa •••• 4242" and
+  charges only on the tap (was: charged as soon as the dialog opened); keep off_session; no extra card line on the booking Confirm step;
+  self-serve card removal later (support until then). Open note: off_session is broader than the Terms' "never charge on our own"; any future
+  automatic charge needs Terms wording first (when, how much). Minor not fixed: paused book page shows Pay now in both the banner and the panel.

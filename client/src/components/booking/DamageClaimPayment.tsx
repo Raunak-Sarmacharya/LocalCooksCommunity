@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { loadStripe } from '@stripe/stripe-js';
 import { CardElement, Elements, useElements, useStripe } from '@stripe/react-stripe-js';
 import { useQueryClient } from '@tanstack/react-query';
@@ -21,15 +21,25 @@ export default function DamageClaimPayment({ claim, onClose, onPaid }: { claim: 
     {provider ? <Elements stripe={provider}><PayForm claim={claim} onPaid={onPaid} /></Elements> : <p role="alert">{t('dcV2PaymentUnavailable')}</p>}
   </DialogContent></Dialog>;
 }
+type Prepared = { clientSecret: string; hasSavedCard: boolean; card: { brand: string; last4: string } | null };
+const brandName = (brand: string) => brand === 'amex' ? 'Amex' : brand.charAt(0).toUpperCase() + brand.slice(1);
 function PayForm({ claim, onPaid }: { claim: DamageClaimCardData; onPaid: () => void }) {
   const { t, i18n } = useTranslation('booking'), stripe = useStripe(), elements = useElements(), queryClient = useQueryClient();
   const [newCard, setNewCard] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState('');
-  const started = useRef(false);
+  const [prepared, setPrepared] = useState<Prepared | null>(null);
+  const prepare = (fresh: boolean) => claimRequest<Prepared>(`/chef/damage-claims/${claim.id}/pay`, { newCard: fresh });
+  // Opening only creates an unconfirmed payment (nothing charged) so the button can name the card; money moves on the Pay tap.
+  useEffect(() => {
+    let live = true;
+    prepare(false).then(payment => { if (live) payment.hasSavedCard ? setPrepared(payment) : setNewCard(true); })
+      .catch(cause => { if (live) setError(cause instanceof Error ? cause.message : t('dcV2PaymentFailed')); })
+    return () => { live = false; };
+  }, [claim.id]);
   const pay = async () => {
     if (!stripe || !elements) return;
     setBusy(true); setError('');
     try {
-      const payment = await claimRequest<{ clientSecret: string; hasSavedCard: boolean }>(`/chef/damage-claims/${claim.id}/pay`, { newCard });
+      const payment = !newCard && prepared ? prepared : await prepare(newCard);
       const card = elements.getElement(CardElement);
       if (!payment.hasSavedCard && !newCard) { setNewCard(true); throw Error(t('dcV2AddCard')); }
       const result = await stripe.confirmCardPayment(payment.clientSecret, newCard && card ? { payment_method: { card } } : {});
@@ -44,15 +54,17 @@ function PayForm({ claim, onPaid }: { claim: DamageClaimCardData; onPaid: () => 
   const changeCard = async () => {
     if (busy) return;
     setBusy(true); setError('');
-    try { await claimRequest(`/chef/damage-claims/${claim.id}/cancel-payment`, {}); setNewCard(true); }
+    try { await claimRequest(`/chef/damage-claims/${claim.id}/cancel-payment`, {}); setPrepared(null); setNewCard(true); }
     catch (cause) { setError(cause instanceof Error ? cause.message : t('dcV2Failed')); } finally { setBusy(false); }
   };
-  // Mounting this form is the chef's explicit Pay tap. Stripe.js handles any bank authentication on-session.
-  useEffect(() => { if (stripe && elements && !started.current) { started.current = true; void pay(); } }, [stripe, elements, pay]);
+  const amount = claimMoney(claim.amountCents, i18n.language), saved = !newCard && prepared?.card;
   return <div className="space-y-4">
-    <p className="text-sm">{t(newCard ? 'dcV2NewCard' : 'dcV2SavedCard')}</p>
-    {newCard ? <div className="rounded-lg border p-3"><CardElement /></div> : <Button variant="link" disabled={busy} onClick={() => void changeCard()}>{t('dcV2UseNewCard')}</Button>}
+    {newCard && <p className="text-sm">{t('dcV2NewCard')}</p>}
+    {newCard ? <div className="rounded-lg border p-3"><CardElement /></div> : null}
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-    <Button className="w-full" disabled={!stripe || busy} onClick={() => void pay()}>{t(busy ? 'dcV2Paying' : 'dcV2Pay', { amount: claimMoney(claim.amountCents, i18n.language) })}</Button>
+    <Button className="w-full" disabled={!stripe || busy || (!newCard && !prepared && !error)} onClick={() => void pay()}>
+      {busy ? t('dcV2Paying') : saved ? t('dcV2PaySaved', { amount, brand: brandName(saved.brand), last4: saved.last4 })
+        : t(newCard ? 'dcV2Pay' : 'dcV2PaySavedPlain', { amount })}</Button>
+    {!newCard && <Button variant="link" className="w-full" disabled={busy || (!prepared && !error)} onClick={() => void changeCard()}>{t('dcV2UseNewCard')}</Button>}
   </div>;
 }

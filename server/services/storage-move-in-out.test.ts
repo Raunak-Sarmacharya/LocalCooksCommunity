@@ -8,7 +8,7 @@ import { getTableConfig, PgDialect } from 'drizzle-orm/pg-core';
 import * as schema from '@shared/schema';
 
 const h = vi.hoisted(() => ({ db: null as any, notices: vi.fn(), claimNotices: vi.fn(), oldNotice: vi.fn(), create: vi.fn(), transfer: vi.fn(), retrieve: vi.fn() }));
-vi.mock('stripe', () => ({ default: class { paymentIntents = { create: h.create, retrieve: h.retrieve }; transfers = { create: h.transfer }; } }));
+vi.mock('stripe', () => ({ default: class { paymentMethods = { retrieve: async () => ({ customer: 'cus_platform', card: { brand: 'visa', last4: '4242' } }) }; paymentIntents = { create: h.create, retrieve: h.retrieve }; transfers = { create: h.transfer }; } }));
 vi.mock('./booking-documents', () => ({ issueStorageDocumentsSafely: vi.fn() }));
 vi.mock('../db', () => ({ db: new Proxy({}, { get: (_t, key) => typeof h.db[key] === 'function' ? h.db[key].bind(h.db) : h.db[key] }) }));
 vi.mock('../domains/users/chef.service', () => ({ chefService: {} }));

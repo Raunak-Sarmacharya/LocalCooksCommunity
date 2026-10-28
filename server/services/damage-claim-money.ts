@@ -165,7 +165,10 @@ export async function prepareClaimPayment(id: number, chefId: number, newCard = 
       && !['cancelled', 'cancel_pending'].includes(claim.paymentOperation.state);
   });
   if (!canReturnSecret) throw new DamageClaimError('This claim changed. Refresh before choosing Pay again.');
-  return { clientSecret: intent.client_secret, intentId: intent.id, hasSavedCard: !!op.paymentMethodId, amountCents: op.amountCents };
+  // Shown on the Pay button so the chef sees which card is charged; a lookup failure only drops the label.
+  const method = op.paymentMethodId ? await stripe.paymentMethods.retrieve(op.paymentMethodId).catch(() => null) : null;
+  const card = method?.card && intentReference(method.customer) === op.customerId ? { brand: method.card.brand, last4: method.card.last4 } : null;
+  return { clientSecret: intent.client_secret, intentId: intent.id, hasSavedCard: !!op.paymentMethodId, amountCents: op.amountCents, card };
 }
 export async function cancelClaimPayment(id: number, chefId: number) {
   const op = await db.transaction(async tx => {
