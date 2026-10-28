@@ -170,6 +170,9 @@ export function NowClaimRows({ claims, manager, chefName, timezone, allowPrimary
           <p className="text-sm font-medium">{tb('dcV2ClaimTitle', { kitchen: kitchenOf(claim), amount: amount(claim) })}</p>
           <p className="text-xs text-muted-foreground">{claim.upheldAt && claimBookingHeld(claim) ? tb('dcV2PausedShort') : claim.upheldAt ? tc('bnClaimUpheldChef', { date: claimPayByDate(claim.upheldAt, zone(claim), i18n.language) })
             : claim.status === 'submitted' ? tb('dcV2RespondBy', { when: claimWhen(claim.deadline, zone(claim), i18n.language) }) : tb(`dcV2Status_${claim.status}`, { defaultValue: claim.status })}</p>
+          {/* What it's for, before paying (QA walk Oct 28: details were only behind "Dispute"). */}
+          {claim.description && <p className="line-clamp-2 whitespace-pre-wrap text-sm text-muted-foreground">{claim.description}</p>}
+          {disputable && details(claim)}
           <div className="flex flex-wrap gap-2">
             {payInBarFor !== claim.id && <Button type="button" className="min-h-11" variant={primary ? 'default' : 'outline'} {...(primary ? { 'data-primary-action': 'true' } : {})}
               disabled={claim.paymentBusy} onClick={() => setPaying(claim)}>{tb('dcV2Pay', { amount: amount(claim) })}</Button>}

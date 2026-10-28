@@ -7,13 +7,14 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { formatTourWhen } from '@/lib/chef-viewing-display';
 
 type Step = { key: string; label: string; at: string };
-type Clock = { reference: string; status: string; updatedAt: string; now: string; steps: Step[]; multiDay?: boolean };
+type Clock = { reference: string; status: string; updatedAt: string; now: string; steps: Step[]; multiDay?: boolean; note?: string | null };
 type Jump = { movedMs: number; notices: Array<{ kind: string; sent: boolean }>; reminders: Array<{ kind: string; role: string; channel: string }>; clock: Clock; stoppedAt?: string | null };
 const noticeNames: Record<string, string> = { expired: 'Request expired', request_escalation: 'Overdue or urgent alert', reconfirmation_requested: '"Still coming?" check',
   reconfirmation_escalated: 'No reply · staff alert', reconfirmation_reminder: 'Reply reminder to the visitor', feedback_requested: 'Feedback request',
   feedback_reminder: 'Feedback reminder', status: 'Status update', cancelled: 'Cancelled or expired notice', move_in_due: 'Move-in reminder', not_moved_in: 'Not moved in notice',
   ending: 'Ending reminder', grace_started: 'Grace period notice', holdover_started: 'Holdover notice', removal_review: 'Removal review opened', auto_cleared: 'Move-out cleared on its own',
-  payout_scheduled: 'Payout scheduled', payout_released: 'Payout released' };
+  payout_scheduled: 'Payout scheduled', payout_released: 'Payout released', escalated_to_admin: 'Deadline passed · sent to Local Cooks review',
+  booking_hold_started: "Customer's new bookings paused" };
 const noticeName = (kind: string) => noticeNames[kind] || kind.charAt(0).toUpperCase() + kind.slice(1).replace(/_/g, ' ');
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
@@ -40,7 +41,7 @@ export function untilLabel(ms: number) {
 const lastJumps = new Map<string, { step: Step; result: Jump }>();
 
 /** QA only: jump a tour, booking or storage rental to one of its upcoming automatic steps instead of waiting for it. */
-export function TestClockCard({ kind, id, timezone, onMoved }: { kind: 'tour' | 'booking' | 'storage'; id: number; timezone: string; onMoved?: () => void }) {
+export function TestClockCard({ kind, id, timezone, onMoved }: { kind: 'tour' | 'booking' | 'storage' | 'claim'; id: number; timezone: string; onMoved?: () => void }) {
   const key = `${kind}:${id}`, noun = kind === 'storage' ? 'storage rental' : kind, path = `/api/admin/test-clock/${kind}/${id}`;
   const queryClient = useQueryClient();
   const [confirming, setConfirming] = useState<Step | null>(null);
@@ -86,7 +87,7 @@ export function TestClockCard({ kind, id, timezone, onMoved }: { kind: 'tour' | 
         {jump.isError && <p role="alert" className="text-destructive">{jump.error.message}</p>}
         {clock.isLoading ? <div className="space-y-2" aria-label="Loading test clock">{[0, 1, 2].map(row => <Skeleton key={row} className="h-11 w-full" />)}</div>
           : clock.isError ? <div role="alert" className="space-y-2"><p>{clock.error.message}</p><Button variant="outline" onClick={() => void clock.refetch()}>Try again</Button></div>
-          : !clock.data!.steps.length ? <p className="text-muted-foreground">Nothing else is scheduled for this {noun} ({clock.data!.status.replace(/_/g, ' ')}).</p>
+          : !clock.data!.steps.length ? <p className="text-muted-foreground">{clock.data!.note || `Nothing else is scheduled for this ${noun} (${clock.data!.status.replace(/_/g, ' ')}).`}</p>
           : <ol className="divide-y">{clock.data!.steps.map(step => (
             <li key={`${step.key}:${step.at}`} className="py-2">
               <div className="flex min-w-0 items-center justify-between gap-3">

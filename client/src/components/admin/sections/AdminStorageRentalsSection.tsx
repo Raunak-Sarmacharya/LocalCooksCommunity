@@ -221,6 +221,8 @@ function AdminStorageTools({ id, onDone }: { id: number; onDone: () => void }) {
   if (!detail.data || detail.error) return <p role="alert">{t('stActionFailed')}</p>;
   const data = detail.data;
   return <div className="space-y-4">
+    {/* A claim waiting on Local Cooks is the work here: it comes before the record. */}
+    {data.claims?.length > 0 && <DamageClaimPanel storageRentalId={id} />}
     {['payments', 'flags', 'supportActions', 'problems', 'claims', 'holdover', 'notices'].map(section => <section key={section} className="space-y-2">
       <h3 className="font-medium">{t(`stAdminSection_${section}` as never)}</h3>
       {data[section]?.length ? data[section].map((row: any, index: number) => <div className="rounded border p-2 text-sm" key={row.id ?? index}>
@@ -231,7 +233,6 @@ function AdminStorageTools({ id, onDone }: { id: number; onDone: () => void }) {
         {(row.payoutDate || row.createdAt || row.deadline) && <p>{formatBookingDate(row.payoutDate || row.createdAt || row.deadline)}</p>}
       </div>) : <p className="text-sm text-muted-foreground">{t('stNone')}</p>}
     </section>)}
-    {data.claims?.length > 0 && <DamageClaimPanel storageRentalId={id} />}
     {testClock && <TestClockCard kind="storage" id={id} timezone={data.timezone || 'America/St_Johns'} onMoved={() => { void detail.refetch(); onDone(); }} />}
     <div onChange={() => setPreview(null)} className="space-y-3">
       <Label htmlFor="admin-storage-action">{t('stAdminAction')}</Label>

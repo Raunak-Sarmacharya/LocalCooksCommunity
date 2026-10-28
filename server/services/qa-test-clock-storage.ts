@@ -232,8 +232,9 @@ async function jumpStorageOnce(id: number, to: Date, actorId: number, expectedUp
     sql`(${emailLogs.textBody}::jsonb->'reminder'->>'due')::timestamptz <= now()`)))
     await step('reminder', () => dispatchAdvanceReminders({ onlyLogId: row.id, limit: 1 }));
   const { deliverOutcomeEmails } = await import('./outcome-delivery');
-  for (const row of (await db.select({ id: emailLogs.id }).from(emailLogs).where(and(eq(emailLogs.category, 'lifecycle_outcome'), mail, inArray(emailLogs.status, ['queued', 'failed'])))).slice(0, 10))
-    await step('notices', () => deliverOutcomeEmails(1, 4_000, row.id));
+  // Delivery only starts with at least its 12 s reserve left; a few inline, the rest right after the response.
+  for (const row of (await db.select({ id: emailLogs.id }).from(emailLogs).where(and(eq(emailLogs.category, 'lifecycle_outcome'), mail, inArray(emailLogs.status, ['queued', 'failed'])))).slice(0, 3))
+    await step('notices', () => deliverOutcomeEmails(1, 13_000, row.id));
 
   // One entry per notice (the chef, kitchen and admins each get a row): sent once every row went out.
   const queued = await db.select({ trackingId: emailLogs.trackingId, status: emailLogs.status }).from(emailLogs)

@@ -299,7 +299,7 @@ export async function readClaimBookingHold(chefId: number, now = new Date()) {
   const held = [...rows, ...extraTime.map(row => ({ ...row, id: -row.id, storageRentalId: null }))];
   return { held: held.length > 0, claims: held };
 }
-/** The hold itself is computed live; this bounded sweep only sends the once-per-claim notice to both people. */
+/** The hold itself is computed live; this bounded sweep only records the once-per-claim hold; the notice goes to the chef only (the kitchen is not told about the chef's other bookings). */
 export async function notifyDamageClaimBookingHolds(now = new Date()) {
   assertWorkerTime();
   const due = await db.select().from(damageClaims).where(and(workerAfter('claimHolds', damageClaims.id), eq(damageClaims.chefOwes, true),

@@ -57,6 +57,10 @@ describe("claims in the Now card (§1.5)", () => {
     expect(row).toHaveTextContent(/Pay or dispute by Jan 18, 12:00\s?p\.m\./);
     expect(within(row).getByRole("button", { name: "Pay $45.00" })).toHaveAttribute("data-primary-action", "true");
     expect(within(row).getByRole("button", { name: "Dispute" })).not.toHaveAttribute("data-primary-action");
+    // What it's for, before paying, and a way to read it without choosing "Dispute" (QA walk Oct 28).
+    expect(row).toHaveTextContent("Burnt pan");
+    fireEvent.click(within(row).getByRole("button", { name: "See details" }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
   it("chef: Pay is an outline button when the page already has a primary", () => {
     render(<NowClaimRows claims={[claim()]} manager={false} chefName="Ada" timezone="America/St_Johns" onChanged={vi.fn()} />);

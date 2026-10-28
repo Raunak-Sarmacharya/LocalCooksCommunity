@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { ClaimEvidence, ClaimTimeline } from '@/components/booking/DamageClaimCards';
 import { claimMoney, claimRequest, type DamageClaimCardData } from '@/lib/damage-claims';
 import type { ClaimSupportInput } from '@shared/damage-claims';
+import { TestClockCard, useTestClockEnabled } from '../TestClockCard';
 
 /** Required-field marker drawn by CSS so the label text stays exactly the field name. */
 const req = "after:ml-0.5 after:text-destructive after:content-['*']";
@@ -16,13 +17,15 @@ const req = "after:ml-0.5 after:text-destructive after:content-['*']";
 export function DamageClaimPanel({ bookingId, storageRentalId }: { bookingId?: number; storageRentalId?: number }) {
   const { t } = useTranslation('booking');
   const base = bookingId ? `/admin/booking-support/${bookingId}` : `/admin/storage-rentals/${storageRentalId}`;
+  const testClock = useTestClockEnabled();
   const query = useQuery({ queryKey: ['support-damage-claims', base], queryFn: () => claimRequest<{ claims: DamageClaimCardData[] }>(`${base}/claims`), retry: false });
   return <section className="rounded-2xl border bg-card p-4 space-y-4">
     <h2 className="font-semibold">{t('dcV2PolicyTitle')}</h2>
     {query.isPending && <p role="status">{t('dcV2Loading')}</p>}
     {query.isError && <p role="alert">{t('dcV2LoadFailed')} <Button variant="link" onClick={() => void query.refetch()}>{t('dcV2Retry')}</Button></p>}
     {query.data?.claims?.length === 0 && <p className="text-sm">{t('dcV2NoClaims')}</p>}
-    {query.data?.claims?.map(claim => <ClaimReview key={claim.id} claim={claim} base={base} onChanged={() => void query.refetch()} />)}
+    {query.data?.claims?.map(claim => <div key={claim.id} className="space-y-3"><ClaimReview claim={claim} base={base} onChanged={() => void query.refetch()} />
+      {testClock && <TestClockCard kind="claim" id={claim.id} timezone="America/St_Johns" onMoved={() => void query.refetch()} />}</div>)}
   </section>;
 }
 type EvidenceItem = DamageClaimCardData['evidence'][number];
