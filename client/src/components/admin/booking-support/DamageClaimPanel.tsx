@@ -7,20 +7,22 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { ClaimEvidence, ClaimTimeline } from '@/components/booking/DamageClaimCards';
-import { claimAction, claimMoney, claimRequest, type DamageClaimCardData } from '@/lib/damage-claims';
+import { claimMoney, claimRequest, type DamageClaimCardData } from '@/lib/damage-claims';
 import type { ClaimSupportInput } from '@shared/damage-claims';
 
 /** Required-field marker drawn by CSS so the label text stays exactly the field name. */
 const req = "after:ml-0.5 after:text-destructive after:content-['*']";
-export function DamageClaimPanel({ bookingId }: { bookingId: number }) {
+/** A booking's claims (Booking support) or a standalone storage rental's (Storage rentals): same review, different case. */
+export function DamageClaimPanel({ bookingId, storageRentalId }: { bookingId?: number; storageRentalId?: number }) {
   const { t } = useTranslation('booking');
-  const query = useQuery({ queryKey: ['support-damage-claims', bookingId], queryFn: () => claimRequest<{ claims: DamageClaimCardData[] }>(`/admin/booking-support/${bookingId}/claims`), retry: false });
+  const base = bookingId ? `/admin/booking-support/${bookingId}` : `/admin/storage-rentals/${storageRentalId}`;
+  const query = useQuery({ queryKey: ['support-damage-claims', base], queryFn: () => claimRequest<{ claims: DamageClaimCardData[] }>(`${base}/claims`), retry: false });
   return <section className="rounded-2xl border bg-card p-4 space-y-4">
     <h2 className="font-semibold">{t('dcV2PolicyTitle')}</h2>
     {query.isPending && <p role="status">{t('dcV2Loading')}</p>}
     {query.isError && <p role="alert">{t('dcV2LoadFailed')} <Button variant="link" onClick={() => void query.refetch()}>{t('dcV2Retry')}</Button></p>}
     {query.data?.claims?.length === 0 && <p className="text-sm">{t('dcV2NoClaims')}</p>}
-    {query.data?.claims?.map(claim => <ClaimReview key={claim.id} claim={claim} bookingId={bookingId} onChanged={() => void query.refetch()} />)}
+    {query.data?.claims?.map(claim => <ClaimReview key={claim.id} claim={claim} base={base} onChanged={() => void query.refetch()} />)}
   </section>;
 }
 type EvidenceItem = DamageClaimCardData['evidence'][number];
@@ -32,7 +34,7 @@ export function splitReplyEvidence(claim: DamageClaimCardData): { replyEvidence:
   const all = claim.evidence ?? [];
   return { replyEvidence: all.filter(isReply), otherEvidence: all.filter(item => !isReply(item)) };
 }
-function ClaimReview({ claim, bookingId, onChanged }: { claim: DamageClaimCardData; bookingId: number; onChanged: () => void }) {
+function ClaimReview({ claim, base, onChanged }: { claim: DamageClaimCardData; base: string; onChanged: () => void }) {
   const { t, i18n } = useTranslation('booking');
   const [type, setType] = useState<ClaimSupportInput['type'] | ''>(''), [amount, setAmount] = useState(String(claim.amountCents / 100));
   const [reasonCode, setReason] = useState(''), [note, setNote] = useState(''), [publicMessage, setMessage] = useState('');
@@ -59,7 +61,7 @@ function ClaimReview({ claim, bookingId, onChanged }: { claim: DamageClaimCardDa
     if (!type) return;
     setBusy(true); setError('');
     try {
-      await claimAction(bookingId, { claimId: claim.id, type, requestSource: source, operationKey, reasonCode, note, publicMessage,
+      await claimRequest(`${base}/claims/actions`, { claimId: claim.id, type, requestSource: source, operationKey, reasonCode, note, publicMessage,
         ...(moneyAction ? { amountCents } : {}), ...(type === 'claim_compensate' ? { chefStillOwes: firstReview ? false : chefStillOwes } : {}), ...(type === 'claim_restart_payment' ? { verifiedNoPayment } : {}) });
       setType(''); setKey(crypto.randomUUID()); setRetrying(false); onChanged();
     } catch (cause) { setRetrying(true); setError(cause instanceof Error ? cause.message : t('dcV2Failed')); }
@@ -78,7 +80,7 @@ function ClaimReview({ claim, bookingId, onChanged }: { claim: DamageClaimCardDa
     <ClaimTimeline claim={claim} />
     {(claim.compensationPending || claim.withdrawalPending || claim.kitchenPaymentPending) && <div className="space-y-2">
       <Button variant="outline" disabled={busy} onClick={async () => { setBusy(true); setError('');
-        try { await claimRequest(`/admin/booking-support/${bookingId}/claims/${claim.id}/retry`, {}); onChanged(); }
+        try { await claimRequest(`${base}/claims/${claim.id}/retry`, {}); onChanged(); }
         catch (cause) { setError(cause instanceof Error ? cause.message : t('dcV2Failed')); } finally { setBusy(false); }
       }}>{t('dcV2RetryMoney')}</Button>
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}

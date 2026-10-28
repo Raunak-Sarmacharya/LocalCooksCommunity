@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +11,7 @@ import { Eye } from "@/components/ui/manager-icons";
 import { auth } from "@/lib/firebase";
 import { formatBookingDate, formatCurrency } from "@/lib/formatters";
 import { TestClockCard, useTestClockEnabled } from "../TestClockCard";
+import { DamageClaimPanel } from "../booking-support/DamageClaimPanel";
 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -74,6 +75,12 @@ export function AdminStorageRentalsSection() {
       return rows.map(normalize);
     },
   });
+  // ?rental=<id> (from the claims queue) opens that rental's drawer once the list has it.
+  const [linked, setLinked] = useState(() => Number(new URLSearchParams(window.location.search).get("rental")) || null);
+  useEffect(() => {
+    const row = linked ? query.data?.find(rental => rental.id === linked) : null;
+    if (row) { setSelected(row); setLinked(null); }
+  }, [linked, query.data]);
 
   if (query.isLoading) {
     return (
@@ -224,6 +231,7 @@ function AdminStorageTools({ id, onDone }: { id: number; onDone: () => void }) {
         {(row.payoutDate || row.createdAt || row.deadline) && <p>{formatBookingDate(row.payoutDate || row.createdAt || row.deadline)}</p>}
       </div>) : <p className="text-sm text-muted-foreground">{t('stNone')}</p>}
     </section>)}
+    {data.claims?.length > 0 && <DamageClaimPanel storageRentalId={id} />}
     {testClock && <TestClockCard kind="storage" id={id} timezone={data.timezone || 'America/St_Johns'} onMoved={() => { void detail.refetch(); onDone(); }} />}
     <div onChange={() => setPreview(null)} className="space-y-3">
       <Label htmlFor="admin-storage-action">{t('stAdminAction')}</Label>

@@ -2966,6 +2966,8 @@ router.get("/damage-claims", requireFirebaseAuthWithUser, requireAdmin, async (r
 
             claims.push({
                 id: row.id,
+                referenceCode: row.reference_code,
+                updatedAt: row.updated_at,
                 bookingType: row.booking_type,
                 kitchenBookingId: row.kitchen_booking_id,
                 storageBookingId: row.storage_booking_id,

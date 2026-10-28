@@ -3,8 +3,8 @@ const claim = { id: 11, referenceCode: 'DC-11', bookingId: 178, visitId: 9, chef
   description: 'Cracked tray', amountCents: 4000, claimedAmountCents: 4000, lines: [], visitEvidence: null, chefResponse: null, deadline: '2026-10-20T12:00:00Z',
   upheldAt: '2026-10-09T12:00:00Z', publicMessage: null, kitchenPaid: false, fundedBy: 'chef', chefOwes: true, chefVisible: true, reviewRequest: null,
   kitchenReply: null, paymentBusy: true, compensationPending: false, evidence: [], history: [], paymentReview: 'More than one payment matches this attempt.' };
-const claimAction = vi.fn(async () => ({ success: true }));
-vi.mock('@/lib/damage-claims', () => ({ claimRequest: vi.fn(async () => ({ claims: [claim] })), claimAction: (...args: unknown[]) => claimAction(...args as []),
+const claimRequest = vi.fn(async (_path: string, body?: unknown) => body === undefined ? { claims: [claim] } : { success: true });
+vi.mock('@/lib/damage-claims', () => ({ claimRequest: (...args: [string, unknown?]) => claimRequest(...args),
   claimMoney: (cents: number) => `$${(cents / 100).toFixed(2)}` }));
 vi.mock('@/components/booking/DamageClaimCards', () => ({ ClaimEvidence: () => null, ClaimTimeline: () => null }));
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -21,5 +21,12 @@ it('a chef payment held for review shows why, and "Start the chef’s payment ov
   for (const box of screen.getAllByRole('textbox')) fireEvent.change(box, { target: { value: 'Checked in the payment provider: no charge.' } });
   const save = screen.getAllByRole('button').filter(button => /save|confirm|submit|apply/i.test(button.textContent || '')).at(-1)!;
   fireEvent.click(save);
-  await waitFor(() => expect(claimAction).toHaveBeenCalledWith(178, expect.objectContaining({ type: 'claim_restart_payment', verifiedNoPayment: true })));
+  await waitFor(() => expect(claimRequest).toHaveBeenCalledWith('/admin/booking-support/178/claims/actions', expect.objectContaining({ type: 'claim_restart_payment', verifiedNoPayment: true })));
+});
+
+it("a storage rental's claim is read and decided through the storage case (it had no admin screen before, QA Oct 28)", async () => {
+  claimRequest.mockClear();
+  render(<QueryClientProvider client={new QueryClient()}><DamageClaimPanel storageRentalId={44} /></QueryClientProvider>);
+  expect(await screen.findByTestId('claim-payment-review')).toBeInTheDocument();
+  expect(claimRequest).toHaveBeenCalledWith('/admin/storage-rentals/44/claims');
 });

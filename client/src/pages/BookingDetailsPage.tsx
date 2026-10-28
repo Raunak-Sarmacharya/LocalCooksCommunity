@@ -1440,9 +1440,11 @@ export default function BookingDetailsPage() {
     queryFn: () => claimRequest<{ claims: DamageClaimCardData[] }>(`/bookings/${booking!.id}/damage-claims`), retry: false });
   const claims = claimsQuery.data?.claims;
   const visibleClaims = claims?.filter(claim => claim.claimVersion === 2 && claim.status !== 'draft' && (isManagerView || claim.chefVisible));
-  const unreportedVisits = (booking?.visits || []).filter(visit => !claims?.some(claim => claim.claimVersion === 2 && claim.status !== 'draft' && claim.visitId === visit.id));
+  // Only days still on the booking can be reported: not replaced, declined or cancelled ones (QA walk Oct 28: a cancelled day was offered).
+  const claimableVisits = datedBooking ? bookingDays.filter(visit => visit.scheduleState !== 'cancelled') : booking?.visits || [];
+  const unreportedVisits = claimableVisits.filter(visit => !claims?.some(claim => claim.claimVersion === 2 && claim.status !== 'draft' && claim.visitId === visit.id));
   const alreadyReported = !!claims?.some(claim => claim.claimVersion === 2 && claim.status !== 'draft')
-    && (!(booking?.visits || []).length || unreportedVisits.length === 0);
+    && (!claimableVisits.length || unreportedVisits.length === 0);
   const latestClaim = visibleClaims?.reduce<DamageClaimCardData | undefined>((latest, claim) => !latest || claim.id > latest.id ? claim : latest, undefined);
   const settledClaim = latestClaim?.status === 'charge_succeeded' ? { outcome: 'chef_paid' as const, amount: claimMoney(latestClaim.amountCents, i18n.language) }
     : latestClaim?.status === 'resolved' && latestClaim.kitchenPaid && ['closed', 'write_off'].includes(latestClaim.resolutionType || '') && latestClaim.fundedBy === 'local_cooks'

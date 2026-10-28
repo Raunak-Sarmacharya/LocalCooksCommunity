@@ -6,6 +6,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { claimFilingWindow } from '@shared/damage-claims';
 import { recordedDepartureAt } from '@shared/clock-closeout';
 import { DamageClaimSheet } from './DamageClaimSheet';
+import { formatTime } from '@/lib/formatters';
+
+type ClaimVisit = { id: number; visitDate?: string | null; startTime?: string; endTime?: string };
 
 type DepartureRow = Parameters<typeof recordedDepartureAt>[0];
 
@@ -26,10 +29,14 @@ export function claimFilingOpen(input: { bookedEndAt: Date | string | null | und
  * which visit, then the three-step sheet opens.
  */
 export function ManagerDamageClaimEntry({ bookingId, chefName, visits, mode = 'inline', open = false, onOpenChange, onFiled }: {
-  bookingId: number; chefName: string; visits: Array<{ id: number }>;
+  bookingId: number; chefName: string; visits: ClaimVisit[];
   mode?: 'inline' | 'secondary'; open?: boolean; onOpenChange?: (open: boolean) => void; onFiled?: () => void;
 }) {
-  const { t } = useTranslation('booking');
+  const { t, i18n } = useTranslation('booking');
+  // The day itself ("Oct 28, 2026 · 12:30 p.m. – 3:30 p.m."), as Booking days shows it; older rows without a date keep "Visit N".
+  const label = (visit: ClaimVisit, index: number) => visit.visitDate && visit.startTime && visit.endTime
+    ? `${new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium', timeZone: 'UTC' }).format(new Date(`${visit.visitDate.slice(0, 10)}T12:00:00Z`))} · ${formatTime(visit.startTime, i18n.language)} – ${formatTime(visit.endTime, i18n.language)}`
+    : t('dcV2Visit', { number: index + 1 });
   const [visitId, setVisitId] = useState(visits.at(-1)?.id);
   const [chosen, setChosen] = useState(visits.length <= 1);
   if (mode === 'secondary') {
@@ -39,7 +46,7 @@ export function ManagerDamageClaimEntry({ bookingId, chefName, visits, mode = 'i
         <DialogContent>
           <DialogHeader><DialogTitle>{t('dcV2Report')}</DialogTitle><DialogDescription>{t('dcV2AffectedVisit')}</DialogDescription></DialogHeader>
           <div className="grid gap-2">{visits.map((visit, index) => <Button key={visit.id} type="button" variant="outline" className="min-h-11 justify-start"
-            onClick={() => { setVisitId(visit.id); setChosen(true); }}>{t('dcV2Visit', { number: index + 1 })}</Button>)}</div>
+            onClick={() => { setVisitId(visit.id); setChosen(true); }}>{label(visit, index)}</Button>)}</div>
         </DialogContent>
       </Dialog>
       <DamageClaimSheet bookingId={bookingId} visitId={visitId} chefName={chefName} hideTrigger open={open && chosen}
@@ -48,7 +55,7 @@ export function ManagerDamageClaimEntry({ bookingId, chefName, visits, mode = 'i
   }
   return <div className="flex flex-wrap items-center gap-3">
     {visits.length > 1 && <label className="text-sm">{t('dcV2AffectedVisit')} <Select value={String(visitId)} onValueChange={value => setVisitId(Number(value))}><SelectTrigger className="inline-flex w-auto min-w-[8rem]"><SelectValue /></SelectTrigger><SelectContent>
-      {visits.map((visit, index) => <SelectItem key={visit.id} value={String(visit.id)}>{t('dcV2Visit', { number: index + 1 })}</SelectItem>)}</SelectContent></Select></label>}
+      {visits.map((visit, index) => <SelectItem key={visit.id} value={String(visit.id)}>{label(visit, index)}</SelectItem>)}</SelectContent></Select></label>}
     <DamageClaimSheet bookingId={bookingId} visitId={visitId} chefName={chefName} />
   </div>;
 }

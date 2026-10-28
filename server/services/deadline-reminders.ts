@@ -39,9 +39,10 @@ export async function currentDeadlineReminders(tx: Transaction, source: Reminder
     if (!claim || claim.status !== 'submitted' || claim.chefRespondedAt || !claim.submittedAt) return [];
     const [location] = await tx.select({ timezone: locations.timezone }).from(locations).where(eq(locations.id, claim.locationId)).limit(1);
     // Owning resource can be kitchen or standalone storage; recipient remains the claim's chef.
-    tasks.push({ source, id, resource: `claim-${id}`, opened: claim.submittedAt, deadline: claim.chefResponseDeadline,
+    // The chef's 72 h start when Local Cooks sends the claim (chefVisibleAt), not when the kitchen filed it.
+    tasks.push({ source, id, resource: `claim-${id}`, opened: claim.chefVisibleAt ?? claim.submittedAt, deadline: claim.chefResponseDeadline,
       ownerId: claim.chefId, role: 'chef', timezone: location?.timezone || DEFAULT_TIMEZONE, path: chefIssuesHref('damage-claims'),
-      title: `Damage claim #${id}: response due`, inspection: false });
+      title: `Damage claim ${claim.referenceCode || `#${id}`}: response due`, inspection: false });
   } else if (source === 'penalty') {
     const [row] = await tx.select({ penalty: storageOverstayRecords, storage: storageBookings, location: locations })
       .from(storageOverstayRecords).innerJoin(storageBookings, eq(storageBookings.id, storageOverstayRecords.storageBookingId))

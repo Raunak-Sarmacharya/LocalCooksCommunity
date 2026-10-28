@@ -1,5 +1,5 @@
 import { apiClient } from '@/lib/api';
-import { CLAIM_BOOKING_HOLD_MS, type ClaimLine, type ClaimVisitEvidence, type ClaimSupportInput } from '@shared/damage-claims';
+import { CLAIM_BOOKING_HOLD_MS, type ClaimLine, type ClaimVisitEvidence } from '@shared/damage-claims';
 
 export type DamageClaimCardData = { id: number; referenceCode: string | null; bookingId: number | null; visitId: number | null; storageRentalId?: number | null;
   /** Which booking and day the claim is about (kitchen bookings). */
@@ -30,4 +30,3 @@ export const claimWhen = (at: string, timezone: string, locale: string) => new I
 /** Last day to pay an upheld charge before new bookings pause (the existing 7-day hold after the final decision). */
 export const claimPayByDate = (upheldAt: string, timezone: string, locale: string) => new Intl.DateTimeFormat(locale,
   { timeZone: timezone, month: 'short', day: 'numeric' }).format(new Date(new Date(upheldAt).getTime() + CLAIM_BOOKING_HOLD_MS));
-export const claimAction = (bookingId: number, input: ClaimSupportInput) => claimRequest(`/admin/booking-support/${bookingId}/claims/actions`, input);

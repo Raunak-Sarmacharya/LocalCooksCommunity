@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-vi.mock('@/lib/damage-claims', () => ({ claimRequest: vi.fn(), claimAction: vi.fn(), claimMoney: (cents: number) => `$${(cents / 100).toFixed(2)}` }));
+vi.mock('@/lib/damage-claims', () => ({ claimRequest: vi.fn(), claimMoney: (cents: number) => `$${(cents / 100).toFixed(2)}` }));
 vi.mock('@/components/booking/DamageClaimCards', () => ({ ClaimEvidence: () => null, ClaimTimeline: () => null }));
 import { claimShownCents } from './DamageClaimReview';
 import { splitReplyEvidence } from './booking-support/DamageClaimPanel';
