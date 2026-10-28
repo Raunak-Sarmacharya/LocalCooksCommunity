@@ -17,6 +17,8 @@ type Visit = typeof kitchenBookingVisits.$inferSelect;
 const hour = 3_600_000;
 const reminderSources = ['booking', 'booking_review', 'cancellation_review', 'manager_decision'] as const;
 const reminderRows = (id: number) => sql`(${sql.join(reminderSources.map(source => sql`${emailLogs.trackingId} LIKE ${`advance:${source}:${id}:%`}`), sql` OR `)})`;
+// The reminder records themselves. Send attempts share their tracking id but keep the email's text, not reminder JSON.
+const reminderIntents = (id: number) => and(eq(emailLogs.category, 'advance_reminder'), reminderRows(id))!;
 
 const localParts = (instant: number, timezone: string) => {
   const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit',
@@ -307,7 +309,7 @@ async function jumpBookingOnce(id: number, to: Date, actorId: number, expectedUp
     // (a fresh key whose time has just passed would count as a missed lead and never send).
     for (const source of reminderSources) {
       const current = await currentReminders(tx, source, id);
-      for (const row of await tx.select().from(emailLogs).where(and(sql`${emailLogs.trackingId} LIKE ${`advance:${source}:${id}:%`}`, inArray(emailLogs.status, ['scheduled', 'failed'])))) {
+      for (const row of await tx.select().from(emailLogs).where(and(eq(emailLogs.category, 'advance_reminder'), sql`${emailLogs.trackingId} LIKE ${`advance:${source}:${id}:%`}`, inArray(emailLogs.status, ['scheduled', 'failed'])))) {
         // Same reminder = same visit, kind, person and (already moved) due time; the 12 h and 2 h kitchen reminders share a kind.
         const saved = JSON.parse(row.textBody || '{}') as { reminder?: { resource: string; kind: string; recipientId: number; due: string }; channel?: 'email' | 'notification' };
         const resource = saved.reminder && replaceKeys(saved.reminder.resource, keys);
@@ -351,7 +353,7 @@ async function jumpBookingOnce(id: number, to: Date, actorId: number, expectedUp
   });
   await step('feedback', async () => (await import('./booking-feedback-service')).remindBookingFeedback(id));
   const { dispatchAdvanceReminders } = await import('./advance-reminders');
-  for (const row of await db.select({ id: emailLogs.id }).from(emailLogs).where(and(reminderRows(id), eq(emailLogs.status, 'scheduled'),
+  for (const row of await db.select({ id: emailLogs.id }).from(emailLogs).where(and(reminderIntents(id), eq(emailLogs.status, 'scheduled'),
     sql`(${emailLogs.textBody}::jsonb->'reminder'->>'due')::timestamptz <= now()`)))
     await step('reminder', () => dispatchAdvanceReminders({ onlyLogId: row.id, limit: 1 }));
   await step('notices', async () => (await import('./booking-lifecycle-delivery')).deliverBookingLifecycleEvents(10, 12_000, id));
@@ -359,7 +361,7 @@ async function jumpBookingOnce(id: number, to: Date, actorId: number, expectedUp
   const notices = (await db.select({ kind: bookingLifecycleEvents.kind, completedAt: bookingLifecycleEvents.completedAt }).from(bookingLifecycleEvents)
     .where(and(eq(bookingLifecycleEvents.bookingId, id), sql`${bookingLifecycleEvents.id} > ${lastEvent}`)).orderBy(bookingLifecycleEvents.id))
     .map(row => ({ kind: row.kind, sent: !!row.completedAt }));
-  const reminders = (await db.select({ id: emailLogs.id, textBody: emailLogs.textBody }).from(emailLogs).where(and(reminderRows(id), eq(emailLogs.status, 'sent'))))
+  const reminders = (await db.select({ id: emailLogs.id, textBody: emailLogs.textBody }).from(emailLogs).where(and(reminderIntents(id), eq(emailLogs.status, 'sent'))))
     .filter(row => !sentBefore.has(row.id)).map(row => { const saved = JSON.parse(row.textBody || '{}'); return { kind: String(saved.reminder?.kind), role: String(saved.reminder?.role), channel: String(saved.channel) }; });
   logger.info('[TestClock] Booking moved', { id, actorId, movedMs: ms });
   return { movedMs: ms, notices, reminders };

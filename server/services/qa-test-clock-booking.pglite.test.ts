@@ -122,6 +122,12 @@ describe('booking jump', () => {
     expect(holder.expired).toContain('closeout');
   });
 
+  it('jumps a booking whose reminder email failed: the send attempt keeps plain email text, not reminder JSON (QA walk Oct 28)', async () => {
+    const version = await seed('confirmed', 'paid');
+    await pg.query(`INSERT INTO email_logs(recipient_email, category, status, tracking_id, text_body, retry_count, created_at) VALUES ('a@x', 'advance_reminder_attempt', 'failed', 'advance:booking:1:k:arrival:380:email:abc', 'Prepare for your kitchen visit\n\nHi TestSprite chef', 1, now())`);
+    await expect(jumpBooking(1, new Date(Date.now() + day - 2 * jumpGraceMs), 9, version)).resolves.toMatchObject({ movedMs: expect.any(Number) });
+  });
+
   it("releases a multi-day booking's day payout once a jump makes it due, and not before", async () => {
     const version = await seed('confirmed', 'paid');
     await pg.exec('DELETE FROM kitchen_booking_day_payouts');

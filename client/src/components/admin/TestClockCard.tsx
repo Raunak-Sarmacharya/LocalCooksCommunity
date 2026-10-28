@@ -54,6 +54,10 @@ export function TestClockCard({ kind, id, timezone, onMoved }: { kind: 'tour' | 
     },
     onError: () => { setConfirming(null); void clock.refetch(); },
   });
+  const worker = useMutation({
+    mutationFn: () => call<{ ran: boolean; reason?: 'busy' | 'disabled'; deferred?: boolean; failures?: number }>('/api/admin/test-clock/worker', { method: 'POST' }),
+    onSuccess: () => { void clock.refetch(); onMoved?.(); },
+  });
   const now = clock.data ? Date.parse(clock.data.now) : Date.now();
 
   return (
@@ -68,7 +72,7 @@ export function TestClockCard({ kind, id, timezone, onMoved }: { kind: 'tour' | 
             : `Jumped to "${last.step.label}" (${untilLabel(last.result.movedMs)} earlier), running each step on the way in order.`}</p>
           {!last.result.notices.length && !last.result.reminders.length ? <p className="text-muted-foreground">Nothing was sent: no message was due at this step.</p>
             : <ul className="list-disc pl-5">
-              {last.result.notices.map((notice, index) => <li key={`n${index}`}>{noticeName(notice.kind)}{notice.sent ? ' · sent' : ' · still sending (the worker retries it)'}</li>)}
+              {last.result.notices.map((notice, index) => <li key={`n${index}`}>{noticeName(notice.kind)}{notice.sent ? ' · sent' : ' · not sent yet (the background worker retries it; run it below)'}</li>)}
               {last.result.reminders.map((reminder, index) => <li key={`r${index}`}>{reminder.kind === 'arrival' ? 'Arrival reminder' : noticeName(reminder.kind)} to the {reminder.role === 'manager' ? 'kitchen' : kind === 'tour' ? 'visitor' : 'customer'} · {reminder.channel === 'email' ? 'email' : 'in-app'} sent</li>)}
             </ul>}
         </div>}
@@ -97,6 +101,14 @@ export function TestClockCard({ kind, id, timezone, onMoved }: { kind: 'tour' | 
                 </div>
               </div>}
             </li>))}</ol>}
+        <div className="space-y-2 border-t pt-3">
+          <p className="text-muted-foreground">Some work runs in the background worker, every 30 minutes on dev: retries of messages that didn't send, and the sweeps that close out old records. Run it now instead of waiting.</p>
+          <Button variant="outline" size="sm" className="min-h-9" disabled={worker.isPending} onClick={() => worker.mutate()}>{worker.isPending ? 'Running…' : 'Run background worker now'}</Button>
+          {worker.isError && <p role="alert" className="text-destructive">{worker.error.message}</p>}
+          {worker.data && <p role="status">{!worker.data.ran ? worker.data.reason === 'busy' ? 'The worker is already running. Try again in a minute.' : 'The background worker is turned off here.'
+            : worker.data.failures ? `Ran, but ${worker.data.failures} task${worker.data.failures === 1 ? '' : 's'} failed. Check the email log or Sentry.`
+            : worker.data.deferred ? 'Ran part of the work (it has a time limit). Run it again to finish.' : 'Done. Everything that was due has run.'}</p>}
+        </div>
       </CardContent>
     </Card>
   );
