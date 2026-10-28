@@ -37,6 +37,13 @@ describe('claim recipient privacy and notices', () => {
     expect(state.notices[1].message).toContain('reported damage or extra cleaning: $15.00. Pay or dispute by'); expect(state.notices[1].message).not.toContain('dcV2');
     expect(state.notices[0].message).not.toContain('internal');
   });
+  it('a missed deadline is worded as missed, never as a dispute, to both people (QA walk Oct 28)', async () => {
+    await queueDamageClaimNotice(tx, claim('under_review', true), history('escalated_to_admin'));
+    const kitchen = state.notices.find(item => item.userId === 2), chef = state.notices.find(item => item.userId === 5);
+    expect(kitchen.message).toContain('didn’t pay or dispute your claim by the deadline');
+    expect(chef.message).toContain('You didn’t pay or dispute');
+    for (const item of [kitchen, chef]) expect(item.message).not.toMatch(/disputed|your dispute/);
+  });
 });
 
 

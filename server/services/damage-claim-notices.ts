@@ -17,6 +17,8 @@ export async function queueDamageClaimNotice(tx: ClaimTx, claim: Claim, history:
   const event = history.action === 'booking_hold_started' ? 'hold' : history.action === 'claim_release_hold' ? 'released'
     : claim.status === 'in_review' ? 'firstReview' : claim.status === 'awaiting_kitchen' ? 'askInfo'
     : history.action === 'claim_withdrawn' ? 'withdrawn' : history.action === 'kitchen_paid' ? 'kitchenPaid' : history.action === 'chef_paid' ? 'paid'
+    // The chef's deadline passed with no answer: not a dispute, so it must not be worded as one (QA walk Oct 28).
+    : history.action === 'escalated_to_admin' ? 'missed'
     : claim.status === 'under_review' ? 'review' : history.action === 'claim_compensate' ? 'compensate'
     : ['rejected', 'resolved'].includes(claim.status) ? 'closed' : ['approved', 'partially_approved'].includes(claim.status) ? 'upheld' : 'sent';
   const publicMessage = (history.metadata as { publicMessage?: string })?.publicMessage || '';
