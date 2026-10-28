@@ -238,7 +238,8 @@ async function jumpStorageOnce(id: number, to: Date, actorId: number, expectedUp
   const grouped = new Map<string, { kind: string; sent: boolean }>();
   for (const row of queued) {
     const key = row.trackingId!.replace(/:\d+$/, ''), saved = grouped.get(key);
-    grouped.set(key, { kind: key.split(':')[2], sent: (saved?.sent ?? true) && row.status === 'sent' });
+    // Skipped on purpose (a test address, or email turned off) is done, not pending.
+    grouped.set(key, { kind: key.split(':')[2], sent: (saved?.sent ?? true) && ['sent', 'skipped_policy', 'skipped_preference'].includes(row.status) });
   }
   const reminders = (await db.select({ id: emailLogs.id, textBody: emailLogs.textBody }).from(emailLogs).where(and(reminderIntents(targets), eq(emailLogs.status, 'sent'))))
     .filter(row => !sentBefore.has(row.id)).map(row => { const saved = JSON.parse(row.textBody || '{}'); return { kind: String(saved.reminder?.kind), role: String(saved.reminder?.role), channel: String(saved.channel) }; });
