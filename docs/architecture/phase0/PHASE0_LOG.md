@@ -1568,3 +1568,14 @@ Checked on dev against QA's own records (TOUR-103, KB-TASH8T #239, KB-Z856HK #24
 - Kitchen booking page offered "View payout statements" before any payout (⋯ menu, empty list) → only once a kitchen statement exists. Owner: keep stuck "SMTP uncertain" emails as admin-reconciled.
 - Location → Booking defaults had no Save since Oct 19 (only the leave dialog), and the location save request dropped `taxRatePercent`, so HST never saved from there → section Save + tax sent; verified live 15→14→15 on location 47 (kitchen 54 follows).
 - Location page: booking rules and arrival timing now save independently, each at its card's foot (Shopify/Stripe per-card pattern the page already used). Leave-page Save saves the rules, then opens arrival timing's confirmation (it affects booked visits) instead of silently refusing. Verified live; synthetic location 47 restored.
+
+## Oct 28 (afternoon): QA checkpoint 1: test clock walks, background worker button, QA guide
+- Admin test-clock card: "Run background worker now" (admin, dev-only gate; worker lock prevents overlap; busy/partial/failed in plain words).
+- Walked live on dev: day-3 booking feedback reminder (#212), time change unanswered (#216), extra time unanswered (#216). Found and fixed:
+  booking jump 503 on a failed reminder email (send attempts parsed as reminder JSON); a booking's own extra-time/time-change holds blocked its jump
+  (and the hold didn't move with it); delivery running out of time counted as a failure and paged admins; `.test` recipients looped retries and
+  alerts; whole-booking notices counted cancelled days; in-app reminder titles used the subject saved at planning (old end time); card's
+  confirm opened on every step sharing a time. Overstay test flaked across the Nov 1 DST change (floor → round).
+- Unpaid cancellation-request auto-accept is unreachable (unpaid items cancel at once): documented as untestable by design, no clock step.
+- Document reminders stay 45/14/3 + day of (owner: already built, keep).
+- docs/QA_TEST_CLOCK.md: worker button, walkthroughs, can't-test-by-design, not-on-clock-yet.

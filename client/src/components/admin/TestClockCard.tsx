@@ -91,9 +91,9 @@ export function TestClockCard({ kind, id, timezone, onMoved }: { kind: 'tour' | 
                   <p className="font-medium">{step.label}</p>
                   <p className="text-xs text-muted-foreground">{formatTourWhen(step.at, null, timezone)} · <span className="whitespace-nowrap">in {untilLabel(Date.parse(step.at) - now)}</span></p>
                 </div>
-                {confirming?.at !== step.at && <Button variant="outline" size="sm" className="min-h-9 shrink-0" disabled={jump.isPending} onClick={() => setConfirming(step)}>Jump here</Button>}
+                {!(confirming?.key === step.key && confirming.at === step.at) && <Button variant="outline" size="sm" className="min-h-9 shrink-0" disabled={jump.isPending} onClick={() => setConfirming(step)}>Jump here</Button>}
               </div>
-              {confirming?.at === step.at && <div className="mt-2 space-y-2 rounded-md bg-muted p-3">
+              {confirming?.key === step.key && confirming.at === step.at && <div className="mt-2 space-y-2 rounded-md bg-muted p-3">
                 <p>Move {clock.data!.reference} {untilLabel(Date.parse(step.at) - now)} earlier and run what's due? This can't be undone.</p>
                 <div className="flex gap-2">
                   <Button size="sm" className="min-h-9" disabled={jump.isPending} onClick={() => jump.mutate(step)}>{jump.isPending ? 'Jumping…' : 'Jump'}</Button>

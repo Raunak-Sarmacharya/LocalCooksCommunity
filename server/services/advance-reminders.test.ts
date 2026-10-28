@@ -954,6 +954,14 @@ describe('manager "chef has not checked in" alert', () => {
   const noCheckin = () => state.logs.filter(row => JSON.parse(row.textBody).reminder.kind === 'manager_no_checkin');
   const sentNoCheckin = () => state.send.mock.calls.map(([content]) => content).filter(content => content.to === 'host@example.test' && /checked in yet/.test(content.text));
   beforeEach(() => { state.people[0].managerProfileData = { fullName: 'Alex' }; });
+  it('builds the in-app title from current times, not the subject saved when it was planned (QA walk Oct 28)', async () => {
+    await schedule();
+    for (const row of noCheckin()) row.subject = 'Stale subject from an older plan';
+    await dispatch(new Date('2026-10-05T08:15:00Z'), 30);
+    const alert = state.alerts.find(value => /checked in yet/.test(value.message));
+    expect(alert.title).toContain('Alex hasn’t checked in yet');
+    expect(alert.title).not.toContain('Stale');
+  });
   it('schedules one in-app and one email notice 15 minutes after the booked start, then sends once', async () => {
     await schedule();
     expect(noCheckin()).toHaveLength(2);
