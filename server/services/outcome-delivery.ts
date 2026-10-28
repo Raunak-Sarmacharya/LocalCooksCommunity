@@ -171,9 +171,11 @@ export async function deliverOutcomeEmails(limit = 10, budgetMs = 20_000, onlyLo
             const result = await tx.execute(sql`SELECT status FROM payment_transactions WHERE id = ${id}`);
             if (result.rows[0]) currentState = String(result.rows[0].status).replaceAll('_', ' ');
           }
-          const note = `Recorded outcome notice from ${emailLocalDateTimeSentence(intent.createdAt, undefined, recipientLocale || 'en-CA')}. Current state: ${currentState}. Historical money evidence below remains unchanged. Use the current page for available actions and current deadlines; older instructions may be obsolete.`;
+          // Only a late re-send needs a note; the first send is just the notice (QA Oct 28: chefs read internal wording and raw states).
+          const note = intent.retryCount > 0 ? `This email was delayed; we first tried to send it on ${emailLocalDateTimeSentence(intent.createdAt, undefined, recipientLocale || 'en-CA')}. Things may have changed since, so open the page for the latest status and what to do next.\n\n` : '';
           sent = await sendEmail(storageContent || problemContent || bookingDeliveryEmail({ to: intent.recipientEmail, subject: intent.subject,
-            text: `${note}\n\n${intent.textBody || ''}` }, 'lifecycle_outcome_attempt'),
+            // A checkout outcome's current message ("Your refund … was sent") is the notice itself.
+            text: `${note}${kind === 'checkout-outcome' ? `${currentState}\n\n` : ''}${intent.textBody || ''}` }, 'lifecycle_outcome_attempt'),
             { trackingId: intent.trackingId!, emailType: 'lifecycle_outcome_attempt', durableDelivery: true, retryOfId: intent.id });
         }
         catch { sent = false; }

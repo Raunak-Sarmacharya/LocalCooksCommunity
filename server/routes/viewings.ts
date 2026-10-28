@@ -1957,8 +1957,13 @@ router.get(
           chefPhone: r.viewing.chefId ? await getChefPhone(r.viewing.chefId) : null,
         }))
       );
+      // Someone already applying or approved here is a customer: the tour offers "View customer", not "Add as customer" (QA Oct 28).
+      const chefIds = Array.from(new Set(filtered.map(r => r.viewing.chefId).filter((id): id is number => id != null)));
+      const applied = chefIds.length ? await db.select({ chefId: chefKitchenApplications.chefId, locationId: chefKitchenApplications.locationId })
+        .from(chefKitchenApplications).where(and(inArray(chefKitchenApplications.chefId, chefIds), inArray(chefKitchenApplications.status, ['inReview', 'approved']))) : [];
+      const customerAt = new Set(applied.map(row => `${row.chefId}:${row.locationId}`));
 
-      res.json(withNames);
+      res.json(withNames.map(row => ({ ...row, isCustomer: customerAt.has(`${row.viewing.chefId}:${row.viewing.locationId}`) })));
     } catch (error) {
       logger.error("Error fetching manager viewings:", error);
       return errorResponse(res, error);

@@ -60,3 +60,16 @@ it('shows loading and retry on failure without claiming an empty history', async
   expect(await screen.findByText('No recorded activity is available for this tour.')).toBeInTheDocument();
   client.clear();
 });
+it('speaks to the chef as "you", while the kitchen reads "Customer" (QA Oct 28)', async () => {
+  const events = [{ key: '1', kind: 'reconfirmation_replied', actor: 'chef', recordedAt: '2026-10-07T12:00:00Z', reply: 'still_coming' }];
+  vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ complete: true, events }) })));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const view = render(<QueryClientProvider client={client}><TourHistoryPanel id={10} version="v" role="chef" /></QueryClientProvider>);
+  expect(await screen.findByText('You confirmed you’re still coming')).toBeInTheDocument();
+  expect(screen.queryByText('Customer is still coming')).not.toBeInTheDocument();
+  view.unmount(); client.clear();
+  const manager = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(<QueryClientProvider client={manager}><TourHistoryPanel id={10} version="v" role="manager" /></QueryClientProvider>);
+  expect(await screen.findByText('Customer is still coming')).toBeInTheDocument();
+  manager.clear();
+});

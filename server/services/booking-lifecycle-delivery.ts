@@ -77,7 +77,8 @@ export async function confirmationArrivalDetails(bookingId: number, tx: Transact
       visit.instructionsReleased ? [tEmail(locale, 'instructionsReleased'), `Arrival instructions: ${duties.arrival.instructions || ''}`,
         `Departure instructions: ${duties.departure.instructions || ''}`, `Required tasks/photos: ${tasks || 'None requested'}`].join('\n')
         : tEmail(locale, 'instructionsReleaseOverview', { releaseAt: `${formatter.format(new Date(visit.instructionsReleaseAt))} (${zoneName})`, hours: timing.preparationReminderHours }),
-      `Open your visit: ${getAppBaseUrl('chef')}/booking/${bookingId}/visit${visitId ? `?visitId=${visitId}` : ''}`].filter(Boolean).join('\n');
+      // No bare link here (QA Oct 28: the email showed the raw visit URL); the email's button and the notice open the booking.
+    ].filter(Boolean).join('\n');
   }).join('\n\n');
   return { instructionsReleased: release.instructionsReleased, instructionsReleaseAt: release.instructionsReleaseAt,
     timezone: row.timezone || DEFAULT_TIMEZONE, arrivalMode: arrivalModeFor(codes), preparationHours: timing.preparationReminderHours,

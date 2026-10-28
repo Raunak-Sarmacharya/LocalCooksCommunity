@@ -354,7 +354,8 @@ export async function loadCustomerReadInput(managerId: number, locationId: numbe
   ]);
   const requirements = new Map(requirementsEntries);
   const visibleTours = tourRows.filter(managerVisibleTour).map(({ adminReviewDecision: _decision, cancelledBy: _cancelledBy, ...tour }) => tour) as RawTour[];
-  const candidateTours = visibleTours.filter(tour => tour.status === 'confirmed' && tour.scheduledAt.getTime() + tour.durationMinutes * 60_000 <= now.getTime()).map(tour => tour.id);
+  // Feedback stays open after "They came" (completed), so its answer must count there too (QA Oct 28).
+  const candidateTours = visibleTours.filter(tour => ['confirmed', 'completed'].includes(tour.status) && tour.scheduledAt.getTime() + tour.durationMinutes * 60_000 <= now.getTime()).map(tour => tour.id);
   const feedbackRows = candidateTours.length ? await db.select({ viewingId: tourFeedbackResponses.viewingId }).from(tourFeedbackResponses)
     .where(and(inArray(tourFeedbackResponses.viewingId, candidateTours), eq(tourFeedbackResponses.respondentRole, 'manager'), eq(tourFeedbackResponses.respondentId, managerId))) : [];
   const applicationsRaw: RawApplication[] = appRows.map(row => ({

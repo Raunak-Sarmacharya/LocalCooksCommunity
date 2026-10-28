@@ -3185,7 +3185,7 @@ export function bookingDeliveryEmail(content: EmailContent, emailType?: string):
     .trim();
   return { ...renderTransactionalEmail({ to: content.to, subject: content.subject, heading,
     recipientName: 'there', message: text, facts,
-    actionLabel: storageCheckout ? /Request/i.test(content.subject) ? 'Review checkout' : 'View claim' : 'View current record', actionUrl: url }),
+    actionLabel: storageCheckout ? /Request/i.test(content.subject) ? 'Review checkout' : 'View claim' : 'View details', actionUrl: url }),
     attachments: content.attachments, headers: content.headers };
 }
 

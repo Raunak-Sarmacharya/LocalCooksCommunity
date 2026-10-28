@@ -14,6 +14,7 @@ import { tourListState } from "@/lib/tour-list-status";
 import { useState, useEffect, useRef, type MutableRefObject } from "react"
 import { TourSupportCard } from '@/components/tour/TourSupportCard';
 import { useLocation, useSearch } from "wouter"
+import { customerHref } from "@/components/manager/customers/customer-format"
 import { mt } from "@/i18n/manager"
 import { useQuery, useQueries, useMutation, useQueryClient } from "@tanstack/react-query"
 import { KitchenTour, Clock, Loader2, CheckCircle, XCircle, AlertTriangle, FileText, X, CalendarClock, ArrowRight, ChevronDown } from "@/components/ui/manager-icons"
@@ -114,6 +115,8 @@ interface ViewingRecord {
   chefEmail: string | null
   chefPhone: string | null
   chefName?: string | null
+  /** Already applying or approved at this location. */
+  isCustomer?: boolean
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -295,7 +298,7 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
       : selectedViewing.viewing.status === 'confirmed' && !selectedViewing.viewing.disruptionReason
         ? canRecord ? 'tourNextRecord' : feedbackAfterEnd ? selectedViewing.viewing.managerFeedbackSubmitted ? 'tourNextFeedbackSubmitted' : 'tourNextFeedback'
           : new Date(selectedViewing.viewing.scheduledAt).getTime() > Date.now() ? 'tourNextPrepare' : 'tourNextHost'
-        : tourFinished ? selectedViewing.viewing.status === 'completed' ? 'tourNextToured' : 'tourNextUnrecorded'
+        : tourFinished ? selectedViewing.isCustomer ? 'tourNextAlreadyCustomer' : selectedViewing.viewing.status === 'completed' ? 'tourNextToured' : 'tourNextUnrecorded'
         : feedbackAfterEnd && selectedViewing.viewing.managerFeedbackSubmitted ? 'tourNextFeedbackSubmitted' : null
     : null
 
@@ -730,7 +733,7 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
                     <Button disabled={updateStatusMutation.isPending} onClick={() => setStatusAction('complete')}>{mt('tourTheyCame')}</Button>
                     <Button variant="outline" disabled={updateStatusMutation.isPending} onClick={() => { setAbsentConfirmed(false); setNoShowReason('visitor_absent'); setStatusAction('no_show') }}>{mt('tourReportNoShow')}</Button>
                   </>}
-                  {tourFinished && <Button onClick={() => requestNavigation(() => { window.location.href = `/manager/booking-dashboard?view=customers&add=1&location=${selectedViewing.viewing.locationId}&name=${encodeURIComponent(selectedViewing.chefName || '')}&email=${encodeURIComponent(selectedViewing.chefEmail || '')}` })}>{mt('tourAddAsCustomer')}</Button>}
+                  {tourFinished && !selectedViewing.isCustomer && <Button onClick={() => requestNavigation(() => { window.location.href = `/manager/booking-dashboard?view=customers&add=1&location=${selectedViewing.viewing.locationId}&name=${encodeURIComponent(selectedViewing.chefName || '')}&email=${encodeURIComponent(selectedViewing.chefEmail || '')}` })}>{mt('tourAddAsCustomer')}</Button>}
                   {showFeedbackAction && <Button ref={feedbackTrigger} variant={canShareFeedback && !canRecord && !tourFinished ? 'default' : 'outline'} aria-haspopup="dialog" onClick={() => setFeedbackTargetId(selectedViewing.viewing.id)}>{mt(canShareFeedback ? 'tourFeedbackOpen' : 'tourFeedbackView', { ns: 'common' })}</Button>}
                   {selectedViewing.viewing.status === 'pending' && Date.parse(selectedViewing.viewing.scheduledAt) <= Date.now() && <Button variant="outline" onClick={() => setStatusAction('cancel')}>{mt('tourCloseExpiredRequest')}</Button>}
                   {selectedViewing.viewing.status === 'pending' && Date.parse(selectedViewing.viewing.scheduledAt) > Date.now() && <Button onClick={() => setStatusAction('confirm')} disabled={updateStatusMutation.isPending || proposeReschedule.isPending || !!selectedViewing.viewing.rescheduleProposedSlots?.length}>{mt('acceptViewing')}</Button>}
@@ -883,6 +886,8 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
                   <div className="min-w-0 [&_button]:h-auto [&_button]:min-h-11 [&_button]:w-full [&_button]:whitespace-normal [&_button]:py-2">
                     <TourChatButton tour={selectedViewing.viewing} role="manager" openFromLink buttonLabel={mt('tourMessageVisitor', { name: selectedViewing.chefName?.trim().split(/\s+/)[0] || mt('chef') })} />
                   </div>
+                  <a href={customerHref(selectedViewing.viewing.chefId, selectedViewing.viewing.locationId)} className="inline-flex min-h-11 items-center font-medium underline underline-offset-4"
+                    onClick={event => { event.preventDefault(); const href = customerHref(selectedViewing.viewing.chefId, selectedViewing.viewing.locationId); requestNavigation(() => navigate(href)) }}>{mt('cuViewCustomer')}</a>
                 </section>
                 <div className="order-5 min-w-0 [&>section]:rounded-2xl [&>section]:p-4 sm:[&>section]:px-5"><TourHistoryPanel id={selectedViewing.viewing.id} version={selectedViewing.viewing.updatedAt} customerName={selectedViewing.chefName?.trim() || undefined} /></div>
               </aside>

@@ -21,12 +21,19 @@ const when = (time: string) => ampm(formatTourWhen(time, null, 'America/St_Johns
 const compactWhen = (time: string) => ampm(new Intl.DateTimeFormat('en-US', {
   timeZone: 'America/St_Johns', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true,
 }).format(new Date(time)));
-function eventLabel(event: TourHistoryEvent) {
-  if (event.kind === 'reconfirmation_replied' && event.reply) return mt(`tourHistory_reply_${event.reply}`);
-  if (event.kind === 'status' && event.outcome === 'unverified') return mt('tourHistory_status_unverified');
-  if (event.kind === 'status') return mt(event.status ? `tourHistory_status_${event.outcome === 'disrupted' ? 'disrupted' : event.outcome === 'declined' ? 'declined' : event.status}` : 'tourHistoryUpdated');
-  if (event.kind === 'attendance_assisted' && event.action === 'check_in') return mt('tourHistory_arrival_assisted');
-  return mt(`tourHistory_${eventKeys[event.kind]}`);
+// Labels written about "the customer" read wrong to the chef; these keys have a "you" version (QA Oct 28).
+const chefWorded = new Set(['tourHistory_reply_still_coming', 'tourHistory_reply_reschedule', 'tourHistory_reply_cant_make_it',
+  'tourHistory_reconfirmation_replied', 'tourHistory_reconfirmation_requested', 'tourHistory_reconfirmation_reminder', 'tourHistory_status_no_show']);
+function eventKey(event: TourHistoryEvent) {
+  if (event.kind === 'reconfirmation_replied' && event.reply) return `tourHistory_reply_${event.reply}`;
+  if (event.kind === 'status' && event.outcome === 'unverified') return 'tourHistory_status_unverified';
+  if (event.kind === 'status') return event.status ? `tourHistory_status_${event.outcome === 'disrupted' ? 'disrupted' : event.outcome === 'declined' ? 'declined' : event.status}` : 'tourHistoryUpdated';
+  if (event.kind === 'attendance_assisted' && event.action === 'check_in') return 'tourHistory_arrival_assisted';
+  return `tourHistory_${eventKeys[event.kind]}`;
+}
+function eventLabel(event: TourHistoryEvent, role: 'chef' | 'manager' | 'admin') {
+  const key = eventKey(event);
+  return mt(role === 'chef' && chefWorded.has(key) ? key.replace('tourHistory_', 'tourHistoryChef_') : key);
 }
 
 export function TourHistoryPanel({ id, version, role = 'manager', customerName, kitchenName }: { id: number; version: string; role?: 'chef' | 'manager' | 'admin'; customerName?: string; kitchenName?: string }) {
@@ -60,7 +67,7 @@ export function TourHistoryPanel({ id, version, role = 'manager', customerName, 
           {index === history.data.events.length - 1 && <span aria-hidden="true" className="pointer-events-none absolute bottom-0 left-0 top-2 w-3 bg-card" />}
           <span data-testid="tour-history-dot" aria-hidden="true" className="absolute left-0.5 top-1 z-10 h-2 w-2 rounded-full bg-primary" />
           <div className="grid min-w-0 items-start gap-1 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-2">
-            <p className="min-w-0 break-words font-medium leading-4" title={eventLabel(event)}>{eventLabel(event)}</p>
+            <p className="min-w-0 break-words font-medium leading-4" title={eventLabel(event, role)}>{eventLabel(event, role)}</p>
             <time dateTime={event.recordedAt} title={when(event.recordedAt)} className="text-[10px] leading-4 text-muted-foreground sm:whitespace-nowrap sm:text-right">{compactWhen(event.recordedAt)}</time>
           </div>
           <p className="text-xs text-muted-foreground">{role === 'chef' && event.actor === 'chef' ? mt('tourHistoryActorYou') : role === 'chef' && event.actor === 'manager' && kitchenName ? kitchenName : event.actor === 'chef' && customerName ? customerName : mt(`tourHistoryActor_${event.actor}`)}</p>

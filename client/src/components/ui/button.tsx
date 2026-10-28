@@ -20,7 +20,8 @@ const buttonVariants = cva(
         secondary:
           "bg-secondary text-secondary-foreground hover:bg-secondary/80",
         ghost: "border border-transparent hover:border-border hover:bg-muted hover:text-foreground",
-        link: "border border-transparent text-primary hover:border-primary/20 hover:bg-primary/5",
+        // A text link: no pill on hover (with px-0 its outline overlapped the words, QA Oct 28).
+        link: "text-primary underline-offset-4 hover:underline",
       },
       size: {
         default: "h-11 px-6 py-2 text-sm",

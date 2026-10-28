@@ -271,7 +271,7 @@ describe('actual producer → persisted intent → worker → admin replay', () 
     expect(await retryFailedEmail(1)).toEqual({ success: true });
     expect(state.tables.email_logs[0].status).toBe('sent');
     expect(state.send.mock.calls.at(-1)?.[1].trackingId).toBe('claim-outcome:7:1:3');
-    expect(state.send.mock.calls.at(-1)?.[0].text).toContain('current page for available actions');
+    expect(state.send.mock.calls.at(-1)?.[0].text).toContain('open the page for the latest status');
     expect(claim.chefResponseDeadline.getTime()).toBe(deadline);
     const count = state.send.mock.calls.length;
     expect(await retryFailedEmail(1)).toEqual({ success: true });

@@ -247,6 +247,18 @@ describe('manager acceptance review', () => {
 });
 
 describe('tour attendance and privacy controls', () => {
+  it.each([false, true])('after "They came", offers Add as customer only to someone not yet a customer (isCustomer=%s, QA Oct 28)', isCustomer => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(['/api/viewings/manager'], [{ ...record, isCustomer, viewing: { ...record.viewing, status: 'completed',
+      scheduledAt: new Date(Date.now() - 26 * 3600000).toISOString(), confirmationVerified: true } }]);
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ events: [], complete: false }) })));
+    render(<QueryClientProvider client={client}><ViewingsDashboard /></QueryClientProvider>);
+    fireEvent.click(screen.getByRole('button', { name: 'Open tour' }));
+    expect(!!screen.queryByRole('button', { name: 'tourAddAsCustomer' })).toBe(!isCustomer);
+    expect(screen.getByText(isCustomer ? 'tourNextAlreadyCustomer' : 'tourNextToured')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'cuViewCustomer' })).toHaveAttribute('href', '/manager/customers/8?location=33');
+    client.clear();
+  });
   function mountPast(status: string, history: any[] = []) {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
     const past = { ...record, viewing: { ...record.viewing, status, scheduledAt: new Date(Date.now() - 86400000).toISOString(),

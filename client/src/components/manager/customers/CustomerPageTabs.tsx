@@ -92,7 +92,7 @@ export function OverviewTab({ data, locale, go, inviteHref }: TabProps & { go: (
             <div>{live.map(booking => <VisitRow key={booking.bookingId} booking={booking} tz={tz} locale={locale} />)}</div></div>}
           {next.length > 0 && <div><div className={cn(groupLabel, 'mb-0.5 flex items-baseline', live.length ? 'mt-3' : 'mt-1.5')}>{mt('cpNext')}<span className={groupCount}>{next.length}</span></div>
             <div>{next.slice(0, 4).map(booking => <VisitRow key={booking.bookingId} booking={booking} tz={tz} locale={locale} />)}</div></div>}
-        </> : <Empty title={mt('cpNoBookingsYet')} text={mt('cpNoBookingsYetText', { name, location: data.location.name })}
+        </> : <Empty title={mt(data.reliability.visits ? 'cpNoUpcoming' : 'cpNoBookingsYet')} text={mt(data.reliability.visits ? 'cpNoUpcomingText' : 'cpNoBookingsYetText', { name, location: data.location.name })}
           action={data.actions.canInvite ? <Link href={inviteHref} className={btnSecondary}>{mt('cuActionInvite')}</Link> : undefined} />}
       </Card>
 

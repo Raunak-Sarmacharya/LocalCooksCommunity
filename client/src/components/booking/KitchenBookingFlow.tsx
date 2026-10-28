@@ -2138,7 +2138,7 @@ export default function KitchenBookingFlow({
             <div className={cn("px-4 py-5 sm:px-6 lg:px-8 lg:py-6", currentStep !== "confirm" && "min-h-0 flex-1 overflow-y-auto")}>
               {loadError ? <p role="alert" className="mb-4 rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">{loadError}</p> : null}
               {/* Blocked chefs can still read the page; the steps are inert so nothing can be submitted. No h-full: it let long steps overflow past the bottom padding, under the footer. */}
-              <div className={cn("mx-auto w-full lg:mx-0", currentStep === "confirm" ? "max-w-5xl" : "max-w-3xl", bookingBlocked && "pointer-events-none opacity-60")} aria-disabled={bookingBlocked || undefined} {...(bookingBlocked ? { inert: "" } : {})}>{renderStepContent()}</div>
+              <div className={cn("mx-auto w-full lg:mx-0", currentStep === "confirm" ? "" : "max-w-3xl", bookingBlocked && "pointer-events-none opacity-60")} aria-disabled={bookingBlocked || undefined} {...(bookingBlocked ? { inert: "" } : {})}>{renderStepContent()}</div>
             </div>
 
             {currentStep !== "confirm" && <div className="sticky bottom-0 flex-shrink-0 border-t bg-white px-4 py-4 sm:px-6 lg:px-8">

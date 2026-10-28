@@ -16,7 +16,7 @@ const state = vi.hoisted(() => ({ db: null as unknown }));
 vi.mock('../db', () => ({ get db() { return state.db; }, pool: {} }));
 vi.mock('./location-access-notices', () => ({ accessEndedMarker: 'Access ended by manager: ' }));
 
-import { createCustomerNote, deleteCustomerNote, listCustomerNotes, listManagerCustomers, updateCustomerNote } from './manager-customers';
+import { createCustomerNote, deleteCustomerNote, listCustomerNotes, listManagerCustomers, loadCustomerReadInput, updateCustomerNote } from './manager-customers';
 import { getCustomerPage } from './manager-customer-page';
 
 let client: PGlite;
@@ -224,6 +224,17 @@ describe('Customers against real SQL', () => {
     expect(kept.rows).toHaveLength(1);
     expect(kept.rows[0].deleted_at).not.toBeNull();
     await expect(updateCustomerNote(2, 7, 47, id, 'again')).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it('kitchen feedback on a tour marked "They came" (completed) counts as done (QA Oct 28)', async () => {
+    await client.exec(`
+      INSERT INTO kitchen_viewings (id, location_id, targeted_kitchen_id, chef_id, status, scheduled_at, duration_minutes, appointment_revision, lifecycle_state, confirmation_verified, created_at, updated_at, admin_reviewed_at)
+        VALUES (903, 47, 54, 8, 'completed', '2026-10-15T14:00:00Z', 30, 1, 'closed', true, '2026-10-10T00:00:00Z', '2026-10-15T15:00:00Z', '2026-10-10T12:00:00Z');
+      INSERT INTO tour_feedback_responses (id, viewing_id, respondent_id, respondent_role, scheduled_at, appointment_revision, happened, created_at)
+        VALUES (1, 903, 2, 'manager', '2026-10-15T14:00:00Z', 1, true, '2026-10-15T16:00:00Z');`);
+    try {
+      expect((await loadCustomerReadInput(2, undefined, NOW)).tourFeedbackDone.has(903)).toBe(true);
+    } finally { await client.exec('DELETE FROM tour_feedback_responses WHERE id = 1; DELETE FROM kitchen_viewings WHERE id = 903;'); }
   });
 });
 
