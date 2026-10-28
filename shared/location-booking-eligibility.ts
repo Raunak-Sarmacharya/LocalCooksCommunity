@@ -37,6 +37,22 @@ export type AccessRequirements = {
 };
 /** A renewed upload waiting in its own slot; the current document stays in force until it expires. */
 export type AccessRenewal = { key: DocumentKey; status: 'pending' | 'approved' | 'rejected' | string; url?: string | null; expiry?: string | null; rejectionReason?: string | null };
+/**
+ * When the current copy of each document was sent and last checked, and the kitchen's note when it asked for a new copy
+ * (owner, Oct 27). Kept in tier_data.documentLog[key] so built-in and kitchen documents share it without a schema change.
+ */
+export type DocumentLogEntry = { sentAt?: string; checkedAt?: string; note?: string; noteAt?: string };
+export function documentLogEntry(tierData: unknown, key: string): DocumentLogEntry {
+  const log = (tierData && typeof tierData === 'object' ? (tierData as Record<string, any>).documentLog : null) || {};
+  return log[key] && typeof log[key] === 'object' ? log[key] : {};
+}
+/** A new tier_data with this document's entry updated; `fresh` starts the entry over (a new copy was sent). */
+export function logDocument(tierData: unknown, key: string, entry: DocumentLogEntry, fresh = false): Record<string, any> {
+  const data = (tierData && typeof tierData === 'object' ? tierData : {}) as Record<string, any>;
+  const next = { ...(fresh ? {} : documentLogEntry(data, key)), ...entry };
+  for (const field of Object.keys(next) as (keyof DocumentLogEntry)[]) if (next[field] === undefined) delete next[field];
+  return { ...data, documentLog: { ...(data.documentLog || {}), [key]: next } };
+}
 /** Per document the kitchen chooses: not needed, track it (date and reminders, never pauses booking), or required. */
 export type DocumentMode = 'none' | 'track' | 'required';
 export type RequiredDocument = { key: DocumentKey; label: string; mode: Exclude<DocumentMode, 'none'>; url?: string | null; status?: string | null; expiry?: string | null;
@@ -122,10 +138,10 @@ export function locationBookingEligibility(app: AccessApplication | null | undef
   const result = (status: string, message: string, canBook = false, actionUrl?: string, document?: { key: RequiredDocument['key']; label: string; expiry: string | null; reason?: DocumentBlockReason; alsoMissing?: string[] }) =>
     ({ hasApplication: !!app, status, message, canBook, actionUrl, document });
   if (!app) return result('application_required', 'Please apply to this location and wait for final approval before booking.');
-  if (app.status === 'rejected' || app.status === 'cancelled') return result(app.status, 'Your application is not approved. Please contact the kitchen manager or Local Cooks about your next step.');
+  if (app.status === 'rejected' || app.status === 'cancelled') return result(app.status, 'Your application is not approved. Please contact the kitchen or Local Cooks about your next step.');
   if (app.status !== 'approved' || (app.current_tier ?? app.currentTier ?? 1) < 3)
-    return result('awaiting_final_approval', 'Your application and documents need final manager approval before you can book. Please check your application for the next step.');
-  if (!hasAccess) return result('access_ended', 'Your access to this location has ended. Please contact the kitchen manager or Local Cooks to request access again.');
+    return result('awaiting_final_approval', 'Your application and documents need the kitchen’s final approval before you can book. Please check your application for the next step.');
+  if (!hasAccess) return result('access_ended', 'Your access to this location has ended. Please contact the kitchen or Local Cooks to request access again.');
   const required = requiredAccessDocuments(app, requirements);
   for (const doc of required) {
     const days = accessDocumentDaysLeft(doc.expiry, timezone, now);

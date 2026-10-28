@@ -1544,3 +1544,12 @@ State Oct 18 (evening): multi-day + single-day booking cycle verified end to end
   - Not seen live: no customer on dev is blocked right now.
 - Document reminders are 45/14/3 days plus the expiry day (`accessDocumentStage`); the worker comment said 30/7/0 and was corrected.
 - Mocks for 3–5 in `.phase0-harness/mocks/documents/shots/` (c1–c6 chef, k1–k3 kitchen), waiting for owner approval.
+- **Document flow redesign built (owner approved the mocks; decisions in memory `document-flow-decisions`):**
+  - Chef: "Your documents for {kitchen}" grouped To send / Expiring soon / With the kitchen / On file, with upload in each document's own row (the big RenewAccessDocuments form is gone). The kitchen's note shows in the row. Date picker has month/year menus and only allows days after today.
+  - Kitchen dialog: Expires · Sent · Your setting in one date format, and how many more are waiting. "Ask for a new copy" requires a note: in-app + email to the customer, HTML-escaped.
+  - Panel: "1 new document to check" / "Up to date · checked {date}", sent dates, Verified {date}.
+  - Server: per-document sent/checked/note log in `tier_data.documentLog` (no schema change). The upload refuses (409) to replace a copy the kitchen is checking. Restoring access clears the "Access ended" line, and chefs never see "manager".
+  - Lead security review of the server diff: no findings.
+  - Walked locally (fork): ask for new copy → chef uploads in the row → kitchen verifies → chef can book (`book-steps` reaches Confirm).
+  - Note: phase0-chef's Business licence now points to a locally stored copy, so View may fail on deployed dev until it's re-uploaded there.
+- Tests (fork's full run): client 9,252, server 4,386, tsc clean.

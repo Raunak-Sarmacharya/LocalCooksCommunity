@@ -1,5 +1,6 @@
 import { readLocationBookingEligibility } from "../../services/location-booking-eligibility";
 import { logger } from "../../logger";
+import { logDocument } from "@shared/location-booking-eligibility";
 /**
  * Chef Application Service
  * 
@@ -205,6 +206,7 @@ export class ChefApplicationService {
                     grantedBy,
                 })
                 .returning();
+            await (await import('../../services/location-access-notices')).clearAccessEndedNote(chefId, locationId);
 
             return newAccess;
         } catch (error) {
@@ -548,10 +550,19 @@ export class ChefApplicationService {
         insuranceExpiry?: string;
         insuranceStatus?: "pending" | "approved" | "rejected";
         verifiedBy?: "local_cooks" | "manager";
+        /** The kitchen's note per document when it asks for a new copy; the customer sees it. */
+        notes?: Partial<Record<"foodSafetyLicense" | "foodEstablishmentCert" | "insurance", string>>;
     }): Promise<ChefKitchenApplication> {
         try {
-            const current = data.verifiedBy ? await this.getApplicationById(data.id) : undefined;
-            const tierData = (current?.tier_data || {}) as Record<string, any>;
+            const sent = !!(data.foodSafetyLicenseUrl || data.foodEstablishmentCertUrl || data.insuranceUrl);
+            const current = data.verifiedBy || sent ? await this.getApplicationById(data.id) : undefined;
+            let tierData = (current?.tier_data || {}) as Record<string, any>;
+            // When each copy was sent and checked (shown on both sides), and the note when a new copy is asked for.
+            const now = new Date().toISOString();
+            for (const [key, url, status] of [["foodSafetyLicense", data.foodSafetyLicenseUrl, data.foodSafetyLicenseStatus], ["foodEstablishmentCert", data.foodEstablishmentCertUrl, data.foodEstablishmentCertStatus], ["insurance", data.insuranceUrl, data.insuranceStatus]] as const) {
+                if (url) tierData = logDocument(tierData, key, { sentAt: now }, true);
+                else if (status && data.verifiedBy) tierData = logDocument(tierData, key, { checkedAt: now, note: status === "rejected" ? data.notes?.[key] : undefined, noteAt: status === "rejected" && data.notes?.[key] ? now : undefined });
+            }
             const documentVerification = { ...(tierData.documentVerification || {}) };
             if (data.foodSafetyLicenseStatus) documentVerification.foodSafetyLicense = data.verifiedBy;
             if (data.foodEstablishmentCertStatus) documentVerification.foodEstablishmentCert = data.verifiedBy;
@@ -568,7 +579,7 @@ export class ChefApplicationService {
                     ...(data.insuranceUrl && { insuranceUrl: data.insuranceUrl }),
                     ...(data.insuranceExpiry && { insuranceExpiry: data.insuranceExpiry }),
                     ...(data.insuranceStatus && { insuranceStatus: data.insuranceStatus }),
-                    ...(data.verifiedBy && { tier_data: { ...tierData, documentVerification } }),
+                    ...((data.verifiedBy || sent) && { tier_data: { ...tierData, documentVerification } }),
                     updatedAt: new Date()
                 })
                 .where(eq(chefKitchenApplications.id, data.id))

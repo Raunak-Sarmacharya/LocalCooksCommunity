@@ -1,7 +1,7 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db';
 import { chefDocumentRenewals, chefKitchenApplications, locations } from '@shared/schema';
-import { accessDocumentDaysLeft, customDocumentId, documentLabel, documentRenewalHref, isCustomDocumentKey, type AccessRenewal, type DocumentKey } from '@shared/location-booking-eligibility';
+import { accessDocumentDaysLeft, customDocumentId, documentLabel, documentRenewalHref, isCustomDocumentKey, logDocument, type AccessRenewal, type DocumentKey } from '@shared/location-booking-eligibility';
 import { DomainError } from '../shared/errors/domain-error';
 import { logger } from '../logger';
 
@@ -69,7 +69,8 @@ export async function decideDocumentRenewal(input: { applicationId: number; key:
     const reviewedAt = new Date();
     if (input.decision === 'approved') {
       if ((accessDocumentDaysLeft(renewal.expiry, location?.timezone || undefined) ?? 0) <= 0) throw new DomainError('RENEWAL_EXPIRED', 'The renewed document has already expired. Ask the chef for a current one.', 400);
-      const tierData = (app.tier_data || {}) as Record<string, any>;
+      // The renewed copy becomes the current one: its sent date, and checked now.
+      const tierData = logDocument(app.tier_data, input.key, { sentAt: renewal.submittedAt?.toISOString(), checkedAt: reviewedAt.toISOString() }, true);
       const documentVerification = { ...(tierData.documentVerification || {}), [input.key]: input.reviewer };
       const ownId = isCustomDocumentKey(input.key) ? customDocumentId(input.key) : null;
       if (ownId) await tx.update(chefKitchenApplications).set({ tier_data: { ...tierData, documentVerification,

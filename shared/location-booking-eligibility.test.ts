@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { accessDocumentDaysLeft, accessDocuments, accessDocumentStage, bookingRefusalBody, locationBookingEligibility, requiredAccessDocuments, usesRenewalSlot } from './location-booking-eligibility';
+import { accessDocumentDaysLeft, accessDocuments, accessDocumentStage, bookingRefusalBody, locationBookingEligibility, requiredAccessDocuments, usesRenewalSlot, documentLogEntry, logDocument } from './location-booking-eligibility';
 
 const now = new Date('2026-10-14T12:00:00Z');
 const app = { status: 'approved', current_tier: 3, foodSafetyLicenseUrl: '/certificate.pdf', foodSafetyLicenseStatus: 'approved', foodSafetyLicenseExpiry: '2027-10-14' };
@@ -130,5 +130,22 @@ describe('custom documents', () => {
   it('an undated document never uses a renewal slot', () => {
     expect(usesRenewalSlot(withDocs({ menu: '/rules.pdf' }, { menu: 'approved' }), 'custom:menu', false)).toBe(false);
     expect(usesRenewalSlot(withDocs({ lic: '/lic.pdf', lic__expiry: '2027-03-01' }, { lic: 'approved' }), 'custom:lic')).toBe(true);
+  });
+});
+
+describe('document log (sent / checked / note per document, owner Oct 27)', () => {
+  it('a new copy starts the entry over; a check keeps the sent date and adds or clears the note', () => {
+    let data: Record<string, any> = { other: 1, documentLog: { 'custom:biz': { sentAt: 'a', checkedAt: 'b', note: 'old', noteAt: 'b' } } };
+    data = logDocument(data, 'custom:biz', { sentAt: 'c' }, true);
+    expect(documentLogEntry(data, 'custom:biz')).toEqual({ sentAt: 'c' });
+    data = logDocument(data, 'custom:biz', { checkedAt: 'd', note: 'Wrong name', noteAt: 'd' });
+    expect(documentLogEntry(data, 'custom:biz')).toEqual({ sentAt: 'c', checkedAt: 'd', note: 'Wrong name', noteAt: 'd' });
+    data = logDocument(data, 'custom:biz', { checkedAt: 'e', note: undefined, noteAt: undefined });
+    expect(documentLogEntry(data, 'custom:biz')).toEqual({ sentAt: 'c', checkedAt: 'e' });
+    expect(data.other).toBe(1);
+  });
+  it('reads nothing from missing or odd tier data', () => {
+    expect(documentLogEntry(null, 'insurance')).toEqual({});
+    expect(documentLogEntry({ documentLog: { insurance: 'x' } }, 'insurance')).toEqual({});
   });
 });

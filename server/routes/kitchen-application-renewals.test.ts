@@ -3,8 +3,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const state = vi.hoisted(() => ({
   application: {} as any,
   pending: [] as any[],
-  submit: vi.fn(), decide: vi.fn(), readRenewals: vi.fn(), updateDocuments: vi.fn(), upload: vi.fn(),
+  submit: vi.fn(), decide: vi.fn(), readRenewals: vi.fn(), updateDocuments: vi.fn(), upload: vi.fn(), queueNotice: vi.fn(), deliver: vi.fn(),
 }));
+vi.mock('../services/location-access-notices', () => ({ queueNewCopyNotice: state.queueNotice, deliverAccessNotice: state.deliver, clearAccessEndedNote: vi.fn() }));
 vi.mock('../db', () => ({ pool: {}, db: {} }));
 vi.mock('../firebase-auth-middleware', () => ({ requireFirebaseAuthWithUser: vi.fn(), requireManager: vi.fn(), requireAdmin: vi.fn() }));
 vi.mock('../fileUpload', () => ({ upload: { any: () => vi.fn(), fields: () => vi.fn() }, uploadToBlob: state.upload }));
@@ -37,7 +38,7 @@ const review = async (path: string, body: object, role: 'manager' | 'admin') => 
 
 beforeEach(() => {
   vi.clearAllMocks();
-  state.application = { id: 57, chefId: 22, locationId: 46, status: 'approved', current_tier: 3, tier2_completed_at: '2026-10-09', chat_conversation_id: null,
+  state.application = { id: 57, chefId: 22, locationId: 46, status: 'approved', current_tier: 3, tier2_completed_at: '2026-10-09', chat_conversation_id: null, email: 'chef@x.test', fullName: 'Ada Lovelace',
     foodSafetyLicenseUrl: '/current.pdf', foodSafetyLicenseStatus: 'approved', foodSafetyLicenseExpiry: '2099-01-01' };
   state.readRenewals.mockResolvedValue([{ key: 'foodSafetyLicense', status: 'pending', applicationId: 57 }]);
   state.decide.mockResolvedValue({ decision: 'approved' });
@@ -71,7 +72,36 @@ describe.each([['manager', '/manager/kitchen-applications/:id/verify-documents']
   });
 });
 
+describe('kitchen asking for a new copy of the current document (owner, Oct 27)', () => {
+  const path = '/manager/kitchen-applications/:id/verify-documents';
+  beforeEach(() => { state.readRenewals.mockResolvedValue([]); state.application.foodSafetyLicenseStatus = 'pending'; state.queueNotice.mockResolvedValue(9); });
+
+  it('needs a note the customer will see', async () => {
+    for (const rejectionReason of [undefined, '   ', 'x'.repeat(2001)]) {
+      const res = await review(path, { foodSafetyLicenseStatus: 'rejected', rejectionReason }, 'manager');
+      expect(res.status).toHaveBeenCalledWith(400);
+    }
+    expect(state.updateDocuments).not.toHaveBeenCalled();
+    expect(state.queueNotice).not.toHaveBeenCalled();
+  });
+
+  it('stores the trimmed note with the decision and tells the customer by email and in-app', async () => {
+    const res = await review(path, { foodSafetyLicenseStatus: 'rejected', rejectionReason: '  Wrong business name.  ' }, 'manager');
+    expect(state.updateDocuments).toHaveBeenCalledWith(expect.objectContaining({ foodSafetyLicenseStatus: 'rejected', notes: { foodSafetyLicense: 'Wrong business name.' } }));
+    expect(state.queueNotice).toHaveBeenCalledWith(expect.objectContaining({ chefId: 22, locationId: 46, locationName: 'Harbour Kitchen', document: 'food safety certificate', note: 'Wrong business name.' }));
+    expect(state.deliver).toHaveBeenCalledWith(9);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: true }));
+  });
+
+  it('verifying needs no note and sends no notice', async () => {
+    await review(path, { foodSafetyLicenseStatus: 'approved' }, 'manager');
+    expect(state.updateDocuments).toHaveBeenCalledWith(expect.not.objectContaining({ notes: expect.anything() }));
+    expect(state.queueNotice).not.toHaveBeenCalled();
+  });
+});
+
 describe('chef uploading a replacement document', () => {
+  beforeEach(() => { state.readRenewals.mockResolvedValue([]); });
   const upload = async () => {
     const res = respond();
     await find('/firebase/chef/kitchen-applications/:id/documents').stack.at(-1).handle({
@@ -95,10 +125,29 @@ describe('chef uploading a replacement document', () => {
     expect(state.updateDocuments).toHaveBeenCalledWith(expect.objectContaining({ id: 57, foodSafetyLicenseUrl: '/renewed.pdf', foodSafetyLicenseStatus: 'pending' }));
   });
 
-  it('overwrites the slot (no renewal) when no approved document is on file yet', async () => {
-    state.application.foodSafetyLicenseStatus = 'pending';
+  it('overwrites the slot (no renewal) when the kitchen asked for a new copy', async () => {
+    state.application.foodSafetyLicenseStatus = 'rejected';
     await upload();
     expect(state.submit).not.toHaveBeenCalled();
     expect(state.updateDocuments).toHaveBeenCalledWith(expect.objectContaining({ foodSafetyLicenseStatus: 'pending' }));
+  });
+
+  it('refuses to swap a copy the kitchen is checking, first copy or renewal (owner, Oct 27)', async () => {
+    state.application.foodSafetyLicenseStatus = 'pending';
+    let res = await upload();
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ code: 'DOCUMENT_WITH_KITCHEN' }));
+    state.application.foodSafetyLicenseStatus = 'approved';
+    state.readRenewals.mockResolvedValue([{ key: 'foodSafetyLicense', status: 'pending', applicationId: 57 }]);
+    res = await upload();
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(state.upload).not.toHaveBeenCalled();
+    expect(state.submit).not.toHaveBeenCalled();
+  });
+
+  it('still lets an early upload be replaced before the booking requirements go to the kitchen', async () => {
+    Object.assign(state.application, { foodSafetyLicenseStatus: 'pending', tier2_completed_at: null, current_tier: 1, status: 'inReview' });
+    await upload();
+    expect(state.updateDocuments).toHaveBeenCalledWith(expect.objectContaining({ foodSafetyLicenseUrl: '/renewed.pdf', foodSafetyLicenseStatus: 'pending' }));
   });
 });

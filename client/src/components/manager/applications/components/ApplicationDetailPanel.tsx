@@ -7,7 +7,7 @@
  * to apply the customer sent comes after, with readable values. Local Cooks' first-step review is never mentioned.
  */
 import { formatPhoneForDisplay } from "@shared/phone-validation";
-import { accessDocumentStage, customDocumentFields, isKitchenDocument, locationBookingEligibility } from "@shared/location-booking-eligibility";
+import { accessDocumentStage, customDocumentFields, documentLogEntry, isKitchenDocument, locationBookingEligibility } from "@shared/location-booking-eligibility";
 import { fromCalendarDate } from "@/lib/calendar-date";
 import { formatPreferredSchedule } from "@/lib/preferred-schedule";
 import { mt } from "@/i18n/manager";
@@ -60,7 +60,7 @@ interface ApplicationDetailPanelProps {
     locationRequirements?: LocationRequirements | null;
     onApprove: () => void;
     onApproveTier2: () => void;
-    onVerifyDocument: (field: DocumentVerificationField, status: 'approved' | 'rejected') => void;
+    onVerifyDocument: (field: DocumentVerificationField, status: 'approved' | 'rejected', note?: string) => void;
     onReviewRenewal?: (field: DocumentVerificationField, decision: 'approved' | 'rejected', reason?: string) => void | Promise<void>;
     /** Approve for booking without the booking requirements (the kitchen confirmed it takes responsibility). */
     onApproveWithoutDocuments?: () => void | Promise<void>;
@@ -79,13 +79,18 @@ interface OpenDocument {
     url: string | null | undefined;
     status?: DocumentVerificationStatus;
     expiry?: string | null;
+    sentAt?: string | null;
+    setting?: string | null;
     reviewNote?: string | null;
+    waitingNote?: string | null;
+    pausedNote?: string | null;
     reviewField?: DocumentVerificationField;
 }
 
 type DocMode = 'required' | 'track' | 'none';
 const dateLong = (value: string) => fromCalendarDate(value).toLocaleDateString(i18n.language, { month: 'short', day: 'numeric', year: 'numeric' });
 const dayOf = (value?: string | null) => value ? new Date(value).toLocaleDateString(i18n.language, { month: 'short', day: 'numeric', year: 'numeric' }) : null;
+const monthDay = (value: string) => new Date(value).toLocaleDateString(i18n.language, { month: 'short', day: 'numeric' });
 const kitchenLabel = (key: string, fallback: string) => i18n.t(key, { ns: 'kitchen', defaultValue: fallback });
 
 export function ApplicationDetailPanel({
@@ -138,13 +143,13 @@ export function ApplicationDetailPanel({
     const modeOf = (required?: boolean, tracked?: boolean): DocMode => required ? 'required' : tracked ? 'track' : 'none';
 
     const isExpired = (value?: string | null) => accessDocumentStage(value) === 'expired';
-    const reviewNoteFor = (status: DocumentVerificationStatus, expiry?: string | null, verifiedBy?: string): string | null => {
+    const reviewNoteFor = (status: DocumentVerificationStatus, expiry?: string | null, verifiedBy?: string, dated = true): string | null => {
         if (!status) return null;
         if (isExpired(expiry)) return mt("documentExpiredNeedsReplacement");
         if (status === 'approved' && accessDocumentStage(expiry)) return mt('accessDocumentExpiringSoon');
         if (status === 'approved') return verifiedBy === 'manager' ? mt("documentVerifiedNote") : mt("documentVerifiedGeneric");
-        if (status === 'rejected') return mt("documentRejectedNote");
-        return mt("documentPendingNote");
+        if (status === 'rejected') return mt("dvNewCopyAskedNote");
+        return dated ? mt("dvCheckHint") : mt("dvCheckHintUndated");
     };
     const renewalReview = (key: string, title: string, field: DocumentVerificationField) => {
         const renewal = (application.documentRenewals || []).find(item => item.key === key && item.status === 'pending');
@@ -155,19 +160,22 @@ export function ApplicationDetailPanel({
     };
 
     // Every document this kitchen asks for, built-in first, then its own dated documents.
-    type DocRow = { key: string; title: string; mode: DocMode; url?: string | null; status?: DocumentVerificationStatus; expiry?: string | null; field?: DocumentVerificationField; verifiedBy?: string; renewal?: ReactNode };
+    type DocRow = { key: string; title: string; mode: DocMode; url?: string | null; status?: DocumentVerificationStatus; expiry?: string | null; field?: DocumentVerificationField; verifiedBy?: string; renewal?: ReactNode;
+        /** When this copy was sent and last checked (tier_data.documentLog; older copies were sent with the booking requirements). */
+        sentAt?: string | null; checkedAt?: string | null; hasExpiry?: boolean };
     const docs: DocRow[] = [];
+    const logged = (key: string, url?: string | null) => { const entry = documentLogEntry(tierData, key); return { sentAt: url ? entry.sentAt ?? (application.tier2_completed_at as string | null | undefined) ?? null : null, checkedAt: entry.checkedAt ?? null }; };
     const foodSafetyMode = modeOf(r?.requireFoodSafetyUpload, r?.food_handler_cert_tracked);
-    if (foodSafetyMode !== 'none' || application.foodSafetyLicenseUrl) docs.push({ key: 'foodSafety', title: mt("arDocFoodSafety"), mode: foodSafetyMode, url: application.foodSafetyLicenseUrl, status: application.foodSafetyLicenseStatus, expiry: application.foodSafetyLicenseExpiry, field: 'foodSafetyLicenseStatus', verifiedBy: tierData.documentVerification?.foodSafetyLicense, renewal: renewalReview('foodSafetyLicense', mt("arDocFoodSafety"), 'foodSafetyLicenseStatus') });
+    if (foodSafetyMode !== 'none' || application.foodSafetyLicenseUrl) docs.push({ key: 'foodSafety', title: mt("arDocFoodSafety"), mode: foodSafetyMode, url: application.foodSafetyLicenseUrl, status: application.foodSafetyLicenseStatus, expiry: application.foodSafetyLicenseExpiry, field: 'foodSafetyLicenseStatus', verifiedBy: tierData.documentVerification?.foodSafetyLicense, renewal: renewalReview('foodSafetyLicense', mt("arDocFoodSafety"), 'foodSafetyLicenseStatus'), ...logged('foodSafetyLicense', application.foodSafetyLicenseUrl) });
     const establishmentMode = modeOf(r?.tier2_food_establishment_cert_required, r?.food_establishment_cert_tracked);
-    if (establishmentMode !== 'none' || application.foodEstablishmentCertUrl) docs.push({ key: 'establishment', title: mt("arDocEstablishment"), mode: establishmentMode, url: application.foodEstablishmentCertUrl, status: application.foodEstablishmentCertStatus, expiry: application.foodEstablishmentCertExpiry, field: 'foodEstablishmentCertStatus', verifiedBy: tierData.documentVerification?.foodEstablishmentCert, renewal: renewalReview('foodEstablishmentCert', mt("arDocEstablishment"), 'foodEstablishmentCertStatus') });
+    if (establishmentMode !== 'none' || application.foodEstablishmentCertUrl) docs.push({ key: 'establishment', title: mt("arDocEstablishment"), mode: establishmentMode, url: application.foodEstablishmentCertUrl, status: application.foodEstablishmentCertStatus, expiry: application.foodEstablishmentCertExpiry, field: 'foodEstablishmentCertStatus', verifiedBy: tierData.documentVerification?.foodEstablishmentCert, renewal: renewalReview('foodEstablishmentCert', mt("arDocEstablishment"), 'foodEstablishmentCertStatus'), ...logged('foodEstablishmentCert', application.foodEstablishmentCertUrl) });
     const insuranceMode = modeOf(r?.tier2_insurance_document_required, r?.insurance_tracked);
-    if (insuranceMode !== 'none' || insuranceUrl) docs.push({ key: 'insurance', title: mt("arDocInsurance"), mode: insuranceMode, url: insuranceUrl, status: application.insuranceStatus, expiry: application.insuranceExpiry, field: application.insuranceUrl ? 'insuranceStatus' : undefined, verifiedBy: tierData.documentVerification?.insurance, renewal: renewalReview('insurance', mt("arDocInsurance"), 'insuranceStatus') });
+    if (insuranceMode !== 'none' || insuranceUrl) docs.push({ key: 'insurance', title: mt("arDocInsurance"), mode: insuranceMode, url: insuranceUrl, status: application.insuranceStatus, expiry: application.insuranceExpiry, field: application.insuranceUrl ? 'insuranceStatus' : undefined, verifiedBy: tierData.documentVerification?.insurance, renewal: renewalReview('insurance', mt("arDocInsurance"), 'insuranceStatus'), ...logged('insurance', insuranceUrl) });
     for (const field of (r?.tier2_custom_fields || []).filter(isKitchenDocument)) {
         const own = customDocumentFields(application, field.id);
         docs.push({ key: field.id, title: field.label, mode: field.required ? 'required' : 'track', url: own.url, expiry: own.expiry,
             status: own.status as DocumentVerificationStatus, field: `custom:${field.id}`, verifiedBy: tierData.documentVerification?.[`custom:${field.id}`],
-            renewal: renewalReview(`custom:${field.id}`, field.label, `custom:${field.id}`) });
+            renewal: renewalReview(`custom:${field.id}`, field.label, `custom:${field.id}`), hasExpiry: !!field.expires, ...logged(`custom:${field.id}`, own.url) });
     }
     const questions = (r?.tier2_custom_fields || []).filter(f => !isKitchenDocument(f));
     const experience = tierData.kitchen_experience_description as string | undefined;
@@ -182,15 +190,25 @@ export function ApplicationDetailPanel({
         if (!doc.url) return { label: documentsWaived ? mt("arStatusWaived") : mt("arStatusNotSent"), tone: 'muted' };
         if (isExpired(doc.expiry)) return { label: mt("arStatusExpired"), tone: 'red' };
         if (!doc.field) return { label: mt("arStatusSent"), tone: 'muted' };
-        if (doc.status === 'approved') return { label: mt("arStatusVerified"), tone: 'green' };
+        if (doc.status === 'approved') return { label: doc.checkedAt ? mt("arStatusVerifiedOn", { date: monthDay(doc.checkedAt) }) : mt("arStatusVerified"), tone: 'green' };
         if (doc.status === 'rejected') return { label: mt("arStatusReplace"), tone: 'red' };
         return { label: mt("arStatusToCheck"), tone: 'amber' };
     };
-    const openDoc = (doc: DocRow) => setOpenDocument({
-        title: doc.title, url: doc.url, status: doc.status, expiry: doc.expiry,
-        reviewNote: doc.field ? reviewNoteFor(doc.status, doc.expiry, doc.verifiedBy) : null,
-        reviewField: doc.field && reviewable ? doc.field : undefined,
-    });
+    // Copies sent and not yet checked, in list order: "Check documents" opens the first; the dialog says how many follow.
+    const toCheck = docs.filter(doc => doc.url && doc.field && docStatus(doc).tone === 'amber');
+    const lastChecked = docs.map(doc => doc.checkedAt).filter((value): value is string => !!value).sort().at(-1) ?? null;
+    const openDoc = (doc: DocRow) => {
+        const after = toCheck.length - 1 - Math.max(0, toCheck.indexOf(doc));
+        setOpenDocument({
+            title: doc.title, subtitle: mt("dvFrom", { name: application.fullName }), url: doc.url, status: doc.status,
+            expiry: doc.hasExpiry === false ? null : doc.expiry, sentAt: doc.sentAt,
+            setting: doc.mode === 'required' ? mt("dvSettingRequired") : doc.mode === 'track' ? mt("dvSettingTrack") : null,
+            reviewNote: doc.field ? reviewNoteFor(doc.status, doc.expiry, doc.verifiedBy, doc.hasExpiry !== false) : null,
+            waitingNote: toCheck.includes(doc) && after > 0 ? mt("dvWaiting", { count: after, name: firstName }) : null,
+            pausedNote: isApproved && !documentsWaived && doc.mode === 'required' ? mt("dvAskPaused") : null,
+            reviewField: doc.field && reviewable ? doc.field : undefined,
+        });
+    };
 
     const answerOf = (field: RequirementField, value: unknown): ReactNode => {
         if (value === undefined || value === null || value === '' || (Array.isArray(value) && !value.length)) return <span className="text-muted-foreground">{sent ? mt("arNoAnswer") : mt("arStatusNotSent")}</span>;
@@ -224,7 +242,11 @@ export function ApplicationDetailPanel({
     const stages = [
         // A customer the kitchen added skipped Request to apply (owner, Oct 24).
         { title: addedByKitchen ? mt("arStageAdded") : mt("arStageRequest"), note: addedByKitchen ? mt("arStageAddedOn", { date: dayOf(application.tier1_completed_at || application.reviewedAt) || '' }) : mt("arStageSent", { date: dayOf(application.createdAt) || '' }), state: 'done' as const },
-        { title: mt("step2"), note: documentsWaived ? mt("arStageWaived") : sent ? mt("arStageSent", { date: dayOf(application.tier2_completed_at) }) : mt("arStageWaiting"), state: (isApproved ? 'done' : 'current') as 'done' | 'current' },
+        { title: mt("step2"), note: documentsWaived ? mt("arStageWaived") : isApproved && toCheck.length ? mt("arStageToCheck", { count: toCheck.length })
+            : isApproved && docs.some(doc => doc.mode === 'required' && doc.status === 'rejected') ? mt("arStageNewCopyAsked")
+            : isApproved && pausedFor ? mt("arStageWaiting")
+            : isApproved && lastChecked ? mt("arStageUpToDate", { date: dayOf(lastChecked) }) : sent ? mt("arStageSent", { date: dayOf(application.tier2_completed_at) }) : mt("arStageWaiting"),
+          state: (isApproved && !toCheck.length && !pausedFor ? 'done' : 'current') as 'done' | 'current' },
         { title: mt("arStageCanBook"), note: pausedFor ? mt("arStageBookingPaused", { document: pausedFor }) : isApproved ? mt("arStageCanBookNote") : null,
             state: (pausedFor ? 'current' : isApproved ? 'done' : 'next') as 'done' | 'next' | 'current' },
     ];
@@ -261,10 +283,10 @@ export function ApplicationDetailPanel({
                 {/* Journey */}
                 <ol className="grid gap-3 sm:grid-cols-3">
                     {stages.map((stage, index) => (
-                        <li key={stage.title} className={cn("rounded-xl border p-3", stage.state === 'current' && "border-foreground/30 bg-muted/30")}>
+                        <li key={stage.title} className={cn("rounded-xl border p-3", stage.state === 'current' && "border-amber-200 bg-amber-50/60")}>
                             <p className="flex items-center gap-2 text-sm font-medium text-foreground">
                                 <span className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px]",
-                                    stage.state === 'done' ? "bg-emerald-600 text-white" : stage.state === 'current' ? "bg-foreground text-background" : "border text-muted-foreground")}>
+                                    stage.state === 'done' ? "bg-emerald-600 text-white" : stage.state === 'current' ? "bg-amber-400 text-white" : "border text-muted-foreground")}>
                                     {stage.state === 'done' ? <Check className="h-3 w-3" /> : index + 1}
                                 </span>
                                 {stage.title}
@@ -294,15 +316,17 @@ export function ApplicationDetailPanel({
                 ) : isApproved ? (
                     <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4">
                         <div className="min-w-0">
-                            <h2 className="text-sm font-semibold text-foreground">{pausedFor ? mt("arPausedTitle", { name: firstName, document: pausedFor }) : mt("arApprovedTitle", { name: firstName })}</h2>
-                            <p className="mt-0.5 text-sm text-muted-foreground">{pausedFor ? mt("arPausedBody", { name: firstName }) : documentsWaived ? mt("documentsWaivedNote") : mt("arApprovedBody")}</p>
+                            {/* They sent what was asked: the kitchen's turn (mock k1). Otherwise, what's missing, or that they can book. */}
+                            <h2 className="text-sm font-semibold text-foreground">{pausedFor && toCheck.length ? mt("arSentToCheckTitle", { name: firstName, count: toCheck.length }) : pausedFor ? mt("arPausedTitle", { name: firstName, document: pausedFor }) : mt("arApprovedTitle", { name: firstName })}</h2>
+                            <p className="mt-0.5 text-sm text-muted-foreground">{pausedFor && toCheck.length ? mt("arSentToCheckBody") : pausedFor ? mt("arPausedBody", { name: firstName }) : documentsWaived ? mt("documentsWaivedNote") : mt("arApprovedBody")}</p>
                         </div>
                         <div className="flex flex-wrap gap-2">
                             <StatusButton variant="outline" onClick={() => { setActiveAction('revoke'); onRevokeAccess(); }}
                                 status={activeAction === 'revoke' && isUpdating ? "loading" : "idle"}
                                 className="text-destructive hover:bg-destructive/5"
                                 labels={{ idle: mt("revokeAccess"), loading: mt("revoking"), success: mt("revokedSuccess") }} />
-                            <Button asChild><Link href={customerHref(application.chefId, application.locationId)}>{mt("arOpenCustomer")}</Link></Button>
+                            {toCheck.length > 0 ? <Button type="button" onClick={() => openDoc(toCheck[0])}>{mt("arCheckDocuments")}</Button>
+                                : <Button asChild><Link href={customerHref(application.chefId, application.locationId)}>{mt("arOpenCustomer")}</Link></Button>}
                         </div>
                     </section>
                 ) : (
@@ -337,7 +361,7 @@ export function ApplicationDetailPanel({
                 <section className="rounded-xl border bg-card">
                     <div className="border-b px-4 py-3 sm:px-5">
                         <h2 className="text-base font-semibold text-foreground">{mt("step2")}</h2>
-                        <p className="text-sm text-muted-foreground">{sent ? mt("arStageSent", { date: dayOf(application.tier2_completed_at) }) : documentsWaived ? mt("arStageWaived") : mt("arNotSentYet", { name: firstName })}</p>
+                        <p className="text-sm text-muted-foreground">{sent ? [mt("arStageSent", { date: dayOf(application.tier2_completed_at) }), lastChecked && mt("arLastChecked", { date: dayOf(lastChecked) })].filter(Boolean).join(' · ') : documentsWaived ? mt("arStageWaived") : mt("arNotSentYet", { name: firstName })}</p>
                     </div>
                     {docs.length > 0 && (
                         <div className="px-4 py-3 sm:px-5">
@@ -352,13 +376,14 @@ export function ApplicationDetailPanel({
                                                     <p className="text-sm font-medium text-foreground">{doc.title}</p>
                                                     <p className="text-xs text-muted-foreground">
                                                         {documentsWaived && !doc.url ? mt("arNotNeededFor", { name: firstName }) : doc.mode === 'required' ? mt("docModeRequired") : doc.mode === 'track' ? mt("docModeTrack") : mt("arOnFile")}
-                                                        {doc.expiry ? ` · ${isExpired(doc.expiry) ? mt("arExpired", { date: dateLong(doc.expiry) }) : mt("arExpires", { date: dateLong(doc.expiry) })}` : ''}
+                                                        {doc.expiry ? ` · ${isExpired(doc.expiry) ? mt("arExpired", { date: dateLong(doc.expiry) }) : mt("arExpires", { date: dateLong(doc.expiry) })}` : doc.url && doc.hasExpiry === false ? ` · ${mt("arNoExpiry")}` : ''}
+                                                        {toCheck.includes(doc) && doc.sentAt ? ` · ${mt("arSentLower", { date: dayOf(doc.sentAt) })}` : ''}
                                                     </p>
                                                 </div>
                                                 <div className="flex shrink-0 items-center gap-3">
-                                                    {!(documentsWaived && !doc.url) && <span className={cn("text-xs font-medium",
-                                                        status.tone === 'green' && "text-emerald-700", status.tone === 'amber' && "text-amber-800",
-                                                        status.tone === 'red' && "text-red-700", status.tone === 'muted' && "text-muted-foreground")}>{status.label}</span>}
+                                                    {!(documentsWaived && !doc.url) && <span className={cn("inline-flex h-6 items-center whitespace-nowrap rounded-full px-2.5 text-xs font-medium",
+                                                        status.tone === 'green' && "bg-emerald-50 text-emerald-800", status.tone === 'amber' && "bg-amber-50 text-amber-900",
+                                                        status.tone === 'red' && "bg-red-50 text-red-800", status.tone === 'muted' && "bg-muted text-muted-foreground")}>{status.label}</span>}
                                                     {doc.url && (
                                                         <Button type="button" size="sm" variant={status.tone === 'amber' && reviewable ? 'default' : 'outline'} onClick={() => openDoc(doc)}>
                                                             {status.tone === 'amber' && reviewable ? mt("arCheck") : mt("view")}
@@ -468,6 +493,11 @@ export function ApplicationDetailPanel({
                 url={openDocument?.url}
                 status={openDocument?.status}
                 expiry={openDocument?.expiry}
+                sentAt={openDocument?.sentAt}
+                setting={openDocument?.setting}
+                customerName={firstName}
+                waitingNote={openDocument?.waitingNote}
+                pausedNote={openDocument?.pausedNote}
                 reviewNote={openDocument?.reviewNote}
                 reviewField={openDocument?.reviewField}
                 onVerify={onVerifyDocument}

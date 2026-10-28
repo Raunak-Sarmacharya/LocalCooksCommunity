@@ -13,12 +13,14 @@ export function DocumentRenewalReview({ renewal, document, busy, onView, onRevie
 }) {
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState('');
-  const expiry = new Intl.DateTimeFormat(i18n.language, { dateStyle: 'long', timeZone: 'UTC' }).format(new Date(`${renewal.expiry}T00:00:00Z`));
+  // One date format on the kitchen side: "Oct 27, 2027".
+  const expiry = new Intl.DateTimeFormat(i18n.language, { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${renewal.expiry}T00:00:00Z`));
+  const sent = renewal.submittedAt ? new Date(renewal.submittedAt).toLocaleDateString(i18n.language, { month: 'short', day: 'numeric', year: 'numeric' }) : null;
   const reasonId = `renewal-reason-${renewal.key}`;
   return <section aria-label={mt('renewalSubmittedTitle', { document })} className="space-y-3 rounded-xl border border-primary/30 bg-primary/5 p-4">
     <div>
       <h5 className="text-sm font-semibold">{mt('renewalSubmittedTitle', { document })}</h5>
-      <p className="text-sm text-muted-foreground">{mt('renewalSubmittedBody', { date: expiry })}</p>
+      <p className="text-sm text-muted-foreground">{sent && `${mt('arSentOn', { date: sent })} · `}{mt('renewalSubmittedBody', { date: expiry })}</p>
     </div>
     <div className="flex flex-wrap gap-2">
       <Button type="button" variant="outline" size="sm" onClick={onView}>{mt('renewalView')}</Button>

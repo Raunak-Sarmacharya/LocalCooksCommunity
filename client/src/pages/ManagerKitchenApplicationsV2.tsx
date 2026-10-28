@@ -391,21 +391,23 @@ export function ManagerKitchenApplicationsContent({
         }
     };
 
-    const handleVerifyDocument = async (field: DocumentVerificationField, status: 'approved' | 'rejected') => {
+    const handleVerifyDocument = async (field: DocumentVerificationField, status: 'approved' | 'rejected', note?: string) => {
         if (!selectedApplication) return;
+        const done = () => toast({ title: status === 'approved' ? mt('dvVerifiedToast') : mt('dvAskedToast', { name: selectedApplication.fullName.split(/\s+/)[0] }) });
         try {
             if (field.startsWith('custom:')) {
                 // One of the kitchen's own documents: the server returns the updated application.
-                const result = await verifyDocuments.mutateAsync({ applicationId: selectedApplication.id, customDocument: field, customDocumentStatus: status });
+                const result = await verifyDocuments.mutateAsync({ applicationId: selectedApplication.id, customDocument: field, customDocumentStatus: status, rejectionReason: note });
                 if (result?.application) setSelectedApplication({ ...selectedApplication, tier_data: result.application.tier_data });
-                toast({ title: status === 'approved' ? 'Document verified' : 'Document needs a replacement' });
+                done();
                 return;
             }
-            await verifyDocuments.mutateAsync({ applicationId: selectedApplication.id, [field]: status });
-            setSelectedApplication({ ...selectedApplication, [field]: status });
-            toast({ title: status === 'approved' ? 'Document verified' : 'Document needs a replacement' });
+            const result = await verifyDocuments.mutateAsync({ applicationId: selectedApplication.id, [field]: status, rejectionReason: note });
+            // The tier data carries when it was checked and the note, for the list and the next open.
+            setSelectedApplication({ ...selectedApplication, [field]: status, ...(result?.application?.tier_data ? { tier_data: result.application.tier_data } : {}) });
+            done();
         } catch (error: any) {
-            toast({ title: mt('error'), description: error.message || 'Could not review document', variant: 'destructive' });
+            toast({ title: mt('error'), description: error.message || mt('dvReviewFailed'), variant: 'destructive' });
         }
     };
 

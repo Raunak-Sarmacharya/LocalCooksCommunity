@@ -23,6 +23,7 @@ export class ChefRepository {
             })
             .onConflictDoNothing()
             .returning();
+        if (access) await (await import('../../services/location-access-notices')).clearAccessEndedNote(chefId, locationId);
         return access;
     }
 

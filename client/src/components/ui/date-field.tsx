@@ -38,6 +38,13 @@ export interface DateFieldProps {
   placeholder: string;
   /** Block days before today. Default true — the common case is an expiry. */
   minToday?: boolean;
+  /**
+   * Only days after today, with month and year menus to jump years ahead: a document's expiry date, which the server
+   * accepts only when it is later than today (accessDocumentDaysLeft > 0).
+   */
+  afterToday?: boolean;
+  /** A line under the calendar, e.g. which date to pick. */
+  footer?: React.ReactNode;
   disabled?: boolean;
   disabledDate?: (date: Date) => boolean;
   className?: string;
@@ -50,6 +57,8 @@ export function DateField({
   onChange,
   placeholder,
   minToday = true,
+  afterToday = false,
+  footer,
   disabled,
   disabledDate,
   className,
@@ -57,6 +66,8 @@ export function DateField({
 }: DateFieldProps) {
   const [open, setOpen] = React.useState(false);
   const selected = parse(value);
+  const today = new Date(new Date().setHours(0, 0, 0, 0));
+  const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -97,9 +108,11 @@ export function DateField({
             onChange(date ? format(date, "yyyy-MM-dd") : "");
             setOpen(false);
           }}
-          disabled={(date) => (minToday && date < new Date(new Date().setHours(0, 0, 0, 0))) || !!disabledDate?.(date)}
+          disabled={(date) => (afterToday ? date < tomorrow : minToday && date < today) || !!disabledDate?.(date)}
           initialFocus
-          className="w-[280px] p-3"
+          className="w-[300px] p-3"
+          {...(afterToday && { showOutsideDays: false, captionLayout: "dropdown-buttons" as const, fromYear: today.getFullYear(), toYear: today.getFullYear() + 20, defaultMonth: selected ?? today })}
+          footer={footer ? <p className="mt-2 border-t pt-2 text-xs text-muted-foreground">{footer}</p> : undefined}
         />
       </PopoverContent>
     </Popover>

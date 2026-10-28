@@ -39,12 +39,29 @@ export const calendarRangeDayModifiers = {
     "day-range-end !bg-transparent !text-gray-900",
 }
 
+/** Month and year menus (captionLayout "dropdown"): native selects laid over a bordered label, nav arrows beside them. */
+const dropdownClassNames: CalendarProps["classNames"] = {
+  caption: "flex items-center gap-2 w-full",
+  caption_dropdowns: "flex flex-1 items-center gap-2",
+  dropdown_month: "relative inline-flex h-9 flex-1 items-center rounded-md border border-input bg-background",
+  dropdown_year: "relative inline-flex h-9 w-[92px] items-center rounded-md border border-input bg-background tabular-nums",
+  dropdown: "absolute inset-0 z-10 w-full cursor-pointer appearance-none opacity-0",
+  dropdown_icon: "size-4 text-muted-foreground",
+  caption_label: "flex w-full items-center justify-between gap-1 px-3 text-sm",
+  vhidden: "sr-only",
+  nav: "flex items-center gap-1",
+  nav_button: cn(buttonVariants({ variant: "ghost" }), "size-9 rounded-md border border-input bg-transparent p-0 disabled:border-transparent disabled:opacity-40"),
+  nav_button_previous: "",
+  nav_button_next: "",
+}
+
 function Calendar({
   className,
   classNames,
   showOutsideDays = true,
   ...props
 }: CalendarProps) {
+  const dropdowns = props.captionLayout?.startsWith("dropdown")
   return (
     <DayPicker
       showOutsideDays={showOutsideDays}
@@ -82,6 +99,7 @@ function Calendar({
         day_range_middle:
           "aria-selected:bg-transparent aria-selected:text-gray-900",
         day_hidden: "invisible",
+        ...(dropdowns && dropdownClassNames),
         ...classNames,
       }}
       components={{
@@ -90,6 +108,9 @@ function Calendar({
         ),
         IconRight: ({ className }) => (
           <Icon icon="mdi:chevron-right" className={cn("h-4 w-4", className)} aria-hidden />
+        ),
+        IconDropdown: ({ className }) => (
+          <Icon icon="mdi:chevron-down" className={cn("h-4 w-4 text-muted-foreground", className)} aria-hidden />
         ),
       }}
       {...props}

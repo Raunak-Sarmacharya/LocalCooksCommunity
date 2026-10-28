@@ -8,7 +8,7 @@ import { upload, uploadToBlob } from '../../fileUpload';
 import { requireFirebaseAuthWithUser, requireManager, requireAdmin } from '../../firebase-auth-middleware';
 import { db } from '../../db';
 import { notifyAdminsOfWaiver, recordDocumentWaiver, setDocumentWaiver } from '../../services/document-waivers';
-import { customDocumentFields, customDocumentId, isCustomDocumentKey, kitchenDocumentFields } from '@shared/location-booking-eligibility';
+import { customDocumentFields, customDocumentId, documentFields, isCustomDocumentKey, kitchenDocumentFields, logDocument } from '@shared/location-booking-eligibility';
 import { tourThatOpenedChat } from '../../services/shared-chat-access';
 import { approvalCustomDocumentStatus } from '../../domains/applications/document-approval';
 import { accessDocumentDaysLeft as daysLeftOnFile, DOCUMENT_KEYS, DOCUMENT_LABELS, type DocumentKey } from '@shared/location-booking-eligibility';
@@ -971,17 +971,28 @@ router.get('/firebase/chef/kitchen-applications', requireFirebaseAuthWithUser, a
             requirementsByLocation.set(locationId, await locationService.getLocationRequirementsWithDefaults(locationId));
         }));
         const renewals = await readDocumentRenewals(applications.map(application => application.id));
-        const { locationDocuments, accessDocumentStage, accessDocumentDaysLeft: daysLeft } = await import('@shared/location-booking-eligibility');
+        const { locationDocuments, accessDocumentStage, accessDocumentDaysLeft: daysLeft, documentLogEntry } = await import('@shared/location-booking-eligibility');
+        const { chefFeedback } = await import('../../services/location-access-notices');
         const documentsFor = (application: any) => {
             const timezone = application.location?.timezone || undefined;
-            return locationDocuments(application, requirementsByLocation.get(application.locationId) || {}).map(doc => ({
-                key: doc.key, label: doc.label, mode: doc.mode, hasExpiry: doc.hasExpiry, waived: !!application.documentsWaivedAt && doc.mode === 'required',
-                uploaded: !!doc.url, status: doc.status ?? null, expiry: doc.expiry ?? null, daysLeft: daysLeft(doc.expiry, timezone), stage: accessDocumentStage(doc.expiry, timezone),
-                renewalPending: renewals.some(renewal => renewal.applicationId === application.id && renewal.key === doc.key && renewal.status === 'pending') }));
+            return locationDocuments(application, requirementsByLocation.get(application.locationId) || {}).map(doc => {
+                const log = documentLogEntry(application.tier_data, doc.key);
+                const renewal = renewals.find(item => item.applicationId === application.id && item.key === doc.key && (item.status === 'pending' || item.status === 'rejected'));
+                return {
+                    key: doc.key, label: doc.label, mode: doc.mode, hasExpiry: doc.hasExpiry, waived: !!application.documentsWaivedAt && doc.mode === 'required',
+                    uploaded: !!doc.url, status: doc.status ?? null, expiry: doc.expiry ?? null, daysLeft: daysLeft(doc.expiry, timezone), stage: accessDocumentStage(doc.expiry, timezone),
+                    renewalPending: renewal?.status === 'pending',
+                    // Copies sent with the booking requirements predate the log: they were sent with them.
+                    sentAt: doc.url ? log.sentAt ?? application.tier2_completed_at ?? null : null, checkedAt: log.checkedAt ?? null,
+                    note: doc.status === 'rejected' && log.note ? { text: log.note, at: log.noteAt ?? null } : null,
+                    renewal: renewal ? { status: renewal.status, sentAt: renewal.submittedAt, expiry: renewal.expiry ?? null, note: renewal.rejectionReason ?? null } : null,
+                };
+            });
         };
 
         res.json(applications.map((application) => ({
             ...application,
+            feedback: chefFeedback(application.feedback, (application as any).bookingEligibility?.status === 'access_ended'),
             managerName: application.location?.managerId
                 ? managerNames.get(application.location.managerId) ?? null
                 : null,
@@ -1175,6 +1186,17 @@ router.patch('/firebase/chef/kitchen-applications/:id/documents',
             const updateData: any = { id: applicationId };
             const renewalsQueued: RenewalKey[] = [];
             const renewalLocation = await locationService.getLocationById(application.locationId);
+            // Owner, Oct 27: once the kitchen has a copy to check (sent with the booking requirements, or a renewal), the
+            // customer can't swap it; they message the kitchen instead. Early uploads before sending stay replaceable.
+            if (files && application.tier2_completed_at) {
+                const waiting = await readDocumentRenewals(applicationId);
+                const withKitchen = Object.keys(files).map(field => field.startsWith('custom_') ? `custom:${field.slice(7)}` : field.replace(/File$/, '')).find(key => {
+                    if (!isCustomDocumentKey(key) && !(DOCUMENT_KEYS as string[]).includes(key)) return false;
+                    const { url, status } = documentFields(application as any, key as DocumentKey);
+                    return (!!url && status === 'pending') || waiting.some(renewal => renewal.key === key && renewal.status === 'pending');
+                });
+                if (withKitchen) return res.status(409).json({ error: 'The kitchen is checking this document. Message the kitchen if it needs to change.', code: 'DOCUMENT_WITH_KITCHEN' });
+            }
 
             if (files) {
                 if (files['foodSafetyLicenseFile']?.[0]) {
@@ -1246,7 +1268,9 @@ router.patch('/firebase/chef/kitchen-applications/:id/documents',
                 const tierData = ((updatedApplication as any).tier_data || {}) as Record<string, any>;
                 const documentStatus = { ...(tierData.customDocumentStatus || {}) };
                 for (const id of Object.keys(replaced)) delete documentStatus[id];
-                const [row] = await db.update(chefKitchenApplications).set({ tier_data: { ...tierData, tier2_custom_fields_data: { ...(tierData.tier2_custom_fields_data || {}), ...replaced }, customDocumentStatus: documentStatus }, updatedAt: new Date() })
+                const sentAt = new Date().toISOString();
+                const logged = Object.keys(replaced).filter(id => !id.endsWith('__expiry')).reduce((data, id) => logDocument(data, `custom:${id}`, { sentAt }, true), tierData);
+                const [row] = await db.update(chefKitchenApplications).set({ tier_data: { ...logged, tier2_custom_fields_data: { ...(tierData.tier2_custom_fields_data || {}), ...replaced }, customDocumentStatus: documentStatus }, updatedAt: new Date() })
                     .where(eq(chefKitchenApplications.id, applicationId)).returning();
                 updatedApplication = row ?? updatedApplication;
             }
@@ -1315,9 +1339,11 @@ async function attachTours<T extends { chefId: number; locationId: number }>(man
 }
 
 /** Records the kitchen's (or Local Cooks') decision on one or more of the kitchen's own documents. */
-async function setCustomDocumentStatus(applicationId: number, statuses: Record<string, 'approved' | 'rejected'>, reviewer: 'manager' | 'local_cooks') {
+async function setCustomDocumentStatus(applicationId: number, statuses: Record<string, 'approved' | 'rejected'>, reviewer: 'manager' | 'local_cooks', note?: string) {
     const [current] = await db.select({ tier_data: chefKitchenApplications.tier_data }).from(chefKitchenApplications).where(eq(chefKitchenApplications.id, applicationId)).limit(1);
-    const tierData = ((current?.tier_data || {}) as Record<string, any>);
+    const now = new Date().toISOString();
+    const tierData = Object.entries(statuses).reduce((data, [id, decision]) => logDocument(data, `custom:${id}`,
+        { checkedAt: now, note: decision === 'rejected' ? note : undefined, noteAt: decision === 'rejected' && note ? now : undefined }), (current?.tier_data || {}) as Record<string, any>);
     const documentVerification = { ...(tierData.documentVerification || {}), ...Object.fromEntries(Object.keys(statuses).map(id => [`custom:${id}`, reviewer])) };
     const [row] = await db.update(chefKitchenApplications).set({ tier_data: { ...tierData, customDocumentStatus: { ...(tierData.customDocumentStatus || {}), ...statuses }, documentVerification }, updatedAt: new Date() })
         .where(eq(chefKitchenApplications.id, applicationId)).returning();
@@ -1468,6 +1494,7 @@ router.patch('/firebase/admin/kitchen-applications/:id/status', requireFirebaseA
                     grantedBy: user.id,
                     grantedAt: new Date(),
                 });
+                await (await import('../../services/location-access-notices')).clearAccessEndedNote(updatedApplication.chefId, updatedApplication.locationId);
             }
         }
 
@@ -2271,6 +2298,7 @@ router.patch('/manager/kitchen-applications/:id/status', requireFirebaseAuthWith
                                 grantedBy: req.neonUser!.id,
                                 grantedAt: new Date(),
                             });
+                            await (await import('../../services/location-access-notices')).clearAccessEndedNote(application.chefId, application.locationId);
                             logger.info(`✅ Granted chef ${application.chefId} access to location ${application.locationId} (Requirements Met)`);
                         }
                     } catch (accessError) {
@@ -2423,6 +2451,17 @@ router.patch('/manager/kitchen-applications/:id/verify-documents', requireFireba
         if ((application.current_tier ?? 1) < 2 || !application.tier2_completed_at) {
             return res.status(403).json({ error: 'Booking requirements must be submitted before manager review.' });
         }
+        // Asking for a new copy needs a note the customer will see (owner, Oct 27); renewals already require one.
+        const note = typeof req.body.rejectionReason === 'string' ? req.body.rejectionReason.trim() : '';
+        const noteInvalid = !note || note.length > 2000;
+        const tellCustomer = async (key: string, document: string) => {
+            try {
+                const { queueNewCopyNotice, deliverAccessNotice } = await import('../../services/location-access-notices');
+                const noticeId = await queueNewCopyNotice({ applicationId, chefId: application.chefId, email: application.email, name: application.fullName,
+                    locationId: application.locationId, locationName: location.name, document, key, note });
+                await deliverAccessNotice(noticeId);
+            } catch (error) { logger.error('Error telling the customer a new copy was asked for:', error); }
+        };
         if (typeof req.body.customDocument === 'string') {
             const key = req.body.customDocument as string;
             const decision = req.body.customDocumentStatus;
@@ -2433,12 +2472,14 @@ router.patch('/manager/kitchen-applications/:id/verify-documents', requireFireba
                 await decideDocumentRenewal({ applicationId: application.id, key, decision, reviewer: 'manager', reason: req.body.rejectionReason });
                 return res.json({ success: true, application: await chefApplicationService.getApplicationById(applicationId), renewed: [key], message: 'Renewal reviewed' });
             }
+            if (decision === 'rejected' && noteInvalid) return res.status(400).json({ error: 'Tell the customer what to fix (up to 2,000 characters).' });
             const { url, expiry } = customDocumentFields(application as any, own.id);
             if (!url) return res.status(400).json({ error: `No ${own.label.toLowerCase()} is on file.` });
             if (decision === 'approved' && own.expires && (accessDocumentDaysLeft(expiry, location.timezone || undefined) ?? 0) <= 0) {
                 return res.status(400).json({ error: `The ${own.label.toLowerCase()} needs a current expiry date before it can be approved.` });
             }
-            const updated = await setCustomDocumentStatus(applicationId, { [own.id]: decision }, 'manager');
+            const updated = await setCustomDocumentStatus(applicationId, { [own.id]: decision }, 'manager', decision === 'rejected' ? note : undefined);
+            if (decision === 'rejected') await tellCustomer(key, own.label);
             if (decision === 'approved' && updated?.chat_conversation_id) {
                 try { await sendSystemNotification(updated.chat_conversation_id, 'DOCUMENT_VERIFIED', { documentName: own.label }); }
                 catch (error) { logger.error('Error announcing document approval:', error); }
@@ -2452,8 +2493,11 @@ router.patch('/manager/kitchen-applications/:id/verify-documents', requireFireba
         if (renewed.length && !foodSafetyLicenseStatus && !foodEstablishmentCertStatus && !insuranceStatus) {
             return res.json({ success: true, application: await chefApplicationService.getApplicationById(applicationId), renewed, message: 'Renewal reviewed' });
         }
+        const rejected = ([['foodSafetyLicense', foodSafetyLicenseStatus], ['foodEstablishmentCert', foodEstablishmentCertStatus], ['insurance', insuranceStatus]] as const)
+            .filter(([, decision]) => decision === 'rejected').map(([key]) => key);
+        if (rejected.length && noteInvalid) return res.status(400).json({ error: 'Tell the customer what to fix (up to 2,000 characters).' });
         // Update document statuses
-        const updateData: any = { id: applicationId, verifiedBy: 'manager' };
+        const updateData: any = { id: applicationId, verifiedBy: 'manager', ...(rejected.length && { notes: Object.fromEntries(rejected.map(key => [key, note])) }) };
         if (insuranceStatus && !application.insuranceUrl) return res.status(400).json({ error: 'No insurance is on file.' });
         if (insuranceStatus === 'approved' && (accessDocumentDaysLeft(application.insuranceExpiry, location.timezone || undefined) ?? 0) <= 0) {
             return res.status(400).json({ error: 'The insurance needs a current expiry date before it can be approved.' });
@@ -2475,6 +2519,7 @@ router.patch('/manager/kitchen-applications/:id/verify-documents', requireFireba
         if (foodEstablishmentCertStatus) updateData.foodEstablishmentCertStatus = foodEstablishmentCertStatus;
 
         const updatedApplication = await chefApplicationService.updateApplicationDocuments(updateData);
+        for (const key of rejected) await tellCustomer(key, DOCUMENT_LABELS[key].toLowerCase());
 
         // Send system message when documents are verified
         if (updatedApplication?.chat_conversation_id) {

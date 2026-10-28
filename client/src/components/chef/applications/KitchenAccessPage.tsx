@@ -3,7 +3,7 @@
  * booking requirements, then what the chef sent. Airbnb Trips / Turo pattern: the trip itself is the hub, so "request sent"
  * lands here with a one-time banner instead of a separate confirmation page. The kitchen is always the one reviewing.
  */
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
@@ -20,8 +20,8 @@ import type { KitchenApplicationWithLocation } from "@/hooks/use-chef-kitchen-ap
 import { getKitchenDisplayStatus, hasStep2BeenSubmitted } from "./status";
 import { KitchenAccessTracker } from "./KitchenAccessTracker";
 import { KitchenApplicationDetails, type ApplicationFieldDefinitions } from "./KitchenApplicationDetails";
-import { ApplicationDocumentRows, documentNeedsAction } from "./MyDocuments";
-import { RenewAccessDocuments } from "./RenewAccessDocuments";
+import { documentName, documentNeedsAction, documentState, documentSummary } from "./MyDocuments";
+import { YourDocuments, lowerFirst } from "./YourDocuments";
 import { customDocumentFields } from "@shared/location-booking-eligibility";
 
 type PublicKitchen = { id: number; locationId: number; name: string; imageUrl?: string | null; hourlyRate?: number | null; currency?: string | null; brandImageUrl?: string | null };
@@ -39,14 +39,14 @@ export function KitchenAccessPage({ app, sent, notice, renewRequested, onOpenCha
 }) {
   const { t, i18n } = useTranslation("chef");
   const [, navigate] = useLocation();
-  const [adding, setAdding] = useState(false);
-  // The renewal form opens from "Renew documents" or an Upload link, not on its own beside the same list.
-  const [renewOpen, setRenewOpen] = useState(false);
+  // The one document row with its upload form open; documents sent from this page this visit (for the banner).
+  const [openKey, setOpenKey] = useState<string | null>(null);
+  const [sentDocs, setSentDocs] = useState<string[]>([]);
   const display = getKitchenDisplayStatus(app, t);
   const tier = app.current_tier ?? 1;
   const step2Sent = hasStep2BeenSubmitted(app);
   const kitchenName = app.location?.name || t("apptabKitchenFallback", "Kitchen");
-  const day = (value: unknown) => { const date = value ? fromCalendarDate(value as string) : null; return date && !Number.isNaN(date.getTime()) ? date.toLocaleDateString(i18n.language, { month: "long", day: "numeric" }) : ""; };
+  const day = (value: unknown) => { const date = value ? fromCalendarDate(value as string) : null; return date && !Number.isNaN(date.getTime()) ? date.toLocaleDateString(i18n.language, { month: "short", day: "numeric" }) : ""; };
 
   const definitions = useQuery<ApplicationFieldDefinitions>({
     queryKey: [`/api/public/locations/${app.locationId}/requirements`],
@@ -65,8 +65,21 @@ export function KitchenAccessPage({ app, sent, notice, renewRequested, onOpenCha
   // Missing or sent back only: one that merely expires soon is the reminder/renewal flow, not "the kitchen asked for more".
   const addNow = tier < 3 && step2Sent ? neededDocs.filter(doc => !doc.uploaded || doc.status === "rejected") : [];
   const inFirstReview = display.actionKind === "wait" && !step2Sent && tier < 2 && !display.bookingBlocked;
+  const docs = documentSummary(app);
+  const toSend = [...docs.rejected, ...docs.expired, ...docs.missing];
   const book = () => navigate(kitchenPreviewPath(app.locationId));
-  const renew = () => { setRenewOpen(true); requestAnimationFrame(() => { const section = document.getElementById("renew-access-documents"); section?.scrollIntoView?.({ behavior: "smooth", block: "start" }); section?.focus?.(); }); };
+  // Rows upload through the documents PATCH once the kitchen approved the request (or early, while it is in review);
+  // between those, the step-2 form sends documents and answers together.
+  const canUpload = inFirstReview || (app.status === "approved" && !app.documentsWaivedAt && (step2Sent || tier >= 3));
+  const showSendDocuments = (first = toSend[0] ?? documents.find(doc => ["missing", "rejected", "expired", "expiring"].includes(documentState(doc, step2Sent)))) => {
+    if (first && canUpload) setOpenKey(first.key);
+    requestAnimationFrame(() => { const section = document.getElementById("your-documents"); section?.scrollIntoView?.({ behavior: "smooth", block: "start" }); section?.focus?.({ preventScroll: true }); });
+  };
+  // Arrived from an Upload / Send new copy link (email, Home, My kitchens): open the first document that needs them.
+  const opened = useRef(false);
+  useEffect(() => { if (renewRequested && !opened.current && documents.length) { opened.current = true; showSendDocuments(); } }, [renewRequested, documents.length]);
+  const docName = (doc: (typeof documents)[number]) => documentName(t, doc);
+  const docList = (list: typeof documents) => new Intl.ListFormat(i18n.language, { type: "conjunction" }).format(list.map(doc => lowerFirst(docName(doc))));
   const chat = app.chat_conversation_id && onOpenChat
     ? <Button variant="outline" onClick={() => onOpenChat(app)}><MessageCircle className="mr-1.5 size-4" aria-hidden />{t("kaMessageKitchen", "Message the kitchen")}</Button> : null;
 
@@ -74,12 +87,31 @@ export function KitchenAccessPage({ app, sent, notice, renewRequested, onOpenCha
   type Next = { tone: "act" | "ok" | "wait"; title: string; body: ReactNode; actions: ReactNode };
   const next: Next = (() => {
     if (addNow.length) return { tone: "act", title: t("kaAddTitleCount", { defaultValue: "{count, plural, one {The kitchen needs one more document} other {The kitchen needs # more documents}}", count: addNow.length }), body: t("applicationAddDocumentsHelp", { defaultValue: "The kitchen also asks for: {documents}. Add them below. Your application stays in review meanwhile.", documents: addNow.map(doc => doc.label).join(", ") }), actions: chat };
+    // Booking paused by a document (owner-approved mocks c1–c5): name the document and the one thing to do.
+    if (display.bookingBlocked && app.bookingEligibility?.status !== "access_ended") {
+      const send = toSend.length ? <Button className="sm:hidden" onClick={() => showSendDocuments()}>{docs.rejected.length || docs.expired.length ? t("dfSendNewCopy", "Send new copy") : t("dfSendDocuments", "Send documents")}</Button> : null;
+      const actions = <>{chat}{send}</>;
+      if (docs.rejected.length) return { tone: "act", title: t("kaNewCopyTitle", { defaultValue: "The kitchen asked for a new {document}", document: lowerFirst(docName(docs.rejected[0])) }),
+        body: t("kaNewCopyBody", "Send a new copy below. New bookings open once the kitchen verifies it. Bookings you already have stay as they are."), actions };
+      if (docs.expired.length) return { tone: "act", title: t("kaExpiredTitle", { defaultValue: "Your {document} expired on {date}", document: lowerFirst(docName(docs.expired[0])), date: day(docs.expired[0].expiry) }),
+        body: t("kaExpiredBody", { defaultValue: "New bookings at {kitchen} are paused until you send a current one and the kitchen verifies it. Bookings you already have stay as they are.", kitchen: kitchenName }), actions };
+      if (docs.missing.length) return { tone: "act", title: t("kaNeedsDocsTitle", { defaultValue: "{kitchen} needs {count, plural, one {one more document} other {# more documents}}", count: docs.missing.length, kitchen: kitchenName }),
+        body: t("kaNeedsDocsBody", { defaultValue: "Send your {documents}. New bookings open once the kitchen checks them. Bookings you already have stay as they are.", documents: docList(docs.missing) }), actions };
+      const checking = [...docs.checking, ...docs.renewal];
+      if (checking.length) return { tone: "wait", title: checking.length === 1 ? t("kaCheckingOneTitle", { defaultValue: "{kitchen} is checking your {document}", kitchen: kitchenName, document: lowerFirst(docName(checking[0])) })
+          : t("kaCheckingDocsTitle", { defaultValue: "{kitchen} is checking {count} documents", kitchen: kitchenName, count: checking.length }),
+        body: t("kaCheckingDocsBody", { defaultValue: "{count, plural, one {You sent it on {date}. New bookings open as soon as the kitchen verifies it.} other {You sent them on {date}. New bookings open as soon as the kitchen verifies them.}} Bookings you already have stay as they are.",
+          count: checking.length, date: day(docs.lastSent ?? checking[0].renewal?.sentAt) }), actions: chat };
+    }
     if (display.bookingBlocked) return { tone: "act", title: display.label, body: app.bookingEligibility?.status === "access_ended" ? t("locationAccessEndedHelp") : app.bookingEligibility?.status === "renewal_under_review" ? t("renewalUnderReviewHelp")
         : t("kaRenewBody", "New bookings are paused until the kitchen has the documents marked below. Bookings you already have stay as they are."),
-      actions: <>{chat}{display.actionKind === "complete-step" && <Button onClick={renew}>{t("renewDocumentsTitle", "Renew documents")}</Button>}</> };
+      actions: <>{chat}{display.actionKind === "complete-step" && <Button onClick={() => showSendDocuments()}>{t("dfSendDocuments", "Send documents")}</Button>}</> };
     if (display.listingPaused) return { tone: "wait", title: display.label, body: t("applicationPausedHelp", "Your kitchen access is approved. Booking will be available when this kitchen opens for reservations again."), actions: chat };
     if (display.actionKind === "book") return { tone: "ok", title: t("kaBookTitle", { defaultValue: "You can book {kitchen}", kitchen: kitchenName }),
       body: app.documentsWaivedAt ? t("kaBookBodyWaived", "The kitchen doesn’t need booking requirements from you. Book by the hour or the day; your card is charged only when the kitchen accepts.")
+        // A new copy waiting, or one expiring soon: booking stays open, but say until when (mocks c4, c6).
+        : docs.renewal.length ? t("kaRenewalWaitingBody", { defaultValue: "The kitchen is checking your new {document}. Your current one counts until {date}, so nothing pauses meanwhile.", document: lowerFirst(docName(docs.renewal[0])), date: day(docs.renewal[0].expiry) })
+        : docs.expiring.length ? t("kaExpiringBody", { defaultValue: "Your {document} expires {date}. Send the new one before then so booking doesn’t pause.", document: lowerFirst(docName(docs.expiring[0])), date: day(docs.expiring[0].expiry) })
         : t("kaBookBody", "Book by the hour or the day. Your card is charged only when the kitchen accepts your booking."),
       actions: <>{chat}<Button onClick={book}>{t("kdBook", "Book kitchen time")}</Button></> };
     if (display.actionKind === "complete-step") return { tone: "act", title: t("kaSendTitle", "Send your booking requirements"),
@@ -97,17 +129,19 @@ export function KitchenAccessPage({ app, sent, notice, renewRequested, onOpenCha
 
   const viewLink = (key: string) => { const url = key.startsWith("custom:") ? customDocumentFields(app as any, key.slice(7)).url : key === "foodSafetyLicense" ? app.foodSafetyLicenseUrl : key === "foodEstablishmentCert" ? app.foodEstablishmentCertUrl : (app as any).insuranceUrl;
     return url ? <SecureDocumentLink url={url} label={t("apptabViewDocument", "View")} showExternalIcon={false} /> : null; };
-  const showRenewal = app.status === "approved" && (tier >= 3 || !!app.tier2_completed_at) && (renewRequested || renewOpen || addNow.length > 0);
-  const requirementsTitle = inFirstReview ? t("kaNextAsks", "Next, the kitchen asks for these") : tier >= 3 ? t("mdTitle", "Your documents") : t("kitchenDocuments", "Booking requirements");
+  const requirementsTitle = inFirstReview ? t("kaNextAsks", "Next, the kitchen asks for these") : tier >= 3 || step2Sent ? t("dfTitle", { defaultValue: "Your documents for {kitchen}", kitchen: kitchenName }) : t("kitchenDocuments", "Booking requirements");
   const requirementsLead = inFirstReview ? t("kaNextAsksLead", "Optional for now. Adding them early speeds things up once the kitchen replies.")
-    : app.documentsWaivedAt ? t("mdWaivedLocation", "This location doesn’t need documents from you") : tier >= 3 ? t("kaRemindLead", "We’ll remind you 45, 14 and 3 days before one expires.") : null;
+    : app.documentsWaivedAt ? t("mdWaivedLocation", "This location doesn’t need documents from you") : tier >= 3 || step2Sent ? t("dfLead", "Each kitchen keeps its own copy. We’ll remind you 45, 14 and 3 days before one expires.") : null;
   const panelTone = { act: "bg-primary/[0.06]", ok: "bg-emerald-50", wait: "bg-muted/60" }[next.tone];
 
   const showDocuments = documents.length > 0 && display.actionKind !== "discover";
   // Added by the kitchen: there was no request, so only show it when the kitchen left feedback.
   const showRequest = !(app.tier_data as Record<string, unknown> | null)?.addedByKitchen || !!app.feedback;
-  const mainEmpty = !showRenewal && !showDocuments && !showRequest;
+  const mainEmpty = !showDocuments && !showRequest;
   return <section className="min-w-0 space-y-6 [overflow-wrap:anywhere]" aria-labelledby="kitchen-access-title" data-testid="kitchen-access-page">
+    {sentDocs.length > 0 && <div role="status" className="flex items-start gap-3 rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-900" data-testid="documents-sent-banner">
+      <Check className="mt-0.5 size-4 shrink-0" aria-hidden /><p className="min-w-0 flex-1"><span className="font-semibold">{t("dfSentBanner", { defaultValue: "{documents} sent to {kitchen}.", documents: new Intl.ListFormat(i18n.language, { type: "conjunction" }).format(sentDocs.map((name, i) => i ? lowerFirst(name) : name)), kitchen: kitchenName })}</span> {t("dfSentBannerNext", "The kitchen checks it next. This page shows when you can book.")}</p>
+      <button type="button" aria-label={t("tourNoticeDismiss", "Dismiss")} onClick={() => setSentDocs([])} className="-m-1 inline-flex size-8 shrink-0 items-center justify-center rounded-md hover:bg-emerald-100"><X className="size-4" aria-hidden /></button></div>}
     {sent && <div role="status" className="flex items-start gap-3 rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-900" data-testid="request-sent-banner">
       <Check className="mt-0.5 size-4 shrink-0" aria-hidden /><p className="min-w-0 flex-1"><span className="font-semibold">{sent === "joined" ? t("kaJoinedBanner", { defaultValue: "You joined {kitchen}.", kitchen: kitchenName }) : sent === "requirements" ? t("kaSentReqBanner", { defaultValue: "Booking requirements sent to {kitchen}.", kitchen: kitchenName }) : t("kaSentBanner", { defaultValue: "Request sent to {kitchen}.", kitchen: kitchenName })}</span>{sent !== "joined" && <> {t("kaSentCopy", "We emailed you a copy.")}</>}</p>
       <button type="button" aria-label={t("tourNoticeDismiss", "Dismiss")} onClick={onDismissNotice} className="-m-1 inline-flex size-8 shrink-0 items-center justify-center rounded-md hover:bg-emerald-100"><X className="size-4" aria-hidden /></button></div>}
@@ -122,7 +156,7 @@ export function KitchenAccessPage({ app, sent, notice, renewRequested, onOpenCha
         <p className="mt-0.5 text-sm text-muted-foreground">{[app.location?.address, rate].filter(Boolean).join(" · ")}</p></div>
     </header>
 
-    <div className="rounded-xl border bg-card px-5 py-5 sm:px-6"><KitchenAccessTracker app={app} /></div>
+    <div className="rounded-xl border bg-card px-5 py-5 sm:px-6"><KitchenAccessTracker app={app} stacked /></div>
 
     <div className={cn("grid gap-4 rounded-xl p-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-6 sm:p-6", panelTone)} data-testid="kitchen-access-next">
       <div className="min-w-0"><h2 className="text-lg font-semibold">{next.title}</h2><p className="mt-1 max-w-prose text-sm leading-6 text-foreground/80">{next.body}</p></div>
@@ -131,14 +165,9 @@ export function KitchenAccessPage({ app, sent, notice, renewRequested, onOpenCha
 
     <div className={cn("grid items-start gap-6", mainEmpty ? "max-w-md" : "lg:grid-cols-[minmax(0,1fr)_320px]")}>
       {!mainEmpty && <div className="min-w-0 space-y-6">
-        {showRenewal && <div id="renew-access-documents" tabIndex={-1} className="scroll-mt-4 outline-none"><RenewAccessDocuments applicationId={app.id} renewals={app.bookingEligibility?.renewals} documents={addNow.length ? addNow : documents} adding={addNow.length > 0} onRenewed={onChanged} /></div>}
-        {showDocuments && <section className="rounded-xl border bg-card p-5 sm:p-6" aria-labelledby="kitchen-access-docs">
-          <div className="flex flex-wrap items-baseline justify-between gap-2"><h2 id="kitchen-access-docs" className="text-base font-semibold">{requirementsTitle}</h2>
-            {inFirstReview && neededDocs.length > 0 && !adding && <Button variant="outline" size="sm" onClick={() => setAdding(true)}>{t("kaAddNow", "Add now")}</Button>}</div>
-          {requirementsLead && <p className="mt-1 text-sm text-muted-foreground">{requirementsLead}</p>}
-          <div className="mt-4"><ApplicationDocumentRows app={{ ...app, documents }} viewLink={viewLink} actions={tier >= 3} /></div>
-          {adding && <div className="mt-5"><RenewAccessDocuments applicationId={app.id} documents={neededDocs} adding early onRenewed={() => { setAdding(false); onChanged(); }} /></div>}
-        </section>}
+        {showDocuments && <YourDocuments applicationId={app.id} documents={documents} kitchenName={kitchenName} sentToKitchen={step2Sent} canUpload={canUpload}
+          title={requirementsTitle} lead={requirementsLead} openKey={openKey} onOpen={setOpenKey} viewLink={viewLink}
+          onSent={name => { setSentDocs(current => current.includes(name) ? current : [...current, name]); onChanged(); requestAnimationFrame(() => document.querySelector("[data-testid=documents-sent-banner]")?.scrollIntoView?.({ behavior: "smooth", block: "nearest" })); }} />}
         {showRequest && <section aria-labelledby="kitchen-access-request">
           <h2 id="kitchen-access-request" className="mb-3 text-base font-semibold">{t("kaYourRequest", "Your request")}</h2>
           {definitions.isLoading ? <Skeleton className="h-64 rounded-xl" /> : <KitchenApplicationDetails app={app} display={display} onBookKitchen={book} compact requirements={definitions.data} showActions={false} hideDocuments={(app.documents || []).length > 0} hideFeedback={display.actionKind === "discover"} />}

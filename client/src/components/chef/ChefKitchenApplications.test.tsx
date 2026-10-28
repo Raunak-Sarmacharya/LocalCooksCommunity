@@ -76,13 +76,13 @@ it("tells a chef who already applied where the request stands", () => {
   expect(screen.getByTestId("application-tour-notice")).toHaveTextContent("You’ve already sent Kitchen 7 a request.");
 });
 
-it("in review, the kitchen's documents are optional to add now; no upload buttons yet", () => {
+it("in review, the kitchen's documents are optional to add now, each from its own row (owner, Oct 27: no big form)", () => {
   state.search += "&application=7"; state.applications = [fixture(7, "inReview", 1, { documents: [{ key: "foodSafetyLicense", label: "Food safety certificate", mode: "required", hasExpiry: true, uploaded: false, status: null, expiry: null, daysLeft: null, stage: null, renewalPending: false, waived: false }] })];
   render(page());
   expect(screen.getByText("Next, the kitchen asks for these")).toBeInTheDocument();
   expect(screen.queryByRole("link", { name: "Upload" })).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Add now" }));
-  expect(screen.getByRole("button", { name: "Save documents" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Upload" }));
+  expect(screen.getByRole("button", { name: "Send food safety certificate" })).toBeInTheDocument();
 });
 
 it("approved without booking requirements: step 2 reads Not needed and the page says so", () => {
@@ -118,16 +118,18 @@ it("handles missing applications and fetch errors without showing another record
   expect(screen.getByRole("alert")).toHaveTextContent("We couldn’t load your kitchen applications");
 });
 
-it.each(["document_expired", "document_review_required"])("replaces Book kitchen with a renew action when documents block booking (%s)", async status => {
-  state.search += "&application=9"; state.applications[2] = fixture(9, "approved", 3, { tier2_completed_at: "2026-10-09", bookingEligibility: { canBook: false, status, message: "" } });
+it.each([["document_expired", { uploaded: true, status: "approved", expiry: "2026-10-20", daysLeft: -7, stage: "expired" }, "Send new copy"],
+  ["document_review_required", { uploaded: false, status: null, expiry: null, daysLeft: null, stage: null }, "Send documents"]] as const)("replaces Book kitchen with the one document action when documents block booking (%s)", async (status, document, action) => {
+  state.search += "&application=9"; state.applications[2] = fixture(9, "approved", 3, { tier2_completed_at: "2026-10-09", bookingEligibility: { canBook: false, status, message: "" },
+    documents: [{ key: "foodSafetyLicense", label: "Food safety certificate", mode: "required", hasExpiry: true, renewalPending: false, waived: false, ...document }] });
   const scrollIntoView = vi.fn(); Element.prototype.scrollIntoView = scrollIntoView;
   render(page());
   expect(screen.queryByRole("button", { name: "Book kitchen time" })).not.toBeInTheDocument();
   expect(screen.queryByRole("link", { name: "Send booking requirements" })).not.toBeInTheDocument();
-  expect(document.getElementById("renew-access-documents")).toBeNull(); // opens on request, not beside the same list
-  fireEvent.click(screen.getByRole("button", { name: "Renew documents" }));
+  expect(screen.queryByTestId("document-upload-form")).toBeNull(); // opens on request, in the document's own row
+  fireEvent.click(within(screen.getByTestId("kitchen-access-next")).getByRole("button", { name: action }));
   await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
-  expect(document.getElementById("renew-access-documents")).not.toBeNull();
+  expect(within(screen.getByTestId("document-foodSafetyLicense")).getByTestId("document-upload-form")).toBeInTheDocument();
 });
 
 it("shows no action at all while a renewal is under review or access has ended", () => {

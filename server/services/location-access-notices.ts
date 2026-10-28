@@ -43,6 +43,43 @@ export async function queueAccessNotice(tx: Transaction, input: { trackingId: st
   return intent.id;
 }
 
+/**
+ * Access is back: drop the "Access ended" line(s) the revoke wrote, so the chef no longer reads a stale note and the
+ * kitchen's Customers list stops counting them as revoked. Other feedback stays.
+ * shortcut: a reason typed over several lines keeps its later lines; revoke stores one line per reason in practice.
+ */
+export async function clearAccessEndedNote(chefId: number, locationId: number, connection: Pick<typeof db, 'update'> = db) {
+  // Cleanup only: a failure here must never fail the grant itself.
+  try {
+    await connection.update(chefKitchenApplications)
+      .set({ feedback: sql`nullif(regexp_replace(${chefKitchenApplications.feedback}, ${`^${accessEndedMarker}[^\\n]*\\n?`}, '', 'gn'), '')` })
+      .where(and(eq(chefKitchenApplications.chefId, chefId), eq(chefKitchenApplications.locationId, locationId), sql`${chefKitchenApplications.feedback} like ${`%${accessEndedMarker}%`}`));
+  } catch (error) { logger.error('[Access notice] Could not clear the access-ended note', { chefId, locationId, error }); }
+}
+
+/**
+ * The feedback as the customer reads it: the revoke's internal marker (it says "manager") never shows; while access is
+ * active again, the old "access ended" lines are gone too (rows restored before clearAccessEndedNote existed).
+ */
+export function chefFeedback(feedback: string | null | undefined, accessEnded: boolean) {
+  if (!feedback) return feedback ?? null;
+  const lines = feedback.split('\n').filter(line => accessEnded || !line.startsWith(accessEndedMarker)).map(line => line.split(accessEndedMarker).join(''));
+  return lines.join('\n').trim() || null;
+}
+
+/** The kitchen asked for a new copy of a document: the chef gets its note in-app and by email (owner, Oct 27). */
+export async function queueNewCopyNotice(input: { applicationId: number; chefId: number; email: string; name: string; locationId: number; locationName: string; document: string; key: string; note: string }) {
+  const path = `/dashboard?view=kitchen-requests&renewLocation=${input.locationId}`;
+  return db.transaction(tx => queueAccessNotice(tx, { chefId: input.chefId, email: input.email, name: input.name,
+    trackingId: `document_new_copy_${input.applicationId}_${input.key}_${Date.now()}`,
+    subject: `${input.locationName} asked for a new copy of your ${input.document}`,
+    message: `${input.locationName} asked for a new copy of your ${input.document}. Their note: ${input.note} Upload the new copy on your documents page.`,
+    path, actionLabel: 'Upload a new copy',
+    facts: [{ label: 'Kitchen', value: input.locationName }, { label: 'Document', value: input.document }, { label: 'Note from the kitchen', value: input.note }],
+    // No applicationId: this is not an expiry reminder, so the reminder suppression must not apply.
+    metadata: { document: input.key, kind: 'new_copy' } }));
+}
+
 export async function revokeManagerLocationAccess(managerId: number, chefId: number, locationId: number, reason: string) {
   if (typeof reason !== 'string' || !reason.trim() || reason.trim().length > 2000) throw new DomainError('REASON_REQUIRED', 'Please provide a reason for ending access (up to 2,000 characters).', 400);
   return db.transaction(async tx => {
@@ -57,7 +94,7 @@ export async function revokeManagerLocationAccess(managerId: number, chefId: num
       reviewedBy: managerId, reviewedAt: new Date(), updatedAt: new Date() }).where(eq(chefKitchenApplications.id, app.id));
     const noticeId = await queueAccessNotice(tx, { chefId, email: app.email, name: app.fullName,
       trackingId: `access_ended_${app.id}_${removed.map(row => row.id).join('_')}`, subject: `Your access to ${location.name} has ended`,
-      message: `Your access to ${location.name} has ended for new bookings. ${reason.trim()} Your existing confirmed and pending bookings are kept. Please contact the kitchen manager or Local Cooks to request access again. Contact Local Cooks if you need help with cancellations.`,
+      message: `Your access to ${location.name} has ended for new bookings. ${reason.trim()} Your existing confirmed and pending bookings are kept. Please contact the kitchen or Local Cooks to request access again. Contact Local Cooks if you need help with cancellations.`,
       path: '/dashboard?view=bookings', actionLabel: 'View your bookings',
       facts: [{ label: 'Location', value: location.name }, ...bookings.map(row => ({ label: `Booking KB-${row.id}`, value: `${row.kitchenName} · ${new Date(row.bookingDate).toISOString().slice(0, 10)} · ${row.startTime}–${row.endTime} · ${row.status}` }))] });
     return { success: true, bookings, noticeId };
