@@ -15,6 +15,8 @@ vi.mock('./stripe-checkout-fee-service', () => ({ calculateCheckoutFeesAsync: as
 vi.mock('./outcome-delivery', () => ({ queueClaimOutcome: vi.fn(), queueOverstayOutcome: vi.fn(), attemptOutcomeDelivery: vi.fn() }));
 vi.mock('../reference-code', () => ({ generateReferenceCode: async () => `OP-${randomUUID()}` }));
 vi.mock('../logger', () => ({ logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn() } }));
+const scheduled = vi.hoisted(() => vi.fn(async () => {}));
+vi.mock('./advance-reminders', () => ({ scheduleAdvanceReminders: scheduled }));
 
 import { openRemovalReview, raiseHoldoverCharge, recordRemoval, sendFinalNotice, sweepStorageRentals, waiveHoldover } from './storage-rental-lifecycle';
 import { chargeApprovedPenalty } from './overstay-penalty-service';
@@ -140,6 +142,8 @@ describe('holdover charge requests', () => {
       penaltyRate: '0', calculatedPenaltyCents: 3000, finalPenaltyCents: 2609, managerNotes: 'fair' });
     expect(record.chefDisputeDeadline.toISOString()).toBe('2026-10-21T15:00:00.000Z');
     expect(h.notices).toHaveBeenCalledWith(expect.anything(), 7, 'holdover_charge', expect.objectContaining({ eventKey: 'holdover:7:2026-10-10:3', amountCents: 3000 }));
+    // The chef's pay-or-dispute reminder is planned with the charge (QA walk Oct 28).
+    expect(scheduled).toHaveBeenCalledWith(expect.anything(), 'penalty', record.id);
     await expect(raiseHoldoverCharge(7, 2, { amountCents: 100 }, now)).rejects.toMatchObject({ code: 'holdover_request_open' });
     await h.db.update(storageOverstayRecords).set({ status: 'charge_succeeded' });
     await expect(raiseHoldoverCharge(7, 2, { amountCents: 100 }, now)).rejects.toMatchObject({ code: 'holdover_not_started' });

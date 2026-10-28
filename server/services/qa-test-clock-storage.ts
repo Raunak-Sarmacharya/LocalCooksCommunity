@@ -8,7 +8,7 @@ import type { ReminderSource } from './advance-reminders';
 import { type ClockStep, jumpGraceMs, jumpStepMs, maxJumpMs, recordJump, shiftRows, TestClockError, type Tx } from './qa-test-clock';
 
 type Rental = typeof storageBookings.$inferSelect;
-type Frozen = { dailyPriceCents?: number; taxRatePercent?: number; cancellationPolicySnapshot?: { sessions?: Array<{ startAt: string }> } };
+type Frozen = { dailyPriceCents?: number; taxRatePercent?: number; cancellationPolicySnapshot?: { sessions?: Array<{ startAt: string }> }; qaClock?: { offsetMs: number; days: number } };
 type Review = { finalNoticeAt?: string; perishablesAfter?: string; othersAfter?: string; items?: Array<{ perishable: boolean; removedAt?: string }> };
 const OCCUPYING = ['requested', 'reserved', 'active', 'move_out_requested', 'removal_review'];
 const CAPTURED = ['succeeded', 'partially_refunded', 'refunded'] as Array<typeof paymentTransactions.$inferSelect['status']>;
@@ -136,7 +136,10 @@ async function jumpStorageOnce(id: number, to: Date, actorId: number, expectedUp
       if (rental.rentalState === 'requested' && (!rental.responseDeadline || now.getTime() + ms < rental.responseDeadline.getTime()))
         throw new TestClockError(409, 'Accept or decline this request first. To test it going unanswered, jump to the answer deadline.');
 
-      const today = localToday(now, timezone), days = daysBetween(today, localToday(new Date(now.getTime() + ms), timezone));
+      // Dates follow the rental's TOTAL move: the midnights crossed by everything moved so far, less the days already applied.
+      // Counting each step on its own would add a day for every step that crosses a midnight (two 12 h steps = 2 days).
+      const prior = frozen.qaClock ?? { offsetMs: 0, days: 0 };
+      const today = localToday(now, timezone), days = daysBetween(today, localToday(new Date(now.getTime() + prior.offsetMs + ms), timezone)) - prior.days;
       const shiftDay = (day: string | null) => day && addDays(day, -days);
       const moved = { termStart: shiftDay(termStart)!, paidThrough: shiftDay(paidThrough)!, reclaimEndOn: shiftDay(rental.reclaimEndOn), releasedOn: shiftDay(rental.releasedOn) };
       const range = occupancyRange({ ...moved, rentalState: rental.rentalState, reclaim: rental.reclaim, needsCleaning: rental.needsCleaning });
@@ -157,7 +160,7 @@ async function jumpStorageOnce(id: number, to: Date, actorId: number, expectedUp
       const dayStart = (day: string) => localDayStart(day, timezone);
       // Instants that are the start of a local day stay the start of the (moved) day, not an arbitrary hour of it.
       const startFollows = rental.startDate.getTime() === dayStart(termStart).getTime(), endFollows = rental.endDate.getTime() === dayStart(addDays(paidThrough, 1)).getTime();
-      const terms = json(shifted.rentalTerms) as Frozen, session = frozen.cancellationPolicySnapshot?.sessions?.[0];
+      const terms = { ...json(shifted.rentalTerms) as Frozen, qaClock: { offsetMs: prior.offsetMs + ms, days: prior.days + days } }, session = frozen.cancellationPolicySnapshot?.sessions?.[0];
       if (session?.startAt === dayStart(termStart).toISOString() && terms.cancellationPolicySnapshot?.sessions?.[0])
         terms.cancellationPolicySnapshot.sessions = [{ ...terms.cancellationPolicySnapshot.sessions[0], startAt: dayStart(moved.termStart).toISOString() }];
       await tx.update(storageBookings).set({ ...moved, occupancy: range ? toDateRange(range) : null, rentalTerms: terms, removalReview: json(shifted.removalReview),

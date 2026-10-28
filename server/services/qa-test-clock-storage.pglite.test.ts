@@ -134,6 +134,23 @@ describe('storage jump', () => {
     expect((await pg.query<any>('SELECT idempotency_key FROM storage_overstay_records')).rows[0].idempotency_key).toBe(`holdover:1:${addDays(end, -1)}:2`);
   });
 
+  it("moves dates by the midnights the rental's TOTAL move crosses, not one per jump (two 11 h jumps from 2 p.m. = 1 day; QA walk Oct 28)", async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(new Date(localDayStart(localToday(new Date(), zone), zone).getTime() + 14 * hour));
+      let version = await seed({ start: -2, paid: 20 });
+      const first = await jumpStorage(1, new Date(Date.now() + 11 * hour), 9, version);
+      version = (await readStorageClock(1)).updatedAt;
+      const second = await jumpStorage(1, new Date(Date.now() + 11 * hour), 9, version);
+      const total = first.movedMs + second.movedMs;
+      const crossed = Math.round((Date.parse(`${localToday(new Date(Date.now() + total), zone)}T00:00:00Z`) - Date.parse(`${today()}T00:00:00Z`)) / day);
+      expect(crossed).toBe(1);
+      const after = await row();
+      expect(after.ts).toBe(addDays(today(), -2 - crossed));
+      expect(after.rental_terms.qaClock).toEqual({ offsetMs: total, days: crossed });
+    } finally { vi.useRealTimers(); }
+  });
+
   it('sends a reminder that was not sent yet, once, and lists it in the result', async () => {
     const version = await seed({ start: -6, paid: 8 });
     const result = await jumpStorage(1, localDayStart(addDays(today(), 1), zone), 9, version);

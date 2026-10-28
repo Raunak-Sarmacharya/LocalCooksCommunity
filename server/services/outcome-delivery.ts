@@ -10,7 +10,7 @@ import { chefIssuesHref, managerDashboardView } from '@shared/notification-deep-
 import { deliveryReserve, inRecurringWorker } from './worker-context';
 import { problemCategoryLabel, problemDestination, problemStatusLabel } from '@shared/commitment-problems';
 import { operationalEmailAllowed, operationalEmailAllowedForUser, adminEmailAllowedForUser } from './admin-email-preferences';
-import { isPlatformEmailRecipientBlocked } from '../email-recipient-policy';
+import { isPlatformEmailRecipientBlocked, isReservedTestRecipient } from '../email-recipient-policy';
 
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -179,6 +179,11 @@ export async function deliverOutcomeEmails(limit = 10, budgetMs = 20_000, onlyLo
             { trackingId: intent.trackingId!, emailType: 'lifecycle_outcome_attempt', durableDelivery: true, retryOfId: intent.id });
         }
         catch { sent = false; }
+      }
+      // Synthetic QA accounts (.test) are refused by policy and never will be accepted: done, not failed (no retries or alerts; their in-app notice stands).
+      if (!sent && isReservedTestRecipient(intent.recipientEmail)) {
+        await tx.update(emailLogs).set({ status: 'skipped_policy', retriedAt: new Date(), errorMessage: 'Reserved test domain (RFC 2606): never handed to SMTP.' }).where(eq(emailLogs.id, intent.id));
+        return { id: intent.id, sent: false };
       }
       if (!sent && intent.retryCount === 0) {
         // Existing admin bell and Email logs own recovery, including missed response opportunity.

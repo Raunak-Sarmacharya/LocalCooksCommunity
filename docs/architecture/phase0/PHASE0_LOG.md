@@ -1581,3 +1581,11 @@ Checked on dev against QA's own records (TOUR-103, KB-TASH8T #239, KB-Z856HK #24
 - docs/QA_TEST_CLOCK.md: worker button, walkthroughs, can't-test-by-design, not-on-clock-yet.
 - Owner Oct 28: a customer's time-change request reminds the kitchen at 12 h and 2 h before its answer deadline, like a new request
   (`manager-decision-reminders.ts`, armed when the change becomes "requested"; stale ones suppress at send). Operational only: no policy/Terms change.
+
+## Oct 28 (evening): QA checkpoint 2: storage rentals on the test clock
+- Admin → Storage rentals → View → Test clock card (`qa-test-clock-storage.ts`): request deadline, move-in day 1/3, not moved in day 7, ending 14/7/2/0, grace 1/3/5,
+  holdover, removal review, move-out inspection end, payouts, storage reminders; informational: holdover pay-or-dispute, disposal times. Dates move by the
+  midnights crossed by the rental's TOTAL move (`rentalTerms.qaClock`); sent-notice markers and holdover keys move with them; overlap/payment-in-flight refused.
+- Found walking it: per-step day counting overshot (fixed, test); outcome notices to `.test` accounts looped retries/alerts (now skipped_policy);
+  holdover charge now plans the chef's dispute reminder at once; storage start-day reminder uses the local start date and links to /storage/:id.
+- QA report: Access requests → "Go to Customers" changed the URL but not the screen (dashboard only re-read ?view= on path change) → fixed for every same-path link.

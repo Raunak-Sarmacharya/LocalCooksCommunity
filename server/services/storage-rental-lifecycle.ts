@@ -211,6 +211,8 @@ export async function raiseHoldoverCharge(rentalId: number, managerId: number, i
     const totalCents = withTax(base, s.f.taxRatePercent);
     await queueStorageRentalNotice(tx, rentalId, 'holdover_charge', { eventKey: s.key, timezone: rental.timezone!, amountCents: totalCents,
       days: s.newDays, deadline, paidThrough: s.phase.effectiveEnd });
+    // The chef's pay-or-dispute reminder is planned now, not on the next worker reconcile.
+    await (await import('./advance-reminders')).scheduleAdvanceReminders(tx as never, 'penalty', record.id);
     return { overstayId: record.id, amountCents: totalCents, days: s.newDays, chefDisputeDeadline: deadline };
   });
 }

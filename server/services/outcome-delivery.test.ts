@@ -30,7 +30,7 @@ describe('checkout incident outcome delivery', () => {
   it.each([false, true])('delivers a queued checkout outcome only while its recipient still matches (changed=%s)', async changed => {
     state.tables.kitchen_checkout_incidents = [{ id: 12, chefId: 3, sessionId: 'cs_original', outcome: 'inventory_conflict',
       inventoryConflict: true, moneyStatus: 'refunded', amountCents: 2440, currency: 'cad', operatingDate: '2099-01-01' }];
-    state.tables.email_logs = [{ id: 1, recipientEmail: changed ? 'former@example.test' : 'chef@example.test', recipientUserId: 3, recipientRole: 'chef',
+    state.tables.email_logs = [{ id: 1, recipientEmail: changed ? 'former@example.com' : 'chef@example.com', recipientUserId: 3, recipientRole: 'chef',
       category: 'lifecycle_outcome', status: 'queued', subject: 'Kitchen checkout update', trackingId: 'checkout-outcome:12:inventory_conflict:refunded:3',
       textBody: 'Checkout reference: cs_original', createdAt: new Date(), retryCount: 0 }];
     state.send.mockResolvedValue(true);
@@ -43,7 +43,7 @@ describe('standalone storage rental outcome delivery', () => {
   // The stored notice already has its own shell; delivery re-checks the recipient and resends it verbatim.
   it.each([false, true])('delivers a queued storage notice only while its recipient still belongs to the rental (changed=%s)', async changed => {
     state.tables.storage_bookings = [{ id: 5, chefId: changed ? 99 : 3, managerId: 2 }];
-    state.tables.email_logs = [{ id: 1, recipientEmail: 'chef@example.test', recipientUserId: 3, recipientRole: 'chef',
+    state.tables.email_logs = [{ id: 1, recipientEmail: 'chef@example.com', recipientUserId: 3, recipientRole: 'chef',
       category: 'lifecycle_outcome', status: 'queued', subject: 'Paid through Oct 27, 2026',
       trackingId: 'storage-rental:5:ending:d14:3', textBody: 'Paid through Oct 27, 2026 · Extend 14 days · $140.00.',
       htmlBody: '<p>Paid through Oct 27, 2026 · Extend 14 days · $140.00.</p>', createdAt: new Date(), retryCount: 0 }];
@@ -56,6 +56,15 @@ describe('standalone storage rental outcome delivery', () => {
       expect(content.text).not.toContain('Recorded outcome notice');
       expect(content.html).toContain('Extend 14 days');
     }
+  });
+  it('a synthetic .test account is skipped by policy, not failed: no retries and no recovery alert (QA walk Oct 28)', async () => {
+    state.tables.storage_bookings = [{ id: 5, chefId: 3, managerId: 2 }];
+    state.tables.email_logs = [{ id: 1, recipientEmail: 'phase0-chef@localcooks.test', recipientUserId: 3, recipientRole: 'chef',
+      category: 'lifecycle_outcome', status: 'queued', subject: 'Move in', trackingId: 'storage-rental:5:move_in_due:1:2026-10-27:3',
+      textBody: 'Move in', htmlBody: '<p>Move in</p>', createdAt: new Date(), retryCount: 0 }];
+    state.send.mockResolvedValue(false);
+    await deliverOutcomeEmails(1);
+    expect(state.tables.email_logs[0]).toMatchObject({ status: 'skipped_policy' });
   });
 });
 vi.mock('./overstay-defaults-service', () => ({ getOverstayDisputeWindowHours: async () => 48 }));
@@ -93,9 +102,9 @@ beforeEach(() => {
       bookingDate: new Date(), startTime: '09:00', endTime: '10:00', timezone: 'America/St_Johns',
       checkinStatus: 'checkout_requested', updatedAt: new Date() }],
     damage_evidence: [{ evidenceType: 'photo_before' }, { evidenceType: 'photo_after' }, { evidenceType: 'receipt' }],
-    users: [{ id: 3, username: 'chef@example.test', email: 'chef@example.test', role: 'chef' },
-      { id: 2, username: 'manager@example.test', email: 'manager@example.test', role: 'manager' },
-      { id: 1, username: 'admin@example.test', email: 'admin@example.test', role: 'admin', adminEmailNotifications: true }],
+    users: [{ id: 3, username: 'chef@example.com', email: 'chef@example.com', role: 'chef' },
+      { id: 2, username: 'manager@example.com', email: 'manager@example.com', role: 'manager' },
+      { id: 1, username: 'admin@example.com', email: 'admin@example.com', role: 'admin', adminEmailNotifications: true }],
     damage_claim_history: [], email_logs: [], booking_lifecycle_events: [], payment_history: [],
   };
   state.db = {
@@ -169,7 +178,7 @@ describe('actual producer → persisted intent → worker → admin replay', () 
     state.tables.commitment_problems = [{ id: 7, bookingId: 10, category: 'equipment', status: 'acknowledged',
       createdAt: new Date('2026-10-04T12:10:00Z'), description: 'The cooler stopped working.',
       history: [{ action: 'reply', note: 'A repair is scheduled.' }] }];
-    state.tables.email_logs = [{ id: 1, recipientEmail: 'chef@example.test', recipientUserId: 3, recipientRole: 'chef',
+    state.tables.email_logs = [{ id: 1, recipientEmail: 'chef@example.com', recipientUserId: 3, recipientRole: 'chef',
       category: 'lifecycle_outcome', status: 'queued', subject: 'Equipment problem reported · Booking #10',
       trackingId: 'problem-outcome:7:1:3', textBody: 'Old support request', createdAt: new Date(), retryCount: 0 }];
     state.send.mockResolvedValue(true);
@@ -187,12 +196,12 @@ describe('actual producer → persisted intent → worker → admin replay', () 
   });
   it('queues schedule impacts for opted-in admins and participants, while keeping all admin bell alerts', async () => {
     state.tables.kitchen_bookings = [{ id: 10, booking: state.tables.kitchen_bookings[0], managerId: 2, timezone: 'America/St_Johns' }];
-    state.tables.users.push({ id: 4, username: 'off-admin@example.test', role: 'admin', adminEmailNotifications: false });
+    state.tables.users.push({ id: 4, username: 'off-admin@example.com', role: 'admin', adminEmailNotifications: false });
     state.tables.commitment_problems = [];
     await state.db.transaction((tx: any) => createProblem(tx, { kind: 'schedule', commitment: 'booking', id: 10,
       actor: { id: 2, role: 'manager' }, sourceKey: 'schedule-fixture', description: 'Operating hours changed' }));
     expect(state.alerts.map(alert => alert.userId)).toEqual([3, 2, 1, 4]);
-    expect(state.tables.email_logs.map(log => log.recipientEmail)).toEqual(['chef@example.test', 'manager@example.test', 'admin@example.test']);
+    expect(state.tables.email_logs.map(log => log.recipientEmail)).toEqual(['chef@example.com', 'manager@example.com', 'admin@example.com']);
     expect(state.tables.email_logs.find(log => log.recipientUserId === 1)).toMatchObject({ recipientRole: 'admin', trackingId: 'problem-outcome:1:1:1' });
     state.send.mockResolvedValue(true);
     await deliverOutcomeEmails(3);
@@ -208,21 +217,21 @@ describe('actual producer → persisted intent → worker → admin replay', () 
     expect(await retryFailedEmail(1)).toMatchObject({ success: true });
     expect(state.tables.email_logs[0].status).toBe('skipped_policy');
     expect(state.tables.email_logs).toHaveLength(2);
-    expect(state.tables.email_logs[1]).toMatchObject({ recipientUserId: 1, recipientEmail: 'admin@example.test', trackingId: 'problem-outcome:7:1:1' });
+    expect(state.tables.email_logs[1]).toMatchObject({ recipientUserId: 1, recipientEmail: 'admin@example.com', trackingId: 'problem-outcome:7:1:1' });
     expect(state.send).not.toHaveBeenCalled();
     expect(await retryFailedEmail(1)).toMatchObject({ success: true });
     expect(state.tables.email_logs).toHaveLength(2);
     state.send.mockResolvedValue(true);
     expect(await deliverOutcomeEmails(1)).toEqual({ completed: 1 });
     expect(state.send).toHaveBeenCalledTimes(1);
-    expect(state.send.mock.calls[0][0]).toMatchObject({ to: 'admin@example.test' });
+    expect(state.send.mock.calls[0][0]).toMatchObject({ to: 'admin@example.com' });
     expect(state.send.mock.calls[0][0].text).toContain('Closure changed');
   });
   it.each(['opted_out', 'already_accepted'])('suppresses a legacy support copy without another admin send when %s', async mode => {
     state.tables.email_logs = [{ id: 1, recipientEmail: 'support@localcook.shop', recipientUserId: null,
       category: 'lifecycle_outcome', status: 'queued', subject: 'Schedule impact', trackingId: 'problem-outcome:7:1:support' }];
     if (mode === 'opted_out') state.tables.users[2].adminEmailNotifications = false;
-    else state.tables.email_logs.push({ id: 2, recipientUserId: 1, recipientEmail: 'admin@example.test',
+    else state.tables.email_logs.push({ id: 2, recipientUserId: 1, recipientEmail: 'admin@example.com',
       category: 'lifecycle_outcome', status: 'sent', trackingId: 'problem-outcome:7:1:1' });
     await deliverOutcomeEmails(1);
     expect(state.tables.email_logs[0].status).toBe('skipped_policy');
@@ -249,7 +258,7 @@ describe('actual producer → persisted intent → worker → admin replay', () 
     state.tables.email_logs = [{ id: 1, category: 'advance_reminder', status: 'scheduled', trackingId: 'advance:booking:10:future',
       textBody: JSON.stringify({ due: '2099-01-01T00:00:00Z' }) }, { id: 2, category: 'advance_reminder', status: 'failed', trackingId: 'advance:booking:10:poison' }];
     state.tables.booking_lifecycle_events = [{ id: 5, bookingId: 10, kind: 'cancelled', createdAt: new Date(), title: 'Cancelled', message: 'Current cancellation; refund separate', metadata: {},
-      emails: [{ key: '3', to: 'chef@example.test', url: 'https://chef.example.test/booking/10' }], deliveredEmailKeys: [] }];
+      emails: [{ key: '3', to: 'chef@example.com', url: 'https://chef.example.test/booking/10' }], deliveredEmailKeys: [] }];
     state.send.mockResolvedValue(true);
     expect(await deliverBookingLifecycleEvents(1)).toEqual({ completed: 1 });
     expect(state.send.mock.calls[0][0].subject).toBe('Cancelled');
@@ -301,7 +310,7 @@ describe('actual producer → persisted intent → worker → admin replay', () 
   });
   it('suppresses previously queued admin outcomes when the current preference is disabled', async () => {
     state.tables.users[2].adminEmailNotifications = false;
-    state.tables.email_logs.push({ id: 1, recipientEmail: 'admin@example.test', recipientUserId: 1, recipientRole: 'admin',
+    state.tables.email_logs.push({ id: 1, recipientEmail: 'admin@example.com', recipientUserId: 1, recipientRole: 'admin',
       category: 'lifecycle_outcome', status: 'queued', subject: 'Review damage claim', trackingId: 'claim-outcome:7:1:1', retryCount: 0 });
     expect(await deliverOutcomeEmails(1)).toEqual({ completed: 0 });
     expect(state.send).not.toHaveBeenCalled();
@@ -311,7 +320,7 @@ describe('actual producer → persisted intent → worker → admin replay', () 
   it('sends a never-tried notice before older retries and stops retrying after four refusals', async () => {
     const row = (id: number, retryCount: number, email: string) => ({ id, recipientEmail: email, recipientUserId: null, recipientRole: 'manager',
       category: 'lifecycle_outcome', status: retryCount ? 'failed' : 'queued', subject: `Notice ${id}`, trackingId: `claim-outcome:7:${id}:2`, retryCount, retriedAt: null });
-    state.tables.email_logs.push(row(1, 2, 'old@example.test'), row(2, 4, 'gone@example.test'), row(3, 0, 'new@example.test'), row(4, 3, 'last@example.test'));
+    state.tables.email_logs.push(row(1, 2, 'old@example.com'), row(2, 4, 'gone@example.com'), row(3, 0, 'new@example.com'), row(4, 3, 'last@example.com'));
     const tries = () => state.tables.email_logs.filter(item => item.id <= 4).map(item => item.retryCount);
     await deliverOutcomeEmails(1);
     expect(tries()).toEqual([2, 4, 1, 3]);
@@ -319,7 +328,7 @@ describe('actual producer → persisted intent → worker → admin replay', () 
     expect(tries()).toEqual([3, 4, 2, 4]);
     expect(state.tables.email_logs.find(item => item.id === 4)).toMatchObject({ status: 'failed', errorMessage: expect.stringContaining('automatic retries stopped') });
     // After an action, a timer or a webhook only never-tried notices go; retries stay with the worker.
-    state.tables.email_logs.push(row(5, 0, 'fresh@example.test'));
+    state.tables.email_logs.push(row(5, 0, 'fresh@example.com'));
     await deliverOutcomeEmails(10, 20_000, undefined, true);
     expect(tries()).toEqual([3, 4, 2, 4]);
     expect(state.tables.email_logs.find(item => item.id === 5)!.retryCount).toBe(1);
@@ -346,7 +355,7 @@ describe('actual producer → persisted intent → worker → admin replay', () 
       expect(cleared.emails).toHaveLength(0);
       expect(state.alerts.filter(alert => alert.userId === 3)).toHaveLength(1);
       expect(ended.kind).toBe('service_ended');
-      expect(ended.emails.map((email: any) => email.to).sort()).toEqual(['chef@example.test', 'manager@example.test']);
+      expect(ended.emails.map((email: any) => email.to).sort()).toEqual(['chef@example.com', 'manager@example.com']);
       booking.status = 'confirmed'; booking.checkinStatus = 'checkout_requested'; booking.visitDuties = null;
       const events = state.tables.booking_lifecycle_events.length;
       state.failIntent = true;
@@ -359,13 +368,13 @@ describe('actual producer → persisted intent → worker → admin replay', () 
   it('reconciles acceptance after a DB acknowledgment interruption without another send', async () => {
     vi.stubEnv('E2E_SUPPRESS_OUTBOUND', '1'); await submitClaim(7, 2); vi.stubEnv('E2E_SUPPRESS_OUTBOUND', '0');
     state.send.mockImplementationOnce(async (_content, options) => {
-      state.tables.email_logs.push({ id: 99, recipientEmail: 'chef@example.test', trackingId: options.trackingId, status: 'sent', category: 'lifecycle_outcome_attempt' });
+      state.tables.email_logs.push({ id: 99, recipientEmail: 'chef@example.com', trackingId: options.trackingId, status: 'sent', category: 'lifecycle_outcome_attempt' });
       return true;
     });
     state.failAcknowledgment = true;
     await expect(deliverOutcomeEmails(1, 20000, 1)).rejects.toThrow('ack unavailable');
     // SMTP log committed outside the intent transaction in production.
-    state.tables.email_logs.push({ id: 99, recipientEmail: 'chef@example.test', trackingId: 'claim-outcome:7:1:3', status: 'sent', category: 'lifecycle_outcome_attempt' });
+    state.tables.email_logs.push({ id: 99, recipientEmail: 'chef@example.com', trackingId: 'claim-outcome:7:1:3', status: 'sent', category: 'lifecycle_outcome_attempt' });
     state.failAcknowledgment = false;
     expect(await retryFailedEmail(1)).toEqual({ success: true });
     expect(state.send).toHaveBeenCalledTimes(1);
@@ -382,13 +391,13 @@ describe('actual producer → persisted intent → worker → admin replay', () 
     state.tables.kitchen_bookings[0].status = status;
     state.tables.booking_lifecycle_events.push({ id: 5, bookingId: 10, kind: 'confirmed', createdAt: new Date(),
       metadata: {}, title: 'Confirmed', message: 'Recorded paid confirmation', deliveredEmailKeys: [],
-      emails: [{ key: '3', to: 'chef@example.test', url: 'https://chef.example.test/booking/10',
-        content: { to: 'chef@example.test', subject: 'Confirmed',
+      emails: [{ key: '3', to: 'chef@example.com', url: 'https://chef.example.test/booking/10',
+        content: { to: 'chef@example.com', subject: 'Confirmed',
           text: 'Payment captured: CAD $10.00\nAdd to calendar: https://calendar.google.com/calendar/render?action=TEMPLATE',
           html: '<p>Payment captured: CAD $10.00</p><a href="https://calendar.google.com/calendar/render?action=TEMPLATE">Add to calendar</a>',
           attachments: [{ filename: 'recorded.ics', content: 'immutable calendar' },
             { filename: 'receipt.pdf', content: 'immutable receipt', contentType: 'application/pdf' }] } }] });
-    state.tables.email_logs.push({ id: 1, status: 'failed', category: 'booking', trackingId: 'booking-event:5:3', recipientEmail: 'chef@example.test' });
+    state.tables.email_logs.push({ id: 1, status: 'failed', category: 'booking', trackingId: 'booking-event:5:3', recipientEmail: 'chef@example.com' });
     state.send.mockResolvedValue(true);
     expect(await retryFailedEmail(1)).toEqual({ success: true });
     expect(state.tables.booking_lifecycle_events[0].deliveredEmailKeys).toEqual(['3']);

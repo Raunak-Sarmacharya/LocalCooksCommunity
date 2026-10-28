@@ -188,7 +188,8 @@ export async function currentReminders(tx: Transaction, source: ReminderSource, 
     if (!row || row.storage.status !== 'confirmed' || row.storage.checkinStatus !== 'not_checked_in' || !row.storage.chefId) return [];
     const [chef] = await tx.select().from(users).where(eq(users.id, row.storage.chefId)).limit(1);
     const timezone = row.location.timezone || DEFAULT_TIMEZONE;
-    const date = row.storage.startDate.toISOString().slice(0, 10);
+    // A standalone rental has its kitchen-local start date; older storage add-ons only have the instant.
+    const date = row.storage.termStart ?? row.storage.startDate.toISOString().slice(0, 10);
     const start = createBookingDateTime(date, '00:00', timezone);
     // Preserve the legacy same-day storage guidance, once per semantic recipient.
     // Its window is the location calendar day, including DST, not 24 elapsed hours.
@@ -197,8 +198,10 @@ export async function currentReminders(tx: Transaction, source: ReminderSource, 
     const message = `Your storage at ${row.listing.name} starts today at ${row.location.name}. Review your storage booking and contact the kitchen manager for arrival and available check-in actions. Physical removal follows its own dates.`;
     return [{ source, reservationId: id, resource: `storage-${id}`, kind: 'arrival', recipientId: chef?.id || row.storage.chefId,
       role: 'chef', email: chef?.username || '', timezone, start: end.toISOString(), end: end.toISOString(), due: start.toISOString(),
-      revision: hash([date, timezone, chef?.username, row.listing.name, row.location.name]), path: '/dashboard?view=bookings',
-      title: `Storage booking #${id}`, message, shortVisit: false }];
+      revision: hash([date, timezone, chef?.username, row.listing.name, row.location.name]),
+      // A standalone rental opens its own page and goes by its reference; older storage add-ons keep the bookings list.
+      path: row.storage.rentalState ? `/storage/${id}` : '/dashboard?view=bookings',
+      title: row.storage.rentalState && row.storage.referenceCode ? `Storage ${row.storage.referenceCode}` : `Storage booking #${id}`, message, shortVisit: false }];
   }
   if (source !== 'booking' && source !== 'tour') {
     const { currentDeadlineReminders } = await import('./deadline-reminders');
