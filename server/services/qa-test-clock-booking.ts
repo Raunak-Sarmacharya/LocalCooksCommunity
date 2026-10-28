@@ -193,6 +193,8 @@ export async function jumpBooking(id: number, to: Date, actorId: number, expecte
     notices.push(...result.notices); reminders.push(...result.reminders);
     if (!next) { reached = null; break; }
   }
+  // Notices that didn't fit in the request finish right after it, as after any booking action (not on the 30-minute worker).
+  if (notices.some(notice => !notice.sent)) (await import('./booking-lifecycle-delivery')).deliverBookingNoticesAfterResponse(id, '[TestClock] Booking notices still pending');
   return { movedMs, notices, reminders, clock: await readBookingClock(id), ...(target > Date.now() + jumpGraceMs ? { stoppedAt: reached } : {}) };
 }
 

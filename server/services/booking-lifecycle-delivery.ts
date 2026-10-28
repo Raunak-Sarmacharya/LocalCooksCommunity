@@ -503,7 +503,7 @@ export async function deliverBookingLifecycleEvents(limit = 10, budgetMs = 20_00
       ? sql`${bookingLifecycleEvents.metadata}->>'revision' = ${String(eventMetadata.revision)}` : undefined;
     const undeliverable = Array.isArray(eventMetadata.undeliverableEmailKeys) ? eventMetadata.undeliverableEmailKeys as string[] : [];
     let historical = replay;
-    let failed = false, recipientRejected = false;
+    let failed = false, recipientRejected = false, outOfTime = false;
     let currentStatus: string | undefined;
     if (replay || (event.metadata as Record<string, unknown>).deliveryRecoveryOwnerIds) {
       const [current] = await db.select({ status: kitchenBookings.status }).from(kitchenBookings).where(eq(kitchenBookings.id, event.bookingId)).limit(1);
@@ -527,7 +527,8 @@ export async function deliverBookingLifecycleEvents(limit = 10, budgetMs = 20_00
       if (delivered.includes(email.key)) continue;
       // The worker never retries a refused address; an admin Email Log retry of this event does.
       if (!onlyEventId && undeliverable.includes(email.key)) continue;
-      if (deadline - Date.now() < deliveryReserve()) { failed = true; break; }
+      // Out of time is not a failure: the rest waits for the next run, with no failure count or recovery alert (QA walk Oct 28).
+      if (deadline - Date.now() < deliveryReserve()) { outOfTime = true; break; }
       const trackingId = `booking-event:${event.id}:${email.key}${event.kind === 'instructions_updated' ? `:r${eventMetadata.revision}` : ''}`;
       try {
         let arrivalContent: Parameters<typeof sendEmail>[0] | undefined;
@@ -648,13 +649,14 @@ export async function deliverBookingLifecycleEvents(limit = 10, budgetMs = 20_00
         }
       }
     await tx.update(bookingLifecycleEvents).set({ metadata, leaseToken: null, leaseUntil: null,
-      ...(failed ? { nextAttemptAt: new Date(Date.now() + bookingEmailRetryDelayMs(Number(metadata.deliveryFailures))) } : { completedAt: new Date() }) })
+      ...(failed ? { nextAttemptAt: new Date(Date.now() + bookingEmailRetryDelayMs(Number(metadata.deliveryFailures))) }
+        : outOfTime ? { nextAttemptAt: new Date() } : { completedAt: new Date() }) })
       .where(and(eq(bookingLifecycleEvents.id, event.id), eq(bookingLifecycleEvents.leaseToken, token), sameRevision));
     // A producer may have advanced this pending row while SMTP was in flight.
     if (sameRevision) await tx.update(bookingLifecycleEvents).set({ leaseToken: null, leaseUntil: null })
       .where(and(eq(bookingLifecycleEvents.id, event.id), eq(bookingLifecycleEvents.leaseToken, token)));
     });
-    if (!failed) completed++;
+    if (!failed && !outOfTime) completed++;
   }
   return { completed };
 }

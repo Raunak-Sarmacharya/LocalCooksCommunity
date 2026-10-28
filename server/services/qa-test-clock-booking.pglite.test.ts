@@ -17,7 +17,7 @@ vi.mock('./deadline-timer', () => ({ runDeadlineExpiry: async (kind: string) => 
 vi.mock('./kitchen-payout-service', () => ({ releaseKitchenPayout: async () => ({}), flushReleasedPayoutNotices: async () => {} }));
 vi.mock('./kitchen-day-payouts', () => ({ releaseBookingDayPayouts: async (id: number) => { holder.dayReleases.push(id); return {}; } }));
 vi.mock('./booking-feedback-service', () => ({ remindBookingFeedback: async () => false }));
-vi.mock('./booking-lifecycle-delivery', () => ({ deliverBookingLifecycleEvents: async () => ({}) }));
+vi.mock('./booking-lifecycle-delivery', () => ({ deliverBookingLifecycleEvents: async () => ({}), deliverBookingNoticesAfterResponse: () => {} }));
 import { jumpBooking, readBookingClock, shiftLocalDay } from './qa-test-clock-booking';
 import { jumpGraceMs, jumpStepMs } from './qa-test-clock';
 

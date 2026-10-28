@@ -524,6 +524,19 @@ describe('booking email retry policy', () => {
     expect(state.event.metadata.deliveryFailures).toBeUndefined();
     expect(state.notify).not.toHaveBeenCalled();
   });
+  it('running out of time is not a failure: the rest waits for the next run, with no failure count or alert (QA walk Oct 28)', async () => {
+    state.event = { ...event(), emails: [{ key: '3', to: 'chef@example.com', url: 'https://chef.example.test/booking/10' }, { key: '4', to: 'manager@example.com', url: 'https://kitchen.example.test/manager/booking/10' }] };
+    state.rows = [[state.event], [], [{ id: 1 }]];
+    const start = Date.now();
+    const now = vi.spyOn(Date, 'now').mockImplementation(() => start);
+    state.send.mockImplementationOnce(async () => { now.mockImplementation(() => start + 15_000); return true; });
+    expect(await deliverBookingLifecycleEvents(1, 25_000)).toEqual({ completed: 0 });
+    now.mockRestore();
+    expect(state.send).toHaveBeenCalledTimes(1);
+    expect(state.event.completedAt).toBeNull();
+    expect(state.event.metadata.deliveryFailures).toBeUndefined();
+    expect(state.notify).not.toHaveBeenCalled();
+  });
   it('classifies relay refusals: 5xx at RCPT or end of DATA is permanent; sender, auth and 4xx stay retryable', async () => {
     const { SmtpDeliveryError, isPermanentRecipientRejection } = await import('./bounded-smtp');
     const refusal = (smtp: { responseCode?: number; code?: string; command?: string }) => new SmtpDeliveryError('smtp_rejected', smtp);

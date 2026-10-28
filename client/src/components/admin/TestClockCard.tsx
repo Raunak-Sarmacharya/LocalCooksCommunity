@@ -72,7 +72,7 @@ export function TestClockCard({ kind, id, timezone, onMoved }: { kind: 'tour' | 
             : `Jumped to "${last.step.label}" (${untilLabel(last.result.movedMs)} earlier), running each step on the way in order.`}</p>
           {!last.result.notices.length && !last.result.reminders.length ? <p className="text-muted-foreground">Nothing was sent: no message was due at this step.</p>
             : <ul className="list-disc pl-5">
-              {last.result.notices.map((notice, index) => <li key={`n${index}`}>{noticeName(notice.kind)}{notice.sent ? ' · sent' : ' · not sent yet (the background worker retries it; run it below)'}</li>)}
+              {last.result.notices.map((notice, index) => <li key={`n${index}`}>{noticeName(notice.kind)}{notice.sent ? ' · sent' : ' · still sending (refresh in a moment; if it stays, run the background worker below)'}</li>)}
               {last.result.reminders.map((reminder, index) => <li key={`r${index}`}>{reminder.kind === 'arrival' ? 'Arrival reminder' : noticeName(reminder.kind)} to the {reminder.role === 'manager' ? 'kitchen' : kind === 'tour' ? 'visitor' : 'customer'} · {reminder.channel === 'email' ? 'email' : 'in-app'} sent</li>)}
             </ul>}
         </div>}
