@@ -113,6 +113,16 @@ describe("BookingRulesSettings", () => {
     });
   });
 
+  it("Location page: a tax-only change gets the section's own save and is listed above it (QA Oct 28)", () => {
+    const onRequestSave = vi.fn();
+    render(<BookingRulesSettings location={{ ...baseLocation, taxRatePercent: "15" }} onSave={vi.fn()} onRequestSave={onRequestSave} hideHeader hideArrivalTimings hideTerms />);
+    expect(screen.getByRole("button", { name: "Save booking rules" })).toBeDisabled();
+    fireEvent.change(document.getElementById("location-tax")!, { target: { value: "14" } });
+    expect(screen.getByText("bpTaxValue")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Save booking rules" }));
+    expect(onRequestSave).toHaveBeenCalledOnce();
+  });
+
   it("surfaces the uploaded document instead of a bare dropzone", () => {
     render(<BookingRulesSettings location={uploadedLocation} onSave={vi.fn()} />);
 

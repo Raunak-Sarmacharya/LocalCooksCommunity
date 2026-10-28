@@ -162,7 +162,8 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
   function BookingRulesSettings({ location, onSave, onRequestSave, onDirtyChange, onNavigate, hideArrivalTimings = false, hideTerms = false, hideDamagePolicy = false, termsNote, policyOverrides, onResetPolicy, minimumBookingHours, hideHeader = false, kitchenName, policyUpdating = false, locationName, onEditLocation }, ref) {
     const queryClient = useQueryClient();
     const { impact, impactFetching, impactError } = useSettingImpact(undefined, location.id);
-    const isKitchenMode = policyOverrides !== undefined || !!onRequestSave;
+    // The kitchen tab always passes its overrides; the Location page also passes onRequestSave for its own section save.
+    const isKitchenMode = policyOverrides !== undefined;
     const place = locationName || location.name;
     const { data: policyImpact } = useQuery<{ fields: Record<string, ImpactField> }>({
       queryKey: ["booking-policy-impact", location.id],
@@ -406,6 +407,7 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
       changed.multiDay && multiDayLine,
       changed.buffer && bufferLine,
       changed.weekly && weeklyLine,
+      taxChanged && (taxRate.trim() === "" ? mt("bpTaxOffValue") : mt("bpTaxValue", { rate: taxRate })),
     ].filter((line): line is string => Boolean(line));
 
     const rulesPreview = rulesChanged && changeLines.length > 0 ? <SettingChangePreview

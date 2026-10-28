@@ -127,7 +127,8 @@ export default function LocationWorkspace({ location, onSaveLocation, onRefresh,
         </TabsContent>
         <TabsContent value="booking" className="mt-0 space-y-4">
           <p className="text-sm text-muted-foreground">{mt("locationBookingDefaultsIntro")}</p>
-          <BookingRulesSettings ref={bookingRef} location={location} onSave={onSaveLocation} onDirtyChange={setBookingDirty} hideHeader />
+          <BookingRulesSettings ref={bookingRef} location={location} onSave={onSaveLocation} onDirtyChange={setBookingDirty} hideHeader
+            onRequestSave={() => void saveAction.execute()} policyUpdating={saveAction.status === "loading"} />
         </TabsContent>
         <TabsContent value="requirements" className="mt-0 space-y-4">
           <p className="text-sm text-muted-foreground">{mt("configureWhatInformationChefsNeedToProvideWhenApplyingToYour")}</p>

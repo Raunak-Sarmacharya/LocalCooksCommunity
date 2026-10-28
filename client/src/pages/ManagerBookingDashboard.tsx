@@ -965,7 +965,7 @@ export default function ManagerBookingDashboard() {
 
   // Update location settings mutation
   const updateLocationSettings = useMutation({
-    mutationFn: async ({ locationId, name, address, cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, maxAdvanceBookingDays, turnoverBufferEnabled, bookingBufferMinutes, allowMultiDayBookings, maxBookingDays, notificationEmail, notificationPhone, logoUrl, customOnboardingLink, timezone, checkinWindowMinutesBefore, noShowGraceMinutes }: {
+    mutationFn: async ({ locationId, name, address, cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, maxAdvanceBookingDays, turnoverBufferEnabled, bookingBufferMinutes, allowMultiDayBookings, maxBookingDays, notificationEmail, notificationPhone, logoUrl, customOnboardingLink, timezone, checkinWindowMinutesBefore, noShowGraceMinutes, taxRatePercent }: {
       locationId: number;
       name?: string;
       address?: string;
@@ -985,11 +985,14 @@ export default function ManagerBookingDashboard() {
       timezone?: string;
       checkinWindowMinutesBefore?: number | null;
       noShowGraceMinutes?: number | null;
+      taxRatePercent?: number | null;
     }) => {
       const payload = {
         name, address, cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours,
         maxAdvanceBookingDays, turnoverBufferEnabled, bookingBufferMinutes, allowMultiDayBookings, maxBookingDays,
         notificationEmail, notificationPhone, logoUrl, customOnboardingLink, timezone, checkinWindowMinutesBefore, noShowGraceMinutes,
+        // The location's HST %; it was missing here, so the tax field never saved (QA Oct 28).
+        taxRatePercent,
       };
       logger.info('📡 Sending PUT request to:', `/api/manager/locations/${locationId}/cancellation-policy`);
       logger.info('📡 Request body:', payload);
