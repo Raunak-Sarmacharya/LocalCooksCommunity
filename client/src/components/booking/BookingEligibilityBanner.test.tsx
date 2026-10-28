@@ -24,6 +24,11 @@ describe("BookingEligibilityBanner documents", () => {
     expect(screen.getByRole("button", { name: "Upload your Business licence" })).toBeInTheDocument();
     expect(screen.queryByText(/Food Safety Certificate/)).not.toBeInTheDocument();
   });
+  it("names every document still to upload, not only the first", async () => {
+    await mount({ key: "custom:biz", label: "Business licence", expiry: null, reason: "missing", alsoMissing: ["Signed house rules"] } as never);
+    expect(screen.getByText("Harbour Kitchen needs your Business licence and Signed house rules before you can book. Upload them and you can book once Harbour Kitchen approves them.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Upload your documents" })).toBeInTheDocument();
+  });
   it("says a document is waiting for the kitchen instead of asking for a renewal", async () => {
     await mount({ key: "insurance", label: "Insurance", expiry: null, reason: "pending" });
     expect(screen.getByText("Your Insurance is waiting for approval from Harbour Kitchen. You can book once it is approved.")).toBeInTheDocument();

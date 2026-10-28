@@ -53,7 +53,11 @@ export function BookingEligibilityBanner({ eligibility, locationName }: { eligib
       actions = go(renewPath, t('accessActionRenewalStatus', { defaultValue: 'See renewal status' }));
       break;
     case 'document_review_required':
-      if (document?.reason === 'missing' || document?.reason === 'rejected') {
+      if (document?.reason === 'missing' && document.alsoMissing?.length) {
+        const names = new Intl.ListFormat(i18n.language, { type: 'conjunction' }).format([documentName, ...document.alsoMissing]);
+        title = t('accessBlockedDocumentsMissing', { documents: names, location, defaultValue: '{location} needs your {documents} before you can book. Upload them and you can book once {location} approves them.' });
+        actions = go(renewPath, t('accessActionUploadAll', { defaultValue: 'Upload your documents' }));
+      } else if (document?.reason === 'missing' || document?.reason === 'rejected') {
         title = document.reason === 'missing'
           ? t('accessBlockedDocumentMissing', { document: documentName, location, defaultValue: '{location} needs your {document} before you can book. Upload it and you can book once {location} approves it.' })
           : t('accessBlockedDocumentRejected', { document: documentName, location, defaultValue: '{location} asked for a new copy of your {document}. Upload it to book again.' });

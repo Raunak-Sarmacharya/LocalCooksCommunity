@@ -1538,3 +1538,9 @@ State Oct 18 (evening): multi-day + single-day booking cycle verified end to end
   - Stale "Access ended" feedback on the request page.
   - Expiry date formats differ in the kitchen dialog.
 - Tests: client 9,119, server 4,375, tsc clean.
+- **Owner: fix 1–2 now, mock 3–5.** Built:
+  - (1) The kitchen's access request panel runs the same eligibility the chef sees. A blocked customer reads "{name} can't make new bookings until you approve their {document}", and the step says "New bookings paused: {document} needed" (it said "Can book").
+  - (2) When a document was never uploaded, the chef banner names every missing one ("needs your Business licence and Signed house rules", "Upload your documents"). Tests: panel 2, banner 4, shared 37.
+  - Not seen live: no customer on dev is blocked right now.
+- Document reminders are 45/14/3 days plus the expiry day (`accessDocumentStage`); the worker comment said 30/7/0 and was corrected.
+- Mocks for 3–5 in `.phase0-harness/mocks/documents/shots/` (c1–c6 chef, k1–k3 kitchen), waiting for owner approval.

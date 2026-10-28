@@ -321,6 +321,8 @@
   "accessBlockedDocumentPending": "Your {document} is waiting for approval from {location}. You can book once it is approved.",
   "accessActionUpload": "Upload your {document}",
   "accessActionDocumentStatus": "See document status",
+  "accessBlockedDocumentsMissing": "{location} needs your {documents} before you can book. Upload them and you can book once {location} approves them.",
+  "accessActionUploadAll": "Upload your documents",
   "accessBlockedDocumentReview": "Your {document} needs a valid expiry date and approval before you can book. Upload a renewed one and we will let you know when it has been reviewed.",
   "accessBlockedEnded": "Your access to {location} has ended. Contact {location} or Local Cooks if you would like to book here again.",
   "accessBlockedAwaitingFinal": "Waiting for the kitchen's final approval",

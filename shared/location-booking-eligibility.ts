@@ -119,21 +119,24 @@ const friendlyExpiry = (expiry: string | null | undefined) => expiry ? new Date(
 export const documentRenewalHref = (locationId: number) => `/dashboard?view=kitchen-requests&renewLocation=${locationId}`;
 
 export function locationBookingEligibility(app: AccessApplication | null | undefined, hasAccess: boolean, requirements: AccessRequirements, locationId: number, timezone = DEFAULT_TIMEZONE, now = new Date(), renewals: AccessRenewal[] = []) {
-  const result = (status: string, message: string, canBook = false, actionUrl?: string, document?: { key: RequiredDocument['key']; label: string; expiry: string | null; reason?: DocumentBlockReason }) =>
+  const result = (status: string, message: string, canBook = false, actionUrl?: string, document?: { key: RequiredDocument['key']; label: string; expiry: string | null; reason?: DocumentBlockReason; alsoMissing?: string[] }) =>
     ({ hasApplication: !!app, status, message, canBook, actionUrl, document });
   if (!app) return result('application_required', 'Please apply to this location and wait for final approval before booking.');
   if (app.status === 'rejected' || app.status === 'cancelled') return result(app.status, 'Your application is not approved. Please contact the kitchen manager or Local Cooks about your next step.');
   if (app.status !== 'approved' || (app.current_tier ?? app.currentTier ?? 1) < 3)
     return result('awaiting_final_approval', 'Your application and documents need final manager approval before you can book. Please check your application for the next step.');
   if (!hasAccess) return result('access_ended', 'Your access to this location has ended. Please contact the kitchen manager or Local Cooks to request access again.');
-  for (const doc of requiredAccessDocuments(app, requirements)) {
+  const required = requiredAccessDocuments(app, requirements);
+  for (const doc of required) {
     const days = accessDocumentDaysLeft(doc.expiry, timezone, now);
     const detail = { key: doc.key, label: doc.label, expiry: doc.expiry ?? null };
     // The approved document stays valid until it actually expires; a renewal never blocks booking while it waits.
     if (doc.url && doc.status === 'approved' && days !== null && days > 0) continue;
     // A document without an expiry date is good once the kitchen approves it.
     if (!doc.hasExpiry && doc.url && doc.status === 'approved') continue;
-    if (!doc.url) return result('document_review_required', `This kitchen needs your ${doc.label} before new bookings. Upload it and wait for the kitchen to approve it. Existing bookings are unaffected.`, false, documentRenewalHref(locationId), { ...detail, reason: 'missing' });
+    if (!doc.url) return result('document_review_required', `This kitchen needs your ${doc.label} before new bookings. Upload it and wait for the kitchen to approve it. Existing bookings are unaffected.`, false, documentRenewalHref(locationId),
+      // Every other required document still to upload, so the chef learns them all at once.
+      { ...detail, reason: 'missing', alsoMissing: required.filter(other => other.key !== doc.key && !other.url).map(other => other.label) });
     if (days !== null && days <= 0) {
       if (renewals.some(renewal => renewal.key === doc.key && renewal.status === 'pending'))
         return result('renewal_under_review', `Your renewal is under review. You can make new bookings once the kitchen approves your renewed ${doc.label}. Existing bookings are unaffected.`, false, documentRenewalHref(locationId), detail);

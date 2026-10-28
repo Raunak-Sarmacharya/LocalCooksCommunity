@@ -32,6 +32,8 @@ describe('location booking eligibility', () => {
     const house = { tier2_custom_fields: [{ id: 'rules', label: 'Signed house rules', type: 'file', document: true, required: true }] };
     const rules = (data: object) => ({ tier_data: { tier2_custom_fields_data: { rules: '/rules.pdf' }, ...data } });
     expect(eligible({}, true, house).document).toMatchObject({ label: 'Signed house rules', reason: 'missing' });
+    const two = { tier2_custom_fields: [...house.tier2_custom_fields, { id: 'biz', label: 'Business licence', type: 'file', document: true, required: true, expires: true }] };
+    expect(eligible({}, true, two).document).toMatchObject({ label: 'Signed house rules', alsoMissing: ['Business licence'] });
     expect(eligible(rules({}), true, house).document).toMatchObject({ reason: 'pending' });
     expect(eligible(rules({ customDocumentStatus: { rules: 'rejected' } }), true, house).document).toMatchObject({ reason: 'rejected' });
     expect(eligible({ foodSafetyLicenseExpiry: null }).document).toMatchObject({ key: 'foodSafetyLicense', reason: 'needs_expiry' });

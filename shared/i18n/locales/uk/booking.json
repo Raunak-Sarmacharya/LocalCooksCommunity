@@ -321,6 +321,8 @@
   "accessBlockedDocumentPending": "Ваш документ «{document}» очікує на схвалення від {location}. Бронювати можна буде, щойно його схвалять.",
   "accessActionUpload": "Завантажити «{document}»",
   "accessActionDocumentStatus": "Переглянути стан документа",
+  "accessBlockedDocumentsMissing": "{location} потребує ваші документи ({documents}), перш ніж ви зможете бронювати. Завантажте їх — бронювати можна буде, щойно {location} їх схвалить.",
+  "accessActionUploadAll": "Завантажити документи",
   "accessBlockedDocumentReview": "Документ «{document}» потребує чинної дати завершення терміну дії та схвалення, перш ніж ви зможете бронювати. Завантажте оновлений документ, і ми повідомимо вас після перевірки.",
   "accessBlockedEnded": "Ваш доступ до {location} завершено. Зв’яжіться з {location} або Local Cooks, якщо хочете знову бронювати тут.",
   "accessBlockedAwaitingFinal": "Очікуємо остаточного схвалення від кухні",

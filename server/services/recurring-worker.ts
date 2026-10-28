@@ -148,7 +148,7 @@ export async function runRecurringWorker(cancellations: () => Promise<unknown>, 
         { name: 'storagePayouts', run: async () => (await import('./storage-payouts')).releaseDueStoragePayouts(3) },
         { name: 'bookingFeedback', run: async () => (await import('./booking-feedback-service')).sweepBookingFeedback(3) },
         { name: 'invitationExpiry', run: async () => (await import('./kitchen-invitations')).sweepKitchenInvitationExpiry(3) },
-        // Expiry reminders (30/7/0 days); the new-booking block itself is enforced at read time.
+        // Expiry reminders (45/14/3 days and on the day); the new-booking block itself is enforced at read time.
         { name: 'chefDocumentExpiry', run: async () => (await import('./chef-document-expiry')).sweepChefDocumentExpiry() },
         { name: 'tourOutcomes', run: async () => (await import('./tour-outcome-service')).remindUnrecordedTourOutcomes({ budgetMs: 5_000, maxTours: 3 }) },
       ];

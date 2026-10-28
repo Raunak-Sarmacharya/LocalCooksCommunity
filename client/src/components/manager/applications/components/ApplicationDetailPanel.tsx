@@ -7,7 +7,7 @@
  * to apply the customer sent comes after, with readable values. Local Cooks' first-step review is never mentioned.
  */
 import { formatPhoneForDisplay } from "@shared/phone-validation";
-import { accessDocumentStage, customDocumentFields, isKitchenDocument } from "@shared/location-booking-eligibility";
+import { accessDocumentStage, customDocumentFields, isKitchenDocument, locationBookingEligibility } from "@shared/location-booking-eligibility";
 import { fromCalendarDate } from "@/lib/calendar-date";
 import { formatPreferredSchedule } from "@/lib/preferred-schedule";
 import { mt } from "@/i18n/manager";
@@ -215,12 +215,18 @@ export function ApplicationDetailPanel({
         ...((r?.tier1_custom_fields || []).map(field => [field.label, answerOf(field, (application.customFieldsData || {})[field.id])] as [string, ReactNode])),
     ];
 
+    // Approved is not the same as able to book: a required document can pause new bookings (the chef sees the same check).
+    const eligibility = isApproved ? locationBookingEligibility(application as never, true, (r || {}) as never, application.locationId, undefined, new Date(),
+        (application.documentRenewals || []) as never) : null;
+    const pausedFor = eligibility && !eligibility.canBook && eligibility.document ? eligibility.document.label : null;
+
     // Where the request stands, in the customer's journey.
     const stages = [
         // A customer the kitchen added skipped Request to apply (owner, Oct 24).
         { title: addedByKitchen ? mt("arStageAdded") : mt("arStageRequest"), note: addedByKitchen ? mt("arStageAddedOn", { date: dayOf(application.tier1_completed_at || application.reviewedAt) || '' }) : mt("arStageSent", { date: dayOf(application.createdAt) || '' }), state: 'done' as const },
         { title: mt("step2"), note: documentsWaived ? mt("arStageWaived") : sent ? mt("arStageSent", { date: dayOf(application.tier2_completed_at) }) : mt("arStageWaiting"), state: (isApproved ? 'done' : 'current') as 'done' | 'current' },
-        { title: mt("arStageCanBook"), note: isApproved ? mt("arStageCanBookNote") : null, state: (isApproved ? 'done' : 'next') as 'done' | 'next' },
+        { title: mt("arStageCanBook"), note: pausedFor ? mt("arStageBookingPaused", { document: pausedFor }) : isApproved ? mt("arStageCanBookNote") : null,
+            state: (pausedFor ? 'current' : isApproved ? 'done' : 'next') as 'done' | 'next' | 'current' },
     ];
 
     const statusPill = application.status === 'rejected' ? mt("arTabDeclined") : isApproved ? (documentsWaived ? mt("arPillApprovedWaived") : mt("approved")) : tab === 'review' ? mt("arPillToReview") : mt("arTabWaiting");
@@ -288,8 +294,8 @@ export function ApplicationDetailPanel({
                 ) : isApproved ? (
                     <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4">
                         <div className="min-w-0">
-                            <h2 className="text-sm font-semibold text-foreground">{mt("arApprovedTitle", { name: firstName })}</h2>
-                            <p className="mt-0.5 text-sm text-muted-foreground">{documentsWaived ? mt("documentsWaivedNote") : mt("arApprovedBody")}</p>
+                            <h2 className="text-sm font-semibold text-foreground">{pausedFor ? mt("arPausedTitle", { name: firstName, document: pausedFor }) : mt("arApprovedTitle", { name: firstName })}</h2>
+                            <p className="mt-0.5 text-sm text-muted-foreground">{pausedFor ? mt("arPausedBody", { name: firstName }) : documentsWaived ? mt("documentsWaivedNote") : mt("arApprovedBody")}</p>
                         </div>
                         <div className="flex flex-wrap gap-2">
                             <StatusButton variant="outline" onClick={() => { setActiveAction('revoke'); onRevokeAccess(); }}

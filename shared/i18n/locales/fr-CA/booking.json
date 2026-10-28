@@ -321,6 +321,8 @@
   "accessBlockedDocumentPending": "Votre document « {document} » attend l’approbation de {location}. Vous pourrez réserver dès qu’il sera approuvé.",
   "accessActionUpload": "Téléverser « {document} »",
   "accessActionDocumentStatus": "Voir l’état du document",
+  "accessBlockedDocumentsMissing": "{location} a besoin de vos documents ({documents}) avant que vous puissiez réserver. Téléversez-les; vous pourrez réserver dès que {location} les aura approuvés.",
+  "accessActionUploadAll": "Téléverser vos documents",
   "accessBlockedDocumentReview": "Votre {document} doit avoir une date d’expiration valide et être approuvé avant que vous puissiez réserver. Téléversez un document renouvelé et nous vous aviserons une fois la vérification terminée.",
   "accessBlockedEnded": "Votre accès à {location} a pris fin. Communiquez avec {location} ou Local Cooks si vous souhaitez réserver ici de nouveau.",
   "accessBlockedAwaitingFinal": "En attente de l’approbation finale de la cuisine",
