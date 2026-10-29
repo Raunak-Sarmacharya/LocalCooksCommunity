@@ -18,6 +18,7 @@ import { AdminTransactionHistory } from "@/components/admin/sections/AdminTransa
 import { BookingSupportSection } from "@/components/admin/booking-support/BookingSupportSection";
 import AdminDamageClaimsHistory from "@/components/admin/sections/AdminDamageClaimsHistory";
 import { AdminStorageRentalsSection } from "@/components/admin/sections/AdminStorageRentalsSection";
+import { AdminInvitationsSection } from "@/components/admin/sections/AdminInvitationsSection";
 import { PasswordResetSection } from "@/components/admin/sections/PasswordResetSection";
 import { EmailLogSection } from "@/components/admin/sections/EmailLogSection";
 import { CommitmentProblems } from '@/components/support/CommitmentProblems';
@@ -99,7 +100,7 @@ function AdminDashboard() {
     "platform-overview", "platform-settings",
     "damage-claim-settings", "account-settings", "overview", "transactions",
     "damage-claims-history", "storage-rentals",
-    "security-settings", "password-reset", "email-log", "live-problems", "booking-support",
+    "security-settings", "password-reset", "email-log", "live-problems", "booking-support", "invitations",
   ], []);
 
   const [activeSection, setActiveSection] = useState<AdminSection>(() => {
@@ -1126,6 +1127,13 @@ function AdminDashboard() {
         return (
           <ErrorBoundary>
             <AdminDamageClaimsHistory getFirebaseToken={getFirebaseToken} />
+          </ErrorBoundary>
+        );
+
+      case "invitations":
+        return (
+          <ErrorBoundary>
+            <AdminInvitationsSection />
           </ErrorBoundary>
         );
 

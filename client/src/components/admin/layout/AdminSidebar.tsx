@@ -1,11 +1,12 @@
 import { StorageIcon as Package } from "@/components/ui/inventory-icons";
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuBadge, SidebarMenuButton, SidebarMenuItem, SidebarRail, SidebarSeparator } from "@/components/ui/sidebar";
 import { Badge } from "@/components/ui/badge";
-import { Shield, FileText, AlertTriangle, Users, Building2, Gift, DollarSign, Settings, LogOut, BarChart3, Lock, LayoutDashboard, CreditCard, FileWarning,  KeyRound, Mail, CalendarDays, LifeBuoy } from "lucide-react";
+import { Shield, FileText, AlertTriangle, Users, Building2, Gift, DollarSign, Settings, LogOut, BarChart3, Lock, LayoutDashboard, CreditCard, FileWarning,  KeyRound, Mail, CalendarDays, LifeBuoy, Send } from "lucide-react";
 
 export type AdminSection =
   | "live-problems"
   | "booking-support"
+  | "invitations"
   | "overview"
   | "applications"
   | "kitchen-applications-step1"
@@ -58,6 +59,7 @@ const NAV_GROUPS = [
     label: "Management",
     items: [
       { id: "booking-support" as AdminSection, label: "Booking support", icon: LifeBuoy },
+      { id: "invitations" as AdminSection, label: "Invitations", icon: Send },
       { id: "user-management" as AdminSection, label: "User Management", icon: Users },
       { id: "chef-kitchen-access" as AdminSection, label: "Chef Kitchen Access", icon: Users },
       { id: "kitchen-management" as AdminSection, label: "Manage Kitchens", icon: Building2 },
