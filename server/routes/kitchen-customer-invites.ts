@@ -1,11 +1,11 @@
 /** Kitchen "Add customer" (owner, Oct 24): see services/kitchen-customer-invites. */
 import { Router, type Request, type Response } from 'express';
-import { requireFirebaseAuthWithUser, requireManager } from '../firebase-auth-middleware';
+import { requireAdmin, requireFirebaseAuthWithUser, requireManager } from '../firebase-auth-middleware';
 import { upload, uploadToBlob } from '../fileUpload';
 import { DomainError } from '../shared/errors/domain-error';
 import { logger } from '../logger';
 import { normalizeImageUrl } from './utils';
-import { acceptInvite, createInvite, inviteEmailMatch, listInvites, readInvite, resendInvite, withdrawInvite, type InviteDocuments, type RequirementsChoice } from '../services/kitchen-customer-invites';
+import { acceptInvite, createInvite, inviteEmailMatch, listInvites, listInvitesForAdmin, readInvite, resendInvite, withdrawInvite, type InviteDocuments, type RequirementsChoice } from '../services/kitchen-customer-invites';
 
 const router = Router();
 const fail = (res: Response, error: unknown, fallback: string) => {
@@ -16,6 +16,10 @@ const fail = (res: Response, error: unknown, fallback: string) => {
 
 router.get('/manager/customer-invites', requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
   try { res.json(await listInvites(req.neonUser!.id)); } catch (error) { fail(res, error, 'Could not load invitations'); }
+});
+
+router.get('/admin/customer-invites', requireFirebaseAuthWithUser, requireAdmin, async (_req: Request, res: Response) => {
+  try { res.json({ invites: await listInvitesForAdmin() }); } catch (error) { fail(res, error, 'Could not load customer links'); }
 });
 
 router.get('/manager/customer-invites/check', requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {

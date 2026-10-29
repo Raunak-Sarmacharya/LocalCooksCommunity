@@ -769,15 +769,16 @@ export async function invitationNoticeCopy(input: {
 }
 
 /** Deliver append-only invitation outbox records with per-reader names and locale. */
-export async function deliverKitchenInvitationEvents(limit = 3) {
+export async function deliverKitchenInvitationEvents(limit = 3, onlyInvitationId?: string) {
   await ensureServerI18n();
+  // One invitation's queue (QA test clock) skips the worker cursor so it never disturbs the worker's place.
   const events = await db.select().from(kitchenInvitationEvents)
-    .where(and(workerAfter('invitationDelivery', kitchenInvitationEvents.id),
+    .where(and(onlyInvitationId ? eq(kitchenInvitationEvents.invitationId, onlyInvitationId) : workerAfter('invitationDelivery', kitchenInvitationEvents.id),
       sql`${kitchenInvitationEvents.deliveredAt} IS NULL`))
     .orderBy(kitchenInvitationEvents.id).limit(Math.min(limit, workerBatch()));
-  await workerPageEnd('invitationDelivery', events.length, Math.min(limit, workerBatch()));
+  if (!onlyInvitationId) await workerPageEnd('invitationDelivery', events.length, Math.min(limit, workerBatch()));
   for (const record of events) {
-    await workerRecord('invitationDelivery', record.id);
+    if (!onlyInvitationId) await workerRecord('invitationDelivery', record.id);
     const readers = invitationNoticeReaders(record.kind, record.actorRole, record.metadata);
     const [invitation] = readers.length ? await db.select().from(kitchenInvitations).where(eq(kitchenInvitations.id, record.invitationId)).limit(1) : [];
     if (invitation) {
@@ -824,6 +825,30 @@ ${actionUrl}`,
   return { delivered: events.length };
 }
 
+/** One invitation's 24-hour reminder, re-checking every sweep condition under the guarded update. Returns whether it acted. */
+export async function remindKitchenInvitation(id: string) {
+  return db.transaction(async tx => {
+    const [updated] = await tx.update(kitchenInvitations).set({ reminderSentAt: new Date() })
+      .where(and(eq(kitchenInvitations.id, id), eq(kitchenInvitations.status, 'sent'), sql`${kitchenInvitations.expiresAt} > now()`,
+        sql`${kitchenInvitations.expiresAt} <= now() + interval '24 hours'`,
+        sql`${kitchenInvitations.expiresAt} - ${kitchenInvitations.createdAt} > interval '24 hours'`,
+        sql`${kitchenInvitations.reminderSentAt} IS NULL`)).returning();
+    if (updated) await event(tx, updated, 'expiry_reminder');
+    return !!updated;
+  });
+}
+
+/** One invitation's expiry notice, same guard as the sweep. Returns whether it acted. */
+export async function expireKitchenInvitation(id: string) {
+  return db.transaction(async tx => {
+    const [updated] = await tx.update(kitchenInvitations).set({ expiryNotifiedAt: new Date() })
+      .where(and(eq(kitchenInvitations.id, id), eq(kitchenInvitations.status, 'sent'), sql`${kitchenInvitations.expiresAt} <= now()`,
+        sql`${kitchenInvitations.expiryNotifiedAt} IS NULL`)).returning();
+    if (updated) await event(tx, updated, 'expired');
+    return !!updated;
+  });
+}
+
 /** Expiry is already correct on reads; this sparse sweep only records durable notice events once. */
 export async function sweepKitchenInvitationExpiry(limit = 10) {
   const reminderRows = await db.select().from(kitchenInvitations).where(and(workerAfter('invitationReminder', kitchenInvitations.workerId),
@@ -834,11 +859,7 @@ export async function sweepKitchenInvitationExpiry(limit = 10) {
   await workerPageEnd('invitationReminder', reminderRows.length, Math.min(limit, workerBatch()));
   for (const row of reminderRows) {
     await workerRecord('invitationReminder', row.workerId);
-    await db.transaction(async tx => {
-      const [updated] = await tx.update(kitchenInvitations).set({ reminderSentAt: new Date() })
-        .where(and(eq(kitchenInvitations.id, row.id), sql`${kitchenInvitations.reminderSentAt} IS NULL`)).returning();
-      if (updated) await event(tx, updated, 'expiry_reminder');
-    });
+    await remindKitchenInvitation(row.id);
   }
   const rows = await db.select().from(kitchenInvitations).where(and(workerAfter('invitationExpiry', kitchenInvitations.workerId),
     eq(kitchenInvitations.status, 'sent'), sql`${kitchenInvitations.expiresAt} <= now()`,
@@ -846,11 +867,7 @@ export async function sweepKitchenInvitationExpiry(limit = 10) {
   await workerPageEnd('invitationExpiry', rows.length, Math.min(limit, workerBatch()));
   for (const row of rows) {
     await workerRecord('invitationExpiry', row.workerId);
-    await db.transaction(async tx => {
-      const [updated] = await tx.update(kitchenInvitations).set({ expiryNotifiedAt: new Date() })
-        .where(and(eq(kitchenInvitations.id, row.id), sql`${kitchenInvitations.expiryNotifiedAt} IS NULL`)).returning();
-      if (updated) await event(tx, updated, 'expired');
-    });
+    await expireKitchenInvitation(row.id);
   }
   return { reminded: reminderRows.length, expired: rows.length };
 }

@@ -73,5 +73,5 @@ it('serves damage claims under the same routes, and names them in the 400', asyn
   expect(res.json).toHaveBeenCalledWith({ error: 'Choose a damage claim and a time to jump to.' });
   res = response();
   await read({ params: { kind: 'nope', id: '8' } }, res);
-  expect(res.json).toHaveBeenCalledWith({ error: 'Choose a valid tour, booking, storage rental or damage claim.' });
+  expect(res.json).toHaveBeenCalledWith({ error: 'Choose a valid tour, booking, storage rental, damage claim, invitation or customer link.' });
 });

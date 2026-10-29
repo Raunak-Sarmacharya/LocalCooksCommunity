@@ -112,6 +112,14 @@ export async function createInvite(managerId: number, input: { locationId: numbe
   return invite;
 }
 
+/** Admin read-only list (QA and support): newest 200 links across every kitchen. */
+export async function listInvitesForAdmin() {
+  const rows = await db.select({ invite: kitchenCustomerInvites, locationName: locations.name, kitchenName: sql<string | null>`(SELECT min(${kitchens.name}) FROM ${kitchens} WHERE ${kitchens.locationId} = ${locations.id})` })
+    .from(kitchenCustomerInvites).innerJoin(locations, eq(locations.id, kitchenCustomerInvites.locationId)).orderBy(desc(kitchenCustomerInvites.sentAt)).limit(200);
+  return rows.map(({ invite, locationName, kitchenName }) => ({ id: invite.id, locationId: invite.locationId, locationName, displayName: kitchenName || locationName,
+    fullName: invite.fullName, email: invite.email, status: statusOf(invite), sentAt: invite.sentAt, expiresAt: invite.expiresAt }));
+}
+
 export async function listInvites(managerId: number) {
   const rows = await db.select({ invite: kitchenCustomerInvites, locationName: locations.name }).from(kitchenCustomerInvites)
     .innerJoin(locations, eq(locations.id, kitchenCustomerInvites.locationId))

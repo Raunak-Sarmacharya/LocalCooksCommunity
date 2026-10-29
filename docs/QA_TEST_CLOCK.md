@@ -8,6 +8,7 @@ Dev admin (`dev-admin.localcooks.ca`):
 - **Bookings:** Booking support → find the booking → the Test clock card sits under "Take action". Single-day and multi-day.
 - **Storage rentals:** Storage rentals → "View" on a rental → the Test clock card sits between the history sections and the action picker.
 - **Damage claims:** Booking support → the booking's claim panel (kitchen bookings), or Storage rentals → "View" (storage claims).
+- **Invitations:** Admin → Invitations → open one → Test clock (see Invitations below).
 
 The card lists every automatic step still ahead for that tour, booking or storage rental, with its time. "Jump here" moves its saved times
 earlier so that step is due now, then runs it the same way the live system would. Every step between now and the one you
@@ -92,8 +93,19 @@ payment to the kitchen or a withdrawal is still finishing (try again in a minute
 the card loaded. A payment the customer left open stays payable. Pay and dispute are the customer's own actions: do them at
 the real time, before jumping.
 
+## Invitations
+Where: Admin → Invitations → open one → Test clock. Two kinds of invitation:
+- **Booking invitations (the kitchen offers a customer a booking):** while it is still waiting for the customer, the steps are the
+  reminder 24 hours before it expires (only when it lasted longer than 24 hours) and the expiry, when the customer and the kitchen
+  are told. Accepted, declined or withdrawn invitations have no steps; the card says so. While the customer is in checkout
+  (`accepted_pending_payment`) the clock is paused and a jump is refused until they pay or leave. A jump moves the invitation's sent and
+  expiry times and its notices, then sends what became due. The booked day and time do not move.
+- **Customer links (the kitchen's "Add customer" link):** one step, when the link expires and the customer sees "This invitation has
+  expired". Nothing is sent; expiry is only read when the link is opened. The card is on the link's row (the read-only list at
+  `GET /api/admin/customer-invites` shows every link).
+
 ## Not on the clock yet
-Kitchen invitations and document expiry reminders (45, 14 and 3 days before, and on the day)
+Document expiry reminders (45, 14 and 3 days before, and on the day)
 still run on real time. They're the next checkpoints.
 
 ## What it does not move
