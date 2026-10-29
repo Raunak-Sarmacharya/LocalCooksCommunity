@@ -169,7 +169,7 @@ an unpaid claim or a storage rental that hasn't ended); we'll tell you what's le
   are corrected by adding a note, not by rewriting history.
 - You can turn off optional messages (such as text messages). Service messages about bookings, payments and safety can't be turned
   off while you have an active booking or rental, because they tell you about deadlines and money.
-- Saved cards: you can remove a saved card at any time (contact support until this is self-serve); this doesn't cancel amounts you
+- Saved cards: you can remove a saved card yourself at any time from Payments → Saved cards; this doesn't cancel amounts you
   already agreed to pay.
 
 ---

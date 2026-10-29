@@ -95,6 +95,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use(optionalFirebaseAuth);
   // Claim payment endpoints and NEW-booking guard precede their legacy aliases.
   app.use('/api', (await import('./routes/damage-claims')).default);
+  app.use('/api', (await import('./routes/chef-saved-cards')).default);
 
 
 

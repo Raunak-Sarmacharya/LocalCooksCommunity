@@ -488,7 +488,7 @@ async function commitCapture(tx: Tx, row: Context, extension: Extension, now: Da
 }
 export async function decideSessionExtension(stripe: ExtensionStripe, bookingId: number, id: number, actor: ExtensionActor,
   input: { action: 'approve' | 'approve_free' | 'decline' | 'accept' | 'pay' | 'dispute' | 'withdraw'; expectedAmountCents?: number; note?: string }, now = new Date()) {
-  let provider = false;
+  let provider = false, checkoutRequired = false;
   await db.transaction(async tx => {
     const row = await lockedContext(tx, bookingId, actor), extension = await savedExtension(tx, bookingId, id);
     const manager = actor.role === 'manager' && actor.id === row.managerId, chef = actor.role === 'chef' && actor.id === row.booking.chefId;
@@ -554,7 +554,8 @@ export async function decideSessionExtension(stripe: ExtensionStripe, bookingId:
     }
     if (input.expectedAmountCents !== extension.amountCents) throw new SessionExtensionError('Review the price before paying');
     await mustBeEnabled(tx); await assertBookingMoneyWritable({ bookingId }, tx);
-    if (!row.booking.stripeCustomerId || !row.booking.stripePaymentMethodId) throw new SessionExtensionError('Your saved card is unavailable. Contact Local Cooks; nothing was charged.');
+    // No saved card (never had one, or the chef removed it): pay on Stripe Checkout, same as the chef's own request.
+    if (!row.booking.stripeCustomerId || !row.booking.stripePaymentMethodId) { checkoutRequired = true; return; }
     if (extension.kind === 'offer' || extension.kind === 'early_start') {
       const { visit, fits } = await stillFits(tx, row, extension, now);
       if (!fits) throw new SessionExtensionError('This offered time is no longer free. Message the kitchen.');
@@ -566,7 +567,7 @@ export async function decideSessionExtension(stripe: ExtensionStripe, bookingId:
   });
   if (!provider) {
     const [latest] = await db.select().from(kitchenBookingExtensions).where(eq(kitchenBookingExtensions.id, id)).limit(1);
-    return { extension: sessionExtensionDto(latest) };
+    return { extension: sessionExtensionDto(latest), ...(checkoutRequired ? { checkoutRequired: true } : {}) };
   }
   return reconcileSessionExtension(stripe, id, now, actor.role === 'chef');
 }

@@ -428,6 +428,14 @@ describe('kitchen offers more time: Free or Charge is the manager’s choice', (
     expect(state.context.booking.endTime).toBe('16:30');
     expect(notices()).toEqual(['offered', 'confirmed']);
   });
+  it('charge, no saved card (never had one or removed it): asks for Checkout instead of an error, and changes nothing', async () => {
+    const { extension } = await offer(false);
+    state.context.booking.stripePaymentMethodId = null;
+    const accepted = await decideSessionExtension(stripe, 10, extension.id, chef, { action: 'accept', expectedAmountCents: 1501 }, new Date('2026-10-14T17:10:00Z'));
+    expect(accepted).toMatchObject({ checkoutRequired: true, extension: { id: extension.id, status: 'offered' } });
+    expect(state.context.booking.endTime).toBe('16:00');
+    expect(stripe.paymentIntents.create).not.toHaveBeenCalled();
+  });
   it('the chef can say no; the manager is told and nothing is charged', async () => {
     const { extension } = await offer(false);
     await decideSessionExtension(stripe, 10, extension.id, chef, { action: 'decline' }, new Date('2026-10-14T17:10:00Z'));
