@@ -8,7 +8,7 @@ import { formatTourWhen } from '@/lib/chef-viewing-display';
 
 type Step = { key: string; label: string; at: string };
 type Clock = { reference: string; status: string; updatedAt: string; now: string; steps: Step[]; multiDay?: boolean; note?: string | null };
-type Jump = { movedMs: number; notices: Array<{ kind: string; sent: boolean }>; reminders: Array<{ kind: string; role: string; channel: string }>; clock: Clock; stoppedAt?: string | null };
+type Jump = { movedMs: number; notices: Array<{ kind: string; sent: boolean }>; reminders?: Array<{ kind: string; role: string; channel: string }>; clock: Clock; stoppedAt?: string | null };
 const noticeNames: Record<string, string> = { expired: 'Request expired', request_escalation: 'Overdue or urgent alert', reconfirmation_requested: '"Still coming?" check',
   reconfirmation_escalated: 'No reply · staff alert', reconfirmation_reminder: 'Reply reminder to the visitor', feedback_requested: 'Feedback request',
   feedback_reminder: 'Feedback reminder', status: 'Status update', cancelled: 'Cancelled or expired notice', move_in_due: 'Move-in reminder', not_moved_in: 'Not moved in notice',
@@ -73,10 +73,10 @@ export function TestClockCard({ kind, id, timezone, onMoved }: { kind: 'tour' | 
         {last && <div role="status" className="space-y-1 rounded-md bg-muted p-3">
           <p>{'stoppedAt' in last.result ? `Stopped early${last.result.stoppedAt ? ` after "${last.result.stoppedAt}"` : ''} to stay inside the time limit. Jump again to continue.`
             : `Jumped to "${last.step.label}" (${untilLabel(last.result.movedMs)} earlier), running each step on the way in order.`}</p>
-          {!last.result.notices.length && !last.result.reminders.length ? <p className="text-muted-foreground">Nothing was sent: no message was due at this step.</p>
+          {!last.result.notices.length && !last.result.reminders?.length ? <p className="text-muted-foreground">Nothing was sent: no message was due at this step.</p>
             : <ul className="list-disc pl-5">
               {last.result.notices.map((notice, index) => <li key={`n${index}`}>{noticeName(notice.kind)}{notice.sent ? ' · sent' : ' · still sending (refresh in a moment; if it stays, run the background worker below)'}</li>)}
-              {last.result.reminders.map((reminder, index) => <li key={`r${index}`}>{reminder.kind === 'arrival' ? 'Arrival reminder' : noticeName(reminder.kind)} to the {reminder.role === 'manager' ? 'kitchen' : kind === 'tour' ? 'visitor' : 'customer'} · {reminder.channel === 'email' ? 'email' : 'in-app'} sent</li>)}
+              {(last.result.reminders ?? []).map((reminder, index) => <li key={`r${index}`}>{reminder.kind === 'arrival' ? 'Arrival reminder' : noticeName(reminder.kind)} to the {reminder.role === 'manager' ? 'kitchen' : kind === 'tour' ? 'visitor' : 'customer'} · {reminder.channel === 'email' ? 'email' : 'in-app'} sent</li>)}
             </ul>}
         </div>}
         {clock.data && ['pending', 'pending_local_cooks', 'requested'].includes(clock.data.status) && <p className="text-muted-foreground">{kind === 'tour'
