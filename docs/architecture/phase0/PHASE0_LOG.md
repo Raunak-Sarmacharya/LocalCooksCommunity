@@ -1612,3 +1612,12 @@ Checked on dev against QA's own records (TOUR-103, KB-TASH8T #239, KB-Z856HK #24
   link expiry (passive). Walked live: invite → reminder ("expires soon… Pay by") → expired notices both sides; link → kitchen sees "Invitation expired".
 - Admin invitation notices now open the Invitations section. Known: admin list builds every invitation (no paging; fine at dev size, shortcut noted);
   kitchen offers Withdraw on an expired customer link (pre-existing, harmless).
+
+## Oct 28 (night): checkpoint 5: document expiry reminders on the test clock (schedule unchanged: 45/14/3 days + expiry day)
+- Admin → Kitchen Application Requests → ⋯ → View Documents → Test clock (`qa-test-clock-documents.ts`): one step per document per stage; a jump
+  moves the documents' expiry dates earlier and carries the "already sent" markers, so no stage repeats. Walked live on #70 (Sam Rivera Test,
+  phase0-new-720035): 14-day → 3-day → expired; customer email + in-app, kitchen in-app at each stage; bookings pause at expiry.
+- Found walking it: copy showed raw dates ("expires on 2026-11-11") → "November 11, 2026"; a send refused for a .test address was left as
+  "delivery_unknown" (admin recovery list) → skipped_policy; admin documents dialog showed no expiry for the establishment certificate → shown.
+- Owner Oct 28: an expired customer link shows no Withdraw (Resend stays); order unchanged.
+- Leftover: older .test document reminders sent before this fix still read delivery_unknown/failed on dev (#70, #83); left as is (shared dev rows).
