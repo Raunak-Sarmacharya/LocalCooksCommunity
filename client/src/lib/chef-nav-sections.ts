@@ -20,6 +20,7 @@ export type ChefNavItemId =
   | "messages"
   | "notifications"
   | "issues-refunds"
+  | "saved-cards"
   | "transactions";
 
 export type ChefNavItem = {
