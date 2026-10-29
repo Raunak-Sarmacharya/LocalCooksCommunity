@@ -30,6 +30,7 @@ const navigationItems = [
 const financialItems = [
   { labelKey: "shellTransactions", value: "transactions", icon: CreditCard, group: "shellFinancial" },
   { labelKey: "shellResolutionCenter", value: "issues-refunds", icon: AlertTriangle, group: "shellFinancial" },
+  { labelKey: "shellSavedCards", value: "saved-cards", icon: CreditCard, group: "shellFinancial" },
 ];
 
 const quickActions = [

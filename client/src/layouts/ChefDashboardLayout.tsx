@@ -49,6 +49,7 @@ const viewLabelKeys: Record<string, string> = {
     "my-account": "shellLinkedAccounts",
     transactions: "shellPayments",
     "issues-refunds": "shellResolutionCenter",
+    "saved-cards": "shellSavedCards",
     notifications: "notifPanelHeading",
 }
 

@@ -75,7 +75,7 @@ export const chefNavSections: ChefNavSection[] = [
       { id: "messages", labelKey: "shellMessages", icon: "mdi:message-outline" },
       {
         id: "transactions", labelKey: "shellPayments", icon: "mdi:credit-card-outline", tabLabelKey: "tabReceipts",
-        members: [{ id: "issues-refunds", labelKey: "shellResolutionCenter", icon: "mdi:alert-outline" }],
+        members: [{ id: "issues-refunds", labelKey: "shellResolutionCenter", icon: "mdi:alert-outline" }, { id: "saved-cards", labelKey: "shellSavedCards", icon: "mdi:credit-card-check-outline" }],
       },
     ],
   },

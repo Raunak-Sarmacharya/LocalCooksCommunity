@@ -33,6 +33,7 @@ import ApplicationFormPanel from "@/components/application/ApplicationFormPanel"
 import { leaveSellerApplication } from "@/components/application/ApplicationFormContext";
 import ChefSupportPage from "@/components/chef/ChefSupportPage";
 import { IssuesAndRefunds } from "@/components/chef/IssuesAndRefunds";
+import { SavedCards } from "@/components/chef/SavedCards";
 import { TransactionHistory } from "@/components/chef/TransactionHistory";
 import { useChefResolutionCenter } from "@/hooks/use-chef-resolution-center";
 import { useChefSidebarHiddenItems } from "@/hooks/use-chef-sidebar-hidden-items";
@@ -89,7 +90,7 @@ export default function ApplicantDashboard() {
     const params = new URLSearchParams(window.location.search);
     // Training became Resources (owner, Oct 27): old ?view=training links land there.
     const view = params.get('view') === 'training' ? 'resources' : params.get('view');
-    if (view && ['overview', 'applications', 'kitchen-applications', 'kitchen-requests', 'discover-kitchens', 'viewings', 'bookings', 'resources', 'messages', 'support', 'feedback', 'seller-revenue', 'my-account', 'transactions', 'issues-refunds', 'notifications', 'profile'].includes(view)) {
+    if (view && ['overview', 'applications', 'kitchen-applications', 'kitchen-requests', 'discover-kitchens', 'viewings', 'bookings', 'resources', 'messages', 'support', 'feedback', 'seller-revenue', 'my-account', 'transactions', 'issues-refunds', 'saved-cards', 'notifications', 'profile'].includes(view)) {
       return view;
     }
     return 'overview';
@@ -169,7 +170,7 @@ export default function ApplicantDashboard() {
     const VALID_VIEWS = [
       'overview', 'applications', 'kitchen-applications', 'kitchen-requests', 'discover-kitchens',
       'viewings', 'bookings', 'resources', 'messages', 'support', 'feedback',
-      'damage-claims', 'issues-refunds', 'profile', 'seller-revenue', 'my-account', 'transactions'
+      'damage-claims', 'issues-refunds', 'profile', 'seller-revenue', 'my-account', 'transactions', 'saved-cards'
     ];
     const syncFromUrl = () => {
       const params = new URLSearchParams(window.location.search);
@@ -800,6 +801,12 @@ export default function ApplicantDashboard() {
             <IssuesAndRefunds initialTab={resolutionTab} />
           </div>
         );
+      case "saved-cards":
+        return (
+          <div className="space-y-8 animate-in fade-in-50 duration-500">
+            <SavedCards />
+          </div>
+        );
       case "transactions":
         return (
           <div className="space-y-8 animate-in fade-in-50 duration-500">
@@ -911,6 +918,14 @@ export default function ApplicantDashboard() {
       return [
         ...baseBreadcrumbs,
         { label: t("shellPayments"), navId: "transactions" as const },
+      ];
+    }
+
+    if (activeTab === 'saved-cards') {
+      return [
+        ...baseBreadcrumbs,
+        { label: t("shellPayments"), onClick: () => setActiveTab("transactions") },
+        { label: t("shellSavedCards"), navId: "saved-cards" as const },
       ];
     }
 
