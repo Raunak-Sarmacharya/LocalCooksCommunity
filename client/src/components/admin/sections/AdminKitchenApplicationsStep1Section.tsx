@@ -486,6 +486,11 @@ export function AdminKitchenApplicationsStep1Section({
                 : application.foodEstablishmentCertStatus !== "approved" && getDocStatusBadge(application.foodEstablishmentCertStatus)}
             </div>
             <SecureDocumentLink url={application.foodEstablishmentCertUrl} label="View" showIcon={false} />
+            {application.foodEstablishmentCertExpiry && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Expires {fromCalendarDate(application.foodEstablishmentCertExpiry).toLocaleDateString()}
+              </p>
+            )}
             <div className="mt-3 flex gap-2">
               <Button
                 size="sm"
