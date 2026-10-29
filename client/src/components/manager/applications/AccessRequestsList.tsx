@@ -121,7 +121,8 @@ export function AccessRequestsList({ applications, invites = [], unreadCounts, o
                 </span>
               </span>
               <span className="flex shrink-0 gap-2">
-                {onWithdraw && <Button type="button" variant="ghost" size="sm" onClick={() => onWithdraw(invite)}>{mt("arWithdraw")}</Button>}
+                {/* An expired link already stopped working: nothing to withdraw (owner Oct 28). */}
+                {onWithdraw && invite.status !== "expired" && <Button type="button" variant="ghost" size="sm" onClick={() => onWithdraw(invite)}>{mt("arWithdraw")}</Button>}
                 {onResend && <Button type="button" variant="outline" size="sm" onClick={() => onResend(invite)}>{mt("arResend")}</Button>}
               </span>
             </li>
