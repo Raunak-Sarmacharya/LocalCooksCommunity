@@ -29,10 +29,13 @@ import { cn } from "@/lib/utils";
 type DialogContentProps = React.ComponentProps<typeof DialogContent>;
 
 export function AppDialogContent({ className, children, ...props }: DialogContentProps) {
+  // Sectioned dialogs pass `p-0`; class merging would keep the base `sm:p-6`, insetting header, body and footer on desktop.
+  const sectioned = !!className?.split(/\s+/).includes("p-0");
   return (
     <DialogContent
       className={cn(
-        "flex flex-col gap-4 rounded-3xl border-0 p-4 shadow-2xl sm:p-6",
+        "flex flex-col gap-4 rounded-3xl border-0 shadow-2xl",
+        !sectioned && "p-4 sm:p-6",
         className,
       )}
       {...props}

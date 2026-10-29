@@ -1631,3 +1631,24 @@ Checked on dev against QA's own records (TOUR-103, KB-TASH8T #239, KB-Z856HK #24
 - Every place that reuses a card falls back to a new card when none is saved; the one gap (paying a kitchen's extra-time offer) now goes
   to Stripe Checkout instead of "contact Local Cooks". Policy draft 01 updated (remove from Payments → Saved cards).
 - Walked live as phase0-chef: ~70 bookings → 4 cards; removed one; a new pending request locked its card; kitchen declined → unlocked.
+
+## Oct 29: QA follow-ups + check-in/check-out tasks walked end to end (kitchen visits and storage)
+- QA: self check-in visit still showed a locked code box before check-in opened → the preview shows only on visits that need a code.
+  QA: storage move-in button stayed disabled when the kitchen has no move-in checklist → enabled (server already allowed it).
+  Found: "Check-in opens 9:45 a.m.." double period → reworded.
+- Walked live with real tasks for the first time (phase0 location 47): kitchen setup → chef check-in (tasks, photo, code) → check-out →
+  kitchen inspection; storage setup → chef move-in → move-out → kitchen rental page.
+- Owner Oct 29 (all four as recommended):
+  - A task with Photo on is done by its photo: shown once, as the photo slot, no tick box (Turo-style). Server rule in `tickTasks`.
+  - Storage setup uses the kitchen setup editor (instructions, tasks, common tasks, customer preview) in Move in / Move out words with
+    storage common tasks (photo at move-in, label containers, food sealed, take everything out, wipe shelves, photo of the empty unit).
+  - Storage rental: kitchen sees move-in next to move-out (ticked tasks, photos asked for, photos); the chef sees "What you recorded".
+  - Tasks are always required: the "Optional can be skipped" line and per-item Required tags are gone; one count of what's left.
+- Also fixed: kitchen tasks page showed "Unsaved changes" on load; red banner while a new task was being named; the "who this affects" box
+  showed with no change; phone chips were icons only; photo delete "×" was hover-only (unusable on phones); storage dialogs' confirm was
+  below the fold on phones (pinned footer); departure box had no open/close cue; inspection said "Ready" while Finish was disabled
+  (now says when it opens); sectioned dialogs were inset on desktop.
+- QA test clock: a jump was refused because a stop on the way overlapped another booking (#245 vs #214); overlap is now judged where the
+  booking ends up, in a rolled-back dry run, so a refusal still changes nothing.
+- Open: photos are stored as one list, so neither side can say which photo answers which request when several are asked (kitchen visits
+  too). Labelling them needs a data change; raised with the owner.

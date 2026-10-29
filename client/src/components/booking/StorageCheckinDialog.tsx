@@ -316,7 +316,7 @@ export function StorageCheckinDialog({
           )}
         </AppDialogBody>
 
-        <AppDialogFooter>
+        <AppDialogFooter className="sm:flex-wrap">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             {isAlreadySubmitted ? t("ciClose") : t("bkCommonCancel")}
           </Button>
@@ -338,7 +338,7 @@ export function StorageCheckinDialog({
               )}
             </Button>
           )}
-          {remaining > 0 && <p role="status" className="self-center text-sm text-muted-foreground sm:order-first sm:mr-auto">{t("kciCompleteRequiredTasks", { count: remaining })}</p>}
+          {remaining > 0 && <p role="status" className="text-center text-sm text-muted-foreground sm:order-first sm:basis-full sm:text-right">{t("kciCompleteRequiredTasks", { count: remaining })}</p>}
         </AppDialogFooter>
       </AppDialogContent>
     </Dialog>
