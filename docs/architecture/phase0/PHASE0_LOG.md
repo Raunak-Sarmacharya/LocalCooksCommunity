@@ -1650,5 +1650,4 @@ Checked on dev against QA's own records (TOUR-103, KB-TASH8T #239, KB-Z856HK #24
   (now says when it opens); sectioned dialogs were inset on desktop.
 - QA test clock: a jump was refused because a stop on the way overlapped another booking (#245 vs #214); overlap is now judged where the
   booking ends up, in a rolled-back dry run, so a refusal still changes nothing.
-- Open: photos are stored as one list, so neither side can say which photo answers which request when several are asked (kitchen visits
-  too). Labelling them needs a data change; raised with the owner.
+- Owner Oct 29: photos stay one list per step (no per-request labels): "don't overcomplicate it". Photos asked for are listed above them.
