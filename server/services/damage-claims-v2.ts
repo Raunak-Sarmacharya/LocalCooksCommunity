@@ -187,7 +187,8 @@ export async function publicClaim(claim: Claim, tx: ClaimTx = db as unknown as C
     kitchenPaymentPending: !!claim.chargeSucceededAt && claim.fundedBy !== 'local_cooks' && claim.transferOperation?.state !== 'succeeded',
     fundedBy: claim.fundedBy, chefOwes: claim.chefOwes, holdReleasedAt: claim.holdReleasedAt,
     chefVisible: chefCanSeeClaim(claim), reviewRequest: chef ? null : claim.reviewRequest, kitchenReply: chef ? null : claim.kitchenReply,
-    paymentBusy: !!claim.paymentOperation && !['cancelled', 'succeeded'].includes(claim.paymentOperation.state),
+    // 'ready' = opened but not confirmed: Pay reopens the same payment (no double charge), so only creating/cancelling locks it (QA walk Oct 28).
+    paymentBusy: ['pending', 'cancel_pending'].includes(claim.paymentOperation?.state ?? ''),
     compensationPending: claim.compensationOperation?.state === 'pending', withdrawalPending: claim.withdrawalOperation?.state === 'pending',
     resolutionType: claim.resolutionType, evidence: publicEvidence, history: visibleHistory.map(({ actionBy: _actionBy, ...row }) => row) };
 }

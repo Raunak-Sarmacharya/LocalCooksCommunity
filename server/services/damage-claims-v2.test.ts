@@ -57,7 +57,7 @@ vi.mock('stripe', () => ({ default: class { paymentMethods = { retrieve: async (
   transfers = { create: state.transfer }; balance = { retrieve: state.balance }; refunds = { create: state.refund, retrieve: state.refund }; } }));
 vi.mock('../reference-code', () => ({ generateReferenceCode: async () => 'DC-TEST' }));
 vi.mock('./damage-claim-notices', () => ({ queueDamageClaimNotice: async () => { state.events.push('notice'); } }));
-import { decideDamageClaim, disputeDamageClaim, escalateDamageClaims, fileDamageClaim, readBookingClaims, readClaimFilingContext, replyToClaimReview, damageClaimsReviewFirst, notifyDamageClaimBookingHolds } from './damage-claims-v2';
+import { decideDamageClaim, disputeDamageClaim, escalateDamageClaims, fileDamageClaim, readBookingClaims, readClaimFilingContext, replyToClaimReview, damageClaimsReviewFirst, publicClaim, notifyDamageClaimBookingHolds } from './damage-claims-v2';
 import { prepareClaimPayment, settleClaimPayment, sendClaimKitchenMoney, recoverDamageClaimMoney } from './damage-claim-money';
 import { chargeApprovedClaim, adminDecision } from './damage-claim-service';
 vi.mock('./outcome-delivery', () => ({ queueClaimOutcome: vi.fn(), attemptOutcomeDelivery: vi.fn() }));
@@ -182,6 +182,8 @@ describe('explicit chef payments', () => {
   it('persists before creating an unconfirmed platform intent and reuses it on repeat taps', async () => {
     await prepareClaimPayment(1, 5);
     expect((await prepareClaimPayment(1, 5)).card).toEqual({ brand: 'visa', last4: '4242' });
+    // Opened but not confirmed: Pay stays tappable so the chef can come back to it (QA walk Oct 28).
+    expect(state.claim.paymentOperation.state).toBe('ready'); expect((await publicClaim(state.claim, undefined, 'chef')).paymentBusy).toBe(false);
     expect(state.events.indexOf('commit')).toBeLessThan(state.events.indexOf('stripe:create'));
     expect(state.create).toHaveBeenCalledTimes(1);
     const [params, options] = state.create.mock.calls[0];
