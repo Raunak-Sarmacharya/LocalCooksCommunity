@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { formatTime } from '@/lib/formatters';
 import { apiClient } from '@/lib/api';
@@ -25,6 +26,14 @@ export function ManagerBookingDays({ bookingId, revision, visits, money = [], pa
 }) {
   const { t, i18n } = useTranslation('manager');
   const { toast } = useToast();
+  // A kitchen's "they came" correction lives in attendance history, not on the visit (QA walk Oct 28). Same key as the Fix panel, so its save refreshes this.
+  const attendance = useQuery({ queryKey: [`/api/manager/bookings/${bookingId}/attendance`], queryFn: async () => {
+    const response = await apiClient.get(`/manager/bookings/${bookingId}/attendance`);
+    if (!response.ok) throw Error(t('mdFailed'));
+    return response.json() as Promise<{ history?: Array<{ visitId: number | null; action: string }> }>;
+  } });
+  const dayState = (day: { id: number; checkinStatus?: string | null }) => day.checkinStatus === 'not_checked_in'
+    && attendance.data?.history?.filter(event => event.visitId === day.id).at(-1)?.action === 'report_attended' ? 'attended' : day.checkinStatus;
   const name = customerName?.trim().split(/\s+/)[0] || t('mdTheCustomer');
   const Name = name[0].toUpperCase() + name.slice(1);
   const dayLabel = (date: string) => new Intl.DateTimeFormat(i18n.language, { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' }).format(new Date(`${date.slice(0, 10)}T12:00:00Z`));
@@ -88,7 +97,7 @@ export function ManagerBookingDays({ bookingId, revision, visits, money = [], pa
         : new Date(`${day.visitDate}T00:00:00Z`).getTime() > Date.now();
       return <li key={day.id} className="space-y-2 py-4">
         <p className="text-sm font-semibold">{t('mdDayOf', { number: index + 1, total: days.length })} · {new Intl.DateTimeFormat(i18n.language, { timeZone: 'UTC', dateStyle: 'medium' }).format(new Date(`${day.visitDate!.slice(0, 10)}T12:00:00Z`))}</p>
-        <p className="text-sm">{day.pricingMode === 'daily' ? t('kitchenSessionFullDay') : `${formatTime(day.startTime, i18n.language)} – ${formatTime(day.endTime, i18n.language)}`} · {day.scheduleState === 'cancelled' || status === 'cancelled' ? t('cancelled') : day.checkinStatus ? t(`mdState_${day.checkinStatus}`, { defaultValue: day.checkinStatus.replaceAll('_', ' ') }) : ''}</p>
+        <p className="text-sm">{day.pricingMode === 'daily' ? t('kitchenSessionFullDay') : `${formatTime(day.startTime, i18n.language)} – ${formatTime(day.endTime, i18n.language)}`} · {day.scheduleState === 'cancelled' || status === 'cancelled' ? t('cancelled') : dayState(day) ? t(`mdState_${dayState(day)}`, { defaultValue: dayState(day)!.replaceAll('_', ' ') }) : ''}</p>
         {facts && <p className="text-sm">{t('mdAllocation', { amount: cash(facts.allocatedCents) })}{facts.refundedCents > 0 && ` · ${t('mdRefunded', { amount: cash(facts.refundedCents) })}`}</p>}
         {!!facts?.pendingRefundCents && <p role="status" className="text-sm">{t('mdRefundProcessing', { amount: cash(facts.pendingRefundCents) })}</p>}
         {/* A day can be paid by several charges (booking, then paid changes): one line for what is still to come. */}

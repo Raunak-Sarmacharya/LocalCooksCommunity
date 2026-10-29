@@ -4539,6 +4539,7 @@
   "mdRefundProcessing": "Refund processing: {amount}",
   "mdMaxRefund": "Maximum refund: {amount}",
   "mdRetrySame": "The previous attempt needs confirmation. Retry the same action to check it without issuing a second refund.",
+  "mdState_attended": "Came (you confirmed)",
   "mdState_not_checked_in": "Not checked in",
   "mdState_checked_in": "Checked in",
   "mdState_checkout_requested": "Checkout requested",

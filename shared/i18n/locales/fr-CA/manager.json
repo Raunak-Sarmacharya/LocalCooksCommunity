@@ -4539,6 +4539,7 @@
   "mdRefundProcessing": "Remboursement en cours : {amount}",
   "mdMaxRefund": "Remboursement maximal : {amount}",
   "mdRetrySame": "La tentative précédente doit être confirmée. Réessayez la même action pour la vérifier sans créer un second remboursement.",
+  "mdState_attended": "Présence confirmée par vous",
   "mdState_not_checked_in": "Arrivée non enregistrée",
   "mdState_checked_in": "Arrivée enregistrée",
   "mdState_checkout_requested": "Départ à vérifier",
