@@ -2063,7 +2063,7 @@
   "scRemoveLabel": "Retirer {card}",
   "scFootnote": "Stripe, notre fournisseur de paiement, conserve les détails de votre carte. Local Cooks ne voit jamais le numéro complet.",
   "scConfirmTitle": "Retirer {card}?",
-  "scConfirmBody": "La prochaine fois que vous paierez du temps supplémentaire, une modification ou une réclamation, vous entrerez une carte. Les paiements déjà faits ou acceptés ne changent pas.",
+  "scConfirmBody": "La prochaine fois que vous payez, vous entrerez une carte.",
   "scKeep": "Garder la carte",
   "scConfirm": "Retirer la carte",
   "scRemoving": "Retrait…",

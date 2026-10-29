@@ -2110,7 +2110,7 @@
   "scRemoveLabel": "Remove {card}",
   "scFootnote": "Stripe, our payment provider, stores your card details. Local Cooks never sees the full card number.",
   "scConfirmTitle": "Remove {card}?",
-  "scConfirmBody": "Next time you pay for extra time, a change or a claim, you’ll enter a card. Payments you’ve already made or agreed to aren’t affected.",
+  "scConfirmBody": "Next time you pay, you’ll enter a card.",
   "scKeep": "Keep card",
   "scConfirm": "Remove card",
   "scRemoving": "Removing…",
