@@ -118,6 +118,18 @@ describe('chef response and kitchen reply', () => {
     expect(state.confirm).toHaveBeenCalledWith('mock_secret', {});
     expect(state.bodies.map(item => item.path)).toEqual(['/chef/damage-claims/1/pay', '/chef/damage-claims/1/sync']);
   });
+  it('does not repeat the pause banner where the page already shows it with a Pay button (QA walk Oct 28)', async () => {
+    for (const path of ['/book/47', '/booking/7']) {
+      window.history.pushState({}, '', path);
+      const view = mount(<DamageClaimBookingHoldBanner />);
+      await new Promise(resolve => setTimeout(resolve, 50));
+      expect(screen.queryByTestId('claim-booking-hold')).toBeNull();
+      view.unmount();
+    }
+    window.history.pushState({}, '', '/dashboard');
+    mount(<DamageClaimBookingHoldBanner />);
+    expect(await screen.findByTestId('claim-booking-hold')).toBeInTheDocument();
+  });
   it('explains the booking hold and preserves existing bookings', async () => {
     mount(<DamageClaimBookingHoldBanner />);
     expect(await screen.findByText(/You have an unpaid charge from Maya’s kitchen/)).toBeInTheDocument();

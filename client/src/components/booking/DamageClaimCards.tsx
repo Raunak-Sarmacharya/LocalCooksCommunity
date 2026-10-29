@@ -2,6 +2,7 @@ import { PrivateFileLink } from '@/components/common/PrivateFileLink';
 import { SmartImage } from '@/components/ui/smart-image';
 import { lazy, Suspense, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useLocation } from 'wouter';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -136,10 +137,13 @@ export function ClaimHoldBookingPaused({ onBack }: { onBack: () => void }) {
 export function DamageClaimBookingHoldBanner() {
   const { t, i18n } = useTranslation('booking');
   const query = useClaimBookingHold();
-  if (!query.data?.held) return null;
+  const [location] = useLocation();
+  // The book page and the claim's own booking already show the pause with a Pay button; the banner would repeat it (QA walk Oct 28).
+  const claims = location.startsWith('/book/') ? [] : (query.data?.claims ?? []).filter(claim => location !== `/booking/${claim.bookingId}`);
+  if (!query.data?.held || !claims.length) return null;
   const money = (cents: number) => new Intl.NumberFormat(i18n.language, { style: 'currency', currency: 'CAD' }).format(cents / 100);
   return <aside role="status" data-testid="claim-booking-hold" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm space-y-2">
-    {query.data.claims.map(claim => <div key={claim.id} className="space-y-1">
+    {claims.map(claim => <div key={claim.id} className="space-y-1">
       <p className="font-medium">{claim.amountCents ? t('dcV2HoldTitle', { amount: money(claim.amountCents), kitchen: claim.kitchenName || t('dcV2Kitchen') })
         : t('dcV2HoldBanner', { kitchen: claim.kitchenName || t('dcV2Kitchen') })}</p>
       <a className="font-medium underline underline-offset-4" href={`/booking/${claim.bookingId}`}>{t('dcV2HoldPay')}</a>

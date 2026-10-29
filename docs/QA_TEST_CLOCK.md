@@ -9,6 +9,7 @@ Dev admin (`dev-admin.localcooks.ca`):
 - **Storage rentals:** Storage rentals → "View" on a rental → the Test clock card sits between the history sections and the action picker.
 - **Damage claims:** Booking support → the booking's claim panel (kitchen bookings), or Storage rentals → "View" (storage claims).
 - **Invitations:** Admin → Invitations → open one → Test clock (see Invitations below).
+- **Document expiry:** Kitchen Application Requests → ⋯ on an approved customer → View Documents → Test clock (see Document expiry below).
 
 The card lists every automatic step still ahead for that tour, booking or storage rental, with its time. "Jump here" moves its saved times
 earlier so that step is due now, then runs it the same way the live system would. Every step between now and the one you
