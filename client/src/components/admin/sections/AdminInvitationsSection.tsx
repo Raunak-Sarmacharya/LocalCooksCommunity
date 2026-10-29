@@ -51,6 +51,9 @@ export function AdminInvitationsSection() {
     .sort((a, b) => showAll ? Date.parse(b.createdAt) - Date.parse(a.createdAt) : Date.parse(a.expiresAt) - Date.parse(b.expiresAt));
   const linkRows = (links.data ?? []).filter(row => showAll || row.status === "sent")
     .sort((a, b) => showAll ? Date.parse(b.sentAt) - Date.parse(a.sentAt) : Date.parse(a.expiresAt) - Date.parse(b.expiresAt));
+  // The drawer follows the refreshed list, so a jump or support action shows the new status at once.
+  const current = selected && (invitations.data?.find(row => row.id === selected.id) ?? selected);
+  const currentLink = selectedLink && (links.data?.find(row => row.id === selectedLink.id) ?? selectedLink);
   const empty = tab === "booking" ? bookingRows.length === 0 : linkRows.length === 0;
 
   return (
@@ -116,9 +119,9 @@ export function AdminInvitationsSection() {
 
       <Sheet open={!!selected || !!selectedLink} onOpenChange={open => { if (!open) { setSelected(null); setSelectedLink(null); } }}>
         <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
-          {selected && <InvitationDrawer key={`${selected.id}:${selected.version}`} invitation={selected}
+          {current && <InvitationDrawer key={`${current.id}:${current.version}`} invitation={current}
             onChanged={next => { setSelected(next); void invitations.refetch(); }} onMoved={() => void invitations.refetch()} />}
-          {selectedLink && <LinkDrawer link={selectedLink} onMoved={() => void links.refetch()} />}
+          {currentLink && <LinkDrawer link={currentLink} onMoved={() => void links.refetch()} />}
         </SheetContent>
       </Sheet>
     </div>
