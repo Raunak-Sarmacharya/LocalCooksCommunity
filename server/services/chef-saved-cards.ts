@@ -53,7 +53,7 @@ async function chefMethods(chefId: number) {
 
 // shortcut: one pass over every method the chef has ever used (a few dozen at most); cache or page this if chefs reach hundreds.
 async function chefGroups(stripe: CardStripe, chefId: number): Promise<Group[]> {
-  const methods = [...await chefMethods(chefId)];
+  const methods = Array.from((await chefMethods(chefId)).entries());
   const groups = new Map<string, Group>();
   let next = 0;
   const worker = async () => {
@@ -78,7 +78,7 @@ async function chefGroups(stripe: CardStripe, chefId: number): Promise<Group[]> 
     }
   };
   await Promise.all(Array.from({ length: Math.min(FETCH_CONCURRENCY, methods.length) }, worker));
-  return [...groups.values()].sort((a, b) => b.lastUsedAt.getTime() - a.lastUsedAt.getTime());
+  return Array.from(groups.values()).sort((a, b) => b.lastUsedAt.getTime() - a.lastUsedAt.getTime());
 }
 
 export async function listSavedCards(chefId: number, stripe: CardStripe = savedCardStripe()): Promise<{ cards: SavedCard[] }> {
