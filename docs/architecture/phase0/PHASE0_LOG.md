@@ -1601,3 +1601,14 @@ Checked on dev against QA's own records (TOUR-103, KB-TASH8T #239, KB-Z856HK #24
   charges only on the tap (was: charged as soon as the dialog opened); keep off_session; no extra card line on the booking Confirm step;
   self-serve card removal later (support until then). Open note: off_session is broader than the Terms' "never charge on our own"; any future
   automatic charge needs Terms wording first (when, how much). Minor not fixed: paused book page shows Pay now in both the banner and the panel.
+
+## Oct 28 (night): QA walk follow-ups + checkpoint 4: invitations on the test clock
+- Claim payment walked live (#225 → DC-EZM376 $40; kitchen used "Fix the visit record → Yes, they came" to make the visit claimable): Pay shows the card,
+  nothing charged until the tap. Found: closing the dialog left the Pay button disabled forever ('ready' counted as busy) → fixed, test.
+- Kitchen day row said "Not checked in" after the kitchen confirmed the chef came → "Came (you confirmed)" (attendance history, same query as the Fix panel).
+- Owner Oct 28: admin Invitations section (booking invitations + customer links; open first, soonest to expire on top; Give more time / Send again /
+  Withdraw with a reason) with the dev test clock; customer links on the clock with expiry only (no new reminder).
+- Clock (`qa-test-clock-invitation.ts`): booking invitation 24 h reminder (only when it lasts > 24 h) and expiry (customer + kitchen told); customer
+  link expiry (passive). Walked live: invite → reminder ("expires soon… Pay by") → expired notices both sides; link → kitchen sees "Invitation expired".
+- Admin invitation notices now open the Invitations section. Known: admin list builds every invitation (no paging; fine at dev size, shortcut noted);
+  kitchen offers Withdraw on an expired customer link (pre-existing, harmless).

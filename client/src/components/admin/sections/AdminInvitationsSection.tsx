@@ -9,7 +9,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { auth } from "@/lib/firebase";
-import { formatCurrency } from "@/lib/formatters";
+import { formatCurrency, formatTime } from "@/lib/formatters";
 import { TestClockCard, untilLabel, useTestClockEnabled } from "../TestClockCard";
 
 type Invitation = { id: string; version: number; status: string; kitchen: { name: string; locationName?: string };
@@ -30,6 +30,8 @@ const OPEN = ["sent", "accepted_pending_payment", "unavailable"];
 const statusWords: Record<string, string> = { sent: "Waiting on the customer", accepted_pending_payment: "Customer is paying", accepted: "Booked",
   declined: "Declined", withdrawn: "Withdrawn", expired: "Expired", superseded: "Replaced", unavailable: "Time no longer free" };
 const when = (iso: string, timezone?: string) => new Intl.DateTimeFormat("en-CA", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: timezone }).format(new Date(iso));
+// The invited time is a kitchen-local date and wall-clock hours, so it is formatted as such (no time-zone shift).
+const offered = (row: Pick<Invitation, "date" | "startTime" | "endTime" | "dayCount">) => `${new Intl.DateTimeFormat("en-CA", { timeZone: "UTC", weekday: "short", month: "short", day: "numeric" }).format(new Date(`${row.date}T12:00:00Z`))} · ${formatTime(row.startTime, "en-CA")}–${formatTime(row.endTime, "en-CA")}${row.dayCount > 1 ? ` · ${row.dayCount} days` : ""}`;
 const expiry = (iso: string) => { const left = Date.parse(iso) - Date.now(); return left > 0 ? `in ${untilLabel(left)}` : `${untilLabel(-left)} ago`; };
 
 /** Support view of every kitchen invitation: booking invitations (a time offered to a customer) and add-customer links. */
@@ -83,7 +85,7 @@ export function AdminInvitationsSection() {
                 <TableRow key={row.id}>
                   <TableCell className="font-medium">{row.chef?.name ?? "Customer"}</TableCell>
                   <TableCell>{row.kitchen.name}</TableCell>
-                  <TableCell>{row.date} · {row.startTime}–{row.endTime}{row.dayCount > 1 ? ` · ${row.dayCount} days` : ""}</TableCell>
+                  <TableCell>{offered(row)}</TableCell>
                   <TableCell><Badge variant="outline">{statusWords[row.status] ?? row.status}</Badge></TableCell>
                   <TableCell className="tabular-nums">{row.status === "sent" ? expiry(row.expiresAt) : "—"}</TableCell>
                   <TableCell className="text-right"><Button variant="ghost" size="sm" onClick={() => setSelected(row)}>Open</Button></TableCell>
@@ -148,7 +150,7 @@ function InvitationDrawer({ invitation, onChanged, onMoved }: { invitation: Invi
         <SheetDescription>{statusWords[invitation.status] ?? invitation.status}{invitation.status === "sent" ? ` · expires ${expiry(invitation.expiresAt)}` : ""}</SheetDescription>
       </SheetHeader>
       <Facts rows={[
-        ["Time offered", `${invitation.date} · ${invitation.startTime}–${invitation.endTime}${invitation.dayCount > 1 ? ` · ${invitation.dayCount} days` : ""}`],
+        ["Time offered", offered(invitation)],
         ["Total", formatCurrency(invitation.pricing.totalCents)],
         ["Sent", when(invitation.createdAt, invitation.timezone)],
         ["Expires", when(invitation.expiresAt, invitation.timezone)],

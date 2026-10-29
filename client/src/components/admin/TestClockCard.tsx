@@ -15,7 +15,7 @@ const noticeNames: Record<string, string> = { expired: 'Request expired', reques
   ending: 'Ending reminder', grace_started: 'Grace period notice', holdover_started: 'Holdover notice', removal_review: 'Removal review opened', auto_cleared: 'Move-out cleared on its own',
   payout_scheduled: 'Payout scheduled', payout_released: 'Payout released', escalated_to_admin: 'Deadline passed · sent to Local Cooks review',
   booking_hold_started: "Customer's new bookings paused", expiry_reminder: 'Invitation expiry reminder' };
-const noticeName = (kind: string) => noticeNames[kind] || kind.charAt(0).toUpperCase() + kind.slice(1).replace(/_/g, ' ');
+const noticeName = (kind: string, record?: string) => record === 'invitation' && kind === 'expired' ? 'Invitation expired' : noticeNames[kind] || kind.charAt(0).toUpperCase() + kind.slice(1).replace(/_/g, ' ');
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   const token = await auth.currentUser?.getIdToken();
@@ -75,7 +75,7 @@ export function TestClockCard({ kind, id, timezone, onMoved }: { kind: 'tour' | 
             : `Jumped to "${last.step.label}" (${untilLabel(last.result.movedMs)} earlier), running each step on the way in order.`}</p>
           {!last.result.notices.length && !last.result.reminders?.length ? <p className="text-muted-foreground">Nothing was sent: no message was due at this step.</p>
             : <ul className="list-disc pl-5">
-              {last.result.notices.map((notice, index) => <li key={`n${index}`}>{noticeName(notice.kind)}{notice.sent ? ' · sent' : ' · still sending (refresh in a moment; if it stays, run the background worker below)'}</li>)}
+              {last.result.notices.map((notice, index) => <li key={`n${index}`}>{noticeName(notice.kind, kind)}{notice.sent ? ' · sent' : ' · still sending (refresh in a moment; if it stays, run the background worker below)'}</li>)}
               {(last.result.reminders ?? []).map((reminder, index) => <li key={`r${index}`}>{reminder.kind === 'arrival' ? 'Arrival reminder' : noticeName(reminder.kind)} to the {reminder.role === 'manager' ? 'kitchen' : kind === 'tour' ? 'visitor' : 'customer'} · {reminder.channel === 'email' ? 'email' : 'in-app'} sent</li>)}
             </ul>}
         </div>}

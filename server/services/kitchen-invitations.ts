@@ -799,7 +799,7 @@ export async function deliverKitchenInvitationEvents(limit = 3, onlyInvitationId
             endTime: day.endTime, pricingMode: day.pricingMode })),
           expiresAt: invitation.expiresAt, timezone: invitation.timezone, reason: record.reason, actorRole: record.actorRole,
         });
-        const path = reader === 'chef' ? `/invitation/${invitation.id}` : reader === 'admin' ? '/admin?section=booking-support'
+        const path = reader === 'chef' ? `/invitation/${invitation.id}` : reader === 'admin' ? '/admin?section=invitations'
           : `/manager/invitations/new?chefId=${invitation.chefId}&location=${invitation.locationId}`;
         const actionLabel = tLocale(locale, 'booking:invEmailButton');
         await notificationService.create({
