@@ -105,6 +105,17 @@ describe("chef arrival check-in code", () => {
     await screen.findByTestId('visit-next-step');
     expect(screen.queryByRole('button', { name: 'Report a problem' })).not.toBeInTheDocument();
   });
+  it("previews the locked code field before check-in opens only when the visit needs a code", async () => {
+    status = visit({ bookingDate: '2099-10-04', startTime: '09:00', checkinWindowMinutesBefore: 15 });
+    setup();
+    await screen.findByTestId('visit-next-step');
+    expect(screen.getByLabelText("Check-in code")).toBeDisabled();
+    cleanup();
+    status = visit({ bookingDate: '2099-10-04', startTime: '09:00', checkinWindowMinutesBefore: 15, visitCode: { ...staffed, mode: "self", codeRequired: false } });
+    setup();
+    await screen.findByTestId('visit-next-step');
+    expect(screen.queryByLabelText("Check-in code")).not.toBeInTheDocument();
+  });
   it("shows one numeric one-time-code field with the kitchen hint for a staffed visit", async () => {
     setup();
     const input = await screen.findByLabelText("Check-in code") as HTMLInputElement;

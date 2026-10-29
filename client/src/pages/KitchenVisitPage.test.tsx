@@ -100,7 +100,7 @@ describe("full-page kitchen visit", () => {
     status = visit({ bookingDate: '2099-01-15' });
     setup();
     let help = await screen.findByRole('region', { name: 'Visit help' });
-    await screen.findByText(/^Opens /);
+    await screen.findByText(/^Check-in opens /);
     expect(within(help).getByRole('button', { name: 'Message kitchen' })).toBeVisible();
     expect(within(help).queryByRole('button', { name: 'Running late?' })).not.toBeInTheDocument();
     expect(within(help).queryByRole('button', { name: 'Report a problem' })).not.toBeInTheDocument();
@@ -480,8 +480,8 @@ describe("full-page kitchen visit", () => {
     setup();
     const summary = await screen.findByRole("region", { name: "Visit status" });
     expect(within(summary).getByText(/^Check-in opens .*Jan 15.*8:45/)).toBeInTheDocument();
-    // A later day names the day, in the sentence and on the locked code card, never as a bare time.
-    expect(screen.getByText(/^Opens .*Jan 15.*8:45/)).toBeVisible();
+    // No code on this visit, so no locked code card ahead of time.
+    expect(screen.queryByLabelText("Check-in code")).not.toBeInTheDocument();
     expect(screen.queryByText("Check-in opens")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Check in" })).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Arrival instructions" })).toHaveAttribute("open");
@@ -622,7 +622,7 @@ describe("full-page kitchen visit", () => {
     try {
       status = visit({ bookingDate: "2026-10-20", startTime: "10:00", endTime: "14:00", timezone: "America/St_Johns", checkinWindowMinutesBefore: 15 });
       setup(true);
-      expect(await screen.findByText(/^Opens 9:45\s*a\.m\.$/)).toBeInTheDocument();
+      expect(await screen.findByText(/^Check-in opens 9:45\s*a\.m\., so come back/)).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Arrived early? Message the kitchen" })).toBeInTheDocument();
     } finally { vi.useRealTimers(); }
   });
@@ -631,7 +631,7 @@ describe("full-page kitchen visit", () => {
     const tomorrow = new Date(Date.now() + 36 * 3600_000).toISOString().split("T")[0];
     status = visit({ bookingDate: tomorrow, startTime: "10:00", endTime: "14:00" });
     setup(true);
-    expect(await screen.findByText(/^Opens \w{3}, /)).toBeInTheDocument();
+    expect(await screen.findByText(/^Check-in opens \w{3}, /)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Arrived early? Message the kitchen" })).not.toBeInTheDocument();
     expect(screen.queryByTestId("booking-still-ends")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Running late?" })).not.toBeInTheDocument();

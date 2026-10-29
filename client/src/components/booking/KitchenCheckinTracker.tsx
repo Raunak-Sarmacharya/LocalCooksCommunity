@@ -458,7 +458,7 @@ export function KitchenCheckinTracker({
     bookingEnds: lateCheckout ? overstayEnd : bookingEndsText,
   }, t) : { text: "", coversCheckin: false, coversCheckout: false }
   const nextStep = beforeCheckinOpens && opensText && !clockEnded && data?.status === "confirmed" && checkinStatus === "not_checked_in"
-    ? t("kciOpensSentence", "Check-in opens {time}. Come back then to check in.", { time: opensText }) : sentence.text
+    ? t("kciOpensSentence", "Check-in opens {time}, so come back then to check in.", { time: opensText }) : sentence.text
   // Kitchen-local times that matter for this visit, in the order they happen. A time the sentence already
   // states is not repeated, and the kitchen's review deadline is never shown to the chef.
   const times: Array<{ label: string; value: string }> = []
@@ -695,7 +695,8 @@ export function KitchenCheckinTracker({
           <Button variant="outline" onClick={() => void checklistQuery.refetch()}>{t("kciRetryRequirements", "Retry requirements")}</Button>
         </div>}
 
-        {!isLoading && isArrival && liveBooking && beforeCheckinOpens && checkinOpensAt && <section aria-label={t("kciCheckInHeading", "Check in")} className="rounded-2xl border border-border/70 bg-card p-4 sm:p-6">
+        {/* Code visits only: self check-in and legacy visits have no code to preview; the opens sentence covers them. */}
+        {!isLoading && isArrival && liveBooking && beforeCheckinOpens && checkinOpensAt && codeGate === "code" && <section aria-label={t("kciCheckInHeading", "Check in")} className="rounded-2xl border border-border/70 bg-card p-4 sm:p-6">
           <h2 className="text-base font-semibold leading-6">{t("kciCheckInHeading", "Check in")}</h2>
           {/* The real step, shown locked ahead of time: where the code goes, and when it opens. */}
           <div className="mt-3 space-y-2">

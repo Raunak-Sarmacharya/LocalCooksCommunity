@@ -337,7 +337,7 @@ export function StorageCheckinDialog({
           {!isAlreadySubmitted && (
             <Button
               onClick={handleSubmitCheckin}
-              disabled={isSubmitting || !dutiesQuery.data || !section?.enabled || !allPhotosUploaded || !allItemsChecked}
+              disabled={isSubmitting || !dutiesQuery.data || !allPhotosUploaded || !allItemsChecked}
             >
               {isSubmitting ? (
                 <>

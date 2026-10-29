@@ -2756,7 +2756,7 @@
   "kciStatusCheckinOpen": "Check-in is open. Follow the arrival instructions, then confirm check-in below.",
   "kciStatusCheckinLater": "Check-in isn’t open yet. Come back to this page when it opens.",
   "kciPillUpcoming": "Upcoming",
-  "kciOpensSentence": "Check-in opens {time}. Come back then to check in.",
+  "kciOpensSentence": "Check-in opens {time}, so come back then to check in.",
   "kciStatusCheckinClosed": "Check-in has closed for this visit. Message the kitchen if you arrived and need help.",
   "kciStatusCheckoutOnlyOpen": "When you’re finished, follow the departure instructions and submit checkout below.",
   "kciStatusCheckoutOnlyLater": "Your visit hasn’t started yet. You’ll submit checkout here when you leave.",
