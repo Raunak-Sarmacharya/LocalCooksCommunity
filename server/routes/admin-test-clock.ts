@@ -5,6 +5,7 @@ import { jumpBooking, readBookingClock } from '../services/qa-test-clock-booking
 import { jumpStorage, readStorageClock } from '../services/qa-test-clock-storage';
 import { jumpClaim, readClaimClock } from '../services/qa-test-clock-claim';
 import { jumpCustomerInvite, jumpInvitation, readCustomerInviteClock, readInvitationClock } from '../services/qa-test-clock-invitation';
+import { jumpDocuments, readDocumentsClock } from '../services/qa-test-clock-documents';
 import { logger } from '../logger';
 
 /** QA test clock (dev only). Answers 404 everywhere it is off, so production has no such surface. */
@@ -35,10 +36,11 @@ router.post('/admin/test-clock/worker', async (req, res) => {
 });
 const kinds = { tour: { read: readTourClock, jump: jumpTour, label: 'tour' }, booking: { read: readBookingClock, jump: jumpBooking, label: 'booking' },
   storage: { read: readStorageClock, jump: jumpStorage, label: 'storage rental' }, claim: { read: readClaimClock, jump: jumpClaim, label: 'damage claim' },
-  invitation: { read: readInvitationClock, jump: jumpInvitation, label: 'invitation' }, customer_invite: { read: readCustomerInviteClock, jump: jumpCustomerInvite, label: 'customer link' } } as const;
+  invitation: { read: readInvitationClock, jump: jumpInvitation, label: 'invitation' }, customer_invite: { read: readCustomerInviteClock, jump: jumpCustomerInvite, label: 'customer link' },
+  documents: { read: readDocumentsClock, jump: jumpDocuments, label: 'customer documents' } } as const;
 router.get('/admin/test-clock/:kind/:id', async (req, res) => {
   const kind = Object.prototype.hasOwnProperty.call(kinds, req.params.kind) ? kinds[req.params.kind as keyof typeof kinds] : null, id = idOf(req.params.id, req.params.kind);
-  if (!kind || !id) return res.status(400).json({ error: 'Choose a valid tour, booking, storage rental, damage claim, invitation or customer link.' });
+  if (!kind || !id) return res.status(400).json({ error: 'Choose a valid tour, booking, storage rental, damage claim, invitation, customer link or customer documents.' });
   try { return res.json(await (kind.read as (id: string | number) => Promise<unknown>)(id)); } catch (error) { return failure(res, error); }
 });
 router.post('/admin/test-clock/:kind/:id/jump', async (req, res) => {

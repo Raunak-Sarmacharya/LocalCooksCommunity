@@ -15,6 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { TestClockCard, useTestClockEnabled } from "../TestClockCard";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { SecureDocumentLink } from "@/components/common/SecureDocumentLink";
 import { VerifiedDocumentChip } from "@/components/common/VerifiedDocumentChip";
@@ -114,6 +115,7 @@ export function AdminKitchenApplicationsStep1Section({
       toast({ title: 'Error', description: error instanceof Error ? error.message : undefined, variant: 'destructive' });
     } finally { setEndingWaiver(false); }
   };
+  const testClock = useTestClockEnabled();
   const [selectedApplication, setSelectedApplication] = useState<Application | null>(null);
   const [showReviewDialog, setShowReviewDialog] = useState(false);
   const [reviewFeedback, setReviewFeedback] = useState("");
@@ -509,6 +511,7 @@ export function AdminKitchenApplicationsStep1Section({
             No documents have been uploaded yet. The chef provides these after the request to apply is approved.
           </p>
         )}
+        {testClock && application.status === "approved" && (application.current_tier ?? 1) >= 3 && <TestClockCard kind="documents" id={application.id} timezone="America/St_Johns" />}
       </div>
     );
   }

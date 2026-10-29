@@ -104,9 +104,17 @@ Where: Admin → Invitations → open one → Test clock. Two kinds of invitatio
   expired". Nothing is sent; expiry is only read when the link is opened. The card is on the link's row (the read-only list at
   `GET /api/admin/customer-invites` shows every link).
 
-## Not on the clock yet
-Document expiry reminders (45, 14 and 3 days before, and on the day)
-still run on real time. They're the next checkpoints.
+## Document expiry
+Where: Admin → Kitchen Application Requests → open an approved customer (final approval) → Test clock, under the documents.
+- **Steps:** for every document that counts (approved, file on file, expiry date set, no renewal waiting for review): the 45-day, 14-day
+  and 3-day renewal reminders (customer by email and in-app, kitchen in-app) and the expiry day (customer told; the card says when new
+  bookings pause, which is only for documents the kitchen requires). Each starts at the beginning of the kitchen's calendar day.
+  The schedule is the real one; the clock does not change it.
+- **A jump** moves every counted document's expiry date that many whole days earlier (the application's built-in dates, or the kitchen's
+  own documents' dates), then runs the normal reminder check for this customer and sends the notices. Stages already sent for a
+  document are carried to its new date, so a stage is never sent twice. Documents with a renewal waiting, or not approved, are left alone.
+- Dates in the application stay moved; the jump is not undone. Use a throwaway customer.
+- Test addresses (`.test`) are skipped on purpose and show as sent.
 
 ## What it does not move
 - Card holds in Stripe (still 7 real days).
