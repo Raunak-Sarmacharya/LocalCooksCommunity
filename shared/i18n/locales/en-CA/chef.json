@@ -2116,6 +2116,8 @@
   "scRemoving": "Removing…",
   "scRemoveError": "The card wasn’t removed. Try again.",
   "scRemoved": "{card} removed",
+  "scLockedPending": "Holding payment for a request the kitchen hasn’t answered yet. You can remove it after they answer.",
+  "scLockedBusy": "A payment with this card is still finishing. Try again in a few minutes.",
   "shellSearch": "Search...",
   "shellSearchCommand": "Type a command or paste reference code...",
   "shellSelling": "Selling",

@@ -2069,6 +2069,8 @@
   "scRemoving": "Retrait…",
   "scRemoveError": "La carte n’a pas été retirée. Réessayez.",
   "scRemoved": "{card} retirée",
+  "scLockedPending": "Retient le paiement d’une demande à laquelle la cuisine n’a pas encore répondu. Vous pourrez la retirer après sa réponse.",
+  "scLockedBusy": "Un paiement avec cette carte est en cours. Réessayez dans quelques minutes.",
   "shellSearch": "Rechercher...",
   "shellSearchCommand": "Tapez une commande ou collez un code de référence...",
   "shellSelling": "Vente",

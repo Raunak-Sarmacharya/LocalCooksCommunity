@@ -8,7 +8,8 @@ vi.mock('@/lib/queryClient', () => ({ apiRequest: async (method: string, url: st
   if (method === 'POST' && api.fail) throw new Error(api.fail);
   return { json: async () => method === 'GET' ? { cards: [
     { id: 'abcDEF123', brand: 'visa', last4: '4242', expMonth: 4, expYear: 2030, lastUsedAt: '2026-10-28T12:00:00Z', wallet: null },
-    { id: 'zzz999', brand: 'mastercard', last4: '4444', expMonth: 1, expYear: 2020, lastUsedAt: null, wallet: 'apple_pay' }] } : { removed: true } };
+    { id: 'zzz999', brand: 'mastercard', last4: '4444', expMonth: 1, expYear: 2020, lastUsedAt: null, wallet: 'apple_pay' },
+    { id: 'held1', brand: 'amex', last4: '0005', expMonth: 2, expYear: 2031, lastUsedAt: null, wallet: null, lockedReason: 'pending_request' }] } : { removed: true } };
 } }));
 const toast = vi.fn();
 vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast }) }));
@@ -40,4 +41,10 @@ it('keeps the dialog open with the reason when the server refuses (a payment wit
   fireEvent.click(within(dialog).getByRole('button', { name: 'Remove card' }));
   expect(await within(dialog).findByRole('alert')).toHaveTextContent('still finishing');
   expect(screen.getByText('Visa •••• 4242')).toBeInTheDocument();
+});
+
+it('a card holding a request the kitchen has not answered says so and cannot be removed (owner Oct 28)', async () => {
+  mount();
+  expect(await screen.findByText(/Holding payment for a request the kitchen hasn’t answered yet/)).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Remove Amex •••• 0005' })).toBeDisabled();
 });

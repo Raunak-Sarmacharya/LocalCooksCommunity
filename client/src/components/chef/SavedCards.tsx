@@ -10,7 +10,9 @@ import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescript
 import { useToast } from "@/hooks/use-toast";
 import { ChefPageHeader } from "@/components/chef/ui";
 
-export type SavedCard = { id: string; brand: string; last4: string; expMonth: number; expYear: number; lastUsedAt: string | null; wallet: string | null };
+export type SavedCard = { id: string; brand: string; last4: string; expMonth: number; expYear: number; lastUsedAt: string | null; wallet: string | null;
+  /** Why Remove is unavailable right now (owner Oct 28: a card holding a request the kitchen hasn't answered can't be removed). */
+  lockedReason?: 'pending_request' | 'payment_in_progress' | null };
 
 const brandName = (brand: string) => brand === "amex" ? "Amex" : brand === "mastercard" ? "Mastercard" : brand.charAt(0).toUpperCase() + brand.slice(1);
 // A card is good through the last day of its expiry month.
@@ -58,8 +60,9 @@ export function SavedCards() {
                   {t(expired(card) ? "scExpired" : "scExpires", { date: `${String(card.expMonth).padStart(2, "0")}/${String(card.expYear).slice(-2)}` })}
                   {card.lastUsedAt ? ` · ${t("scLastUsed", { date: date(card.lastUsedAt) })}` : ""}
                 </span>
+                {card.lockedReason && <span className="mt-1 block text-sm text-foreground">{t(card.lockedReason === "pending_request" ? "scLockedPending" : "scLockedBusy")}</span>}
               </span>
-              <Button type="button" variant="outline" size="sm" onClick={() => { remove.reset(); setRemoving(card); }} aria-label={t("scRemoveLabel", { card: label(card) })}>{t("scRemove")}</Button>
+              <Button type="button" variant="outline" size="sm" disabled={!!card.lockedReason} onClick={() => { remove.reset(); setRemoving(card); }} aria-label={t("scRemoveLabel", { card: label(card) })}>{t("scRemove")}</Button>
             </li>
           ))}
         </ul>
