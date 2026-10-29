@@ -69,8 +69,13 @@ export interface StorageRental {
     checkinPhotoUrls: string[] | null;
     handoverPhotoUrls: string[] | null;
     checkoutPhotoUrls: string[] | null;
+    /** What the customer ticked at each end, and which photos were asked for (photos themselves are the URLs above). */
+    moveIn?: StorageVisitRecord;
+    moveOut?: StorageVisitRecord;
   };
 }
+
+export interface StorageVisitRecord { tasks: Array<{ label: string; checked: boolean }>; photosAsked: string[] }
 
 export interface StorageListing {
   id: number;

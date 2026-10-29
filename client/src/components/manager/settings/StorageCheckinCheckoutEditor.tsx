@@ -221,16 +221,12 @@ export function validateStorageInspectionItems(
 ): string[] {
   const errors: string[] = [];
   const empty = items.filter((i) => !i.label.trim());
-  if (empty.length > 0) {
-    errors.push(`${empty.length} checklist item(s) have empty labels`);
-  }
+  if (empty.length > 0) errors.push(mt("setupUx.nameTasks", { defaultValue: "Give every task a name to save." }));
   const orphans = items.filter(
     (i) => !i.requiredOnCheckin && !i.requiredOnCheckout && i.label.trim(),
   );
   if (orphans.length > 0) {
-    errors.push(
-      `${orphans.length} item(s) are not assigned to Check-In or Check-Out`,
-    );
+    errors.push(mt("checklistUnassignedItems", { count: orphans.length }));
   }
   return errors;
 }

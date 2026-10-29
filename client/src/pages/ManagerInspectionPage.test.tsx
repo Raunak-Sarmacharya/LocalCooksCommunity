@@ -320,11 +320,11 @@ describe('manager inspection with isolated API mocks', () => {
     mount(); await clearButton();
     const arrival = screen.getByRole('region', { name: 'Arrival' });
     expect(within(arrival).getByText('Photos couldn’t be loaded.')).toBeInTheDocument();
-    expect(within(arrival).getByText('Before counter · Required')).toBeInTheDocument();
+    expect(within(arrival).getByText('Before counter')).toBeInTheDocument();
     expect(within(arrival).getByText('Supplies · Optional')).toBeInTheDocument();
     const departure = screen.getByRole('region', { name: 'Departure' });
     expect(within(departure).getByText(/No photos were added/)).toBeInTheDocument();
-    expect(within(departure).getByText('Clean surfaces · Required · No answer yet')).toBeInTheDocument();
+    expect(within(departure).getByText('Clean surfaces · No answer yet')).toBeInTheDocument();
   });
 
   it.each(['submitted', 'charge_succeeded', 'resolved'])('a %s claim changes Finish copy and replaces Report with support', async status => {

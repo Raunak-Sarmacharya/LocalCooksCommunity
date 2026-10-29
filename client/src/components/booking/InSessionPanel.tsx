@@ -9,7 +9,7 @@ import { localCooksSupportHref } from "@/components/support/ContactLocalCooks";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { createPortal } from "react-dom"
-import { LogOut, Mail, Phone, MessageSquare } from "lucide-react"
+import { ChevronDown, LogOut, Mail, Phone, MessageSquare } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { BookingProblemReport } from "./BookingProblemReport"
@@ -163,8 +163,11 @@ export function InSessionPanel({
       {helpContainer ? createPortal(help, helpContainer) : help}
 
 
-      <details className="rounded-lg border p-3">
-        <summary className="min-h-11 cursor-pointer text-sm font-medium flex items-center">{t("kciIsDeparturePreview", { defaultValue: "Departure instructions and tasks" })}</summary>
+      <details className="group rounded-lg border p-3">
+        <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-md text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+          {t("kciIsDeparturePreview", { defaultValue: "Departure instructions and tasks" })}
+          <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180 motion-reduce:transition-none" aria-hidden="true" />
+        </summary>
         <div className="mt-2 space-y-2 text-sm">
           <p className="whitespace-pre-line">{departureInstructions || t("kciNoDepartureInstructions", { defaultValue: "No departure instructions provided. Contact the kitchen manager if you need help leaving the kitchen ready." })}</p>
           <p className="text-xs text-muted-foreground">{requiredTaskCount > 0

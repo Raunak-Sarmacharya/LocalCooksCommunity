@@ -18,7 +18,7 @@ import { useSettingImpact } from '@/lib/setting-impact';
  * Kitchen setup reviews the draft inline. Shared storage keeps its dialog.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { mt } from "@/i18n/manager";
 import { tt } from "@/i18n/common-ns";
@@ -71,6 +71,19 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { ChecklistItem, PhotoRequirement } from "./shared/ChecklistEditor";
+import { tickTasks } from "@shared/visit-duties";
+
+/**
+ * Storage move-in / move-out uses this same editor (owner Oct 29): only the words and the
+ * common tasks differ, so the variant travels by context instead of through every row.
+ */
+export const StorageWords = createContext(false);
+/** Setup copy for the active variant; storage keys live under `storageUx`. */
+const ux = (storage: boolean, key: string, kitchen: string, storageText = kitchen) =>
+  storage ? mt(`storageUx.${key}`, { defaultValue: storageText }) : mt(`setupUx.${key}`, { defaultValue: kitchen });
+const stageLabel = (storage: boolean, scope: "checkin" | "checkout") => storage
+  ? mt(scope === "checkin" ? "storageUx.moveIn" : "storageUx.moveOut", { defaultValue: scope === "checkin" ? "Move in" : "Move out" })
+  : mt(scope === "checkin" ? "checkIn" : "checkOut");
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -139,6 +152,14 @@ const PRESET_TASKS: { key: string; stages: Stage[]; photo?: boolean }[] = [
   { key: "presetTaskReturnKeys", stages: ["checkout"] },
   { key: "presetTaskConfirmEquipment", stages: ["checkout"], photo: true },
   { key: "presetTaskPhotographKitchen", stages: ["checkout"], photo: true },
+];
+const STORAGE_PRESET_TASKS: typeof PRESET_TASKS = [
+  { key: "storageUx.presetPhotoIn", stages: ["checkin"], photo: true },
+  { key: "storageUx.presetLabel", stages: ["checkin"] },
+  { key: "storageUx.presetSealed", stages: ["checkin"] },
+  { key: "storageUx.presetRemoveAll", stages: ["checkout"] },
+  { key: "storageUx.presetWipe", stages: ["checkout"] },
+  { key: "storageUx.presetPhotoOut", stages: ["checkout"], photo: true },
 ];
 
 // ─── Storage ↔ Unified conversion helpers ─────────────────────────────────────
@@ -353,6 +374,7 @@ function ChecklistRow({
   canReorderDown,
   total,
 }: ChecklistRowProps) {
+  const storage = useContext(StorageWords);
   const [noteOpen, setNoteOpen] = useState(!!item.description);
   const labelRef = useRef<HTMLInputElement>(null);
 
@@ -456,7 +478,7 @@ function ChecklistRow({
             ref={labelRef}
             value={item.label}
             onChange={(e) => onUpdate(item.id, { ...item, label: e.target.value })}
-            placeholder={mt("eGWipeDownAllCounters")}
+            placeholder={storage ? mt("storageUx.taskPlaceholder", { defaultValue: "e.g. Label every container" }) : mt("eGWipeDownAllCounters")}
             aria-label={mt("item")}
             className={cn(
               "h-8 border-transparent bg-transparent px-2 text-sm font-medium shadow-none",
@@ -550,7 +572,7 @@ function ChecklistRow({
                     <button
                       type="button"
                       aria-pressed={active}
-                      aria-label={mt(config.labelKey)}
+                      aria-label={scope === "photo" ? mt(config.labelKey) : stageLabel(storage, scope)}
                       disabled={locked}
                       onClick={() => toggleScope(scope)}
                       className={cn(
@@ -563,7 +585,7 @@ function ChecklistRow({
                       )}
                     >
                       <ScopeIcon className="size-3" />
-                      <span className="hidden sm:inline">{mt(config.labelKey)}</span>
+                      <span className={setupUx ? undefined : "hidden sm:inline"}>{scope === "photo" ? mt(config.labelKey) : stageLabel(storage, scope)}</span>
                       {locked && <Lock className="size-2.5 opacity-55" />}
                     </button>
                   </TooltipTrigger>
@@ -574,9 +596,9 @@ function ChecklistRow({
                         : tt("addToCheckinFirst")
                       : active && setupUx
                         ? scope === "checkin"
-                          ? mt("setupUx.chipCheckinOn", { defaultValue: "Included at check-in. Select to remove it from check-in." })
+                          ? ux(storage, "chipCheckinOn", "Included at check-in. Select to remove it from check-in.", "Included at move-in. Select to remove it from move-in.")
                           : scope === "checkout"
-                            ? mt("setupUx.chipCheckoutOn", { defaultValue: "Included at check-out. Select to remove it from check-out." })
+                            ? ux(storage, "chipCheckoutOn", "Included at check-out. Select to remove it from check-out.", "Included at move-out. Select to remove it from move-out.")
                             : mt("setupUx.chipPhotoOn", { defaultValue: "This task needs a photo. Select to stop asking for one." })
                       : active
                         ? scope === "checkin"
@@ -652,7 +674,8 @@ function PresetPicker({
   onPick: (preset: (typeof PRESET_TASKS)[number]) => void;
   existingLabels: Set<string>;
 }) {
-  const available = PRESET_TASKS.filter(
+  const storage = useContext(StorageWords);
+  const available = (storage ? STORAGE_PRESET_TASKS : PRESET_TASKS).filter(
     (preset) => !existingLabels.has(mt(preset.key).toLowerCase()),
   );
 
@@ -669,9 +692,9 @@ function PresetPicker({
         available.map((preset) => {
           const stages = preset.stages.includes("checkout")
             ? preset.stages.includes("checkin")
-              ? `${mt("checkIn")} + ${mt("checkOut")}`
-              : mt("checkOut")
-            : mt("checkIn");
+              ? `${stageLabel(storage, "checkin")} + ${stageLabel(storage, "checkout")}`
+              : stageLabel(storage, "checkout")
+            : stageLabel(storage, "checkin");
           return (
             <button
               key={preset.key}
@@ -683,7 +706,7 @@ function PresetPicker({
               <span className="min-w-0 flex-1 truncate">{mt(preset.key)}</span>
               <span className="shrink-0 text-[10px] text-muted-foreground">
                 {stages}
-                {preset.photo ? " · 📷" : ""}
+                {preset.photo ? ` · ${mt("photo")}` : ""}
               </span>
             </button>
           );
@@ -705,8 +728,10 @@ function InlineStagePreview({ stage, instructions, items, onEdit, missingInstruc
 }) {
   const ambiguous = items.some(item => item.saved?.ambiguous);
   const arrays = ambiguous ? null : itemsToStorage(items);
-  const duties = (stage === "checkin" ? arrays?.checkinItems : arrays?.checkoutItems) ?? [];
+  const storage = useContext(StorageWords);
   const photos = (stage === "checkin" ? arrays?.checkinPhotoRequirements : arrays?.checkoutPhotoRequirements) ?? [];
+  // As the customer sees it: a task with a photo is asked for once, as its photo.
+  const duties = tickTasks((stage === "checkin" ? arrays?.checkinItems : arrays?.checkoutItems) ?? [], photos);
   const headingId = `setup-preview-${stage}`;
   const StageIcon = stage === "checkin" ? LogIn : LogOut;
   // Same Required / Optional words the customer sees in KitchenCheckinTracker,
@@ -716,11 +741,9 @@ function InlineStagePreview({ stage, instructions, items, onEdit, missingInstruc
       <p className="break-words">{record.label}</p>
       {record.description && <p className="text-xs text-muted-foreground">{record.description}</p>}
     </div>
-    <span className={cn("shrink-0 pt-0.5 text-[11px]", record.required !== false ? "text-muted-foreground" : "font-medium text-amber-700")}>
-      {record.required !== false
-        ? mt("setupUx.requiredTask", { defaultValue: "Required" })
-        : mt("setupUx.optionalLegacy", { defaultValue: "Optional" })}
-    </span>
+    {record.required === false && <span className="shrink-0 pt-0.5 text-[11px] font-medium text-amber-700">
+      {mt("setupUx.optionalLegacy", { defaultValue: "Optional" })}
+    </span>}
   </li>;
   const subheading = "text-xs font-medium text-muted-foreground";
   const editButton = (target: ReviewEditTarget) => onEdit[target] && <Button type="button" variant="ghost" size="sm" aria-describedby={headingId}
@@ -734,8 +757,8 @@ function InlineStagePreview({ stage, instructions, items, onEdit, missingInstruc
     <h4 id={headingId} className="flex items-center gap-2 text-sm font-semibold">
       <StageIcon className="size-4 text-muted-foreground" />
       {stage === "checkin"
-        ? mt("setupUx.arrivalPreview", { defaultValue: "At check-in (arrival)" })
-        : mt("setupUx.departurePreview", { defaultValue: "At check-out (departure)" })}
+        ? ux(storage, "arrivalPreview", "At check-in (arrival)", "At move-in")
+        : ux(storage, "departurePreview", "At check-out (departure)", "At move-out")}
     </h4>
     <div className="mt-3 space-y-1.5">
       <div className="flex items-center justify-between gap-2">
@@ -1065,6 +1088,7 @@ function StageHeader({
   onToggleMouseDown,
   onToggleKeyDown,
 }: StageHeaderProps) {
+  const storage = useContext(StorageWords);
   const title = stage === "checkin" ? mt("checkInStage") : mt("checkOutStage");
   const StageIcon = stage === "checkin" ? LogIn : LogOut;
 
@@ -1173,26 +1197,26 @@ function StageHeader({
         <Label htmlFor={`${stage}-instructions`} className="flex items-center gap-1.5 text-sm font-medium">
           {stage === "checkin" ? <LogIn className="size-4 text-muted-foreground" /> : <LogOut className="size-4 text-muted-foreground" />}
           {stage === "checkin"
-            ? mt("setupUx.arrivalInstructions", { defaultValue: "Arrival instructions" })
-            : mt("setupUx.departureInstructions", { defaultValue: "Departure instructions" })}
+            ? ux(storage, "arrivalInstructions", "Arrival instructions", "Move-in instructions")
+            : ux(storage, "departureInstructions", "Departure instructions", "Move-out instructions")}
         </Label>
         <p id={`${stage}-setup-example`} className="text-xs text-muted-foreground">
           {stage === "checkin"
-            ? mt("setupUx.arrivalHelp", { defaultValue: "Where to enter, how to get in if nobody is there, and who to call if access fails." })
-            : mt("setupUx.departureHelp", { defaultValue: "Where to leave keys, how to lock up, and who to call if something goes wrong." })}
+            ? ux(storage, "arrivalHelp", "Where to enter, how to get in if nobody is there, and who to call if access fails.", "Where the unit is, how to reach it, and what can go in it.")
+            : ux(storage, "departureHelp", "Where to leave keys, how to lock up, and who to call if something goes wrong.", "What to take out, how to leave the unit, and who to tell when it is empty.")}
         </p>
         <Textarea id={`${stage}-instructions`} value={instructions ?? ""} rows={5}
           className="mt-1 min-h-[132px] resize-y"
           placeholder={stage === "checkin"
-            ? mt("setupUx.arrivalExample", { defaultValue: "Example:\n1. Use the side entrance.\n2. If it is locked, call the kitchen contact listed in your booking." })
-            : mt("setupUx.departureExample", { defaultValue: "Example:\n1. Leave the key on the marked hook.\n2. Close the door. If it will not lock, call the kitchen manager." })}
+            ? ux(storage, "arrivalExample", "Example:\n1. Use the side entrance.\n2. If it is locked, call the kitchen contact listed in your booking.", "Example:\n1. Your unit is the second shelf in the walk-in cooler.\n2. Sealed, labelled containers only.")
+            : ux(storage, "departureExample", "Example:\n1. Leave the key on the marked hook.\n2. Close the door. If it will not lock, call the kitchen manager.", "Example:\n1. Take everything out, including ice packs.\n2. Wipe the shelf and close the cooler door.")}
           required={enabled} aria-invalid={missing}
           aria-describedby={missing ? `${stage}-setup-example ${stage}-notes-help` : `${stage}-setup-example`}
           onChange={event => onInstructionsChange(event.target.value || null)} />
         {missing && <p id={`${stage}-notes-help`} className="text-xs text-destructive">
           {stage === "checkin"
-            ? mt("setupUx.arrivalMissing", { defaultValue: "Write arrival instructions before saving." })
-            : mt("setupUx.departureMissing", { defaultValue: "Write departure instructions before saving." })}
+            ? ux(storage, "arrivalMissing", "Write arrival instructions before saving.", "Write move-in instructions before saving.")
+            : ux(storage, "departureMissing", "Write departure instructions before saving.", "Write move-out instructions before saving.")}
         </p>}
       </div>
     );
@@ -1879,6 +1903,10 @@ export interface KitchenCheckinCheckoutEditorProps {
    * read-only. Each surface's preview is still the customer's whole view.
    */
   setupMode?: "instructions" | "tasks";
+  /** Storage move-in / move-out wording and common tasks. */
+  storage?: boolean;
+  /** Show who a save affects; only worth reading once something has changed. */
+  showImpact?: boolean;
   /** Instructions surface: opens the customer tasks page. */
   onOpenTasks?: () => void;
   coupledStages?: boolean;
@@ -1909,6 +1937,8 @@ export function KitchenCheckinCheckoutEditor({
   setupLocationName,
   beforeReview,
   setupMode,
+  storage = false,
+  showImpact = true,
   onOpenTasks,
   coupledStages,
   title,
@@ -2016,8 +2046,8 @@ export function KitchenCheckinCheckoutEditor({
           { id: "all", label: mt("filterAll"), count: items.length },
           // Reuse the scope-chip labels already used on every row, so the
           // filter and the chips call the same thing by the same name.
-          { id: "checkin", label: mt("checkIn"), count: checkinItemCount },
-          { id: "checkout", label: mt("checkOut"), count: checkoutItemCount },
+          { id: "checkin", label: stageLabel(storage, "checkin"), count: checkinItemCount },
+          { id: "checkout", label: stageLabel(storage, "checkout"), count: checkoutItemCount },
           { id: "photo", label: mt("photo"), count: photoItemCount },
         ] as const
       ).map((tab) => (
@@ -2081,7 +2111,7 @@ export function KitchenCheckinCheckoutEditor({
       title={mt("setupUx.tasksStep", { defaultValue: "Customer tasks" })}
       tag={<SetupTag>{mt("setupUx.optionalTag", { defaultValue: "Optional to add" })}</SetupTag>}
       description={<>
-        <p>{mt("setupUx.tasksHelp", { defaultValue: "Each task you add is required at the stage you pick. Turn on Photo to also require a photo." })}</p>
+        <p>{mt("setupUx.tasksHelp", { defaultValue: "Customers must do every task. Turn on Photo when you want a photo as proof instead of a tick." })}</p>
         {hasSavedOptional && <p>{mt("setupUx.legacyOptionalHelp", { defaultValue: "Tasks labelled Optional were saved that way earlier and stay optional for customers. Tasks you add now are required." })}</p>}
       </>}
       actions={setupMode === "instructions"
@@ -2123,13 +2153,14 @@ export function KitchenCheckinCheckoutEditor({
     is the surface's single Save, so nothing here repeats it.
   */
   if (setupUx) return (
+    <StorageWords.Provider value={storage}>
     <Card ref={editorRef} className="overflow-hidden">
       <CardContent className="divide-y p-0">
         {setupMode !== "tasks" && <SetupSection
           id="setup-instructions"
-          title={mt("setupUx.instructionsStep", { defaultValue: "Arrival and departure instructions" })}
+          title={ux(storage, "instructionsStep", "Arrival and departure instructions", "Move-in and move-out instructions")}
           tag={<SetupTag tone="strong">{mt("setupUx.requiredBadge", { defaultValue: "Required" })}</SetupTag>}
-          description={mt("setupUx.scope", { defaultValue: "Write both instructions before publishing. You can save with no customer tasks." })}
+          description={ux(storage, "scope", "Write both instructions before publishing. You can save with no customer tasks.", "Write both before saving. Tasks are optional to add.")}
         >
           <div className="grid gap-5 md:grid-cols-2 md:gap-6">
             {(["checkin", "checkout"] as const).map(stage => <div key={stage} className="space-y-3">
@@ -2142,7 +2173,7 @@ export function KitchenCheckinCheckoutEditor({
         {tasksSection}
 
         {beforeReview}
-        <div className="p-4">{consequencePreview}</div>
+        {!storage && showImpact && <div className="p-4">{consequencePreview}</div>}
 
         <SetupSection
           id="setup-review"
@@ -2165,6 +2196,7 @@ export function KitchenCheckinCheckoutEditor({
         </SetupSection>
       </CardContent>
     </Card>
+    </StorageWords.Provider>
   );
 
   return (

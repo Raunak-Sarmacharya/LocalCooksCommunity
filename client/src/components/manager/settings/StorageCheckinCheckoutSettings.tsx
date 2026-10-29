@@ -149,7 +149,7 @@ export default function StorageCheckinCheckoutSettings({
   const validationErrors = useMemo(
     () => [...validateStorageInspectionItems(items),
       ...((checkinEnabled || checkoutEnabled) && (!checkinInstructions?.trim() || !checkoutInstructions?.trim())
-        ? [mt('storageTrackingRequiredNotes')] : [])],
+        ? [mt('storageUx.notesMissing')] : [])],
     [items, checkinEnabled, checkoutEnabled, checkinInstructions, checkoutInstructions],
   );
   const dormantCheckin = checkinEnabled ? 0 : items.filter((item) => item.label.trim() && item.requiredOnCheckin).length;
@@ -218,7 +218,7 @@ export default function StorageCheckinCheckoutSettings({
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <ChefPageHeader title={mt("navStorageCheckinCheckout")} description={mt("storageChecklistPageDescription")} />
+        <ChefPageHeader title={mt("storageUx.pageTitle")} description={mt("storageUx.pageHelp")} />
         <SettingsContentSkeleton rows={6} />
       </div>
     );
@@ -229,8 +229,8 @@ export default function StorageCheckinCheckoutSettings({
     <div className="space-y-6">
       {/* Header */}
       <ChefPageHeader
-        title={mt("navStorageCheckinCheckout")}
-        description={mt("storageChecklistPageDescription")}
+        title={mt("storageUx.pageTitle")}
+        description={mt("storageUx.pageHelp")}
         actions={isDirty ? (
           <Badge
             variant="outline"
@@ -244,12 +244,15 @@ export default function StorageCheckinCheckoutSettings({
         {dormantCheckin > 0 && <p>{mt("checklistDormantCheckin", { count: dormantCheckin })}</p>}
         {dormantCheckout > 0 && <p>{mt("checklistDormantCheckout", { count: dormantCheckout })}</p>}
       </div></div>}
-      <SettingsRow id="storage-tracking-enabled" label={mt('navStorageCheckinCheckout')} hint={mt('storageTrackingBothStages')} help={<TrackingWorkflowHelp storage settings={data} />}>
+      <SettingsRow id="storage-tracking-enabled" label={mt("storageUx.toggleLabel")} hint={checkinEnabled || checkoutEnabled ? mt("storageUx.toggleHint") : mt("storageUx.offNote")} help={<TrackingWorkflowHelp storage settings={data} />}>
         <Switch id="storage-tracking-enabled" checked={checkinEnabled || checkoutEnabled}
           onCheckedChange={enabled => { setCheckinEnabled(enabled); setCheckoutEnabled(enabled); }} />
       </SettingsRow>
+      {/* Same editor and customer preview as kitchen tasks, in storage words (owner Oct 29). */}
       <KitchenCheckinCheckoutEditor
         coupledStages
+        storage
+        setupLocationName={location.name}
         title={mt("storageCheckInCheckOutChecklists")}
         onFlowToggleMouseDown={(event) => event.preventDefault()}
         onFlowToggleClick={(event) => (event.currentTarget.closest("[data-stage-panel]") as HTMLElement | null)?.focus({ preventScroll: true })}

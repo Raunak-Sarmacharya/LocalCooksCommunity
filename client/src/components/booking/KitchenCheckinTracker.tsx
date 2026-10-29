@@ -1,6 +1,6 @@
 import { BookingProblemReport } from "./BookingProblemReport"
 import { friendlyTimezoneName } from '@shared/timezone-utils';
-import { previousVisitTaskAnswers, VisitDutyValidationError, type DutyFieldErrors } from '@shared/visit-duties';
+import { previousVisitTaskAnswers, tickTasks, VisitDutyValidationError, type DutyFieldErrors } from '@shared/visit-duties';
 /**
  * KitchenCheckinTracker
  *
@@ -178,25 +178,29 @@ export function KitchenCheckinTracker({
     visit.id !== data.visitId && visit.visitDate && visit.visitDate < data.bookingDate.slice(0, 10))
     .sort((a, b) => b.visitDate!.localeCompare(a.visitDate!))[0] : undefined;
   const copyPreviousTasks = (stage: 'checkin' | 'checkout') => {
-    setCheckedItems(new Set(previousVisitTaskAnswers(stage === 'checkin' ? checklist?.checkinItems || [] : checklist?.checkoutItems || [],
+    setCheckedItems(new Set(previousVisitTaskAnswers(stage === 'checkin' ? checkinTicks : checkoutTicks,
       stage === 'checkin' ? previousVisit?.checkinChecklistItems : previousVisit?.checkoutChecklistItems)));
   };
 
   const checkinStatus: KitchenCheckinStatus =
     (data?.checkinStatus as KitchenCheckinStatus) || "not_checked_in"
 
-  // Only configured mandatory items block submission.
-  const allCheckinItemsChecked = (checklist?.checkinItems || []).every(
-    (i: ChecklistItem) => i.required === false || checkedItems.has(i.id),
-  )
-  const allCheckoutItemsChecked = (checklist?.checkoutItems || []).every(
-    (i: ChecklistItem) => i.required === false || checkedItems.has(i.id),
-  )
-
   const checkinPhotoReqs: PhotoRequirement[] = checklist?.checkinPhotoRequirements || []
   const checkoutPhotoReqs: PhotoRequirement[] = checklist?.checkoutPhotoRequirements || []
+  // A task with a photo slot is done by its photo, so only the rest get a tick box.
+  const checkinTicks = tickTasks(checklist?.checkinItems || [], checkinPhotoReqs)
+  const checkoutTicks = tickTasks(checklist?.checkoutItems || [], checkoutPhotoReqs)
 
-  const remainingTasks = (stage: 'checkin' | 'checkout') => (stage === 'checkin' ? checklist?.checkinItems : checklist?.checkoutItems)?.filter(item => item.required !== false && !checkedItems.has(item.id)).length || 0;
+  // Only configured mandatory items block submission.
+  const allCheckinItemsChecked = checkinTicks.every(i => i.required === false || checkedItems.has(i.id))
+  const allCheckoutItemsChecked = checkoutTicks.every(i => i.required === false || checkedItems.has(i.id))
+
+  // One count for everything left: unticked tasks plus required photo slots still empty.
+  const remainingTasks = (stage: 'checkin' | 'checkout') => {
+    const [ticks, photos, uploaded] = stage === 'checkin' ? [checkinTicks, checkinPhotoReqs, checkinPhotos] : [checkoutTicks, checkoutPhotoReqs, checkoutPhotos]
+    return ticks.filter(item => item.required !== false && !checkedItems.has(item.id)).length
+      + photos.filter(photo => photo.required !== false && !uploaded[photo.id]?.some(Boolean)).length
+  }
   const submitHelp = (stage: 'checkin' | 'checkout') => remainingTasks(stage) > 0
     ? t('kciCompleteRequiredTasks', `Complete ${remainingTasks(stage)} required ${remainingTasks(stage) === 1 ? 'task' : 'tasks'} to continue`, { count: remainingTasks(stage) })
     : !(stage === 'checkin' ? allCheckinPhotosUploaded : allCheckoutPhotosUploaded) ? t('kciCompleteRequiredPhotos') : '';
@@ -252,7 +256,7 @@ export function KitchenCheckinTracker({
     const checkinChecklistItems = (checklist?.checkinItems || []).map((i: ChecklistItem) => ({
       id: i.id,
       label: i.label,
-      checked: checkedItems.has(i.id),
+      checked: checkedItems.has(i.id) || !!checkinPhotos[i.id]?.some(Boolean),
     }))
     try {
       await checkin({
@@ -304,7 +308,7 @@ export function KitchenCheckinTracker({
     const checkoutChecklistItems = (checklist?.checkoutItems || []).map((i: ChecklistItem) => ({
       id: i.id,
       label: i.label,
-      checked: checkedItems.has(i.id),
+      checked: checkedItems.has(i.id) || !!checkoutPhotos[i.id]?.some(Boolean),
     }))
     try {
       await checkout({
@@ -379,12 +383,10 @@ export function KitchenCheckinTracker({
     : t("kciVisitTitle", "Kitchen visit")
   const dutiesReady = !!currentDuties || !!currentChecklist
   const isPending = isCheckingIn || isCheckingOut
-  const requirementsMessage = t("kciConfiguredTasks", "Only checklist items and photos marked Required must be completed. Everything marked Optional can be skipped.")
-  const hasCheckoutTasks = (checklist?.checkoutItems || []).length > 0 || checkoutPhotoReqs.length > 0
 
   // In session: arrival recorded, departure not yet recorded, and the booked time has not fully closed.
   const showInSession = showInSessionEarly
-  const requiredCheckoutTasks = (checklist?.checkoutItems || []).filter(item => item.required !== false).length
+  const requiredCheckoutTasks = checkoutTicks.filter(item => item.required !== false).length
     + checkoutPhotoReqs.filter(photo => photo.required).length
   const startCheckout = () => {
     setCheckoutOpen(true)
@@ -470,7 +472,7 @@ export function KitchenCheckinTracker({
     if (data.noShowDetectedAt) times.push({ label: t("kciTimeNoShow", "Reported"), value: formatTime(data.noShowDetectedAt) })
   }
 
-  const overviewTasks = [...(checklist?.checkinItems || []), ...(checklist?.checkoutItems || [])].filter(item => item.required !== false).map(item => item.label)
+  const overviewTasks = [...checkinTicks, ...checkoutTicks].filter(item => item.required !== false).map(item => item.label)
     .concat([...checkinPhotoReqs, ...checkoutPhotoReqs].filter(photo => photo.required).map(photo => photo.label))
   const arrivalInstructions = {
     key: "arrival",
@@ -515,7 +517,8 @@ export function KitchenCheckinTracker({
             <span className="text-sm">
               <span className="tabular-nums font-medium text-muted-foreground mr-1.5">{index + 1}.</span>
               {item.label}
-              <span className="ml-2 text-xs text-muted-foreground">{item.required !== false ? t("kciRequired", "Required") : t("kciOptional", "Optional")}</span>
+              {/* Tasks are required by default; only a legacy optional one says so. */}
+              {item.required === false && <span className="ml-2 text-xs text-muted-foreground">{t("kciOptional", "Optional")}</span>}
             </span>
             {item.description && (
               <p className="text-xs text-muted-foreground mt-0.5">{item.description}</p>
@@ -544,9 +547,8 @@ export function KitchenCheckinTracker({
   )
 
   const arrivalRequirements = <>
-                {!!checklist?.checkinItems?.length && <p className="text-sm text-muted-foreground">{requirementsMessage}</p>}
                 {!!previousVisit?.checkinChecklistItems?.length && <Button type="button" variant="outline" onClick={() => copyPreviousTasks('checkin')}>{t("kciSameAsPreviousVisit", "Same as previous visit")}</Button>}
-                {(checklist?.checkinItems || []).length > 0 && renderChecklist(checklist?.checkinItems || [], t("kciChecklistLabel"))}
+                {checkinTicks.length > 0 && renderChecklist(checkinTicks, t("kciChecklistLabel"))}
 
                 {fieldErrors.items && <p role="alert" className="text-sm text-destructive">{fieldErrors.items}</p>}
 
@@ -784,9 +786,8 @@ export function KitchenCheckinTracker({
             {canCheckout && dutiesReady && (!showInSession || checkoutOpen) && (
               <section id="visit-checkout-section" className="rounded-2xl border border-border/70 bg-card p-4 sm:p-6 space-y-3" aria-labelledby="visit-checkout-title">
                 <h2 id="visit-checkout-title" tabIndex={-1} className="rounded-md text-base font-semibold leading-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t("kciCheckOutHeading", "Check out")}</h2>
-                {hasCheckoutTasks && <p className="text-sm text-muted-foreground">{requirementsMessage}</p>}
                 {!!previousVisit?.checkoutChecklistItems?.length && <Button type="button" variant="outline" onClick={() => copyPreviousTasks('checkout')}>{t("kciSameAsPreviousVisit", "Same as previous visit")}</Button>}
-                {(checklist?.checkoutItems || []).length > 0 && renderChecklist(checklist?.checkoutItems || [], t("coChecklistLabel"))}
+                {checkoutTicks.length > 0 && renderChecklist(checkoutTicks, t("coChecklistLabel"))}
 
                 {fieldErrors.items && <p role="alert" className="text-sm text-destructive">{fieldErrors.items}</p>}
 

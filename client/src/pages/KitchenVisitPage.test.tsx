@@ -217,7 +217,7 @@ describe("full-page kitchen visit", () => {
       expect(within(summary).getByText(label).parentElement).toHaveTextContent(/\d:\d\d/);
       expect(within(summary).getByText(label).parentElement).not.toHaveTextContent(/2026/);
     }
-    expect(screen.getByText("Your Check-In Checklist")).toBeInTheDocument();
+    expect(screen.getByText("Done at check-in")).toBeInTheDocument();
     expect(screen.getByText("Check the floor")).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Visit instructions" })).not.toBeInTheDocument();
     // Collapsed by default; the text is kept for the record.
@@ -318,8 +318,9 @@ describe("full-page kitchen visit", () => {
     setup();
     const submit = await screen.findByRole("button", { name: "Check in" });
     expect(submit).toBeDisabled(); fireEvent.click(submit); expect(posts()).toHaveLength(0);
-    fireEvent.click(screen.getByRole("checkbox", { name: /Check the floor/ }));
-    expect(submit).toBeDisabled();
+    // The floor task has a photo slot, so the photo completes it: no tick box (owner Oct 29).
+    expect(screen.queryByRole("checkbox", { name: /Check the floor/ })).not.toBeInTheDocument();
+    expect(screen.getByText("Complete 1 required task to continue")).toBeInTheDocument();
     act(() => mocks.uploads.at(-1).onSuccess({ url: "https://test.invalid/floor.jpg" }));
     await waitFor(() => expect(submit).toBeEnabled()); fireEvent.click(submit);
     await waitFor(() => expect(posts()).toHaveLength(1));

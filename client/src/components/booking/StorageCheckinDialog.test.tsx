@@ -33,3 +33,11 @@ it("still waits for a required photo when the kitchen asks for one", () => {
   show()
   expect(screen.getByRole("button", { name: "Confirm move-in" })).toBeDisabled()
 })
+
+it("shows a photo task once, as its photo slot, and counts it as what's left", () => {
+  duties.arrival = { enabled: true, items: [{ id: "p1", label: "Shelf photo", required: true }, { id: "lbl", label: "Label containers", required: true }],
+    photos: [{ id: "p1", label: "Shelf photo", required: true }], instructions: "" }
+  show()
+  expect(screen.getAllByRole("checkbox")).toHaveLength(1)
+  expect(screen.getByText("Complete 2 required tasks to continue")).toBeInTheDocument()
+})

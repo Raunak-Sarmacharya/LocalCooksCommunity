@@ -24,7 +24,10 @@ export type StorageRental = { id: number; ref: string | null; kitchen: { id: num
   accruedCents: number; responseDeadline: string | null; declineReason: string | null; actions: string[]; terms: RentalTerm[]
   /** The chef cancelled before the start; `kitchenPayoutCents` is on the kitchen's copy only. */
   cancellation?: { cancelledAt: string; refundCents: number; reason: string | null; kitchenPayoutCents?: number } | null
-  rentalTerms: { dailyPriceCents: number; maxTermDays: number; graceDays: number; cancellationPolicySnapshot?: { timezone?: string; noticeHours?: number } } | null }
+  rentalTerms: { dailyPriceCents: number; maxTermDays: number; graceDays: number; cancellationPolicySnapshot?: { timezone?: string; noticeHours?: number } } | null
+  timeline?: { movedInAt: string | null; movingOutAt: string | null }
+  /** What the chef recorded at move-in and move-out (owner Oct 29). */
+  evidence?: { checkinPhotoUrls: string[] | null; checkoutPhotoUrls: string[] | null; moveIn?: import("./storage-board").StorageVisitRecord; moveOut?: import("./storage-board").StorageVisitRecord } }
 /** The server's exact refund for cancelling now, under the frozen policy (same plan the refund reservation uses). */
 export type CancellationQuote = { paidCents: number; alreadyRefundedCents: number; refundCents: number; cardFeeCents: number; lateChargeCents: number
   startsAt: string; freeUntil: string; lateChargePercent: number; timezone: string | null }

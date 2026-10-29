@@ -17,13 +17,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { SmartImage } from "@/components/ui/smart-image";
 import { Check, Info, ChevronLeft, Image as ImageIcon } from "@/components/ui/manager-icons";
 import { StorageStatusChip } from "@/components/manager/storage/StorageStatusChip";
 import { StorageMoreActions } from "@/components/manager/storage/StorageMoreActions";
 import { DamageClaimSheet } from "@/components/booking/DamageClaimSheet";
 import { StorageDamageClaims } from "@/components/booking/DamageClaimCards";
-import { getR2ProxyUrl } from "@/utils/r2-url-helper";
+import { StorageVisitRecord } from "@/components/storage/StorageVisitRecord";
 import { formatBookingDate, formatCurrency } from "@/lib/formatters";
 import { getAuthHeaders } from "@/lib/api";
 import { claimRequest, claimWhen, type FilingContext } from "@/lib/damage-claims";
@@ -185,23 +184,17 @@ export function StorageRentalDetail({ rentalId }: { rentalId: number }) {
       {/* A request is answered here too (the dashboard links straight to this page), with the board's same card. */}
       {rental.state === "requested" && <StorageRequestCard rental={rental} onDone={() => void query.refetch()} />}
 
-      {hasEvidence && <Card>
-        <CardHeader><CardTitle className="text-base">{t("stEvidenceHeading")}</CardTitle></CardHeader>
-        <CardContent className="space-y-4">
-          {evidence.map((group) => group.urls.length > 0 && (
-            <div key={group.key} className="space-y-2">
-              <h3 className="text-sm font-medium text-muted-foreground">{t(group.key as never)}</h3>
-              <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-                {group.urls.map((url, index) => (
-                  <a key={`${group.key}-${index}`} href={getR2ProxyUrl(url)} target="_blank" rel="noopener noreferrer"
-                    className="group relative aspect-square overflow-hidden rounded-lg border bg-muted/30">
-                    <SmartImage src={getR2ProxyUrl(url)} alt={`${t(group.key as never)} ${index + 1}`} hideOnError
-                      className="h-full w-full object-cover transition-transform group-hover:scale-[1.02]" />
-                  </a>
-                ))}
-              </div>
-            </div>
-          ))}
+      {/* Move-in next to move-out: what was ticked, what photos were asked for, and the photos (owner Oct 29). */}
+      {(hasEvidence || !!rental.timeline?.movedInAt) && <Card>
+        <CardHeader><CardTitle className="text-base">{t("stRecordHeading")}</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <StorageVisitRecord title={t("stEvidenceMoveIn")} at={rental.timeline?.movedInAt ? date(rental.timeline.movedInAt) : null}
+              record={rental.evidence.moveIn} photos={rental.evidence.checkinPhotoUrls ?? []} />
+            <StorageVisitRecord title={t("stEvidenceMoveOut")} at={rental.timeline?.movingOutAt ? date(rental.timeline.movingOutAt) : null}
+              record={rental.evidence.moveOut} photos={rental.evidence.checkoutPhotoUrls ?? []} />
+          </div>
+          {!!rental.evidence.handoverPhotoUrls?.length && <StorageVisitRecord title={t("stEvidenceHandover")} photos={rental.evidence.handoverPhotoUrls} />}
         </CardContent>
       </Card>}
 

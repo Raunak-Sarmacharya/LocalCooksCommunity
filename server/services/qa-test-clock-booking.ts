@@ -185,10 +185,13 @@ export async function jumpBooking(id: number, to: Date, actorId: number, expecte
   let target = to.getTime(), version: string | null = expectedUpdatedAt, movedMs = 0, reached: string | null = null;
   const notices: Array<{ kind: string; sent: boolean }> = [], reminders: Array<{ kind: string; role: string; channel: string }> = [];
   if (!Number.isFinite(target) || target <= Date.now() || target - Date.now() > maxJumpMs) throw new TestClockError(400, 'Pick a time in the next 60 days.');
+  // Overlap is judged where the booking ends up, before anything moves: a stop on the way can sit on another
+  // booking the final place doesn't touch (QA walk Oct 29, #245 vs #214). The dry run rolls back.
+  await jumpBookingOnce(id, to, actorId, expectedUpdatedAt, true, new Date(), true).catch(error => { if (!(error instanceof DryRunDone)) throw error; });
   while (target > Date.now() + jumpGraceMs && Date.now() - started < budgetMs) {
     const clock = await readBookingClock(id);
     const next = clock.steps.find(step => Date.parse(step.at) < target - jumpStepMs);
-    const result = await jumpBookingOnce(id, new Date(next ? Date.parse(next.at) : target), actorId, version ?? clock.updatedAt);
+    const result = await jumpBookingOnce(id, new Date(next ? Date.parse(next.at) : target), actorId, version ?? clock.updatedAt, false);
     version = null; target -= result.movedMs; movedMs += result.movedMs; reached = next?.label ?? null;
     notices.push(...result.notices); reminders.push(...result.reminders);
     if (!next) { reached = null; break; }
@@ -198,8 +201,10 @@ export async function jumpBooking(id: number, to: Date, actorId: number, expecte
   return { movedMs, notices, reminders, clock: await readBookingClock(id), ...(target > Date.now() + jumpGraceMs ? { stoppedAt: reached } : {}) };
 }
 
+class DryRunDone extends Error {}
+
 /** Moves one booking and everything recorded against it `ms` earlier, then runs what became due for this booking only. */
-async function jumpBookingOnce(id: number, to: Date, actorId: number, expectedUpdatedAt: string, now = new Date()) {
+async function jumpBookingOnce(id: number, to: Date, actorId: number, expectedUpdatedAt: string, checkOverlap = true, now = new Date(), dryRun = false) {
   const ms = Math.ceil((to.getTime() - now.getTime() + jumpGraceMs) / jumpStepMs) * jumpStepMs;
   const [{ lastEvent }] = await db.select({ lastEvent: sql<number>`coalesce(max(${bookingLifecycleEvents.id}), 0)::int` }).from(bookingLifecycleEvents).where(eq(bookingLifecycleEvents.bookingId, id));
   const sentBefore = new Set((await db.select({ id: emailLogs.id }).from(emailLogs).where(and(reminderRows(id), eq(emailLogs.status, 'sent')))).map(row => row.id));
@@ -242,10 +247,11 @@ async function jumpBookingOnce(id: number, to: Date, actorId: number, expectedUp
     const ownHolds = [...(await tx.select({ holdId: kitchenBookingChanges.holdId }).from(kitchenBookingChanges).where(eq(kitchenBookingChanges.bookingId, id))).map(row => row.holdId),
       ...(await tx.select({ id: kitchenBookingExtensions.id, holdId: kitchenBookingExtensions.holdId }).from(kitchenBookingExtensions).where(eq(kitchenBookingExtensions.bookingId, id)))
         .map(row => row.holdId || `session-extension:${row.id}`)].filter((hold): hold is string => !!hold);
-    if (['pending', 'confirmed', 'cancellation_requested'].includes(booking.status)) for (const [date, daySlots] of Array.from(movedDays).filter(([date]) => date >= today))
+    if (checkOverlap && ['pending', 'confirmed', 'cancellation_requested'].includes(booking.status)) for (const [date, daySlots] of Array.from(movedDays).filter(([date]) => date >= today))
       if (await hasInventoryConflict(booking.kitchenId, date, daySlots, String((daySlots[0] as Slot).windowStartTime ?? day.windowStart ?? '00:00'),
         ownHolds, id, tx, booking.bufferMinutesSnapshot))
         throw new TestClockError(409, `Moving this booking would put it on top of another booking in this kitchen on ${date}. Pick an earlier step, or a booking with a free day before it.`);
+    if (dryRun) throw new DryRunDone();
 
     await shiftRows(tx, kitchenBookings, eq(kitchenBookings.id, id), ms,
       { keep: ['bookingDate', 'selectedSlots', 'visitDuties', 'cancellationPolicySnapshot', 'bookingRuleOverrides', 'storageItems', 'equipmentItems'], dates });

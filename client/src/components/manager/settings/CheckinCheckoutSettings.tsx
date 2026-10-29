@@ -169,6 +169,8 @@ function changedInstructions(draft: InstructionDraft, data: SavedSettings) {
 function usePinchOnHide(
   ref: React.RefObject<HTMLDivElement | null>,
   hidden: boolean,
+  /** The bar mounts only after loading; re-run then, or it stays open on a clean page (QA walk Oct 29). */
+  mounted: boolean,
 ) {
   useLayoutEffect(() => {
     const el = ref.current;
@@ -184,7 +186,7 @@ function usePinchOnHide(
       el.style.maxHeight = "0px";
     });
     return () => cancelAnimationFrame(frame);
-  }, [ref, hidden]);
+  }, [ref, hidden, mounted]);
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -370,9 +372,12 @@ function CheckinCheckoutSettingsSurface({
   const flagsMismatchMessage = mt("setupUx.flagsMismatch", { defaultValue: "Check-in and check-out are set up differently at this location. Ask Local Cooks to review it before saving." });
   const hasProblems = problems.empty.length > 0 || problems.unassigned.length > 0 || problems.ambiguous.length > 0
     || missingNotes || notesNeeded || flagsMismatch;
+  // A task still being named is not a mistake: Save just waits for the name, without a red banner (QA walk Oct 29).
+  const onlyUnnamed = hasProblems && !(problems.unassigned.length || problems.ambiguous.length || missingNotes || notesNeeded || flagsMismatch);
   const blockingMessage = flagsMismatch ? flagsMismatchMessage
     : missingNotes ? notesMissingMessage
     : notesNeeded ? notesNeededMessage
+    : onlyUnnamed ? mt("setupUx.nameTasks", { defaultValue: "Give every task a name to save." })
     : mt("setupUx.saveBlocked", { defaultValue: "Fix the problems listed at the top of this page to save." });
 
   const saveSucceededRef = useRef(false);
@@ -510,7 +515,7 @@ function CheckinCheckoutSettingsSurface({
 
   // The pinned bar is never unmounted — it is collapsed in place so the scroll
   // container cannot resize while the manager is scrolling.
-  usePinchOnHide(stickyBarRef, !isDirty);
+  usePinchOnHide(stickyBarRef, !isDirty, !(isLoading || (previewKitchenContext && previewLoading)));
 
   const pageHeader = !embedded && <>
     <ChefPageHeader
@@ -609,7 +614,7 @@ function CheckinCheckoutSettingsSurface({
 
       {/* Anything that blocks Save is surfaced before the fields, so the manager
           sees the reason, not just a Save that will not go through. */}
-      {hasProblems && (
+      {hasProblems && !onlyUnnamed && (
         <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3">
           <AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" />
           <div className="space-y-0.5 text-xs text-destructive">
@@ -617,9 +622,6 @@ function CheckinCheckoutSettingsSurface({
             {missingNotes && <p>{notesMissingMessage}</p>}
             {notesNeeded && <p>{notesNeededMessage}</p>}
             {problems.ambiguous.length > 0 && <p>{mt("setupUx.ambiguous", { defaultValue: "Saved duties contain duplicate IDs within a stage. Saving is blocked to avoid losing data. Ask Local Cooks to review this configuration." })}</p>}
-            {problems.empty.length > 0 && (
-              <p>{mt("checklistEmptyLabels", { count: problems.empty.length })}</p>
-            )}
             {problems.unassigned.length > 0 && (
               <p>{mt("checklistUnassignedItems", { count: problems.unassigned.length })}</p>
             )}
@@ -637,6 +639,7 @@ function CheckinCheckoutSettingsSurface({
         previewKitchenName={(kitchenContext ?? previewKitchenContext)?.name}
         setupLocationName={location.name}
         setupMode={mode}
+        showImpact={isDirty}
         onOpenTasks={onOpenTasks}
         beforeReview={timing}
         coupledStages
@@ -686,7 +689,7 @@ function CheckinCheckoutSettingsSurface({
             id="setup-save-status"
             className={cn(
               "flex min-w-0 items-center gap-1.5 text-xs",
-              hasProblems ? "text-destructive" : "text-muted-foreground",
+              hasProblems && !onlyUnnamed ? "text-destructive" : "text-muted-foreground",
             )}
           >
             <AlertTriangle className={cn("size-3.5 shrink-0", !hasProblems && "text-amber-500")} />

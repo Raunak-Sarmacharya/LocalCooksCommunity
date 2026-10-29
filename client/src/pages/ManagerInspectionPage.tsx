@@ -28,7 +28,7 @@ import { createBookingDateTime } from '@shared/timezone-utils';
 import { formatVisitWhen } from '@/lib/visit-when';
 import { initials, sentence } from '@/lib/booking-header-state';
 import { bookingReference } from '@/lib/booking-reference';
-import { readVisitDuties, type DutySection, type VisitDuties } from '@shared/visit-duties';
+import { readVisitDuties, tickTasks, type DutySection, type VisitDuties } from '@shared/visit-duties';
 
 const EMPTY = '__empty__';
 
@@ -82,10 +82,11 @@ function EvidenceSummary({ chef, title, section, photos, checklist, notes, times
       <h3 className="font-medium">{t('inspectCopy05')}</h3>
       <p className="whitespace-pre-wrap">{section?.instructions || t('inspectCopy06')}</p>
       {!section ? <p>{t('inspectCopy07')}</p> : !section.enabled ? <p>{t('inspectCopy08')}</p> : <>
-        {section.items.length === 0 && <p>{t('inspectCopy09')}</p>}
-        <ul className="space-y-2">{section.items.map(item => {
+        {/* A task with a photo slot is answered by its photo, listed under photos below (owner Oct 29). */}
+        {tickTasks(section.items, section.photos).length === 0 && <p>{t('inspectCopy09')}</p>}
+        <ul className="space-y-2">{tickTasks(section.items, section.photos).map(item => {
           const answer = checklist?.find(recorded => recorded.id === item.id);
-          return <li key={item.id}>{item.label} · {item.required === false ? t('inspectCopy10') : t('inspectCopy11')} · {answer ? answer.checked ? t('inspectCopy12') : t('inspectCopy13') : t('inspectCopy14')}</li>;
+          return <li key={item.id}>{item.label}{item.required === false ? ` · ${t('inspectCopy10')}` : ''} · {answer ? answer.checked ? t('inspectCopy12') : t('inspectCopy13') : t('inspectCopy14')}</li>;
         })}</ul>
       </>}
       {(checklist || []).filter(item => !section?.items.some(configured => configured.id === item.id)).map(item => <p key={item.id}>{item.label}: {item.checked ? t('inspectCopy12') : t('inspectCopy13')} ({t('inspectEarlierItem')})</p>)}
@@ -94,7 +95,7 @@ function EvidenceSummary({ chef, title, section, photos, checklist, notes, times
       <h3 className="font-medium">{t('inspectCopy15')}</h3>
       {!section ? <p>{t('inspectCopy16')}</p> : !section.enabled ? <p>{t('inspectCopy17')}</p> : <>
         {requiredPhotos > 0 ? <p>{t('inspectRequiredPhotos', { count: requiredPhotos })}</p> : <p>{t('inspectNoPhotosRequired')}</p>}
-        {section.enabled && section.photos.map(photo => <p key={photo.id}>{photo.label} · {photo.required === false ? t('inspectCopy10') : t('inspectCopy11')}</p>)}
+        {section.enabled && section.photos.map(photo => <p key={photo.id}>{photo.label}{photo.required === false ? ` · ${t('inspectCopy10')}` : ''}</p>)}
       </>}
       {photos == null ? <p>{t('inspectCopy18')}</p> : photos.length === 0 ? <p>{t('inspectCopy19')}</p> : <>
         <p>{t('inspectSubmittedPhotos', { count: photos.length })}{requiredPhotos > 0 && ` ${t('inspectComparePhotos')}`}</p>
@@ -237,6 +238,8 @@ function InspectionTask({ booking, evidence, visitId, formatEvent, refresh, bloc
   const clock = visitId ? evidence.closeout as import('@shared/clock-closeout').VisitCloseout | undefined : booking.closeout?.visits[0];
   const payoutNow = booking.payout?.timing === 'after_closeout' && booking.payout.status === 'scheduled' && booking.payout.amountCents > 0 ? booking.payout : null;
   const payoutAmount = payoutNow ? new Intl.NumberFormat(i18n.language, { style: 'currency', currency: 'CAD' }).format(payoutNow.amountCents / 100) : '';
+  // Checked out before the booked time began: the review opens at the start, so say when (QA walk Oct 29).
+  const notDueYet = clock?.inspection.outcome === 'not_due' && !!evidence.checkoutRequestedAt;
   const canClear = clock ? clock.inspection.canRespond : booking.status === 'confirmed' && evidence.checkinStatus === 'checkout_requested' && !!deadline && Number.isFinite(Date.parse(deadline));
   // Nothing to add for a visit that hasn't started (the server refuses it too).
   const canAssist = booking.status === 'confirmed' && [null, undefined, 'not_checked_in', 'checked_in'].includes(evidence.checkinStatus) && clock?.phase !== 'upcoming';
@@ -306,7 +309,7 @@ function InspectionTask({ booking, evidence, visitId, formatEvent, refresh, bloc
     </section> : <section className="rounded-2xl border bg-card p-4 sm:p-6 space-y-3" aria-label={t('inspectCopy46')}>
       {liveSentence ? <p className="text-[15px] leading-[22px]" data-testid="inspection-sentence">{liveSentence}</p> : <>
         <h2 className="font-semibold">{t('inspectCopy46')}</h2>
-        <p>{clock?.inspection.outcome === 'auto_closed_uninspected' ? t('clockNoInspection') : clock?.inspection.outcome === 'manager_cleared' ? t('clockManagerInspected') : clock?.inspection.outcome === 'issue_filed' ? t('clockIssueOpen') : evidence.checkinStatus === 'checkout_requested' ? t('inspectCopy47') : evidence.checkinStatus === 'checked_out' ? t('inspectCopy48') : evidence.checkinStatus === 'checkout_claim_filed' ? t('inspectCopy49') : t('inspectCopy50')}</p>
+        <p>{notDueYet ? t('inspectOpensAt', { time: formatEvent(clock!.inspection.dueAt) }) : clock?.inspection.outcome === 'auto_closed_uninspected' ? t('clockNoInspection') : clock?.inspection.outcome === 'manager_cleared' ? t('clockManagerInspected') : clock?.inspection.outcome === 'issue_filed' ? t('clockIssueOpen') : evidence.checkinStatus === 'checkout_requested' ? t('inspectCopy47') : evidence.checkinStatus === 'checked_out' ? t('inspectCopy48') : evidence.checkinStatus === 'checkout_claim_filed' ? t('inspectCopy49') : t('inspectCopy50')}</p>
         {evidence.checkoutApprovedAt && <p className="text-sm">{t('inspectClosedAt', { time: formatEvent(evidence.checkoutApprovedAt) })}</p>}
         <p className="font-medium">{t('inspectDeadline')}: {deadline ? formatEvent(deadline) : evidence.checkoutRequestedAt ? t('inspectCopy51') : t('inspectCopy52')}</p>
       </>}
@@ -326,7 +329,7 @@ function InspectionTask({ booking, evidence, visitId, formatEvent, refresh, bloc
       {evidence.checkoutManagerMessage && <p className="whitespace-pre-wrap text-sm">{evidence.checkoutManagerMessage}</p>}
       {(!canClear || blocked || !booking.inspection) && <p className="text-sm text-muted-foreground">{blocked ? t('inspectRefreshFirst')
         : inspectionClosed ? (canReportLater && reportWindow && !alreadyReported ? t('inspectWindowClosedReport', { date: formatEvent(reportWindow.deadline.toISOString()) }) : t('inspectWindowClosed'))
-        : t('inspectNotReady')}</p>}
+        : notDueYet ? t('inspectOpensAt', { time: formatEvent(clock!.inspection.dueAt) }) : t('inspectNotReady')}</p>}
       <div className="flex flex-wrap gap-3">
         {!(inspectionClosed && !canClear) && <Button disabled={!canClear || blocked || saving || saved || !booking.inspection || !claimStateReady} onClick={() => setConfirmOpen(true)}><CheckCircle2 className="mr-2 h-4 w-4" />{saving ? t('inspectCopy59') : t('inspectFinish')}</Button>}
         {alreadyReported ? reportedLink : <Button variant="outline" disabled={saving || !claimsQuery.data} onClick={() => setIssueOpen(true)}>{claimT('dcV2Report')}</Button>}

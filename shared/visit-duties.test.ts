@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { makeVisitDuties, readVisitDuties, validateDutySection } from './visit-duties';
+import { makeVisitDuties, readVisitDuties, tickTasks, validateDutySection } from './visit-duties';
 const settings = { checkinWindowMinutesBefore: 15, checkoutReviewWindowMinutes: 0 };
 describe('versioned visit duties and supported tracking matrix', () => {
   it.each([false, true])('keeps both steps regardless of legacy flags (%s)', enabled => {
@@ -28,6 +28,13 @@ describe('versioned visit duties and supported tracking matrix', () => {
     expect(duties.arrival.items).toHaveLength(1); expect(duties.arrival.photos).toHaveLength(2);
     expect(validateDutySection(duties.arrival, ['same', 'same'], [{ id: 'safety', checked: true }]).valid).toBe(false);
     expect(validateDutySection(duties.arrival, ['a', 'b'], [{ id: 'safety', checked: true }])).toEqual({ valid: true });
+  });
+  it('treats a task with a photo slot as done by its photo, not by a tick (owner Oct 29)', () => {
+    const section = { enabled: true, instructions: null, items: [{ id: 'wipe', label: 'Wipe' }, { id: 'station', label: 'Station photo' }], photos: [{ id: 'station', label: 'Station photo' }] };
+    expect(tickTasks(section.items, section.photos).map(item => item.id)).toEqual(['wipe']);
+    expect(validateDutySection(section, ['https://x/a.jpg'], [{ id: 'wipe', checked: true }]).valid).toBe(true);
+    expect(validateDutySection(section, [], [{ id: 'wipe', checked: true }, { id: 'station', checked: true }]).fieldErrors?.photos).toBeTruthy();
+    expect(validateDutySection(section, ['https://x/a.jpg'], []).fieldErrors?.items).toContain('Wipe');
   });
   it('fails explicitly for an unknown snapshot version instead of applying current requirements', () => {
     expect(() => readVisitDuties({ version: 2 })).toThrow(/Local Cooks review/);

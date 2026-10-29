@@ -42,11 +42,11 @@ it('requires both notes when enabled, but saves an empty duties checklist', asyn
   const saveRef = createRef<{ saveAllChanges: () => Promise<boolean> }>();
   render(<QueryClientProvider client={client}><StorageCheckinCheckoutSettings location={{ id: 33, name: 'Sunlight' }} saveRef={saveRef} /></QueryClientProvider>);
   fireEvent.click(await screen.findByRole('switch'));
-  expect(screen.getByRole('textbox', { name: 'arrivalInstructionsTitle' })).toBeRequired();
+  expect(screen.getByRole('textbox', { name: 'storageUx.arrivalInstructions' })).toBeRequired();
   await act(async () => { expect(await saveRef.current!.saveAllChanges()).toBe(false); });
   expect(state.put).not.toHaveBeenCalled();
-  fireEvent.change(screen.getByRole('textbox', { name: 'arrivalInstructionsTitle' }), { target: { value: 'Use shelf A.' } });
-  fireEvent.change(screen.getByRole('textbox', { name: 'departureInstructionsTitle' }), { target: { value: 'Empty shelf A.' } });
+  fireEvent.change(screen.getByRole('textbox', { name: 'storageUx.arrivalInstructions' }), { target: { value: 'Use shelf A.' } });
+  fireEvent.change(screen.getByRole('textbox', { name: 'storageUx.departureInstructions' }), { target: { value: 'Empty shelf A.' } });
   await act(async () => { expect(await saveRef.current!.saveAllChanges()).toBe(true); });
   expect(state.put).toHaveBeenCalledWith('/manager/locations/33/checkin-checkout-settings', expect.objectContaining({
     storageCheckinEnabled: true, storageCheckoutEnabled: true, storageCheckinInstructions: 'Use shelf A.', storageCheckoutInstructions: 'Empty shelf A.',
@@ -60,9 +60,9 @@ it('keeps incomplete notes as a draft while storage tracking is off', async () =
     storageCheckinItems: [], storageCheckoutItems: [], storageCheckinPhotoRequirements: [], storageCheckoutPhotoRequirements: [] });
   const saveRef = createRef<{ saveAllChanges: () => Promise<boolean> }>();
   render(<QueryClientProvider client={client}><StorageCheckinCheckoutSettings location={{ id: 33, name: 'Sunlight' }} saveRef={saveRef} /></QueryClientProvider>);
-  const arrival = await screen.findByRole('textbox', { name: 'arrivalInstructionsTitle' });
+  const arrival = await screen.findByRole('textbox', { name: 'storageUx.arrivalInstructions' });
   expect(arrival).not.toBeRequired();
-  expect(screen.getByText('storageTrackingDisabledHint')).toBeInTheDocument();
+  expect(screen.getByText('storageUx.offNote')).toBeInTheDocument();
   fireEvent.change(arrival, { target: { value: 'Draft arrival instructions.' } });
   await act(async () => { expect(await saveRef.current!.saveAllChanges()).toBe(true); });
   expect(state.put).toHaveBeenCalledWith('/manager/locations/33/checkin-checkout-settings', expect.objectContaining({

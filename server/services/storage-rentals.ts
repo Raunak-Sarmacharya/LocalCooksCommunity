@@ -27,7 +27,7 @@ import { ensureServerI18n, tLocale } from '../i18n';
 import { unavailableUnitRanges } from './storage-availability';
 import { assertBookingMoneyWritable, BookingMoneyFrozen } from './booking-money-guard';
 import { storageSettings } from './storage-settings';
-import { readVisitDuties } from '@shared/visit-duties';
+import { readVisitDuties, tickTasks, type DutySection } from '@shared/visit-duties';
 import { bookingRefusalBody } from '@shared/location-booking-eligibility';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -391,6 +391,13 @@ export async function readRental(id: number, actor: RentalActor, now = new Date(
   const rental = await owned(db, id, actor);
   const ctx = await contextForRead(rental.storageListingId);
   const duties = actor.role === 'manager' ? readVisitDuties(rental.visitDuties) : null;
+  // What was asked and answered at each end, for both sides (owner Oct 29). A snapshot the reader can't parse just shows less.
+  const asked = actor.role === 'manager' ? duties : (() => { try { return readVisitDuties(rental.visitDuties); } catch { return null; } })();
+  const record = (section: DutySection | undefined, answers: unknown) => {
+    const recorded = Array.isArray(answers) ? answers as Array<{ id: string; label: string; checked: boolean }> : [];
+    return { tasks: tickTasks(recorded, section?.photos ?? []).map(({ label, checked }) => ({ label, checked })),
+      photosAsked: (section?.photos ?? []).map(photo => photo.label) };
+  };
   const instructions = actor.role === 'manager' && !duties ? await storageInstructions(ctx.kitchen.locationId) : null;
   const terms = await db.select().from(storageRentalTerms).where(eq(storageRentalTerms.rentalId, id)).orderBy(asc(storageRentalTerms.seq));
   const frozen = rental.rentalTerms as FrozenTerms;
@@ -477,7 +484,8 @@ export async function readRental(id: number, actor: RentalActor, now = new Date(
           - ((payout.metadata as { refunds?: Array<{ managerDebited?: number }> } | null)?.refunds ?? []).reduce((sum, receipt) => sum + Number(receipt.managerDebited || 0), 0)) : null) };
     }),
     noBaseline: (rental.rentalTerms as { noBaseline?: boolean })?.noBaseline ?? false, needsCleaning: rental.needsCleaning, releasedOn: rental.releasedOn,
-    evidence: { checkinPhotoUrls: rental.checkinPhotoUrls, handoverPhotoUrls: rental.handoverPhotoUrls, checkoutPhotoUrls: rental.checkoutPhotoUrls } };
+    evidence: { checkinPhotoUrls: rental.checkinPhotoUrls, handoverPhotoUrls: rental.handoverPhotoUrls, checkoutPhotoUrls: rental.checkoutPhotoUrls,
+      moveIn: record(asked?.arrival, rental.checkinChecklistItems), moveOut: record(asked?.departure, rental.checkoutChecklistItems) } };
 }
 async function contextForRead(listingId: number) {
   const [row] = await db.select({ listing: storageListings, kitchen: kitchens }).from(storageListings)

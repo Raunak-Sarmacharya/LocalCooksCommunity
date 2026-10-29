@@ -14,6 +14,8 @@ import { StorageExtendSheet } from "@/components/storage/StorageExtendSheet"
 import { StorageCancelDialog } from "@/components/storage/StorageCancelDialog"
 import { StorageMessageButton } from "@/components/storage/StorageMessageButton"
 import { StorageCheckinDialog } from "@/components/booking/StorageCheckinDialog"
+import { StorageVisitRecord } from "@/components/storage/StorageVisitRecord"
+import { formatStorageDate } from "@/lib/storage-board"
 import { StorageCheckoutDialog } from "@/components/booking/StorageCheckoutDialog"
 import { CommitmentProblems } from "@/components/support/CommitmentProblems"
 import { PendingOverstayPenalties } from "@/components/chef/PendingOverstayPenalties"
@@ -86,6 +88,17 @@ export default function ChefStorageRentalPage() {
             {t("stcDiscExtend", { end: storageDay(rental.paidThrough, locale), kitchen: rental.kitchen.name, daily: cad(rental.rentalTerms.dailyPriceCents, locale) })}</p>}
           {rental.declineReason && <p className="mt-3 text-sm">{t("stcDeclineReason", { reason: rental.declineReason })}</p>}
         </section>
+
+        {/* The chef sees what they recorded at each end, the same record the kitchen reads (owner Oct 29). */}
+        {rental.timeline?.movedInAt && rental.evidence && <section className="rounded-2xl border p-4 sm:p-5" aria-labelledby="rental-record">
+          <h2 id="rental-record" className="mb-3 text-base font-semibold">{tt("stYourRecord")}</h2>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <StorageVisitRecord title={tt("stEvidenceMoveIn")} at={formatStorageDate(rental.timeline.movedInAt, locale, rentalTimezone(rental))}
+              record={rental.evidence.moveIn} photos={rental.evidence.checkinPhotoUrls ?? []} />
+            {rental.timeline.movingOutAt && <StorageVisitRecord title={tt("stEvidenceMoveOut")} at={formatStorageDate(rental.timeline.movingOutAt, locale, rentalTimezone(rental))}
+              record={rental.evidence.moveOut} photos={rental.evidence.checkoutPhotoUrls ?? []} />}
+          </div>
+        </section>}
 
         {/* Like a session booking's Policies card: the lines that still apply, then the full rules. */}
         {["requested", "reserved", "active", "move_out_requested"].includes(rental.state) && <section className="rounded-2xl border p-4 sm:p-5" aria-labelledby="rental-policies" data-testid="rental-policies">

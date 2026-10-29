@@ -165,7 +165,7 @@ function SingleRequirementSlot({
             <Camera className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
             <span className="truncate">
               {label}
-              <span className="ml-2 text-xs text-muted-foreground">{required ? t("kciRequired", "Required") : t("kciOptional", "Optional")}</span>
+              {!required && <span className="ml-2 text-xs text-muted-foreground">{t("kciOptional", "Optional")}</span>}
             </span>
           </p>
           {description && (
@@ -193,10 +193,10 @@ function SingleRequirementSlot({
                 type="button"
                 onClick={() => handleRemove(url)}
                 disabled={isUploading}
-                className="absolute -top-1.5 -right-1.5 bg-destructive text-destructive-foreground rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-0"
-                aria-label={`Remove photo ${i + 1}`}
+                className="absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full border bg-background text-foreground shadow-sm hover:bg-muted disabled:opacity-0"
+                aria-label={t("removePhotoN", `Remove photo ${i + 1}`, { n: i + 1 })}
               >
-                <X className="h-3 w-3" />
+                <X className="h-3.5 w-3.5" />
               </button>
             </div>
           ))}
@@ -317,7 +317,7 @@ export function PhotoRequirementUploader({
         <InfoChip
           variant={completedRequired === totalRequired ? "success" : "outline"}
         >
-          {totalRequired > 0 ? `${completedRequired}/${totalRequired} ${t("kciRequired", "Required")}` : t("kciOptional", "Optional")}
+          {totalRequired > 0 ? t("kciPhotosDone", `${completedRequired} of ${totalRequired} added`, { done: completedRequired, total: totalRequired }) : t("kciOptional", "Optional")}
         </InfoChip>
       </div>
       <p className="text-xs text-muted-foreground">

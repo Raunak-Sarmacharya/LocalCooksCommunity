@@ -21,16 +21,16 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, LogIn, Camera } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { type ChecklistItem, type PhotoRequirement } from "@/hooks/use-location-checklist";
+import { tickTasks } from '@shared/visit-duties';
 import { useStorageDuties } from '@/hooks/use-storage-duties';
 import { auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { AppDialogContent } from "@/components/ui/app-dialog";
+import { Dialog } from "@/components/ui/dialog";
+import { AppDialogBody, AppDialogContent, AppDialogFooter, AppDialogHeader } from "@/components/ui/app-dialog";
 import { Badge } from "@/components/ui/badge";
-import { FormLegend } from "@/components/ui/form-legend";
 import { PhotoRequirementUploader, flattenPhotos, areAllRequiredPhotosUploaded } from "./PhotoRequirementUploader";
 
 interface StorageCheckinDialogProps {
@@ -75,10 +75,13 @@ export function StorageCheckinDialog({
   const storageCheckinPhotoReqs: PhotoRequirement[] =
     section?.enabled ? section.photos as PhotoRequirement[] : [];
 
+  // A task with a photo slot is done by its photo, so only the rest get a tick box.
+  const ticks = tickTasks(storageCheckinItems, storageCheckinPhotoReqs);
   // Only configured mandatory items block submission.
-  const allItemsChecked = storageCheckinItems.every((i: ChecklistItem) =>
-    i.required === false || checkedItems.has(i.id),
-  );
+  const allItemsChecked = ticks.every(i => i.required === false || checkedItems.has(i.id));
+  // One count for everything left: unticked tasks plus required photo slots still empty.
+  const remaining = ticks.filter(i => i.required !== false && !checkedItems.has(i.id)).length
+    + storageCheckinPhotoReqs.filter(photo => photo.required !== false && !uploadedPhotos[photo.id]?.some(Boolean)).length;
   const allPhotosUploaded = areAllRequiredPhotosUploaded(
     storageCheckinPhotoReqs,
     uploadedPhotos,
@@ -119,7 +122,7 @@ export function StorageCheckinDialog({
         (i: ChecklistItem) => ({
           id: i.id,
           label: i.label,
-          checked: checkedItems.has(i.id),
+          checked: checkedItems.has(i.id) || !!uploadedPhotos[i.id]?.some(Boolean),
         }),
       );
 
@@ -181,26 +184,11 @@ export function StorageCheckinDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <AppDialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <LogIn className="h-5 w-5 text-muted-foreground" />
-            {t("ciDialogTitle")}
-          </DialogTitle>
-          <DialogDescription>
-            {t("ciDialogDesc")}
-          </DialogDescription>
-        </DialogHeader>
+      <AppDialogContent className="gap-0 overflow-hidden p-0 sm:max-w-md">
+        <AppDialogHeader icon={<LogIn className="h-4 w-4" />} title={t("ciDialogTitle")} description={t("ciDialogDesc")} />
+        <AppDialogBody className="space-y-4">
         {dutiesQuery.isPending && <p role="status">{ct('sweepLabel24')}</p>}
         {dutiesQuery.error && <p role="alert">{ct('sweepLabel26')}{' '}<Button variant="link" onClick={() => void dutiesQuery.refetch()}>{ct('sweepLabel27')}</Button>{' '}{ct('sweepLabel28')}</p>}
-
-        {!isAlreadySubmitted &&
-          (storageCheckinItems.some((item) => item.required) ||
-            storageCheckinPhotoReqs.some((item) => item.required)) && (
-            <FormLegend className="mt-4 mb-0" />
-          )}
-
-        <div className="space-y-4 py-4">
           {/* Storage Info */}
           <div className="bg-muted/50 rounded-lg p-3">
             <div className="text-sm font-medium">
@@ -243,15 +231,15 @@ export function StorageCheckinDialog({
               )}
 
               {/* Checklist Items */}
-              {storageCheckinItems.length > 0 && (
+              {ticks.length > 0 && (
                 <div className="space-y-2">
                   <Label className="text-sm font-medium">
                     {t("ciChecklistLabel")}
                   </Label>
-                  {storageCheckinItems.map((item: ChecklistItem, index: number) => (
+                  {ticks.map((item: ChecklistItem, index: number) => (
                     <label
                       key={item.id}
-                      className="flex items-start gap-2.5 p-2 rounded-lg border bg-background hover:bg-muted/50 cursor-pointer transition-colors"
+                      className="flex min-h-11 items-start gap-3 rounded-xl border bg-background p-3 cursor-pointer hover:bg-muted/50 motion-safe:transition-colors"
                     >
                       <Checkbox
                         checked={checkedItems.has(item.id)}
@@ -269,9 +257,7 @@ export function StorageCheckinDialog({
                         <span className="text-sm">
                           <span className="tabular-nums font-medium text-muted-foreground mr-1.5">{index + 1}.</span>
                           {item.label}
-                          {item.required && (
-                            <span className="text-destructive ml-0.5">*</span>
-                          )}
+                          {item.required === false && <span className="ml-2 text-xs text-muted-foreground">{t("kciOptional")}</span>}
                         </span>
                         {item.description && (
                           <p className="text-xs text-muted-foreground mt-0.5">
@@ -328,9 +314,9 @@ export function StorageCheckinDialog({
               </div>
             </>
           )}
-        </div>
+        </AppDialogBody>
 
-        <DialogFooter className="mt-6">
+        <AppDialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             {isAlreadySubmitted ? t("ciClose") : t("bkCommonCancel")}
           </Button>
@@ -352,7 +338,8 @@ export function StorageCheckinDialog({
               )}
             </Button>
           )}
-        </DialogFooter>
+          {remaining > 0 && <p role="status" className="self-center text-sm text-muted-foreground sm:order-first sm:mr-auto">{t("kciCompleteRequiredTasks", { count: remaining })}</p>}
+        </AppDialogFooter>
       </AppDialogContent>
     </Dialog>
   );

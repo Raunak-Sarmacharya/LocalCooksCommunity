@@ -39,6 +39,10 @@ export function makeVisitDuties(checklist: any, storage: boolean,
     checkinWindowMinutesBefore: settings.checkinWindowMinutesBefore,
     checkoutReviewWindowMinutes: settings.checkoutReviewWindowMinutes };
 }
+/** A task with a photo slot (same id) is done by its photo; only the rest are ticked (owner Oct 29, Turo-style). */
+export function tickTasks<T extends { id: string }>(items: T[], photos: Array<{ id: string }>): T[] {
+  return items.filter(item => !photos.some(photo => photo.id === item.id));
+}
 /** No generic photo requirement. Only configured enabled duties are mandatory. */
 export type DutyFieldErrors = { items?: string; photos?: string };
 export class VisitDutyValidationError extends Error {
@@ -51,7 +55,7 @@ export function validateDutySection(section: DutySection, photos?: string[], ite
   if (new Set((photos || []).filter(Boolean)).size < required)
     fieldErrors.photos = `Please upload one distinct photo for each required item (${required} required)`;
   const checked = new Set((items || []).filter(item => item.checked === true).map(item => item.id));
-  const missing = section.items.filter(item => item.required !== false && !checked.has(item.id));
+  const missing = tickTasks(section.items, section.photos).filter(item => item.required !== false && !checked.has(item.id));
   if (missing.length) fieldErrors.items = `Complete required checklist items: ${missing.map(item => item.label).join(', ')}`;
   return Object.keys(fieldErrors).length ? { valid: false, error: Object.values(fieldErrors).join('. '), fieldErrors } : { valid: true };
 }

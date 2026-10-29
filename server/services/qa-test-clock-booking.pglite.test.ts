@@ -4,12 +4,12 @@ import { drizzle } from 'drizzle-orm/pglite';
 import { getTableConfig, type PgTable } from 'drizzle-orm/pg-core';
 import * as schema from '@shared/schema';
 
-const holder = vi.hoisted(() => ({ db: null as any, conflict: false, excludedHolds: [] as unknown[], deadline: null as Date | null, expired: [] as string[], reminders: [] as any[], dayReleases: [] as number[] }));
+const holder = vi.hoisted(() => ({ db: null as any, conflict: false, conflictDates: [] as string[], excludedHolds: [] as unknown[], deadline: null as Date | null, expired: [] as string[], reminders: [] as any[], dayReleases: [] as number[] }));
 vi.mock('../db', () => ({ get db() { return holder.db; } }));
 vi.mock('./advance-reminders', () => ({ scheduleAdvanceReminders: async () => {}, currentReminders: async (_tx: unknown, source: string) => holder.reminders.filter(r => r.source === source),
   dispatchAdvanceReminders: async () => ({ accepted: 0 }), reminderKey: (r: any, channel: string) => `advance:${r.source}:${r.reservationId}:${r.resource}:${r.kind}:${r.recipientId}:${channel}:${r.revision}` }));
 vi.mock('./booking-response-deadline', () => ({ getBookingResponseDeadline: async () => holder.deadline }));
-vi.mock('./kitchen-checkout-holds', () => ({ lockKitchenInventory: async () => {}, hasInventoryConflict: async (...args: unknown[]) => { holder.excludedHolds.push(args[4]); return holder.conflict; } }));
+vi.mock('./kitchen-checkout-holds', () => ({ lockKitchenInventory: async () => {}, hasInventoryConflict: async (...args: unknown[]) => { holder.excludedHolds.push(args[4]); return holder.conflict || holder.conflictDates.includes(args[1] as string); } }));
 vi.mock('./clock-closeout', () => ({ closeoutTiming: async () => ({ serviceEndGraceMinutes: 15, inspectionAutoCloseHours: 24, checkinWindowMinutesBefore: 15 }) }));
 vi.mock('./lifecycle-settings', () => ({ getLifecycleSettings: async () => ({ preparationReminderHours: 48 }) }));
 vi.mock('./visit-duties', () => ({ bookingInstructionRelease: () => ({ instructionsReleaseAt: '' }) }));
@@ -92,7 +92,7 @@ beforeAll(async () => {
     CREATE TRIGGER booking_cancellation_snapshot_immutable BEFORE UPDATE ON kitchen_bookings FOR EACH ROW EXECUTE FUNCTION protect_booking_cancellation_snapshot();
     INSERT INTO locations(id, name, timezone, manager_id) VALUES (47, 'Main', '${zone}', 379); INSERT INTO kitchens(id, location_id, name) VALUES (54, 47, 'K');`);
 });
-beforeEach(() => { holder.conflict = false; holder.deadline = null; holder.expired = []; holder.reminders = []; holder.dayReleases = []; });
+beforeEach(() => { holder.conflict = false; holder.conflictDates = []; holder.deadline = null; holder.expired = []; holder.reminders = []; holder.dayReleases = []; });
 
 describe('booking jump', () => {
   it('moves a confirmed two-day booking a day earlier without breaking its records', async () => {
@@ -160,6 +160,15 @@ describe('booking jump', () => {
     await expect(jumpBooking(1, new Date(Date.now() + day), 9, version)).rejects.toMatchObject({ status: 409 });
     expect((await pg.query<any>('SELECT updated_at::text v, start_time FROM kitchen_bookings')).rows[0].start_time).toBe('09:00');
     expect((await pg.query<any>('SELECT count(*)::int n FROM kitchen_booking_visits WHERE visit_date = $1', [day1])).rows[0].n).toBe(1);
+  });
+
+  it('checks overlap only where the booking ends up, not on the hops on the way (QA walk Oct 29)', async () => {
+    const version = await seed('confirmed', 'paid');
+    // An early step (prep reminder, 2 days before the first start) makes the walk stop 2 days out first; that interim date holds another booking.
+    holder.reminders = [{ source: 'booking', reservationId: 1, resource: 'r', kind: 'preparation', recipientId: 380, due: new Date(start1 - 2 * day).toISOString(), revision: 'a' }];
+    holder.conflictDates = [local(start1 - 3 * day).date];
+    await expect(jumpBooking(1, new Date(start1), 9, version)).resolves.toMatchObject({ movedMs: expect.any(Number) });
+    // The resting place is still checked: the existing 'refuses a move onto another booking' test covers the refusal.
   });
 
   it('lets a multi-day request jump only to its answer deadline (its paid quote is locked to the dates)', async () => {
