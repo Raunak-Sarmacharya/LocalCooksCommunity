@@ -15,7 +15,7 @@ import { TestClockCard, untilLabel, useTestClockEnabled } from "../TestClockCard
 type Invitation = { id: string; version: number; status: string; kitchen: { name: string; locationName?: string };
   chef: { id: number; name: string } | null; date: string; startTime: string; endTime: string; timezone: string; dayCount: number;
   pricing: { totalCents: number }; expiresAt: string; createdAt: string; bookingId: number | null; note: string | null };
-type CustomerLink = { id: number; locationName?: string; kitchenName?: string; fullName: string; email: string; status: string; sentAt: string; expiresAt: string };
+type CustomerLink = { id: number; locationName?: string; displayName?: string; fullName: string; email: string; status: string; sentAt: string; expiresAt: string };
 
 async function adminFetch<T>(url: string, body?: unknown): Promise<T> {
   const token = await auth.currentUser?.getIdToken();
@@ -100,7 +100,7 @@ export function AdminInvitationsSection() {
               {linkRows.map(row => (
                 <TableRow key={row.id}>
                   <TableCell><span className="font-medium">{row.fullName}</span><span className="block text-xs text-muted-foreground">{row.email}</span></TableCell>
-                  <TableCell>{row.kitchenName || row.locationName}</TableCell>
+                  <TableCell>{row.displayName || row.locationName}</TableCell>
                   <TableCell>{when(row.sentAt)}</TableCell>
                   <TableCell><Badge variant="outline">{row.status === "sent" ? "Waiting on the person" : statusWords[row.status] ?? row.status}</Badge></TableCell>
                   <TableCell className="tabular-nums">{row.status === "sent" ? expiry(row.expiresAt) : "—"}</TableCell>
@@ -191,7 +191,7 @@ function LinkDrawer({ link, onMoved }: { link: CustomerLink; onMoved: () => void
         <SheetTitle>{link.fullName}</SheetTitle>
         <SheetDescription>{link.status === "sent" ? `Waiting on the person · expires ${expiry(link.expiresAt)}` : statusWords[link.status] ?? link.status}</SheetDescription>
       </SheetHeader>
-      <Facts rows={[["Email", link.email], ["Kitchen", link.kitchenName || link.locationName || "—"], ["Sent", when(link.sentAt)], ["Expires", when(link.expiresAt)]]} />
+      <Facts rows={[["Email", link.email], ["Kitchen", link.displayName || link.locationName || "—"], ["Sent", when(link.sentAt)], ["Expires", when(link.expiresAt)]]} />
       <p className="text-sm text-muted-foreground">The kitchen sends a link again from its Customers page; Local Cooks doesn't resend these.</p>
       {testClock && <TestClockCard kind="customer_invite" id={link.id} timezone="America/St_Johns" onMoved={onMoved} />}
     </div>
