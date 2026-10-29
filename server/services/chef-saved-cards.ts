@@ -131,7 +131,7 @@ export async function cardLocks(chefId: number, methods: string[]): Promise<Map<
       FROM storage_rental_terms t JOIN storage_bookings r ON r.id = t.rental_id
       WHERE r.chef_id = ${chefId} AND COALESCE(t.operation->>'paymentMethodId', r.stripe_payment_method_id) IN (${list})
         AND (t.status = 'authorized' OR t.status = 'awaiting_payment' AND t.operation->>'state' = 'pending' AND t.operation->>'checkout' IS DISTINCT FROM 'true')`);
-  for (const row of (result as { rows: Array<{ reason: CardLock; method_id: string }> }).rows) {
+  for (const row of (result.rows as unknown as Array<{ reason: CardLock; method_id: string }>)) {
     if (locks.get(row.method_id) !== 'pending_request') locks.set(row.method_id, row.reason);
   }
   return locks;
