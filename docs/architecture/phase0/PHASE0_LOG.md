@@ -1621,3 +1621,13 @@ Checked on dev against QA's own records (TOUR-103, KB-TASH8T #239, KB-Z856HK #24
   "delivery_unknown" (admin recovery list) → skipped_policy; admin documents dialog showed no expiry for the establishment certificate → shown.
 - Owner Oct 28: an expired customer link shows no Withdraw (Resend stays); order unchanged.
 - Leftover: older .test document reminders sent before this fix still read delivery_unknown/failed on dev (#70, #83); left as is (shared dev rows).
+
+## Oct 29: self-serve saved cards (owner: build it like top platforms)
+- Chef Payments → Saved cards: each card Stripe keeps (brand, last 4, expiry, last used), Remove with a short confirm ("Next time you pay,
+  you'll enter a card."). Checkout makes a new Stripe customer per booking, so one card has many copies: grouped by card fingerprint,
+  Remove detaches every copy and clears it from this chef's bookings/rentals (`chef-saved-cards.ts`). Ids are an HMAC, not Stripe ids.
+- Owner Oct 28: a card holding money for a request the kitchen hasn't answered can't be removed (Airbnb does the same); the card says why
+  and Remove is disabled. Also locked briefly while a payment on it is finishing. Sandbox check: capture still works after detach.
+- Every place that reuses a card falls back to a new card when none is saved; the one gap (paying a kitchen's extra-time offer) now goes
+  to Stripe Checkout instead of "contact Local Cooks". Policy draft 01 updated (remove from Payments → Saved cards).
+- Walked live as phase0-chef: ~70 bookings → 4 cards; removed one; a new pending request locked its card; kitchen declined → unlocked.

@@ -2047,7 +2047,7 @@
   "shellResolutionCenter": "Problèmes et remboursements",
   "shellSavedCards": "Cartes enregistrées",
   "scTitle": "Cartes enregistrées",
-  "scLead": "Les cartes que Stripe garde pour que vous n’ayez pas à les ressaisir quand vous payez quelque chose que vous confirmez : du temps supplémentaire, une modification de réservation, une prolongation d’entreposage ou une réclamation. Nous ne débitons jamais une carte enregistrée de notre propre initiative.",
+  "scLead": "Les cartes que Stripe garde pour les paiements que vous confirmez. Nous ne débitons jamais une carte enregistrée de notre propre initiative.",
   "scLoading": "Chargement de vos cartes",
   "scLoadError": "Vos cartes n’ont pas pu être chargées.",
   "scRetry": "Réessayer",

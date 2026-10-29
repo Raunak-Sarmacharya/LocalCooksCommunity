@@ -2094,7 +2094,7 @@
   "shellResolutionCenter": "Issues and refunds",
   "shellSavedCards": "Saved cards",
   "scTitle": "Saved cards",
-  "scLead": "Cards Stripe keeps so you don’t retype them when you pay for something you confirm: extra time, a booking change, a storage extension or a claim. We never charge a saved card on our own.",
+  "scLead": "Cards Stripe keeps for payments you confirm. We never charge a saved card on our own.",
   "scLoading": "Loading your cards",
   "scLoadError": "Your cards didn’t load.",
   "scRetry": "Try again",

@@ -53,7 +53,6 @@ export function SavedCards() {
         <ul aria-label={t("scTitle")} className={cn(CARD_RADIUS, "divide-y border")}>
           {cards.data.map(card => (
             <li key={card.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-4 sm:px-5">
-              <span aria-hidden="true" className="flex h-10 w-14 shrink-0 items-center justify-center rounded-md bg-muted text-xs font-semibold tracking-tight text-foreground">{brandName(card.brand)}</span>
               <span className="min-w-0 flex-1">
                 <span className="block text-sm font-medium tabular-nums">{label(card)}{card.wallet ? <span className="font-normal text-muted-foreground"> · {t(card.wallet === "apple_pay" ? "scApplePay" : card.wallet === "google_pay" ? "scGooglePay" : "scWallet")}</span> : null}</span>
                 <span className={cn("mt-0.5 block text-sm tabular-nums", expired(card) ? "text-destructive" : "text-muted-foreground")}>
