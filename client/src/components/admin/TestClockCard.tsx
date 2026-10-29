@@ -67,7 +67,7 @@ export function TestClockCard({ kind, id, timezone, onMoved }: { kind: 'tour' | 
     <Card className="min-w-0">
       <CardHeader className="pb-3">
         <CardTitle className="text-base">Test clock</CardTitle>
-        <CardDescription>Dev only. Jumping moves this {noun}'s saved times earlier so the step is due now, then runs it. Emails and notifications send for real.</CardDescription>
+        <CardDescription>Dev only. Jumping moves {kind === 'documents' ? "this customer's document expiry dates" : `this ${noun}'s saved times`} earlier so the step is due now, then runs it. Emails and notifications send for real.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
         {last && <div role="status" className="space-y-1 rounded-md bg-muted p-3">

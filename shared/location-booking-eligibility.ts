@@ -130,7 +130,7 @@ export function accessDocumentStage(expiry: string | null | undefined, timezone 
   return days === null ? null : days <= 0 ? 'expired' : days <= 3 ? '3_day' : days <= 14 ? '14_day' : days <= 45 ? '45_day' : null;
 }
 
-const friendlyExpiry = (expiry: string | null | undefined) => expiry ? new Date(`${expiry}T00:00:00Z`).toLocaleDateString('en-CA', { timeZone: 'UTC', year: 'numeric', month: 'long', day: 'numeric' }) : 'an earlier date';
+export const friendlyExpiry = (expiry: string | null | undefined) => expiry ? new Date(`${expiry}T00:00:00Z`).toLocaleDateString('en-CA', { timeZone: 'UTC', year: 'numeric', month: 'long', day: 'numeric' }) : 'an earlier date';
 
 export const documentRenewalHref = (locationId: number) => `/dashboard?view=kitchen-requests&renewLocation=${locationId}`;
 

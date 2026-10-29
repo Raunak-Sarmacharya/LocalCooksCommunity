@@ -9,6 +9,7 @@ import { calendarDateForBookingTime } from '@shared/operating-hours';
 import { createBookingDateTime, DEFAULT_TIMEZONE } from '@shared/timezone-utils';
 import { deliveryReserve, assertWorkerTime, workerAfter, workerBatch, workerPageEnd, workerRecord } from './worker-context';
 import { logger } from '../logger';
+import { isReservedTestRecipient } from '../email-recipient-policy';
 import { accessDocumentStage, accessDocuments } from '@shared/location-booking-eligibility';
 import { locationService } from '../domains/locations/location.service';
 
@@ -127,7 +128,8 @@ export async function deliverAccessNotice(id: number) {
   try {
     const sent = await sendEmail({ to: intent.recipientEmail, subject: intent.subject, html: intent.htmlBody || undefined, text: intent.textBody || undefined },
       { trackingId: intent.trackingId!, emailType: 'location_access_notice_attempt', retryOfId: intent.id, durableDelivery: true, reportDeliveryFailure: true });
-    await db.update(emailLogs).set({ status: sent ? 'sent' : 'delivery_unknown' }).where(eq(emailLogs.id, id));
+    // A reserved test address (.test) is refused on purpose: skipped, not an uncertain send for Local Cooks to reconcile.
+    await db.update(emailLogs).set({ status: sent ? 'sent' : isReservedTestRecipient(intent.recipientEmail || '') ? 'skipped_policy' : 'delivery_unknown' }).where(eq(emailLogs.id, id));
     return sent;
   } catch (error) {
     await db.update(emailLogs).set({ status: 'delivery_unknown', errorMessage: String(error) }).where(eq(emailLogs.id, id));

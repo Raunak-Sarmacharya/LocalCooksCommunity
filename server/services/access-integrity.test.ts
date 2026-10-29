@@ -149,3 +149,11 @@ it('without a renewal the same document still reminds (14 days out) and then blo
   vi.setSystemTime(new Date('2026-11-04T12:00:00Z'));
   expect(await readLocationBookingEligibility(8, 47)).toMatchObject({ canBook: false, status: 'document_expired' });
 });
+it('a reminder refused for a reserved test address is skipped, not left for recovery; copy shows a readable date (QA walk Oct 28)', async () => {
+  vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-14T12:00:00Z'));
+  state.tables.chef_kitchen_applications[0].foodSafetyLicenseExpiry = '2026-10-28';
+  state.send.mockResolvedValueOnce(false);
+  await sweepChefDocumentExpiry();
+  expect(state.tables.email_logs[0].status).toBe('skipped_policy');
+  expect(state.send.mock.calls[0][0].text).toContain('October 28, 2026');
+});
